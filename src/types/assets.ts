@@ -63,11 +63,12 @@ export type ViewMode = "grid" | "table";
 
 export type CreateAssetInput = Pick<
   Asset,
-  "assetCode" | "name" | "category" | "status" | "location" | "assignmentType"
+  "name" | "category" | "status" | "location" | "assignmentType"
 > &
   Partial<
     Pick<
       Asset,
+      | "assetCode"
       | "modelId"
       | "serialNumber"
       | "department"

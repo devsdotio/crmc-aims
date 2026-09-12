@@ -26,6 +26,8 @@ export interface MaintenanceLogRecord {
   resolutionDate?: string;
   resolutionNotes?: string;
   resolvedBy?: string;
+  /** Optional PHP amount recorded at resolve time (null/omit = not recorded). */
+  repairCost?: string | null;
   relatedBorrowLogCode?: string;
   scheduledDate?: string;
 }

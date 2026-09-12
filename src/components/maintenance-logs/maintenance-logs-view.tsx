@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Wrench } from "lucide-react";
 import type { MaintenanceLogRecord, MaintenanceLogFilterState, ConditionState } from "@/types/maintenance-logs";
 import type { AssetCategory } from "@/types/shared";
@@ -20,6 +21,8 @@ import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-b
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 
 export function MaintenanceLogsView() {
+  const searchParams = useSearchParams();
+  const assetCodeParam = searchParams.get("assetCode")?.trim() ?? "";
   const { data: records = [], isLoading } = useMaintenanceLogsQuery();
   const { data: assets = [], isLoading: assetsLoading } = useAssetsQuery();
   const flagMutation = useCreateMaintenanceLogMutation();
@@ -27,16 +30,26 @@ export function MaintenanceLogsView() {
   const toast = useToast();
   const { canOperate } = useAssetOperator();
 
-  // Filter & Sort State
+  // Filter & Sort State — default to open queue; deep-link via ?assetCode=
   const [filters, setFilters] = useState<MaintenanceLogFilterState>({
-    searchQuery: "",
+    searchQuery: assetCodeParam,
     categories: [],
     conditions: [],
     startDate: "",
     endDate: "",
-    openItemsOnly: false,
-    sortBy: "date_desc",
+    openItemsOnly: true,
+    sortBy: "open_first",
   });
+
+  useEffect(() => {
+    if (!assetCodeParam) return;
+    setFilters((prev) => ({
+      ...prev,
+      searchQuery: assetCodeParam,
+      openItemsOnly: true,
+      sortBy: "open_first",
+    }));
+  }, [assetCodeParam]);
 
   // Modal / Drawer States
   const [selectedRecord, setSelectedRecord] = useState<MaintenanceLogRecord | null>(null);
@@ -113,8 +126,8 @@ export function MaintenanceLogsView() {
       conditions: [],
       startDate: "",
       endDate: "",
-      openItemsOnly: false,
-      sortBy: "date_desc",
+      openItemsOnly: true,
+      sortBy: "open_first",
     });
   };
 
@@ -150,23 +163,29 @@ export function MaintenanceLogsView() {
 
   const handleConfirmResolve = async (
     rec: MaintenanceLogRecord,
-    resolutionNotes: string,
-    technician: string,
-    date: string
+    payload: {
+      resolutionNotes: string;
+      technician: string;
+      resolutionDate: string;
+      repairCost?: string | null;
+    }
   ) => {
     try {
       await resolveMutation.mutateAsync({
         id: rec.id,
-        resolutionNotes,
+        resolutionNotes: payload.resolutionNotes,
+        technician: payload.technician,
+        resolutionDate: payload.resolutionDate,
+        repairCost: payload.repairCost,
       });
       toast.success("Maintenance log resolved.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to resolve log.");
-      throw err;
-    }
 
-    if (selectedRecord?.id === rec.id) {
-      setSelectedRecord(null);
+      if (selectedRecord?.id === rec.id) {
+        setSelectedRecord(null);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to resolve maintenance log.");
+      throw err;
     }
   };
 
@@ -194,7 +213,7 @@ export function MaintenanceLogsView() {
             )}
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Historical audit record of asset condition inspections, return flag logs, and maintenance resolutions.
+            Open repair flags, resolutions, and optional repair costs for assets marked needs repair.
           </p>
         </div>
 

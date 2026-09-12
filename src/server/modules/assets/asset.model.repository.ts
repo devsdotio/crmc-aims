@@ -91,13 +91,38 @@ export class AssetModelRepository {
   }
 
   /**
-   * Highest unit sequence for `prefix-###` codes under a model (or globally by
-   * prefix pattern). Used when bulk-adding units so codes stay gap-free.
+   * Highest unit sequence for `prefix-###` codes (global by prefix).
+   * Used when bulk-adding units so a batch stays contiguous after the current max.
    */
   async maxUnitSequenceForPrefix(
     prefix: string,
     session?: DbSession
   ): Promise<number> {
+    const used = await this.collectSequencesForPrefix(prefix, session);
+    let max = 0;
+    for (const n of used) {
+      if (n > max) max = n;
+    }
+    return max;
+  }
+
+  /**
+   * Lowest free sequence starting at 1 (fills gaps like a missing 011).
+   */
+  async firstAvailableSequenceForPrefix(
+    prefix: string,
+    session?: DbSession
+  ): Promise<number> {
+    const used = await this.collectSequencesForPrefix(prefix, session);
+    let n = 1;
+    while (used.has(n)) n += 1;
+    return n;
+  }
+
+  private async collectSequencesForPrefix(
+    prefix: string,
+    session?: DbSession
+  ): Promise<Set<number>> {
     const db = this.db(session);
     const pattern = `${prefix}-%`;
     const rows = await db
@@ -105,7 +130,7 @@ export class AssetModelRepository {
       .from(assets)
       .where(ilike(assets.assetCode, pattern));
 
-    let max = 0;
+    const used = new Set<number>();
     const re = new RegExp(
       `^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d+)$`,
       "i"
@@ -114,10 +139,10 @@ export class AssetModelRepository {
       const match = row.assetCode.match(re);
       if (match?.[1]) {
         const n = Number(match[1]);
-        if (Number.isFinite(n) && n > max) max = n;
+        if (Number.isFinite(n) && n > 0) used.add(n);
       }
     }
-    return max;
+    return used;
   }
 
   async create(

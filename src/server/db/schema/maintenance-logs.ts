@@ -2,6 +2,7 @@ import {
   boolean,
   date,
   index,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -56,6 +57,8 @@ export const maintenanceLogs = pgTable(
     resolutionNotes: text("resolution_notes"),
     resolvedByUserId: uuid("resolved_by_user_id"),
     resolvedByName: text("resolved_by_name"),
+    /** Optional cost recorded when the repair is completed (null = not recorded). */
+    repairCost: numeric("repair_cost", { precision: 14, scale: 2 }),
 
     relatedBorrowLogCode: text("related_borrow_log_code"),
     scheduledDate: date("scheduled_date", { mode: "string" }),

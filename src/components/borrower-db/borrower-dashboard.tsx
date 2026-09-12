@@ -406,6 +406,13 @@ export function BorrowerDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/borrower-db/inventory"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
+          >
+            <Package className="h-4 w-4" aria-hidden />
+            My Inventory
+          </Link>
           <button
             type="button"
             onClick={() => openWizard(null)}
@@ -457,10 +464,10 @@ export function BorrowerDashboard() {
                 Attention Required (Overdue)
               </h2>
               <Link
-                href="/borrower-db/history"
+                href="/borrower-db/inventory"
                 className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1"
               >
-                View all history <ArrowRight className="h-3.5 w-3.5" />
+                View inventory <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
 

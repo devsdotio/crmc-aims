@@ -43,7 +43,8 @@ function FlagForMaintenanceDialogForm({
         (a) =>
           !a.currentHolder &&
           a.status !== "retired" &&
-          a.status !== "out_of_service"
+          a.status !== "out_of_service" &&
+          a.status !== "missing"
       ),
     [assets]
   );
@@ -163,7 +164,8 @@ function FlagForMaintenanceDialogForm({
             ) : selectable.length === 0 ? (
               <p className="text-[11px] text-text-secondary border border-dashed border-border rounded-lg p-3">
                 No free assets available. Return borrowed items or resolve
-                project custody first. Project-held assets should use{" "}
+                project custody first. Assets currently with a requester must be
+                returned (with repair condition) — project-held assets should use{" "}
                 <strong>Report damage</strong> on the project.
               </p>
             ) : (

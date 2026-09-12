@@ -165,6 +165,18 @@ export function MaintenanceLogDetailPanel({
                   <span className="text-text-secondary">Resolved By Tech:</span>
                   <span className="font-bold text-text">{record.resolvedBy}</span>
                 </div>
+                {record.repairCost != null && record.repairCost !== "" && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-secondary">Repair Cost:</span>
+                    <span className="font-bold font-mono text-text">
+                      ₱
+                      {Number(record.repairCost).toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                )}
                 {record.resolutionNotes && (
                   <div className="pt-2 border-t border-status-active-bg/20 text-text leading-relaxed">
                     <span className="font-semibold block mb-0.5">Resolution Notes:</span>

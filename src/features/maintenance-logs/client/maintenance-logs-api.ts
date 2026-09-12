@@ -16,6 +16,13 @@ export type CreateMaintenancePayload = {
   relatedBorrowLogCode?: string;
 };
 
+export type ResolveMaintenancePayload = {
+  resolutionNotes: string;
+  repairCost?: string | number | null;
+  resolutionDate?: string;
+  technician?: string;
+};
+
 export const maintenanceLogsApi = {
   async list(params?: {
     openOnly?: boolean;
@@ -52,11 +59,11 @@ export const maintenanceLogsApi = {
 
   async resolve(
     id: string,
-    resolutionNotes: string
+    payload: ResolveMaintenancePayload
   ): Promise<MaintenanceLog> {
     const res = await fetchJson<ApiResponse<MaintenanceLog>>(
       `/api/maintenance-logs/${id}/resolve`,
-      { method: "POST", body: JSON.stringify({ resolutionNotes }) }
+      { method: "POST", body: JSON.stringify(payload) }
     );
     return res.data;
   },

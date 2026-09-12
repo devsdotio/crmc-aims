@@ -208,6 +208,12 @@ export default function Sidebar({
           badgeTone: "accent",
           roles: ["borrower"],
         },
+        {
+          name: "My Inventory",
+          href: "/borrower-db/inventory",
+          icon: Package,
+          roles: ["borrower"],
+        },
       ],
     },
     {
@@ -231,8 +237,6 @@ export default function Sidebar({
           name: "Maintenance Logs",
           href: "/maintenance-logs",
           icon: Wrench,
-          badgeText: "Soon",
-          disabled: true,
           roles: ["superadmin", "admin", "staff"],
         },
         {

@@ -36,7 +36,8 @@ import {
   StickyNote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { custodyBadgeLabel } from "@/lib/assets-custody";
+import { custodyBadgeLabel, isProjectCustody } from "@/lib/assets-custody";
+import Link from "next/link";
 
 function formatDisplayDate(dateStr?: string | null): string {
   if (!dateStr) return "Unrecorded";
@@ -453,8 +454,13 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
           event.payload.condition ||
           event.payload.description ||
           event.payload.logCode ||
+          event.payload.maintenanceLogCode ||
           event.payload.requestCode ||
           event.payload.source ||
+          event.payload.repairCost != null ||
+          event.payload.resolutionNotes ||
+          event.payload.technician ||
+          event.payload.via ||
           event.payload.voided
       )) && (
         <div className="rounded bg-bg/80 p-2 border border-border/50 space-y-1">
@@ -463,6 +469,12 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
               Issue voided (undo)
             </p>
           ) : null}
+          {event.payload.via != null && (
+            <p className="text-text leading-relaxed text-[11px]">
+              <strong className="text-text-secondary font-sans">Via:</strong>{" "}
+              {String(event.payload.via)}
+            </p>
+          )}
           {event.payload.source != null && (
             <p className="text-text leading-relaxed text-[11px]">
               <strong className="text-text-secondary font-sans">Source:</strong>{" "}
@@ -470,7 +482,11 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
                 ? "Manual Issue"
                 : String(event.payload.source) === "project_legacy"
                   ? "Project Issue"
-                  : "Portal Request"}
+                  : String(event.payload.source) === "manual_flag" ||
+                      String(event.payload.source) === "return_checkout" ||
+                      String(event.payload.source) === "project_assignment"
+                    ? String(event.payload.source).replace(/_/g, " ")
+                    : "Portal Request"}
             </p>
           )}
           {event.payload.logCode != null && (
@@ -479,10 +495,32 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
               {String(event.payload.logCode)}
             </p>
           )}
+          {event.payload.maintenanceLogCode != null && (
+            <p className="text-text leading-relaxed font-mono text-[11px]">
+              <strong className="text-text-secondary font-sans">Maintenance log:</strong>{" "}
+              {String(event.payload.maintenanceLogCode)}
+            </p>
+          )}
           {event.payload.requestCode != null && (
             <p className="text-text leading-relaxed font-mono text-[11px]">
               <strong className="text-text-secondary font-sans">Request:</strong>{" "}
               {String(event.payload.requestCode)}
+            </p>
+          )}
+          {event.payload.technician != null && (
+            <p className="text-text leading-relaxed text-[11px]">
+              <strong className="text-text-secondary font-sans">Technician:</strong>{" "}
+              {String(event.payload.technician)}
+            </p>
+          )}
+          {event.payload.repairCost != null && event.payload.repairCost !== "" && (
+            <p className="text-text leading-relaxed font-mono text-[11px]">
+              <strong className="text-text-secondary font-sans">Repair cost:</strong>{" "}
+              ₱
+              {Number(event.payload.repairCost).toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </p>
           )}
           {event.payload.description && (
@@ -498,13 +536,15 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
           {Boolean(
             event.payload.notes ||
               event.payload.conditionNotes ||
-              event.payload.returnNotes
+              event.payload.returnNotes ||
+              event.payload.resolutionNotes
           ) && (
             <div className="pt-1">
               <AuditNoteDisplay
                 action={event.payload.voided ? "voided" : event.eventType}
                 note={String(
-                  event.payload.notes ||
+                  event.payload.resolutionNotes ||
+                    event.payload.notes ||
                     event.payload.conditionNotes ||
                     event.payload.returnNotes
                 )}
@@ -649,8 +689,16 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
         title = "Asset Registered";
         statusLabel = "created";
       } else if (ev.eventType === "status_changed") {
-        title = `Status Changed: ${ev.fromStatus || "—"} → ${ev.toStatus || "—"}`;
-        statusLabel = ev.toStatus || "status_changed";
+        if (ev.payload?.via === "maintenance_resolved") {
+          title = "Marked Serviceable (Repair Resolved)";
+          statusLabel = "active";
+        } else if (ev.payload?.via === "flagged_maintenance") {
+          title = `Status Changed: ${ev.fromStatus || "—"} → ${ev.toStatus || "—"}`;
+          statusLabel = ev.toStatus || "needs_repair";
+        } else {
+          title = `Status Changed: ${ev.fromStatus || "—"} → ${ev.toStatus || "—"}`;
+          statusLabel = ev.toStatus || "status_changed";
+        }
       } else if (ev.eventType === "released") {
         const releaseSource = ev.payload?.source;
         const sourceTag =
@@ -683,6 +731,12 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
       } else if (ev.eventType === "flagged_maintenance") {
         title = "Flagged for Maintenance";
         statusLabel = "needs_repair";
+      } else if (
+        ev.eventType === "updated" &&
+        ev.payload?.via === "maintenance_resolved"
+      ) {
+        title = "Maintenance Log Resolved";
+        statusLabel = "maintenance";
       } else if (ev.eventType === "deleted") {
         title = "Asset Record Deleted";
         statusLabel = "deleted";
@@ -789,11 +843,16 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
                     item.event.payload.notes ||
                       item.event.payload.conditionNotes ||
                       item.event.payload.returnNotes ||
+                      item.event.payload.resolutionNotes ||
                       item.event.payload.description ||
                       item.event.payload.condition ||
                       item.event.payload.logCode ||
+                      item.event.payload.maintenanceLogCode ||
                       item.event.payload.requestCode ||
                       item.event.payload.source ||
+                      item.event.payload.repairCost != null ||
+                      item.event.payload.technician ||
+                      item.event.payload.via ||
                       item.event.payload.voided
                   ))) ||
               item.kind === "maintenance";
@@ -940,7 +999,7 @@ export interface AssetDetailPanelProps {
   onClose: () => void;
   onEdit?: (asset: Asset) => void;
   onIssue?: (asset: Asset) => void;
-  onReportMissing?: (asset: Asset) => void;
+  onFlagMaintenance?: (asset: Asset) => void;
   onDelete?: (asset: Asset) => void;
 }
 
@@ -982,7 +1041,7 @@ export function AssetDetailPanel({
   onClose,
   onEdit,
   onIssue,
-  onReportMissing,
+  onFlagMaintenance,
   onDelete,
 }: AssetDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -1047,6 +1106,21 @@ export function AssetDetailPanel({
 
   const categoryMeta = getCategoryStyle(asset.category);
   const statusMeta = STATUS_STYLES[asset.status];
+  const showMaintenanceAction =
+    asset.status !== "retired" &&
+    asset.status !== "missing" &&
+    (asset.status === "needs_repair" || Boolean(onFlagMaintenance));
+  const canFlagMaintenance =
+    Boolean(onFlagMaintenance) &&
+    !asset.currentHolder &&
+    asset.status === "active";
+  const maintenanceDisabledReason = asset.currentHolder
+    ? isProjectCustody(asset.currentHolder)
+      ? "On a project — use Report damage on the project panel"
+      : `In custody (${asset.currentHolder}) — return it first`
+    : asset.status !== "active" && asset.status !== "needs_repair"
+      ? "Only active assets can be flagged for maintenance"
+      : null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
@@ -1093,6 +1167,54 @@ export function AssetDetailPanel({
           </div>
 
           <div className="flex items-center justify-end gap-2.5 shrink-0">
+            {showMaintenanceAction &&
+              (asset.status === "needs_repair" ? (
+                <Link
+                  href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
+                  aria-label="Open maintenance log to mark serviceable"
+                  className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-status-repair-bg hover:opacity-90 text-white transition-opacity cursor-pointer shadow-xs shrink-0"
+                >
+                  <Wrench className="h-4 w-4" />
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
+                  >
+                    Mark Serviceable
+                  </span>
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (canFlagMaintenance && onFlagMaintenance) {
+                      onFlagMaintenance(asset);
+                    }
+                  }}
+                  disabled={!canFlagMaintenance}
+                  aria-label={
+                    canFlagMaintenance
+                      ? "Flag asset for maintenance"
+                      : maintenanceDisabledReason ??
+                        "Flag for maintenance unavailable"
+                  }
+                  className={cn(
+                    "relative group inline-flex items-center justify-center p-1.5 rounded-md text-white shadow-xs shrink-0",
+                    canFlagMaintenance
+                      ? "bg-status-repair-bg hover:opacity-90 cursor-pointer transition-opacity"
+                      : "bg-status-repair-bg/55 cursor-not-allowed"
+                  )}
+                >
+                  <Wrench className="h-4 w-4" />
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 max-w-56 whitespace-normal text-center rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
+                  >
+                    {canFlagMaintenance
+                      ? "Flag for Maintenance"
+                      : maintenanceDisabledReason ?? "Unavailable"}
+                  </span>
+                </button>
+              ))}
             {onIssue && !asset.currentHolder && asset.status === "active" && (
               <button
                 type="button"
@@ -1106,22 +1228,6 @@ export function AssetDetailPanel({
                   className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
                 >
                   Issue Asset
-                </span>
-              </button>
-            )}
-            {onReportMissing && asset.status !== "missing" && asset.status !== "retired" && (
-              <button
-                type="button"
-                onClick={() => onReportMissing(asset)}
-                aria-label="Report asset as missing"
-                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors cursor-pointer shadow-xs shrink-0"
-              >
-                <AlertCircle className="h-4 w-4" />
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
-                >
-                  Report Missing
                 </span>
               </button>
             )}
@@ -1217,6 +1323,22 @@ export function AssetDetailPanel({
                   </span>
                 </div>
               </div>
+
+              {asset.status === "needs_repair" && (
+                <div className="px-4 py-3 border-b border-status-repair-bg/25 bg-status-repair-bg/10 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-status-repair-text">
+                    Open repair flag — resolve via Maintenance Logs to mark serviceable again.
+                  </p>
+                  <Link
+                    href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-status-repair-text hover:underline shrink-0"
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                    Open maintenance log
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              )}
 
               {/* Grid Properties */}
               <div className="p-5 grid grid-cols-2 gap-4 text-xs">

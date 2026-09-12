@@ -33,6 +33,7 @@ export const borrowLogApi = {
     department?: string;
     search?: string;
     custodyKind?: "borrow" | "assignment" | "all";
+    scope?: "department";
     includeSandbox?: boolean;
   }): Promise<BorrowLogRecord[]> {
     const sp = new URLSearchParams();
@@ -40,6 +41,7 @@ export const borrowLogApi = {
     if (params?.department) sp.set("department", params.department);
     if (params?.search) sp.set("search", params.search);
     if (params?.custodyKind) sp.set("custodyKind", params.custodyKind);
+    if (params?.scope) sp.set("scope", params.scope);
     appendIncludeSandbox(sp, params?.includeSandbox);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<BorrowLogRecord[]>>(
@@ -83,5 +85,11 @@ export const borrowLogApi = {
       { method: "POST", body: JSON.stringify(payload) }
     );
     return res.data;
+  },
+
+  async hardDelete(id: string): Promise<void> {
+    await fetchJson<ApiResponse<null> | null>(`/api/borrow-log/${id}`, {
+      method: "DELETE",
+    });
   },
 };

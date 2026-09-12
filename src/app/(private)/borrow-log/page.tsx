@@ -23,10 +23,12 @@ import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-banner";
 import { ReturnLogDialog } from "@/components/borrow-log/return-log-dialog";
 import { BorrowLogDetailSheet } from "@/components/borrow-log/borrow-log-detail-sheet";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useToast } from "@/components/providers/toast-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import {
   useBorrowLogQuery,
+  useHardDeleteBorrowMutation,
   useReturnBorrowMutation,
   useVoidBorrowMutation,
   type BorrowLogRecord,
@@ -69,6 +71,7 @@ function BorrowLogContent() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [returnTarget, setReturnTarget] = useState<BorrowLogRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<BorrowLogRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BorrowLogRecord | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
@@ -100,7 +103,8 @@ function BorrowLogContent() {
   }, [isAssignmentMode, tab]);
 
   const toast = useToast();
-  const { canOperate } = useAssetOperator();
+  const { canOperate, role } = useAssetOperator();
+  const canHardDelete = role === "superadmin";
 
   const {
     data: allRecords = [],
@@ -115,6 +119,7 @@ function BorrowLogContent() {
 
   const returnMutation = useReturnBorrowMutation();
   const voidMutation = useVoidBorrowMutation();
+  const hardDeleteMutation = useHardDeleteBorrowMutation();
 
   // Extract unique departments for dropdown
   const departments = useMemo(() => {
@@ -214,6 +219,22 @@ function BorrowLogContent() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to void issue.");
       throw err;
+    }
+  };
+
+  const handleHardDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await hardDeleteMutation.mutateAsync(deleteTarget.id);
+      toast.success(`${deleteTarget.logCode} permanently deleted.`);
+      if (selectedRecord?.id === deleteTarget.id) {
+        setSelectedRecord(null);
+      }
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete custody log."
+      );
     }
   };
 
@@ -799,7 +820,34 @@ function BorrowLogContent() {
         onClose={() => setSelectedRecord(null)}
         onRecordReturn={(r) => setReturnTarget(r)}
         onVoidIssue={canOperate ? handleVoidIssue : undefined}
+        onHardDelete={
+          canHardDelete ? (record) => setDeleteTarget(record) : undefined
+        }
         canOperate={canOperate}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        title="Permanently delete this log?"
+        description={
+          deleteTarget ? (
+            <>
+              This will hard-delete{" "}
+              <span className="font-semibold text-text">
+                {deleteTarget.logCode}
+              </span>{" "}
+              ({deleteTarget.assetCode}). If the hold is still active, the asset
+              holder is cleared first. This cannot be undone.
+            </>
+          ) : null
+        }
+        confirmLabel="Delete permanently"
+        variant="destructive"
+        isLoading={hardDeleteMutation.isPending}
+        onConfirm={handleHardDelete}
+        onClose={() => {
+          if (!hardDeleteMutation.isPending) setDeleteTarget(null);
+        }}
       />
     </div>
   );

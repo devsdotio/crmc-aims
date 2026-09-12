@@ -20,6 +20,7 @@ import {
   Mail,
   Undo2,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BorrowLogRecord } from "@/features/borrow-log/client";
@@ -35,6 +36,7 @@ interface BorrowLogDetailSheetProps {
   onClose: () => void;
   onRecordReturn?: (record: BorrowLogRecord) => void;
   onVoidIssue?: (record: BorrowLogRecord, reason: string) => Promise<void>;
+  onHardDelete?: (record: BorrowLogRecord) => void;
   canOperate?: boolean;
 }
 
@@ -45,6 +47,7 @@ export function BorrowLogDetailSheet({
   onClose,
   onRecordReturn,
   onVoidIssue,
+  onHardDelete,
   canOperate,
 }: BorrowLogDetailSheetProps) {
   const { getCategoryStyle } = useCategoryStyleMap();
@@ -589,6 +592,17 @@ export function BorrowLogDetailSheet({
               >
                 <Undo2 className="h-3.5 w-3.5" />
                 <span>Undo Issue</span>
+              </button>
+            ) : null}
+
+            {onHardDelete ? (
+              <button
+                type="button"
+                onClick={() => onHardDelete(record)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Delete Log</span>
               </button>
             ) : null}
           </div>

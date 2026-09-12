@@ -16,4 +16,5 @@ export {
   useReleaseBorrowMutation,
   useReturnBorrowMutation,
   useVoidBorrowMutation,
+  useHardDeleteBorrowMutation,
 } from "./use-borrow-log";

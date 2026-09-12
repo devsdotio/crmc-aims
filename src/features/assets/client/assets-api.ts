@@ -137,6 +137,16 @@ export const assetsApi = {
     return response.data;
   },
 
+  async peekNextAssetCode(
+    category: string
+  ): Promise<{ assetCode: string; prefix: string }> {
+    const path = `/api/assets/next-code?category=${encodeURIComponent(category)}`;
+    const response = await fetchJson<
+      ApiResponse<{ assetCode: string; prefix: string }>
+    >(path, { method: "GET" });
+    return response.data;
+  },
+
   async createAsset(payload: CreateAssetInput): Promise<Asset> {
     const response = await fetchJson<ApiResponse<Asset>>("/api/assets", {
       method: "POST",

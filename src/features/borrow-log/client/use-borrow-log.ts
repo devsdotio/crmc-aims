@@ -33,12 +33,16 @@ export function useBorrowLogQuery(filters?: {
   department?: string;
   search?: string;
   custodyKind?: "borrow" | "assignment" | "all";
+  scope?: "department";
+  enabled?: boolean;
 }): UseQueryResult<BorrowLogRecord[], Error> {
   const { includeSandbox } = useSandboxVisibility();
-  const listFilters = { ...filters, includeSandbox };
+  const { enabled = true, ...rest } = filters ?? {};
+  const listFilters = { ...rest, includeSandbox };
   return useQuery({
     queryKey: borrowLogQueryKeys.list(listFilters),
     queryFn: () => borrowLogApi.list(listFilters),
+    enabled,
   });
 }
 
@@ -88,6 +92,20 @@ export function useVoidBorrowMutation(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, payload }) => borrowLogApi.voidLog(id, payload ?? {}),
+    onSettled: () => {
+      void invalidateDomains(qc, CUSTODY_DOMAINS);
+    },
+  });
+}
+
+export function useHardDeleteBorrowMutation(): UseMutationResult<
+  void,
+  Error,
+  string
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => borrowLogApi.hardDelete(id),
     onSettled: () => {
       void invalidateDomains(qc, CUSTODY_DOMAINS);
     },

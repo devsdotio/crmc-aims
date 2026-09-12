@@ -10,6 +10,7 @@ import {
 import type { ActorContext } from "@/server/shared/auth";
 import { generateOperationalCode, todayDateString } from "@/server/shared/codes";
 import { parseScanPayload } from "@/server/shared/qr";
+import { assetCategoryCodePrefix } from "@/lib/asset-category";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
 import { BorrowLogService } from "@/server/modules/borrow-log/borrow-log.service";
 import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repository";
@@ -92,6 +93,8 @@ function padSeq(n: number, width = 3): string {
   return String(n).padStart(width, "0");
 }
 
+const ASSET_CODE_ALLOC_ATTEMPTS = 12;
+
 /**
  * Maps a DB row → the frontend `Asset` contract (+ QR payload / model link).
  * Maintenance truth lives in `maintenance_logs` + lifecycle events — JSONB is unused.
@@ -171,6 +174,28 @@ export class AssetService {
       );
     }
     return found.name;
+  }
+
+  /** Next `{PREFIX}-{NNN}` — first free slot from 001 upward. */
+  async peekNextAssetCode(categoryLabel: string): Promise<{
+    assetCode: string;
+    prefix: string;
+  }> {
+    const categoryName = await this.resolveAssetCategoryName(categoryLabel);
+    const prefix = assetCategoryCodePrefix(categoryName);
+    const assetCode = await this.nextAssetCodeForPrefix(prefix);
+    return { assetCode, prefix };
+  }
+
+  private async nextAssetCodeForPrefix(
+    prefix: string,
+    session?: DbSession
+  ): Promise<string> {
+    const seq = await this.models.repository.firstAvailableSequenceForPrefix(
+      prefix,
+      session
+    );
+    return `${prefix}-${padSeq(seq)}`;
   }
 
   async listAssets(rawQuery: unknown): Promise<AssetDTOWithMeta[]> {
@@ -313,6 +338,8 @@ export class AssetService {
   ): Promise<AssetDTOWithMeta> {
     const input: CreateAssetBody = createAssetSchema.parse(rawInput);
     const categoryName = await this.resolveAssetCategoryName(input.category);
+    const codePrefix = assetCategoryCodePrefix(categoryName);
+    const preferredCode = input.assetCode?.trim().toUpperCase() || null;
 
     if (input.supplierId) {
       const supplier = await this.suppliers.findById(input.supplierId);
@@ -325,82 +352,111 @@ export class AssetService {
       await this.models.requireModel(input.modelId);
     }
 
-    try {
-      return await withTransaction(async (tx) => {
-        const now = new Date();
-        const row = await this.assetRepository.create(
-          {
-            assetCode: input.assetCode,
-            name: input.name,
-            category: categoryName,
-            status: input.status ?? "active",
-            assignmentType: input.assignmentType ?? "borrowable",
-            modelId: input.modelId ?? null,
-            location: input.location,
-            serialNumber: input.serialNumber ?? null,
-            // Custody only via release / project assign — never invent a holder on create.
-            currentHolder: null,
-            department: input.department ?? null,
-            purchaseDate: input.purchaseDate ?? null,
-            value: input.value !== undefined ? input.value.toFixed(2) : null,
-            supplierId: input.supplierId ?? null,
-            imageUrl: input.imageUrl ?? null,
-            notes: input.notes ?? null,
-            isSandbox: input.isSandbox ?? false,
-            maintenanceHistory: [],
-            lastUpdated: now,
-          },
-          tx
-        );
+    let lastError: unknown;
+    for (let attempt = 0; attempt < ASSET_CODE_ALLOC_ATTEMPTS; attempt++) {
+      try {
+        return await withTransaction(async (tx) => {
+          const assetCode =
+            attempt === 0 && preferredCode
+              ? preferredCode
+              : await this.nextAssetCodeForPrefix(codePrefix, tx);
 
-        await this.lifecycleService.record(
-          {
-            assetId: row.id,
-            assetCode: row.assetCode,
-            eventType: "created",
-            actor,
-            toStatus: row.status,
-            toHolder: row.currentHolder,
-            payload: {
-              snapshot: {
-                name: row.name,
-                category: row.category,
-                location: row.location,
-                modelId: row.modelId,
-              },
-            },
-          },
-          tx
-        );
-
-        // Record acquisition cost history when unit value is known.
-        if (input.value !== undefined) {
-          await this.purchaseLots.recordLot(
+          const now = new Date();
+          const row = await this.assetRepository.create(
             {
-              itemType: "asset",
-              assetId: row.id,
-              itemCode: row.assetCode,
-              itemName: row.name,
+              assetCode,
+              name: input.name,
+              category: categoryName,
+              status: input.status ?? "active",
+              assignmentType: input.assignmentType ?? "borrowable",
+              modelId: input.modelId ?? null,
+              location: input.location,
+              serialNumber: input.serialNumber ?? null,
+              // Custody only via release / project assign — never invent a holder on create.
+              currentHolder: null,
+              department: input.department ?? null,
+              purchaseDate: input.purchaseDate ?? null,
+              value: input.value !== undefined ? input.value.toFixed(2) : null,
               supplierId: input.supplierId ?? null,
-              quantity: 1,
-              unitCost: input.value.toFixed(2),
-              purchasedOn: input.purchaseDate ?? todayDateString(),
+              imageUrl: input.imageUrl ?? null,
               notes: input.notes ?? null,
-              recordedByUserId: actor.userId,
-              recordedByName: actor.displayName,
+              isSandbox: input.isSandbox ?? false,
+              maintenanceHistory: [],
+              lastUpdated: now,
             },
             tx
           );
-        }
 
-        return toAssetDTO(row);
-      });
-    } catch (error) {
-      if (isPgUniqueViolation(error)) {
-        throw new ConflictError("Asset code already exists.");
+          await this.lifecycleService.record(
+            {
+              assetId: row.id,
+              assetCode: row.assetCode,
+              eventType: "created",
+              actor,
+              toStatus: row.status,
+              toHolder: row.currentHolder,
+              payload: {
+                snapshot: {
+                  name: row.name,
+                  category: row.category,
+                  location: row.location,
+                  modelId: row.modelId,
+                },
+              },
+            },
+            tx
+          );
+
+          if (row.status === "needs_repair") {
+            await this.ensureOpenMaintenanceLogForAsset(row, actor, {
+              via: "asset_create",
+              fromStatus: row.status,
+              notes:
+                input.notes?.trim() ||
+                "Registered with needs_repair status.",
+            }, tx);
+          }
+
+          // Record acquisition cost history when unit value is known.
+          if (input.value !== undefined) {
+            await this.purchaseLots.recordLot(
+              {
+                itemType: "asset",
+                assetId: row.id,
+                itemCode: row.assetCode,
+                itemName: row.name,
+                supplierId: input.supplierId ?? null,
+                quantity: 1,
+                unitCost: input.value.toFixed(2),
+                purchasedOn: input.purchaseDate ?? todayDateString(),
+                notes: input.notes ?? null,
+                recordedByUserId: actor.userId,
+                recordedByName: actor.displayName,
+              },
+              tx
+            );
+          }
+
+          return toAssetDTO(row);
+        });
+      } catch (error) {
+        lastError = error;
+        if (isPgUniqueViolation(error)) {
+          // Prefetch can go stale while the form is open — allocate the next free code.
+          continue;
+        }
+        throw error;
       }
-      throw error;
     }
+
+    if (isPgUniqueViolation(lastError)) {
+      throw new ConflictError(
+        "Could not allocate a unique asset code. Please try again."
+      );
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new ConflictError("Asset code already exists.");
   }
 
   /**
@@ -683,6 +739,22 @@ export class AssetService {
           );
         }
       }
+      if (input.status === "needs_repair") {
+        const open = await this.borrowLogRepo.findActiveByAssetId(id);
+        const openProject = await this.projectAssignments.findOpenByAssetId(id);
+        if (openProject) {
+          throw new ConflictError(
+            "Asset is on a project. Use Report damage on the project panel to flag repair while in project custody."
+          );
+        }
+        if (existing.currentHolder || open) {
+          throw new ConflictError(
+            existing.currentHolder
+              ? `Asset is currently in custody (${existing.currentHolder}). Return it with a repair condition instead of editing status.`
+              : `Asset has an open borrow/release log (${open!.borrowerName}). Return it before marking needs repair.`
+          );
+        }
+      }
       if (input.status === "active" && existing.status === "needs_repair") {
         const openMaint = await this.maintenanceRepo.countOpenByAssetId(id);
         if (openMaint > 0) {
@@ -751,15 +823,35 @@ export class AssetService {
             fromStatus: existing.status,
             toStatus: updated.status,
             payload: {
-              via: "update",
+              via:
+                updated.status === "needs_repair"
+                  ? "flagged_maintenance"
+                  : "update",
             },
           });
         }
       }
 
+      // Editing Condition → Needs Repair (or saving while already needs_repair
+      // with a missing open log) must open a Maintenance Logs entry.
+      if (updated.status === "needs_repair") {
+        await this.ensureOpenMaintenanceLogForAsset(updated, actor, {
+          via:
+            existing.status !== "needs_repair" ? "asset_edit" : "asset_edit_heal",
+          fromStatus: existing.status,
+          notes:
+            input.notes?.trim() ||
+            existing.notes?.trim() ||
+            "Marked needs repair via asset edit.",
+        });
+      }
+
       return toAssetDTO(updated);
     } catch (error) {
       if (error instanceof NotFoundError) {
+        throw error;
+      }
+      if (error instanceof ConflictError) {
         throw error;
       }
       if (isPgUniqueViolation(error)) {
@@ -969,7 +1061,74 @@ export class AssetService {
   }
 
   /**
-   * Flag maintenance: asset status + embedded history + first-class maintenance log + ledger (atomic).
+   * Ensure a needs_repair asset has an open maintenance log + lifecycle flag.
+   * Used by edit/create status paths so Maintenance Logs stays the repair hub.
+   */
+  private async ensureOpenMaintenanceLogForAsset(
+    asset: AssetRow,
+    actor: ActorContext,
+    opts: { via: string; fromStatus: string; notes: string },
+    session?: DbSession
+  ): Promise<void> {
+    const run = async (tx: DbSession) => {
+      const openCount = await this.maintenanceRepo.countOpenByAssetId(
+        asset.id,
+        tx
+      );
+      if (openCount > 0) return;
+
+      const mntCode = generateOperationalCode("MNT");
+      await this.maintenanceRepo.create(
+        {
+          logCode: mntCode,
+          assetId: asset.id,
+          assetCode: asset.assetCode,
+          assetName: asset.name,
+          category: asset.category,
+          condition: "needs_maintenance",
+          source: "manual_flag",
+          dateLogged: todayDateString(),
+          loggedByUserId: actor.userId,
+          loggedByName: actor.displayName,
+          notes: opts.notes,
+          isResolved: false,
+          resolutionDate: null,
+          resolutionNotes: null,
+          resolvedByUserId: null,
+          resolvedByName: null,
+          repairCost: null,
+          relatedBorrowLogCode: null,
+          scheduledDate: null,
+        },
+        tx
+      );
+
+      await this.lifecycleService.record(
+        {
+          assetId: asset.id,
+          assetCode: asset.assetCode,
+          eventType: "flagged_maintenance",
+          actor,
+          fromStatus: opts.fromStatus,
+          toStatus: "needs_repair",
+          fromHolder: asset.currentHolder,
+          toHolder: asset.currentHolder,
+          payload: {
+            via: opts.via,
+            maintenanceLogCode: mntCode,
+            notes: opts.notes,
+          },
+        },
+        tx
+      );
+    };
+
+    if (session) return run(session);
+    return withTransaction(run);
+  }
+
+  /**
+   * Flag maintenance: asset status + first-class maintenance log + ledger (atomic).
    */
   async flagForMaintenance(
     rawId: string,
@@ -989,15 +1148,24 @@ export class AssetService {
         throw new ConflictError("Retired assets cannot be flagged for maintenance.");
       }
 
-      if (existing.currentHolder) {
-        const projectOpen = await this.projectAssignments.findOpenByAssetId(id);
-        if (projectOpen) {
-          throw new ConflictError(
-            "Asset is on a project. Use Report damage on the project panel to flag repair or write off while in project custody."
-          );
-        }
+      if (existing.status === "missing") {
+        throw new ConflictError("Missing assets cannot be flagged for maintenance.");
+      }
+
+      const openBorrow = await this.borrowLogRepo.findActiveByAssetId(id, tx);
+      const projectOpen = await this.projectAssignments.findOpenByAssetId(id, tx);
+
+      if (projectOpen) {
         throw new ConflictError(
-          "Asset is currently released. Return it (with repair condition) instead of flagging in isolation."
+          "Asset is on a project. Use Report damage on the project panel to flag repair or write off while in project custody."
+        );
+      }
+
+      if (existing.currentHolder || openBorrow) {
+        throw new ConflictError(
+          existing.currentHolder
+            ? `Asset is currently in custody (${existing.currentHolder}). Return it (with repair condition) instead of flagging in isolation.`
+            : `Asset has an open borrow/release log (${openBorrow!.borrowerName}). Return it before flagging for maintenance.`
         );
       }
 
@@ -1034,6 +1202,7 @@ export class AssetService {
           resolutionNotes: null,
           resolvedByUserId: null,
           resolvedByName: null,
+          repairCost: null,
           relatedBorrowLogCode: null,
           scheduledDate: null,
         },
@@ -1051,6 +1220,7 @@ export class AssetService {
           fromHolder: existing.currentHolder,
           toHolder: next.currentHolder,
           payload: {
+            via: "manual_flag",
             description,
             notes: input.notes ?? null,
             maintenanceLogCode: mntCode,

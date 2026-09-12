@@ -3,10 +3,11 @@ import { BorrowRequestRepository } from "@/server/modules/borrow-requests/borrow
 import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repository";
 import { ConsumableRepository } from "@/server/modules/consumables/consumable.repository";
 import { ConsumableRequestRepository } from "@/server/modules/consumable-requests/consumable-request.repository";
+import { DepartmentRepository } from "@/server/modules/departments/department.repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { getDb } from "@/server/db";
-import { assetLifecycleEvents } from "@/server/db/schema";
-import { desc } from "drizzle-orm";
+import { assetLifecycleEvents, profiles } from "@/server/db/schema";
+import { desc, eq } from "drizzle-orm";
 import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
 
@@ -94,8 +95,30 @@ export class DashboardService {
     private readonly borrowLog = new BorrowLogRepository(),
     private readonly consumables = new ConsumableRepository(),
     private readonly consumableRequests = new ConsumableRequestRepository(),
-    private readonly assets = new AssetRepository()
+    private readonly assets = new AssetRepository(),
+    private readonly departments = new DepartmentRepository()
   ) {}
+
+  private async resolveBorrowerDeptContext(userId: string): Promise<{
+    departmentId: string | null;
+    includeSandbox: boolean;
+  }> {
+    const db = getDb();
+    const [profile] = await db
+      .select({ departmentId: profiles.departmentId })
+      .from(profiles)
+      .where(eq(profiles.userId, userId))
+      .limit(1);
+    const departmentId = profile?.departmentId ?? null;
+    if (!departmentId) {
+      return { departmentId: null, includeSandbox: false };
+    }
+    const dept = await this.departments.findById(departmentId);
+    return {
+      departmentId,
+      includeSandbox: Boolean(dept?.isSandbox),
+    };
+  }
 
   private mergePendingRequests(
     borrowRows: Array<{
@@ -156,11 +179,21 @@ export class DashboardService {
       30_000,
       async () => {
         if (userId) {
+          const { departmentId, includeSandbox } =
+            await this.resolveBorrowerDeptContext(userId);
+
           const [activeBorrows, pendingApprovals, overdueAssets] = await Promise.all([
-            this.borrowLog.countActive(undefined, userId).catch((err) => {
-              console.error("[dashboard] failed to count active borrows for borrower:", err);
-              return 0;
-            }),
+            departmentId
+              ? this.borrowLog
+                  .countDepartmentHeld(departmentId, { includeSandbox })
+                  .catch((err) => {
+                    console.error(
+                      "[dashboard] failed to count department held assets for borrower:",
+                      err
+                    );
+                    return 0;
+                  })
+              : Promise.resolve(0),
             Promise.all([
               this.requests.countPending(undefined, userId).catch((err) => {
                 console.error("[dashboard] failed to count pending requests for borrower:", err);
@@ -171,10 +204,20 @@ export class DashboardService {
                 return 0;
               }),
             ]).then(([a, b]) => a + b),
-            this.borrowLog.countOverdue(undefined, userId).catch((err) => {
-              console.error("[dashboard] failed to count overdue assets for borrower:", err);
-              return 0;
-            }),
+            departmentId
+              ? this.borrowLog
+                  .countDepartmentHeld(departmentId, {
+                    includeSandbox,
+                    overdueOnly: true,
+                  })
+                  .catch((err) => {
+                    console.error(
+                      "[dashboard] failed to count department overdue for borrower:",
+                      err
+                    );
+                    return 0;
+                  })
+              : Promise.resolve(0),
           ]);
           return {
             activeBorrows,
@@ -240,6 +283,9 @@ export class DashboardService {
         )
     );
     const targetUserId = isRealUuid ? userId.trim() : undefined;
+    const { departmentId, includeSandbox } = targetUserId
+      ? await this.resolveBorrowerDeptContext(targetUserId)
+      : { departmentId: null, includeSandbox: false };
 
     const [
       activeBorrows,
@@ -250,10 +296,17 @@ export class DashboardService {
       pendingSupplyRows,
       overdueRows,
     ] = await Promise.all([
-      this.borrowLog.countActive(undefined, targetUserId).catch((err) => {
-        console.error("[dashboard] failed to count borrower active borrows:", err);
-        return 0;
-      }),
+      departmentId
+        ? this.borrowLog
+            .countDepartmentHeld(departmentId, { includeSandbox })
+            .catch((err) => {
+              console.error(
+                "[dashboard] failed to count borrower department held assets:",
+                err
+              );
+              return 0;
+            })
+        : Promise.resolve(0),
       Promise.all([
         this.requests.countPending(undefined, targetUserId).catch((err) => {
           console.error("[dashboard] failed to count borrower pending requests:", err);
@@ -264,10 +317,20 @@ export class DashboardService {
           return 0;
         }),
       ]).then(([a, b]) => a + b),
-      this.borrowLog.countOverdue(undefined, targetUserId).catch((err) => {
-        console.error("[dashboard] failed to count borrower overdue assets:", err);
-        return 0;
-      }),
+      departmentId
+        ? this.borrowLog
+            .countDepartmentHeld(departmentId, {
+              includeSandbox,
+              overdueOnly: true,
+            })
+            .catch((err) => {
+              console.error(
+                "[dashboard] failed to count borrower department overdue:",
+                err
+              );
+              return 0;
+            })
+        : Promise.resolve(0),
       Promise.all([
         this.requests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
           console.error("[dashboard] failed to count total borrow requests for requester:", err);
@@ -290,10 +353,23 @@ export class DashboardService {
         console.error("[dashboard] failed to list borrower pending supply requests:", err);
         return [];
       }),
-      this.borrowLog.list({ status: "overdue", ...(targetUserId ? { borrowerUserId: targetUserId } : {}) }).catch((err) => {
-        console.error("[dashboard] failed to list borrower overdue rows:", err);
-        return [];
-      }),
+      departmentId
+        ? this.borrowLog
+            .list({
+              status: "overdue",
+              departmentId,
+              excludeProjects: true,
+              custodyKind: "all",
+              includeSandbox,
+            })
+            .catch((err) => {
+              console.error(
+                "[dashboard] failed to list borrower department overdue rows:",
+                err
+              );
+              return [];
+            })
+        : Promise.resolve([]),
     ]);
 
     return {
@@ -514,7 +590,7 @@ export class DashboardService {
         message: `${row.assetName} (${row.assetCode}) is ${row.daysOverdue} day${
           row.daysOverdue === 1 ? "" : "s"
         } overdue — ${row.borrowerName}, ${row.department}.`,
-        href: userId ? "/borrower-db/history" : "/borrow-log?status=overdue",
+        href: userId ? "/borrower-db/inventory" : "/borrow-log?status=overdue",
         type: "urgent",
         relativeTime: `${row.daysOverdue}d overdue`,
         sortAt: row.dueSince,

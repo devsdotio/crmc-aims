@@ -13,7 +13,8 @@ export const assetStatusSchema = z.enum(ASSET_STATUSES);
 export const assetAssignmentTypeSchema = z.enum(ASSET_ASSIGNMENT_TYPES);
 
 export const createAssetSchema = z.object({
-  assetCode: z.string().trim().min(1, "assetCode is required.").max(64),
+  /** Optional — server allocates the next unique `{PREFIX}-{NNN}` when omitted. */
+  assetCode: z.string().trim().min(1).max(64).optional(),
   name: z.string().trim().min(1, "name is required.").max(255),
   category: categoryLabelSchema,
   /** Omitted status defaults to `active` in the service (not via Zod default),

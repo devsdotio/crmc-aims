@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -100,7 +100,9 @@ export class BorrowLogRepository implements IBorrowLogRepository {
     const conditions = [];
     const today = todayDateString();
 
-    if (filters.status === "returned") {
+    if (filters.heldOnly) {
+      conditions.push(eq(borrowTransactions.status, "active"));
+    } else if (filters.status === "returned") {
       conditions.push(eq(borrowTransactions.status, "returned"));
     } else if (filters.status === "voided") {
       conditions.push(eq(borrowTransactions.status, "voided"));
@@ -124,9 +126,16 @@ export class BorrowLogRepository implements IBorrowLogRepository {
       conditions.push(eq(borrowTransactions.custodyKind, "borrow"));
     }
 
-    if (filters.department?.trim()) {
+    if (filters.departmentId) {
+      conditions.push(eq(borrowTransactions.departmentId, filters.departmentId));
+    } else if (filters.department?.trim()) {
       conditions.push(eq(borrowTransactions.department, filters.department.trim()));
     }
+
+    if (filters.excludeProjects) {
+      conditions.push(isNull(borrowTransactions.projectId));
+    }
+
     if (filters.borrowerUserId && filters.borrowerEmail) {
       conditions.push(
         or(
@@ -200,6 +209,44 @@ export class BorrowLogRepository implements IBorrowLogRepository {
     return Number(row?.value ?? 0);
   }
 
+  /**
+   * Open department custody (borrow + assignment-to-dept), excluding projects.
+   * Used by requester dashboard / inventory counts.
+   */
+  async countDepartmentHeld(
+    departmentId: string,
+    options?: {
+      overdueOnly?: boolean;
+      includeSandbox?: boolean;
+      session?: DbSession;
+    }
+  ): Promise<number> {
+    const db = this.db(options?.session);
+    const today = todayDateString();
+    const conditions = [
+      eq(borrowTransactions.status, "active"),
+      eq(borrowTransactions.departmentId, departmentId),
+      isNull(borrowTransactions.projectId),
+    ];
+
+    if (options?.overdueOnly) {
+      conditions.push(isNotNull(borrowTransactions.dueDate));
+      conditions.push(lt(borrowTransactions.dueDate, today));
+    }
+
+    if (!options?.includeSandbox) {
+      conditions.push(
+        sql`not exists (select 1 from assets a where a.id = ${borrowTransactions.assetId} and a.is_sandbox = true)`
+      );
+    }
+
+    const [row] = await db
+      .select({ value: count() })
+      .from(borrowTransactions)
+      .where(and(...conditions));
+    return Number(row?.value ?? 0);
+  }
+
   async countOverdue(session?: DbSession, userId?: string): Promise<number> {
     const db = this.db(session);
     const today = todayDateString();
@@ -261,5 +308,14 @@ export class BorrowLogRepository implements IBorrowLogRepository {
       .where(eq(borrowTransactions.id, id))
       .returning();
     return row ?? null;
+  }
+
+  async delete(id: string, session?: DbSession): Promise<boolean> {
+    const db = this.db(session);
+    const result = await db
+      .delete(borrowTransactions)
+      .where(eq(borrowTransactions.id, id))
+      .returning({ id: borrowTransactions.id });
+    return result.length > 0;
   }
 }

@@ -51,6 +51,27 @@ export const createMaintenanceSchema = z.object({
 
 export const resolveMaintenanceSchema = z.object({
   resolutionNotes: z.string().trim().min(1).max(4000),
+  repairCost: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v, ctx) => {
+      if (v === undefined || v === null || v === "") return null;
+      const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
+      if (!Number.isFinite(n) || n < 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Repair cost must be a non-negative number.",
+        });
+        return z.NEVER;
+      }
+      return n.toFixed(2);
+    }),
+  resolutionDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "resolutionDate must be YYYY-MM-DD.")
+    .optional(),
+  technician: z.string().trim().min(1).max(255).optional(),
 });
 
 export const maintenanceIdSchema = z.string().uuid("Invalid maintenance log id.");

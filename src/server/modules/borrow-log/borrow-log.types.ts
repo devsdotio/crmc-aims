@@ -34,10 +34,16 @@ export type BorrowLogDTO = {
 export type ListBorrowLogFilters = {
   status?: "active" | "overdue" | "returned" | "voided";
   department?: string;
+  /** UUID — preferred over free-text department label. */
+  departmentId?: string;
   search?: string;
   borrowerUserId?: string;
   borrowerEmail?: string;
   custodyKind?: "borrow" | "assignment" | "all";
+  /** Currently held rows (DB status=active), including overdue. */
+  heldOnly?: boolean;
+  /** Exclude project-destination rows. */
+  excludeProjects?: boolean;
   includeSandbox?: boolean;
 };
 

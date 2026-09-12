@@ -98,6 +98,51 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     return Number(row?.value ?? 0);
   }
 
+  /**
+   * Assets marked needs_repair that have no open maintenance log
+   * (e.g. status flipped via edit before the hub was wired).
+   */
+  async findNeedsRepairWithoutOpenLog(
+    options: { includeSandbox?: boolean } = {},
+    session?: DbSession
+  ): Promise<
+    Array<{
+      id: string;
+      assetCode: string;
+      name: string;
+      category: string;
+      status: string;
+      notes: string | null;
+      currentHolder: string | null;
+    }>
+  > {
+    const db = this.db(session);
+    const conditions = [
+      eq(assets.status, "needs_repair"),
+      sql`not exists (
+        select 1 from ${maintenanceLogs}
+        where ${maintenanceLogs.assetId} = ${assets.id}
+          and ${maintenanceLogs.isResolved} = false
+      )`,
+    ];
+    if (!options.includeSandbox) {
+      conditions.push(eq(assets.isSandbox, false));
+    }
+
+    return db
+      .select({
+        id: assets.id,
+        assetCode: assets.assetCode,
+        name: assets.name,
+        category: assets.category,
+        status: assets.status,
+        notes: assets.notes,
+        currentHolder: assets.currentHolder,
+      })
+      .from(assets)
+      .where(and(...conditions));
+  }
+
   async countYear(session?: DbSession): Promise<number> {
     const db = this.db(session);
     const [row] = await db

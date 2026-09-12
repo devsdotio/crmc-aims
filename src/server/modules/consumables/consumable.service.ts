@@ -170,6 +170,7 @@ export class ConsumableService {
       stockLevel: filters.stockLevel === "critical" ? "critical" : undefined,
       page: filters.page,
       limit: filters.limit,
+      includeSandbox: filters.includeSandbox === true,
     });
 
     let dtos = result.data.map(toDTO);

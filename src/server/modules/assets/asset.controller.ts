@@ -52,6 +52,21 @@ export class AssetController {
     }
   }
 
+  async peekNextAssetCode(request: NextRequest | Request) {
+    try {
+      await requireActor();
+      const url = new URL(request.url);
+      const category = url.searchParams.get("category")?.trim();
+      if (!category) {
+        const { BadRequestError } = await import("@/server/shared/errors");
+        throw new BadRequestError("category query parameter is required.");
+      }
+      return ok(await this.assetService.peekNextAssetCode(category));
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async bulkCreate(request: NextRequest | Request) {
     try {
       const session = await requireAssetOperator();

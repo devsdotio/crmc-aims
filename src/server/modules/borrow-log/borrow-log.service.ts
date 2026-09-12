@@ -152,13 +152,50 @@ export class BorrowLogService {
   ) {}
 
   async list(rawQuery: unknown, actor?: ActorContext): Promise<BorrowLogDTO[]> {
-    const filters = listBorrowLogQuerySchema.parse(rawQuery ?? {});
+    const parsed = listBorrowLogQuerySchema.parse(rawQuery ?? {});
+    const filters: import("./borrow-log.types").ListBorrowLogFilters = {
+      status: parsed.status,
+      department: parsed.department,
+      search: parsed.search,
+      borrowerUserId: parsed.borrowerUserId,
+      borrowerEmail: parsed.borrowerEmail,
+      custodyKind: parsed.custodyKind,
+      includeSandbox: parsed.includeSandbox,
+    };
+
     if (actor && !isAssetOperatorRole(actor.role)) {
-      filters.borrowerUserId = actor.userId;
-      if (actor.email) {
-        filters.borrowerEmail = actor.email;
+      const includeSandboxForDept = await this.departmentAllowsSandbox(
+        actor.departmentId
+      );
+
+      if (parsed.scope === "department") {
+        if (!actor.departmentId) {
+          throw new BadRequestError(
+            "Your account is not linked to a department. Ask Property Custodian to assign one."
+          );
+        }
+        // All open department holds (borrow + assignable-to-dept), never projects.
+        filters.departmentId = actor.departmentId;
+        filters.excludeProjects = true;
+        filters.custodyKind = "all";
+        filters.heldOnly = true;
+        filters.includeSandbox = includeSandboxForDept;
+        delete filters.status;
+        delete filters.borrowerUserId;
+        delete filters.borrowerEmail;
+        delete filters.department;
+      } else {
+        filters.borrowerUserId = actor.userId;
+        if (actor.email) {
+          filters.borrowerEmail = actor.email;
+        }
+        // Sandbox department accounts must see sandbox assets in personal history too.
+        if (includeSandboxForDept) {
+          filters.includeSandbox = true;
+        }
       }
     }
+
     const rows = await this.repo.list(filters);
     return rows.map((row) => toBorrowLogDTO(row));
   }
@@ -167,10 +204,26 @@ export class BorrowLogService {
     const id = borrowLogIdSchema.parse(rawId);
     const row = await this.repo.findById(id);
     if (!row) throw new NotFoundError("Borrow log", id);
-    if (actor && !isAssetOperatorRole(actor.role) && row.borrowerUserId !== actor.userId) {
-      throw new ForbiddenError("You are not allowed to view this log.");
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      const isOwn = row.borrowerUserId === actor.userId;
+      const isDeptInventory =
+        Boolean(actor.departmentId) &&
+        row.departmentId === actor.departmentId &&
+        row.projectId == null;
+      if (!isOwn && !isDeptInventory) {
+        throw new ForbiddenError("You are not allowed to view this log.");
+      }
     }
     return toBorrowLogDTO(row);
+  }
+
+  /** Sandbox departments may see sandbox assets/logs tied to them. */
+  private async departmentAllowsSandbox(
+    departmentId: string | null | undefined
+  ): Promise<boolean> {
+    if (!departmentId) return false;
+    const dept = await this.departments.findById(departmentId);
+    return Boolean(dept?.isSandbox);
   }
 
   /**
@@ -622,6 +675,7 @@ export class BorrowLogService {
                 resolutionNotes: null,
                 resolvedByUserId: null,
                 resolvedByName: null,
+                repairCost: null,
                 relatedBorrowLogCode: existing.logCode,
                 scheduledDate: null,
               },
@@ -783,6 +837,101 @@ export class BorrowLogService {
       }
 
       return toBorrowLogDTO(updated);
+    });
+  }
+
+  /**
+   * Superadmin-only permanent removal of a custody log.
+   * If still active, clears asset holder / open project assignment first.
+   */
+  async hardDelete(rawId: string, actor: ActorContext): Promise<void> {
+    if (actor.role !== "superadmin") {
+      throw new ForbiddenError(
+        "Only superadmin can permanently delete custody logs."
+      );
+    }
+    const id = borrowLogIdSchema.parse(rawId);
+
+    await withTransaction(async (tx) => {
+      const existing = await this.repo.findByIdForUpdate(id, tx);
+      if (!existing) throw new NotFoundError("Borrow log", id);
+
+      const now = new Date();
+
+      if (existing.status === "active" && existing.assetId) {
+        const asset = await this.assets.findByIdForUpdate(existing.assetId, tx);
+        if (asset) {
+          const openProject = await this.projectAssignments.findOpenByAssetId(
+            asset.id,
+            tx
+          );
+          if (openProject) {
+            await this.projectAssignments.update(
+              openProject.id,
+              {
+                status: "returned",
+                returnedAt: now,
+                returnedByUserId: actor.userId,
+                returnedByName: actor.displayName,
+                returnNotes: `Hard-deleted custody log ${existing.logCode}`,
+              },
+              tx
+            );
+          }
+
+          await this.assets.update(
+            asset.id,
+            {
+              currentHolder: null,
+              lastUpdated: now,
+            },
+            tx
+          );
+
+          await this.lifecycle.record(
+            {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              eventType: "returned",
+              actor,
+              fromStatus: asset.status,
+              toStatus: asset.status,
+              fromHolder: existing.borrowerName,
+              toHolder: null,
+              payload: {
+                hardDeleted: true,
+                logCode: existing.logCode,
+                logId: existing.id,
+                notes: `Custody log ${existing.logCode} permanently deleted`,
+                source: existing.source,
+              },
+            },
+            tx
+          );
+        }
+      } else if (existing.assetId) {
+        await this.lifecycle.record(
+          {
+            assetId: existing.assetId,
+            assetCode: existing.assetCode,
+            eventType: "updated",
+            actor,
+            fromStatus: null,
+            toStatus: null,
+            payload: {
+              hardDeleted: true,
+              via: "custody_log_deleted",
+              logCode: existing.logCode,
+              logId: existing.id,
+              priorStatus: existing.status,
+            },
+          },
+          tx
+        );
+      }
+
+      const removed = await this.repo.delete(id, tx);
+      if (!removed) throw new NotFoundError("Borrow log", id);
     });
   }
 

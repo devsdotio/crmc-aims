@@ -9,9 +9,9 @@ import type {
   AssetStatus,
   AssetAssignmentType,
 } from "@/types/assets";
-import { assetCategoryCodePrefix } from "@/lib/asset-category";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import { useSuppliersQuery } from "@/features/suppliers/client";
+import { assetsApi } from "@/features/assets/client";
 import Link from "next/link";
 import { QRCodeDisplay } from "./qr-code-display";
 
@@ -20,12 +20,6 @@ export interface AddEditAssetDialogProps {
   initialAsset?: Asset | null;
   onClose: () => void;
   onSave: (assetData: Partial<Asset>) => Promise<void> | void;
-}
-
-function generateAssetCode(category: string): string {
-  const prefix = assetCategoryCodePrefix(category);
-  const randomNum = Math.floor(100 + Math.random() * 900);
-  return `${prefix}-${randomNum}`;
 }
 
 interface AddEditAssetDialogFormProps {
@@ -75,6 +69,7 @@ function AddEditAssetDialogForm({
   const [assetCode, setAssetCode] = useState(
     () => initialAsset?.assetCode ?? ""
   );
+  const [codeLoading, setCodeLoading] = useState(false);
   const [serialNumber, setSerialNumber] = useState(
     () => initialAsset?.serialNumber ?? ""
   );
@@ -99,15 +94,34 @@ function AddEditAssetDialogForm({
   // Default select to first taxonomy option when loaded (create only).
   useEffect(() => {
     if (isEditing || category || assetCategories.length === 0) return;
-    const first = assetCategories[0].name;
-    setCategory(first);
-    setAssetCode((prev) => prev || generateAssetCode(first));
+    setCategory(assetCategories[0].name);
   }, [assetCategories, category, isEditing]);
+
+  // Server-allocated preview so the code is unique against current inventory.
+  useEffect(() => {
+    if (isEditing || !category) return;
+    let cancelled = false;
+    setCodeLoading(true);
+    void assetsApi
+      .peekNextAssetCode(category)
+      .then((result) => {
+        if (!cancelled) setAssetCode(result.assetCode);
+      })
+      .catch(() => {
+        if (!cancelled) setAssetCode("");
+      })
+      .finally(() => {
+        if (!cancelled) setCodeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [category, isEditing]);
 
   const handleCategoryChange = (newCat: string) => {
     setCategory(newCat);
-    if (!isEditing && newCat) {
-      setAssetCode(generateAssetCode(newCat));
+    if (!isEditing) {
+      setAssetCode("");
     }
   };
 
@@ -141,16 +155,30 @@ function AddEditAssetDialogForm({
       setError("Please enter the asset location.");
       return;
     }
-    const code = (
-      assetCode.trim() || generateAssetCode(category)
-    ).toUpperCase();
 
     try {
       setIsSubmitting(true);
       setError("");
+      // Prefer a fresh server allocation right before save so a long-open form
+      // does not submit a code another user already claimed.
+      let code = assetCode.trim().toUpperCase();
+      if (!isEditing) {
+        try {
+          const fresh = await assetsApi.peekNextAssetCode(category);
+          code = fresh.assetCode;
+          setAssetCode(fresh.assetCode);
+        } catch {
+          // Fall through — server will allocate if code is missing/stale.
+        }
+      }
+
       await onSave({
         id: initialAsset?.id,
-        assetCode: code,
+        ...(isEditing
+          ? { assetCode: code }
+          : code
+            ? { assetCode: code }
+            : {}),
         name: name.trim(),
         category: category as AssetCategory,
         status: status as AssetStatus,
@@ -300,11 +328,23 @@ function AddEditAssetDialogForm({
                     className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
                   >
                     <option value="active">Active (Serviceable)</option>
-                    <option value="needs_repair">Needs Repair</option>
+                    <option
+                      value="needs_repair"
+                      disabled={Boolean(initialAsset?.currentHolder)}
+                    >
+                      Needs Repair
+                    </option>
                     <option value="out_of_service">Out of Service</option>
                     <option value="retired">Retired</option>
                     <option value="missing">Missing</option>
                   </select>
+                  {status === "needs_repair" && (
+                    <p className="text-[11px] text-text-secondary leading-relaxed">
+                      {initialAsset?.currentHolder
+                        ? "This asset is in custody — return it with a repair condition instead of editing status here."
+                        : "This opens a Maintenance Logs entry so the asset can be marked serviceable again after repair."}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -506,13 +546,20 @@ function AddEditAssetDialogForm({
                     Asset Code
                   </label>
                   <span className="text-[10px] font-medium text-text-secondary">
-                    {isEditing ? "Fixed identifier" : "Auto-generated"}
+                    {isEditing
+                      ? "Fixed identifier"
+                      : codeLoading
+                        ? "Reserving…"
+                        : "Next available"}
                   </span>
                 </div>
                 <input
                   id="asset-code"
                   type="text"
-                  value={assetCode || (category ? generateAssetCode(category) : "")}
+                  value={
+                    assetCode ||
+                    (codeLoading ? "Looking up next code…" : "")
+                  }
                   readOnly
                   tabIndex={-1}
                   disabled

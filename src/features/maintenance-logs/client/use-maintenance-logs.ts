@@ -74,12 +74,11 @@ export function useCreateMaintenanceLogMutation(): UseMutationResult<
 export function useResolveMaintenanceLogMutation(): UseMutationResult<
   MaintenanceLog,
   Error,
-  { id: string; resolutionNotes: string }
+  { id: string } & import("./maintenance-logs-api").ResolveMaintenancePayload
 > {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, resolutionNotes }) =>
-      maintenanceLogsApi.resolve(id, resolutionNotes),
+    mutationFn: ({ id, ...payload }) => maintenanceLogsApi.resolve(id, payload),
     onSettled: () => {
       void invalidateDomains(qc, MAINTENANCE_DOMAINS);
     },
