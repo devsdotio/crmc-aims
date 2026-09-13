@@ -114,7 +114,7 @@ export function StatCard({
       {/* PO Ambient Glow Gradient on Hover */}
       <div
         className={cn(
-          "absolute inset-0 bg-gradient-to-br via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+          "absolute inset-0 bg-linear-to-br via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300",
           isOverdue
             ? "from-rose-500/5"
             : isLowStock

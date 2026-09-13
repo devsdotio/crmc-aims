@@ -199,7 +199,7 @@ export function POReceiptUploader({
           {/* Interactive Preview Canvas */}
           <div
             onClick={() => setIsLightboxOpen(true)}
-            className="group relative rounded-lg border border-border/70 bg-bg overflow-hidden cursor-pointer flex items-center justify-center min-h-[160px] max-h-[260px] hover:border-accent/50 transition-all shadow-inner"
+            className="group relative rounded-lg border border-border/70 bg-bg overflow-hidden cursor-pointer flex items-center justify-center min-h-40 max-h-65 hover:border-accent/50 transition-all shadow-inner"
           >
             {isPdf ? (
               <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
@@ -216,7 +216,7 @@ export function POReceiptUploader({
               <img
                 src={receiptUrl}
                 alt="Receipt Proof"
-                className="w-full h-full object-contain max-h-[260px] group-hover:scale-[1.02] transition-transform duration-200"
+                className="w-full h-full object-contain max-h-65 group-hover:scale-[1.02] transition-transform duration-200"
               />
             )}
 

@@ -1,110 +1,75 @@
 "use client";
 
-import { Box, ClipboardList, AlertCircle, Building2 } from "lucide-react";
-
-import { StatCardsGrid, type StatCardProps } from "@/components/dashboard/stat-card";
-import { PendingApprovalsWidget } from "@/components/dashboard/pending-approvals-widget";
-import { OverdueAssetsWidget } from "@/components/dashboard/overdue-assets-widget";
-import { LowStockWidget } from "@/components/dashboard/low-stock-widget";
-import { AssetsByCategoryChart } from "@/components/dashboard/assets-by-category-chart";
-import { RecentActivityFeed } from "@/components/dashboard/recent-activity-feed";
-
 import { useDashboardSnapshotQuery } from "@/features/dashboard/client/use-dashboard";
+import { CompactStatCards } from "@/components/dashboard/compact-stat-cards";
+import { StockVolumeAreaChart } from "@/components/dashboard/stock-volume-area-chart";
+import { InventoryProportionDonutCard } from "@/components/dashboard/inventory-proportion-donut-card";
+import { TopRankedBarCard } from "@/components/dashboard/top-ranked-bar-card";
+import { PendingDeliveriesCard } from "@/components/dashboard/pending-deliveries-card";
+import { PendingPurchaseOrdersCard } from "@/components/dashboard/pending-purchase-orders-card";
+import { RecentActivityFeed } from "@/components/dashboard/recent-activity-feed";
 
 export default function DashboardPage() {
   const {
     data: snapshot,
     isLoading,
-    isError,
-    error,
-    refetch,
   } = useDashboardSnapshotQuery();
 
-  // Only true while the first fetch is in flight — never `!snapshot` after error.
+  // Only true while the first fetch is in flight — never !snapshot after error.
   const loading = isLoading && !snapshot;
-
-  const stats: StatCardProps[] = [
-    {
-      label: "Active Borrows",
-      value: snapshot?.summary.activeBorrows ?? null,
-      contextLine: "Borrowable units on loan",
-      icon: Box,
-      variant: "default",
-      loading,
-      href: "/borrow-log?custody=borrow&filter=active",
-    },
-    {
-      label: "Active Assignments",
-      value: snapshot?.summary.activeAssignments ?? null,
-      contextLine: "Assignable units in custody",
-      icon: Building2,
-      variant: "default",
-      loading,
-      href: "/borrow-log?custody=assignment&filter=active",
-    },
-    {
-      label: "Pending Approvals",
-      value: snapshot?.summary.pendingApprovals ?? null,
-      contextLine: "Requires staff attention",
-      icon: ClipboardList,
-      variant: "default",
-      loading,
-      href: "/borrow-requests?status=pending",
-    },
-    {
-      label: "Overdue Returns",
-      value: snapshot?.summary.overdueAssets ?? null,
-      contextLine: "Past due date (Borrowable)",
-      icon: AlertCircle,
-      variant: "danger",
-      loading,
-      href: "/borrow-log?filter=overdue",
-    },
-    {
-      label: "Low Stock Items",
-      value: snapshot?.summary.lowStockItems ?? null,
-      contextLine: "Consumables needing restock",
-      icon: AlertCircle,
-      variant: "warning",
-      loading,
-      href: "/consumables",
-    },
-  ];
 
   return (
     <div
-      className="flex flex-col gap-4 bg-bg-subtle max-w-full overflow-x-hidden"
+      className="flex flex-col gap-3 w-full pb-6"
       data-theme="light"
     >
+      {/* 1. Top Row: 4 Compact Stat Cards */}
+      <CompactStatCards summary={snapshot?.summary} loading={loading} />
 
-      <StatCardsGrid stats={stats} />
+      {/* 2. Middle Section: Area/Line Chart + Donut & Ranked Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 2xl:grid-cols-12 gap-3 items-stretch">
+        {/* Left-mid: Large Area/Line Chart */}
+        <div className="lg:col-span-7 xl:col-span-8 2xl:col-span-8 flex flex-col">
+          <StockVolumeAreaChart loading={loading} />
+        </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <PendingApprovalsWidget
-          requests={snapshot?.pendingRequests || []}
-          loading={loading}
-        />
-        <LowStockWidget
-          items={snapshot?.lowStockItems || []}
-          loading={loading}
-        />
+        {/* Right-mid: Donut Chart & Top N Ranked Bars */}
+        <div className="lg:col-span-5 xl:col-span-4 2xl:col-span-4 flex flex-col gap-3">
+          <InventoryProportionDonutCard
+            summary={snapshot?.summary}
+            loading={loading}
+          />
+          <TopRankedBarCard
+            categoryDistribution={snapshot?.categoryDistribution}
+            loading={loading}
+          />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <OverdueAssetsWidget
-          assets={snapshot?.overdueAssets || []}
-          loading={loading}
-        />
-        <AssetsByCategoryChart
-          data={snapshot?.categoryDistribution ?? []}
-          loading={loading}
-        />
-      </div>
+      {/* 3. Lower Section: Recent Activity + Still Pending Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 2xl:grid-cols-12 gap-3 items-stretch">
+        {/* Lower-left: Recent Activity Feed */}
+        <div className="lg:col-span-7 xl:col-span-8 2xl:col-span-8 flex flex-col">
+          <RecentActivityFeed
+            entries={snapshot?.recentActivity ?? []}
+            loading={loading}
+            maxRows={15}
+            className="h-115"
+          />
+        </div>
 
-      <RecentActivityFeed
-        entries={snapshot?.recentActivity || []}
-        loading={loading}
-      />
+        {/* Lower-right: Still Pending Requests & Pending POs */}
+        <div className="lg:col-span-5 xl:col-span-4 2xl:col-span-4 flex flex-col gap-3 lg:h-115">
+          <PendingDeliveriesCard
+            pendingRequests={snapshot?.pendingRequests}
+            overdueAssets={snapshot?.overdueAssets}
+            totalPendingRequests={snapshot?.summary?.pendingApprovals}
+            loading={loading}
+          />
+          <PendingPurchaseOrdersCard loading={loading} />
+        </div>
+      </div>
     </div>
   );
 }
+
