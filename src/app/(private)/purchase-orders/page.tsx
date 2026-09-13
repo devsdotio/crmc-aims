@@ -15,6 +15,10 @@ import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useToast } from "@/components/providers/toast-context";
 import type { PurchaseLot } from "@/types/purchase-lots";
+import {
+  groupLotsByPO,
+  type GroupedPurchaseOrder,
+} from "@/types/grouped-purchase-order";
 
 import {
   PurchaseOrdersFilters,
@@ -56,34 +60,47 @@ export default function PurchaseOrdersPage() {
   const [printSlipLot, setPrintSlipLot] = useState<PurchaseLot | null>(null);
   const [printTagLot, setPrintTagLot] = useState<PurchaseLot | null>(null);
   const [releaseLot, setReleaseLot] = useState<PurchaseLot | null>(null);
-  const [lotToDelete, setLotToDelete] = useState<PurchaseLot | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<GroupedPurchaseOrder | null>(null);
   const [isFileNewPOOpen, setIsFileNewPOOpen] = useState(false);
 
-  const uniqueLots = useMemo(() => {
-    const map = new Map<string, PurchaseLot>();
-    for (const l of lots) {
-      const code = (l.lotCode || l.id).trim();
-      if (!map.has(code)) {
-        map.set(code, l);
-      }
-    }
-    return Array.from(map.values());
-  }, [lots]);
+  // Group flat lot rows into PO-level groups
+  const groupedPOs = useMemo(() => groupLotsByPO(lots), [lots]);
 
   const selectedLotSynced = useMemo(() => {
     if (!selectedLot) return null;
-    return uniqueLots.find((l) => l.id === selectedLot.id) ?? selectedLot;
-  }, [uniqueLots, selectedLot]);
+    for (const g of groupedPOs) {
+      const found = g.lineItems.find((l) => l.id === selectedLot.id);
+      if (found) return g.representative;
+    }
+    return selectedLot;
+  }, [groupedPOs, selectedLot]);
+
+  const printSlipLotSynced = useMemo(() => {
+    if (!printSlipLot) return null;
+    for (const g of groupedPOs) {
+      if (
+        g.poNumber === (printSlipLot.poNumber || printSlipLot.lotCode) ||
+        g.lineItems.some((l) => l.id === printSlipLot.id)
+      ) {
+        return g.representative;
+      }
+    }
+    return printSlipLot;
+  }, [groupedPOs, printSlipLot]);
 
   const releaseLotSynced = useMemo(() => {
     if (!releaseLot) return null;
-    return uniqueLots.find((l) => l.id === releaseLot.id) ?? releaseLot;
-  }, [uniqueLots, releaseLot]);
+    for (const g of groupedPOs) {
+      const found = g.lineItems.find((l) => l.id === releaseLot.id);
+      if (found) return found;
+    }
+    return releaseLot;
+  }, [groupedPOs, releaseLot]);
 
   const supplierOptions = useMemo(() => {
     const countMap = new Map<string, number>();
-    for (const l of uniqueLots) {
-      const name = l.supplierName?.trim() || "Internal / Direct";
+    for (const g of groupedPOs) {
+      const name = g.representative.supplierName?.trim() || "Internal / Direct";
       countMap.set(name, (countMap.get(name) || 0) + 1);
     }
     return Array.from(countMap.entries())
@@ -93,27 +110,32 @@ export default function PurchaseOrdersPage() {
         label: name,
         count,
       }));
-  }, [uniqueLots]);
+  }, [groupedPOs]);
 
-  const filteredLots = useMemo(() => {
-    return uniqueLots.filter((lot) => {
-      // 1. Search Query
+  const filteredPOs = useMemo(() => {
+    return groupedPOs.filter((group) => {
+      const lot = group.representative;
+
+      // 1. Search Query — search across ALL line items in the group
       if (filters.search.trim()) {
         const q = filters.search.toLowerCase();
-        const matchCode = (lot.poNumber || lot.lotCode).toLowerCase().includes(q);
-        const matchLot = lot.lotCode.toLowerCase().includes(q);
-        const matchItem =
-          lot.itemName.toLowerCase().includes(q) ||
-          lot.itemCode.toLowerCase().includes(q);
+        const matchCode = group.poNumber.toLowerCase().includes(q);
+        const matchAnyItem = group.lineItems.some(
+          (li) =>
+            li.itemName.toLowerCase().includes(q) ||
+            li.itemCode.toLowerCase().includes(q) ||
+            li.lotCode.toLowerCase().includes(q)
+        );
         const matchSupplier = lot.supplierName?.toLowerCase().includes(q);
         const matchRecorder = lot.recordedByName?.toLowerCase().includes(q);
         const matchRef = lot.reference?.toLowerCase().includes(q);
         const matchNotes = lot.notes?.toLowerCase().includes(q);
-        const matchPurpose = lot.purpose?.toLowerCase().includes(q);
+        const matchPurpose = group.lineItems.some(
+          (li) => li.purpose?.toLowerCase().includes(q)
+        );
         if (
           !matchCode &&
-          !matchLot &&
-          !matchItem &&
+          !matchAnyItem &&
           !matchSupplier &&
           !matchRecorder &&
           !matchRef &&
@@ -129,24 +151,27 @@ export default function PurchaseOrdersPage() {
         return false;
       }
 
-      // 3. Item Type Filter
-      if (filters.itemType !== "all" && lot.itemType !== filters.itemType) {
+      // 3. Item Type Filter — match if any line item matches
+      if (
+        filters.itemType !== "all" &&
+        !group.lineItems.some((li) => li.itemType === filters.itemType)
+      ) {
         return false;
       }
 
-      // 4. Stock Status Filter
-      if (filters.stockStatus === "in_stock" && lot.quantityRemaining <= 0) {
-        return false;
+      // 4. Stock Status Filter — check across all line items
+      if (filters.stockStatus === "in_stock") {
+        if (!group.lineItems.some((li) => li.quantityRemaining > 0)) return false;
       }
-      if (filters.stockStatus === "depleted" && lot.quantityRemaining > 0) {
-        return false;
+      if (filters.stockStatus === "depleted") {
+        if (!group.lineItems.every((li) => li.quantityRemaining <= 0)) return false;
       }
       if (filters.stockStatus === "low_stock") {
-        const ratio =
-          lot.quantity > 0 ? lot.quantityRemaining / lot.quantity : 0;
-        if (lot.quantityRemaining <= 0 || ratio > 0.2) {
-          return false;
-        }
+        const hasLowStock = group.lineItems.some((li) => {
+          const ratio = li.quantity > 0 ? li.quantityRemaining / li.quantity : 0;
+          return li.quantityRemaining > 0 && ratio <= 0.2;
+        });
+        if (!hasLowStock) return false;
       }
 
       // 5. Supplier Filter
@@ -168,7 +193,7 @@ export default function PurchaseOrdersPage() {
 
       return true;
     });
-  }, [uniqueLots, filters]);
+  }, [groupedPOs, filters]);
 
   const handleFilterChange = (updates: Partial<PurchaseOrderFilterState>) => {
     setFilters((prev) => ({ ...prev, ...updates }));
@@ -189,16 +214,22 @@ export default function PurchaseOrdersPage() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!lotToDelete) return;
+    if (!groupToDelete) return;
     try {
-      await deleteMutation.mutateAsync(lotToDelete.id);
+      // Delete all lots in the PO group
+      for (const li of groupToDelete.lineItems) {
+        await deleteMutation.mutateAsync(li.id);
+      }
       toast.success(
-        `Purchase Order "${lotToDelete.poNumber || lotToDelete.lotCode}" deleted.`
+        `Purchase Order "${groupToDelete.poNumber}" deleted (${groupToDelete.itemCount} item${groupToDelete.itemCount > 1 ? "s" : ""}).`
       );
-      if (selectedLot?.id === lotToDelete.id) {
+      if (
+        selectedLot &&
+        groupToDelete.lineItems.some((li) => li.id === selectedLot.id)
+      ) {
         setSelectedLot(null);
       }
-      setLotToDelete(null);
+      setGroupToDelete(null);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Failed to delete purchase order."
@@ -219,7 +250,7 @@ export default function PurchaseOrdersPage() {
             <span className="px-2.5 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isLoading
                 ? "Loading orders…"
-                : `${filteredLots.length} of ${uniqueLots.length} orders`}
+                : `${filteredPOs.length} of ${groupedPOs.length} orders`}
               {isFetching && !isLoading ? " · updating…" : ""}
             </span>
           </div>
@@ -257,34 +288,34 @@ export default function PurchaseOrdersPage() {
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
         supplierOptions={supplierOptions}
-        totalCount={uniqueLots.length}
-        filteredCount={filteredLots.length}
+        totalCount={groupedPOs.length}
+        filteredCount={filteredPOs.length}
       />
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto min-h-0 bg-bg">
         {filters.viewMode === "table" ? (
           <PurchaseOrdersTable
-            lots={filteredLots}
+            groups={filteredPOs}
             loading={isLoading && !error}
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
-            onDelete={
+            onDeleteGroup={
               canOperate
-                ? (lot) => setLotToDelete(lot)
+                ? (group) => setGroupToDelete(group)
                 : undefined
             }
           />
         ) : (
           <div className="p-4 md:p-6">
             <PurchaseOrdersGrid
-              lots={filteredLots}
+              groups={filteredPOs}
               loading={isLoading && !error}
               onSelectLot={setSelectedLot}
               onPrintSlip={setPrintSlipLot}
-              onDelete={
+              onDeleteGroup={
                 canOperate
-                  ? (lot) => setLotToDelete(lot)
+                  ? (group) => setGroupToDelete(group)
                   : undefined
               }
             />
@@ -302,7 +333,12 @@ export default function PurchaseOrdersPage() {
         onReleaseStock={(lot) => setReleaseLot(lot)}
         onDelete={
           canOperate
-            ? (lot) => setLotToDelete(lot)
+            ? (lot) => {
+                const group = groupedPOs.find((g) =>
+                  g.lineItems.some((li) => li.id === lot.id)
+                );
+                if (group) setGroupToDelete(group);
+              }
             : undefined
         }
         canOperate={canOperate}
@@ -310,8 +346,8 @@ export default function PurchaseOrdersPage() {
 
       {/* Official CRMC PO Printable Form Slip */}
       <POPrintSlipDialog
-        lot={printSlipLot}
-        isOpen={Boolean(printSlipLot)}
+        lot={printSlipLotSynced}
+        isOpen={Boolean(printSlipLotSynced)}
         onClose={() => setPrintSlipLot(null)}
       />
 
@@ -343,18 +379,20 @@ export default function PurchaseOrdersPage() {
           />
 
           <ConfirmDialog
-            isOpen={Boolean(lotToDelete)}
+            isOpen={Boolean(groupToDelete)}
             title="Delete Purchase Order?"
             description={
-              lotToDelete
-                ? `Are you sure you want to delete purchase order "${lotToDelete.poNumber || lotToDelete.lotCode}" (${lotToDelete.itemName})? This will cancel the order and cannot be undone.`
+              groupToDelete
+                ? groupToDelete.itemCount > 1
+                  ? `Are you sure you want to delete purchase order "${groupToDelete.poNumber}" and all ${groupToDelete.itemCount} line items? This will cancel the order and cannot be undone.`
+                  : `Are you sure you want to delete purchase order "${groupToDelete.poNumber}" (${groupToDelete.representative.itemName})? This will cancel the order and cannot be undone.`
                 : ""
             }
             confirmLabel="Delete Order"
             variant="destructive"
             isLoading={deleteMutation.isPending}
             onConfirm={handleConfirmDelete}
-            onClose={() => setLotToDelete(null)}
+            onClose={() => setGroupToDelete(null)}
           />
         </>
       )}

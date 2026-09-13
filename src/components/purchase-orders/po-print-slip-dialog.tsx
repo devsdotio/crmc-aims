@@ -11,7 +11,7 @@ import {
   Check,
   Download,
 } from "lucide-react";
-import type { PurchaseLot } from "@/types/purchase-lots";
+import type { PurchaseLot, POLineItemDetail } from "@/types/purchase-lots";
 
 interface POPrintSlipDialogProps {
   lot: PurchaseLot | null;
@@ -70,6 +70,34 @@ export function POPrintSlipDialog({
   const effectiveRequestedBy =
     requestedBy.trim() || lot.recordedByName || "Authorized Staff";
 
+  const uniqueDealers = Array.from(
+    new Set(
+      (lot.items && lot.items.length > 0
+        ? lot.items.map((i) => i.suggestedDealer?.trim())
+        : [lot.supplierName?.trim()]
+      ).filter((d): d is string => Boolean(d))
+    )
+  );
+  const displayDealer =
+    uniqueDealers.length === 0
+      ? "Direct Procurement"
+      : uniqueDealers.length === 1
+      ? uniqueDealers[0]
+      : `Multiple Dealers (${uniqueDealers.length})`;
+
+  const uniqueLotCodes = Array.from(
+    new Set(
+      (lot.items && lot.items.length > 0
+        ? lot.items.map((i) => i.lotCode?.trim())
+        : [lot.lotCode?.trim()]
+      ).filter((c): c is string => Boolean(c))
+    )
+  );
+  const displayLotCode =
+    uniqueLotCodes.length <= 1
+      ? lot.lotCode
+      : `Multi-Lot (${uniqueLotCodes.length} Lots)`;
+
   const handlePrint = () => {
     const logoUrl = `${window.location.origin}/CRMC%20LOGO.png`;
 
@@ -95,50 +123,50 @@ export function POPrintSlipDialog({
           <title>CRMC Purchase Order - ${lot.poNumber || lot.lotCode}</title>
           <style>
             @page {
-              size: letter portrait;
-              margin: 0.25in;
+              size: portrait;
+              margin: 8mm 10mm;
             }
             * {
               box-sizing: border-box;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
             body, table, th, td, input, h1, h2, h3, p, div, span, strong {
               font-family: Arial, Helvetica, sans-serif;
             }
-            body {
+            html, body {
               font-family: Arial, Helvetica, sans-serif;
-              margin: 0;
-              padding: 12px;
+              margin: 0 !important;
+              padding: 0 !important;
+              width: 100% !important;
               color: #111;
-              background: #FFF;
+              background: #FFF !important;
             }
             .po-document {
               font-family: Arial, Helvetica, sans-serif;
-              max-width: 780px;
-              margin: 0 auto;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 !important;
               border: 1.5px solid #222;
-              padding: 20px 24px;
+              padding: 16px 20px;
               box-sizing: border-box;
-              min-height: 520px;
               display: flex;
               flex-direction: column;
-              justify-content: space-between;
             }
             .header-container {
-              display: flex;
-              align-items: flex-start;
-              justify-content: space-between;
-              margin-bottom: 16px;
-              border-bottom: 1px solid #ddd;
-              padding-bottom: 14px;
+              margin-bottom: 14px;
+              border-bottom: 1.5px solid #222;
+              padding-bottom: 12px;
             }
-            .college-info {
+            .letterhead {
               display: flex;
-              align-items: flex-start;
-              gap: 10px;
+              align-items: center;
+              gap: 12px;
+              margin-bottom: 8px;
             }
             .college-logo-img {
-              width: 72px;
-              height: 72px;
+              width: 64px;
+              height: 64px;
               object-fit: contain;
               flex-shrink: 0;
             }
@@ -146,7 +174,7 @@ export function POPrintSlipDialog({
               padding-top: 2px;
             }
             .college-titles h1 {
-              font-size: 13.5px;
+              font-size: 14px;
               font-weight: 800;
               margin: 0;
               line-height: 1.25;
@@ -155,34 +183,46 @@ export function POPrintSlipDialog({
             }
             .college-titles p {
               font-size: 11px;
-              margin: 2.5px 0 0 0;
+              margin: 2px 0 0 0;
               color: #444;
               line-height: 1.3;
             }
-            .po-meta {
-              text-align: right;
-              padding-top: 2px;
+            .po-title-banner {
+              text-align: center;
+              margin: 6px 0 10px 0;
             }
             .po-title {
-              font-size: 14px;
-              font-weight: 800;
-              letter-spacing: 0.6px;
-              margin: 0 0 6px 0;
-              line-height: 1.25;
+              font-size: 15px;
+              font-weight: 900;
+              letter-spacing: 2px;
+              margin: 0;
+              line-height: 1.2;
               text-transform: uppercase;
-            }
-            .meta-line {
-              font-size: 12px;
-              margin: 3px 0;
-            }
-            .meta-line strong {
-              font-family: Arial, Helvetica, sans-serif;
-              font-size: 13px;
-              border-bottom: 1px solid #111;
               display: inline-block;
-              min-width: 130px;
-              text-align: center;
-              padding: 0 4px;
+              border-bottom: 2px solid #111;
+              padding-bottom: 2px;
+            }
+            .meta-strip {
+              display: flex;
+              align-items: flex-end;
+              justify-content: space-between;
+              gap: 16px;
+              font-size: 11.5px;
+            }
+            .meta-col-left {
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+            }
+            .meta-col-right {
+              text-align: right;
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+            }
+            .meta-item {
+              line-height: 1.3;
+              font-size: 11.5px;
             }
             table {
               width: 100%;
@@ -201,17 +241,48 @@ export function POPrintSlipDialog({
               background: #fafafa;
               text-transform: capitalize;
             }
-            .col-qty { width: 12%; text-align: center; font-weight: bold; }
-            .col-desc { width: 34%; }
-            .col-dealer { width: 20%; }
-            .col-purpose { width: 18%; }
+            .col-qty { width: 10%; text-align: center; font-weight: bold; }
+            .col-desc { width: 36%; }
+            .col-dealer { width: 22%; }
+            .col-unit-price { width: 16%; text-align: right; font-family: Arial, Helvetica, sans-serif; }
             .col-estimated { width: 16%; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; }
+            .po-number-highlight {
+              display: inline-block;
+              font-size: 14px;
+              font-weight: 900;
+              font-family: Arial, Helvetica, sans-serif;
+              background: #f0f0f0;
+              border: 1.5px solid #222;
+              padding: 3px 10px;
+              letter-spacing: 0.5px;
+              min-width: 130px;
+              text-align: center;
+            }
+            .purpose-card {
+              border: 1.5px solid #222;
+              padding: 10px 14px;
+              margin-top: 0;
+              font-size: 12px;
+            }
+            .purpose-card .purpose-label {
+              font-weight: 800;
+              font-size: 11px;
+              text-transform: uppercase;
+              letter-spacing: 0.4px;
+              color: #333;
+              margin-bottom: 4px;
+            }
+            .purpose-card .purpose-text {
+              font-size: 12px;
+              color: #111;
+              line-height: 1.5;
+            }
             .empty-row td {
               height: 30px;
             }
             .signatures-container {
-              margin-top: auto;
-              padding-top: 28px;
+              margin-top: 24px;
+              padding-top: 16px;
               display: flex;
               justify-content: space-between;
               font-size: 12px;
@@ -237,16 +308,21 @@ export function POPrintSlipDialog({
               margin-top: 4px;
             }
             @media print {
-              body {
-                padding: 0;
-                background: #FFF;
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 100% !important;
+                background: #FFF !important;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
               }
               .po-document {
-                border: 1.5px solid #222;
-                padding: 20px 24px;
-                min-height: 520px;
+                width: 100% !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                border: 1.5px solid #222 !important;
+                padding: 16px 20px !important;
+                box-sizing: border-box !important;
                 page-break-inside: avoid;
               }
             }
@@ -255,19 +331,38 @@ export function POPrintSlipDialog({
         <body>
           <div class="po-document">
             <div class="header-container">
-              <div class="college-info">
+              <!-- Top Row: School Letterhead -->
+              <div class="letterhead">
                 <img src="${logoUrl}" alt="CRMC Logo" class="college-logo-img" />
                 <div class="college-titles">
                   <h1>Cebu Roosevelt Memorial Colleges, Inc.</h1>
                   <p>Upper Pandan, Bogo City, Cebu, Philippines</p>
                 </div>
               </div>
-              <div class="po-meta">
-                <h2 class="po-title">Purchase Order</h2>
-                <div class="meta-line">P.O Number: <strong>${lot.poNumber || lot.lotCode}</strong></div>
-                <div class="meta-line">Date: <strong>${poDate}</strong></div>
-                <div class="meta-line">Time: <strong>${poTimestamp}</strong></div>
-                <div class="meta-line" style="font-size: 10px; color: #555;">Lot Code: <strong style="min-width:auto; font-size:10px; border-bottom:none;">${lot.lotCode}</strong></div>
+
+              <!-- Centered Document Title -->
+              <div class="po-title-banner">
+                <span class="po-title">Purchase Order</span>
+              </div>
+
+              <!-- Balanced 2-Column Metadata Strip -->
+              <div class="meta-strip">
+                <div class="meta-col-left">
+                  <div class="meta-item">
+                    PO Number: <span class="po-number-highlight">${lot.poNumber || lot.lotCode}</span>
+                  </div>
+                  <div class="meta-item" style="color: #333; margin-top: 2px;">
+                    Suggested Dealer: <strong style="font-size: 12px;">${displayDealer}</strong>
+                  </div>
+                </div>
+                <div class="meta-col-right">
+                  <div class="meta-item">
+                    Date: <strong style="font-size: 12px;">${poDate}</strong> &nbsp;·&nbsp; Time: <strong style="font-size: 11px; font-family: Arial, Helvetica, sans-serif;">${poTimestamp}</strong>
+                  </div>
+                  <div class="meta-item" style="color: #555; font-size: 10.5px; margin-top: 2px;">
+                    Lot Code: <strong style="font-size: 10.5px; border-bottom: none; min-width: auto; font-family: monospace;">${displayLotCode}</strong>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -277,31 +372,59 @@ export function POPrintSlipDialog({
                   <th class="col-qty">Quantity</th>
                   <th class="col-desc">Description</th>
                   <th class="col-dealer">Suggested Dealer</th>
-                  <th class="col-purpose">Purpose</th>
+                  <th class="col-unit-price">Unit Price</th>
                   <th class="col-estimated">Estimated</th>
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td class="col-qty">${lot.quantity}</td>
-                  <td class="col-desc">
-                    <strong>${lot.itemName}</strong>
-                    <div style="font-size: 10px; color: #555; margin-top: 2px;">
-                      Code: ${lot.itemCode}
-                    </div>
-                  </td>
-                  <td class="col-dealer">${lot.supplierName || "Direct Procurement"}</td>
-                  <td class="col-purpose">${lot.notes || "Institutional Inventory & Operations"}</td>
-                  <td class="col-estimated">
-                    ₱${totalCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </td>
-                </tr>
-                <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
-                <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
-                <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
-                <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
+                ${lot.items && lot.items.length > 1
+                  ? lot.items.map((item: POLineItemDetail) => {
+                      const iUnit = parseFloat(item.unitCost) || 0;
+                      const iTotal = parseFloat(item.totalCost) || 0;
+                      return `<tr>
+                        <td class="col-qty">${item.quantity}</td>
+                        <td class="col-desc">
+                          <strong>${item.itemName}</strong>
+                          <div style="font-size: 10px; color: #555; margin-top: 2px;">Code: ${item.itemCode}${item.lotCode ? ` &nbsp;·&nbsp; Lot: <span style="font-family: monospace;">${item.lotCode}</span>` : ""}</div>
+                        </td>
+                        <td class="col-dealer">${item.suggestedDealer || lot.supplierName || "Direct Procurement"}</td>
+                        <td class="col-unit-price" style="text-align: right;">₱${iUnit.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                        <td class="col-estimated">₱${iTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                      </tr>`;
+                    }).join("")
+                    + `<tr style="border-top: 2px solid #222; font-weight: bold;">
+                        <td class="col-qty">${lot.items.reduce((s: number, i: POLineItemDetail) => s + i.quantity, 0)}</td>
+                        <td class="col-desc" style="text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Grand Total</td>
+                        <td class="col-dealer"></td>
+                        <td class="col-unit-price"></td>
+                        <td class="col-estimated" style="font-size: 13px;">₱${lot.items.reduce((s: number, i: POLineItemDetail) => s + (parseFloat(i.totalCost) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                      </tr>`
+                  : `<tr>
+                      <td class="col-qty">${lot.quantity}</td>
+                      <td class="col-desc">
+                        <strong>${lot.itemName}</strong>
+                        <div style="font-size: 10px; color: #555; margin-top: 2px;">
+                          Code: ${lot.itemCode} &nbsp;·&nbsp; Lot: <span style="font-family: monospace;">${lot.lotCode}</span>
+                        </div>
+                      </td>
+                      <td class="col-dealer">${lot.supplierName || "Direct Procurement"}</td>
+                      <td class="col-unit-price" style="text-align: right;">₱${unitCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
+                      <td class="col-estimated">
+                        ₱${totalCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>`
+                }
               </tbody>
             </table>
+
+            <div class="purpose-card">
+              <div class="purpose-label">Purpose:</div>
+              <div class="purpose-text">${lot.purpose || "Institutional Inventory & Operations"}</div>
+            </div>
 
             <div class="signatures-container">
               <div class="sig-block">
@@ -415,17 +538,19 @@ export function POPrintSlipDialog({
             className="w-full m-auto min-h-121.25 p-5 sm:p-6 bg-card rounded-xl border border-border shadow-md flex flex-col justify-between text-xs text-text font-[Arial,Helvetica,sans-serif]"
           >
             {/* Header */}
-            <div className="flex items-start justify-between gap-4 border-b border-border pb-3.5">
-              <div className="flex items-start gap-2.5">
+            {/* Header */}
+            <div className="border-b border-border pb-3 mb-2">
+              {/* Top Row: Letterhead */}
+              <div className="flex items-center gap-3">
                 <Image
                   src="/CRMC%20LOGO.png"
                   alt="CRMC Logo"
-                  width={72}
-                  height={72}
-                  className="w-18 h-18 object-contain shrink-0"
+                  width={64}
+                  height={64}
+                  className="w-16 h-16 object-contain shrink-0"
                   priority
                 />
-                <div className="pt-0.5 space-y-0.5">
+                <div className="space-y-0.5">
                   <h1 className="text-sm font-extrabold tracking-tight text-text uppercase leading-tight">
                     Cebu Roosevelt Memorial Colleges, Inc.
                   </h1>
@@ -435,36 +560,54 @@ export function POPrintSlipDialog({
                 </div>
               </div>
 
-              <div className="text-right pt-0.5 space-y-1">
-                <h2 className="text-sm font-extrabold tracking-wider uppercase text-text leading-tight">
+              {/* Centered Document Title */}
+              <div className="text-center my-2">
+                <span className="inline-block text-sm font-extrabold tracking-widest uppercase text-text border-b-2 border-text pb-0.5">
                   Purchase Order
-                </h2>
-                <div className="text-xs space-y-0.5">
-                  <div>
-                    P.O Number:{" "}
-                    <strong className="font-bold text-text">
+                </span>
+              </div>
+
+              {/* Balanced 2-Column Metadata Strip */}
+              <div className="flex items-end justify-between gap-4 text-xs pt-1">
+                {/* Left: PO Number & Suggested Dealer */}
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-text-secondary">PO Number:</span>
+                    <span className="inline-block font-black text-xs font-mono tracking-wide bg-bg-subtle border-1.5 border-text px-2.5 py-0.5 rounded-sm">
                       {lot.poNumber || lot.lotCode}
+                    </span>
+                  </div>
+                  <div className="text-xs text-text-secondary">
+                    Suggested Dealer:{" "}
+                    <strong className="text-text font-semibold">
+                      {displayDealer}
                     </strong>
                   </div>
-                  <div>
-                    Date: <strong className="text-text">{poDate}</strong>
+                </div>
+
+                {/* Right: Date, Time & Lot Code */}
+                <div className="text-right space-y-1">
+                  <div className="text-xs">
+                    <span className="text-text-secondary">Date:</span>{" "}
+                    <strong className="text-text font-medium">{poDate}</strong>
+                    <span className="mx-1.5 text-text-muted">·</span>
+                    <span className="text-text-secondary">Time:</span>{" "}
+                    <strong className="text-text font-mono text-[11px]">{poTimestamp}</strong>
                   </div>
-                  <div>
-                    Time: <strong className="text-text font-mono text-[11px]">{poTimestamp}</strong>
-                  </div>
-                  <div className="text-[10px] text-text-secondary">
-                    Lot Code: <span>{lot.lotCode}</span>
+                  <div className="text-[11px] text-text-secondary">
+                    Lot Code:{" "}
+                    <span className="font-mono text-text">{displayLotCode}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 5-Column Table */}
+            {/* Items Table */}
             <div className="rounded-lg border border-border overflow-hidden my-1">
               <table className="w-full text-xs text-left border-collapse">
                 <thead className="bg-bg-subtle text-text border-b border-border font-bold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="px-3 py-2 text-center w-20 border-r border-border">
+                    <th className="px-3 py-2 text-center w-16 border-r border-border">
                       Quantity
                     </th>
                     <th className="px-3 py-2 border-r border-border">
@@ -473,49 +616,138 @@ export function POPrintSlipDialog({
                     <th className="px-3 py-2 border-r border-border">
                       Suggested Dealer
                     </th>
-                    <th className="px-3 py-2 border-r border-border">
-                      Purpose
+                    <th className="px-3 py-2 text-right w-24 border-r border-border">
+                      Unit Price
                     </th>
                     <th className="px-3 py-2 text-right w-28">Estimated</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  <tr>
-                    <td className="px-3.5 py-2.5 text-center font-bold text-text border-r border-border text-sm">
-                      {lot.quantity}
-                    </td>
-                    <td className="px-3.5 py-2.5 border-r border-border">
-                      <strong className="text-text block text-sm">
-                        {lot.itemName}
-                      </strong>
-                      <span className="text-[10px] text-text-secondary">
-                        Code: {lot.itemCode}
-                      </span>
-                    </td>
-                    <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
-                      {lot.supplierName || "Direct / Internal Procurement"}
-                    </td>
-                    <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
-                      {lot.notes || "Institutional Inventory & Operations"}
-                    </td>
-                    <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
-                      ₱
-                      {totalCostNum.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
+                  {lot.items && lot.items.length > 1 ? (
+                    <>
+                      {lot.items.map((item) => {
+                        const iUnit = parseFloat(item.unitCost) || 0;
+                        const iTotal = parseFloat(item.totalCost) || 0;
+                        return (
+                          <tr key={item.id}>
+                            <td className="px-3.5 py-2.5 text-center font-bold text-text border-r border-border text-sm">
+                              {item.quantity}
+                            </td>
+                            <td className="px-3.5 py-2.5 border-r border-border">
+                              <strong className="text-text block text-sm">
+                                {item.itemName}
+                              </strong>
+                              <span className="text-[10px] text-text-secondary">
+                                Code: {item.itemCode}
+                                {item.lotCode && (
+                                  <>
+                                    {" "}· Lot: <span className="font-mono text-text">{item.lotCode}</span>
+                                  </>
+                                )}
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
+                              {item.suggestedDealer || lot.supplierName || "Direct Procurement"}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-right font-mono text-text border-r border-border">
+                              ₱{iUnit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
+                              ₱{iTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
                       })}
-                    </td>
-                  </tr>
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <tr key={i} className="h-7.5">
-                      <td className="border-r border-border"></td>
-                      <td className="border-r border-border"></td>
-                      <td className="border-r border-border"></td>
-                      <td className="border-r border-border"></td>
-                      <td></td>
-                    </tr>
-                  ))}
+                      {/* Grand Total Row */}
+                      <tr className="border-t-2 border-border bg-bg-subtle/50 font-bold">
+                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-text border-r border-border text-sm">
+                          {lot.items.reduce((s, i) => s + i.quantity, 0)}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-text-secondary border-r border-border">
+                          Grand Total
+                        </td>
+                        <td className="border-r border-border"></td>
+                        <td className="border-r border-border"></td>
+                        <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
+                          ₱
+                          {lot.items
+                            .reduce(
+                              (s, i) => s + (parseFloat(i.totalCost) || 0),
+                              0
+                            )
+                            .toLocaleString("en-US", {
+                              minimumFractionDigits: 2,
+                            })}
+                        </td>
+                      </tr>
+                      {lot.items.length < 4 &&
+                        Array.from({ length: 4 - lot.items.length }).map(
+                          (_, i) => (
+                            <tr key={`pad-${i}`} className="h-7.5">
+                              <td className="border-r border-border"></td>
+                              <td className="border-r border-border"></td>
+                              <td className="border-r border-border"></td>
+                              <td className="border-r border-border"></td>
+                              <td></td>
+                            </tr>
+                          )
+                        )}
+                    </>
+                  ) : (
+                    <>
+                      <tr>
+                        <td className="px-3.5 py-2.5 text-center font-bold text-text border-r border-border text-sm">
+                          {lot.quantity}
+                        </td>
+                        <td className="px-3.5 py-2.5 border-r border-border">
+                          <strong className="text-text block text-sm">
+                            {lot.itemName}
+                          </strong>
+                          <span className="text-[10px] text-text-secondary">
+                            Code: {lot.itemCode}
+                            {lot.lotCode && (
+                              <>
+                                {" "}· Lot: <span className="font-mono text-text">{lot.lotCode}</span>
+                              </>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
+                          {lot.supplierName || "Direct / Internal Procurement"}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-mono text-text border-r border-border">
+                          ₱{unitCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
+                          ₱
+                          {totalCostNum.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </td>
+                      </tr>
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <tr key={i} className="h-7.5">
+                          <td className="border-r border-border"></td>
+                          <td className="border-r border-border"></td>
+                          <td className="border-r border-border"></td>
+                          <td className="border-r border-border"></td>
+                          <td></td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Purpose Card */}
+            <div className="border border-border rounded-lg px-4 py-2.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                Purpose:
+              </span>
+              <p className="text-xs text-text leading-relaxed">
+                {lot.purpose || "Institutional Inventory & Operations"}
+              </p>
             </div>
 
             {/* Official Signatures matching form */}
