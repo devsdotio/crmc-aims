@@ -14,6 +14,7 @@ import {
   Building2,
   Trash2,
   Layers,
+  Receipt,
 } from "lucide-react";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
 import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
@@ -233,6 +234,15 @@ export function PurchaseOrdersGrid({
                     </span>
                   ) : (
                     <ItemTypeBadge itemType={lot.itemType} />
+                  )}
+                  {lot.receiptUrl && (
+                    <span
+                      title="Receipt / Sales invoice attached"
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md border border-emerald-500/25 shrink-0 shadow-2xs"
+                    >
+                      <Receipt className="h-3 w-3" />
+                      <span className="hidden sm:inline">Receipt</span>
+                    </span>
                   )}
                 </div>
 

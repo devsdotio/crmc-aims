@@ -24,6 +24,7 @@ import {
   Laptop,
   Search,
   School,
+  Receipt,
 } from "lucide-react";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useSuppliersQuery } from "@/features/suppliers/client";
@@ -41,11 +42,14 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
+import { POReceiptUploader } from "./po-receipt-uploader";
 
 interface FileNewPODialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  defaultPoType?: POType;
+  defaultPurpose?: string;
 }
 
 export type POType = "consumable" | "asset";
@@ -106,6 +110,8 @@ export function FileNewPODialog({
   isOpen,
   onClose,
   onSuccess,
+  defaultPoType,
+  defaultPurpose,
 }: FileNewPODialogProps) {
   const { data: me } = useMeQuery();
   const { data: departments = [] } = useDepartmentsQuery();
@@ -145,6 +151,7 @@ export function FileNewPODialog({
   const [targetDepartment, setTargetDepartment] = useState("");
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
   // Step 2 Line items & catalog quick-add states
   const [items, setItems] = useState<POLineItemForm[]>([generateInitialRow("consumable", false)]);
@@ -156,20 +163,22 @@ export function FileNewPODialog({
 
   useEffect(() => {
     if (isOpen) {
+      const initialType = defaultPoType || "consumable";
       setCurrentStep("details");
-      setPoType("consumable");
+      setPoType(initialType);
       setPoNumberMode("auto");
       setCustomPoNumber("");
       setPoDate(new Date().toISOString().split("T")[0]);
-      setItems([generateInitialRow("consumable", false)]);
+      setItems([generateInitialRow(initialType, false)]);
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setErrorMessage(null);
       setTargetDepartment(me?.department || "");
-      setGeneralPurpose("");
+      setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
+      setReceiptUrl(null);
     }
-  }, [isOpen, me?.department]);
+  }, [isOpen, me?.department, defaultPoType, defaultPurpose]);
 
   // Safe Close Guard to prevent accidental data loss
   const handleSafeClose = () => {
@@ -589,6 +598,7 @@ export function FileNewPODialog({
         supplierName: masterSupplierName,
         purpose: combinedPurpose,
         notes: generalNotes.trim() || undefined,
+        receiptUrl: receiptUrl || undefined,
         status: "pending_approval",
         items: formattedItems,
       });
@@ -1639,6 +1649,36 @@ export function FileNewPODialog({
                     {formatPhp(totalEstimatedAmount)}
                   </span>
                 </div>
+              </div>
+
+              {/* Optional Receipt / Invoice Attachment Card */}
+              <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-accent" />
+                    <h3 className="font-bold text-xs text-text uppercase tracking-wider">
+                      Attach Vendor Receipt / Invoice (Optional)
+                    </h3>
+                  </div>
+                  {receiptUrl && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Receipt Attached
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-text-secondary">
+                  If you already have a physical sales invoice, quotation, or delivery receipt photo, you can attach it to this purchase order now.
+                </p>
+
+                <POReceiptUploader
+                  receiptUrl={receiptUrl}
+                  poNumber={poNumberMode === "manual" ? customPoNumber.trim() : undefined}
+                  canOperate={true}
+                  compact
+                  onUploadSuccess={(url) => setReceiptUrl(url)}
+                  onRemove={() => setReceiptUrl(null)}
+                />
               </div>
             </div>
           )}

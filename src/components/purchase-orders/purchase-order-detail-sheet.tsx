@@ -28,6 +28,7 @@ import {
   Calendar,
   Boxes,
   ArrowUpRight,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
@@ -39,6 +40,7 @@ import {
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { formatDateTime, formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
 import { useToast } from "@/components/providers/toast-context";
+import { POReceiptUploader } from "./po-receipt-uploader";
 
 interface PurchaseOrderDetailSheetProps {
   lot: PurchaseLot | null;
@@ -95,11 +97,12 @@ export function PurchaseOrderDetailSheet({
 }: PurchaseOrderDetailSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [activeTab, setActiveTab] = useState<"specs" | "workflow" | "qr">("specs");
+  const [activeTab, setActiveTab] = useState<"specs" | "receipt" | "workflow" | "qr">("specs");
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("all");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState("");
   const [receivedQuantity, setReceivedQuantity] = useState("");
+  const [deliveryReceiptUrl, setDeliveryReceiptUrl] = useState<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState<PurchaseOrderStatus | null>(null);
   const [isEditingPoNumber, setIsEditingPoNumber] = useState(false);
   const [editablePoNumber, setEditablePoNumber] = useState("");
@@ -107,6 +110,19 @@ export function PurchaseOrderDetailSheet({
   const updateStatusMutation = useUpdatePOStatusMutation();
   const updatePOMutation = useUpdatePurchaseOrderMutation();
   const toast = useToast();
+
+  const handleRemoveReceipt = async () => {
+    if (!lot) return;
+    try {
+      await updatePOMutation.mutateAsync({
+        id: lot.id,
+        payload: { receiptUrl: null },
+      });
+      toast.success("Receipt removed from purchase order.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove receipt.");
+    }
+  };
 
   const entityCode = lot ? lot.poNumber || lot.lotCode : "";
   const { data: auditLogs = [] } = useAuditLogsQuery({
@@ -191,6 +207,7 @@ export function PurchaseOrderDetailSheet({
           status: nextStatus,
           notes: statusNote.trim() || undefined,
           receivedQuantity: parsedReceived,
+          receiptUrl: deliveryReceiptUrl || undefined,
         },
       });
       toast.success(
@@ -201,6 +218,7 @@ export function PurchaseOrderDetailSheet({
       setShowStatusModal(null);
       setStatusNote("");
       setReceivedQuantity("");
+      setDeliveryReceiptUrl(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update status.");
     } finally {
@@ -568,6 +586,23 @@ export function PurchaseOrderDetailSheet({
           >
             <FileText className="h-4 w-4" />
             <span>Specifications & Order</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("receipt")}
+            className={cn(
+              "py-3 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5",
+              activeTab === "receipt"
+                ? "border-accent text-accent font-bold"
+                : "border-transparent text-text-secondary hover:text-text"
+            )}
+          >
+            <Receipt className="h-4 w-4" />
+            <span>Receipt & Proof</span>
+            {lot.receiptUrl ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0 shadow-2xs" />
+            ) : null}
           </button>
 
           <button
@@ -943,6 +978,46 @@ export function PurchaseOrderDetailSheet({
             </div>
           )}
 
+          {activeTab === "receipt" && (
+            <div className="space-y-6">
+              <div className="p-4 rounded-xl border border-border bg-card space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
+                    <Receipt className="h-3.5 w-3.5 text-accent" />
+                    Official Vendor Receipt & Proof of Purchase
+                  </span>
+                  {lot.receiptUrl ? (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Receipt Attached
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-text-secondary bg-bg-subtle px-2 py-0.5 rounded-full border border-border">
+                      Pending Upload
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Maintain compliance and proof of purchase by archiving the scanned receipt, delivery receipt (DR), or sales invoice issued for purchase order <strong className="text-text font-mono">{lot.poNumber || lot.lotCode}</strong>.
+                </p>
+
+                <POReceiptUploader
+                  receiptUrl={lot.receiptUrl}
+                  poNumber={lot.poNumber || lot.lotCode}
+                  lotId={lot.id}
+                  canOperate={canOperate}
+                  onUploadSuccess={async (url) => {
+                    await updatePOMutation.mutateAsync({
+                      id: lot.id,
+                      payload: { receiptUrl: url },
+                    });
+                  }}
+                  onRemove={handleRemoveReceipt}
+                />
+              </div>
+            </div>
+          )}
+
           {activeTab === "workflow" && (
             <div className="space-y-4">
               <div className="p-4 rounded-xl border border-border bg-card shadow-2xs space-y-4">
@@ -1291,6 +1366,28 @@ export function PurchaseOrderDetailSheet({
                       Inventory will be adjusted to the received quantity, not the ordered amount.
                     </p>
                   )}
+                </div>
+              )}
+
+              {showStatusModal === "delivered" && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-text flex items-center justify-between">
+                    <span>Attach Receipt Picture (Optional)</span>
+                    {(deliveryReceiptUrl || lot.receiptUrl) && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Attached ✓
+                      </span>
+                    )}
+                  </label>
+                  <POReceiptUploader
+                    receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
+                    poNumber={lot.poNumber || lot.lotCode}
+                    lotId={lot.id}
+                    canOperate={canOperate}
+                    compact
+                    onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
+                    onRemove={() => setDeliveryReceiptUrl(null)}
+                  />
                 </div>
               )}
 

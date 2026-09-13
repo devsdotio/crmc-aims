@@ -583,6 +583,11 @@ export function POPrintSlipDialog({
                       {displayDealer}
                     </strong>
                   </div>
+                  {lot.receiptUrl && (
+                    <div className="text-[10.5px] text-emerald-700 dark:text-emerald-400 font-medium">
+                      Official Receipt: Attached in AIMS Archive ✓
+                    </div>
+                  )}
                 </div>
 
                 {/* Right: Date, Time & Lot Code */}
