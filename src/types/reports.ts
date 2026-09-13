@@ -1,107 +1,293 @@
-import type { AssetCategory } from './shared';
+export type ReportType =
+  | "executive"
+  | "assets"
+  | "asset-drilldown"
+  | "consumables"
+  | "purchase-orders"
+  | "requests"
+  | "maintenance";
 
+export interface DateRangeFilter {
+  startDate?: string;
+  endDate?: string;
+}
 
-export type { AssetCategory };
+export interface BaseReportFilters extends DateRangeFilter {
+  search?: string;
+  departmentId?: string;
+  category?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  includeSandbox?: boolean;
+}
 
-import type { BaseFilterState } from "./filters";
+export interface PaginatedReportResponse<TData, TSummary> {
+  data: TData[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  summary: TSummary;
+  canViewCosts: boolean;
+}
 
-export type SimpleReportCategory =
-  | "overview"
-  | "asset-inventory"
-  | "borrowing"
-  | "maintenance"
-  | "procurement"
-  | "disposal";
+// ─── 1. Executive Report ──────────────────────────────────────────────────────
 
-export type SimpleUserRole = "staff" | "dept_head" | "admin";
+export interface ExecutiveKpiSummary {
+  canViewCosts: boolean;
+  assets: {
+    totalCount: number;
+    activeCount: number;
+    inRepairCount: number;
+    totalValue: number;
+  };
+  consumables: {
+    totalItems: number;
+    lowStockCount: number;
+    totalValuation: number;
+    monthBurnRateValue: number;
+  };
+  procurement: {
+    openOrdersCount: number;
+    totalSpend30d: number;
+    pendingDeliveryCount: number;
+  };
+  requests: {
+    pendingCount: number;
+    fulfilledThisMonth: number;
+    avgApprovalHours: number;
+  };
+  maintenance: {
+    activeIssuesCount: number;
+    resolvedThisMonth: number;
+    avgMttrDays: number;
+    totalRepairSpend30d: number;
+  };
+  charts: {
+    categoryDistribution: Array<{ name: string; count: number; value: number }>;
+    monthlySpendTrend: Array<{ month: string; procurement: number; maintenance: number }>;
+    statusDistribution: Array<{ status: string; count: number }>;
+  };
+}
 
-export interface SimpleReportFilterState extends BaseFilterState {
-  dateRange: string;
-  department: string;
+// ─── 2. Asset Register Report ─────────────────────────────────────────────────
+
+export interface AssetRegisterRow {
+  id: string;
+  assetCode: string;
+  name: string;
   category: string;
   status: string;
-  roleView: SimpleUserRole;
-}
-
-export interface SimpleAssetItem {
-  id: string;
-  tagNumber: string;
-  serialNumber: string;
-  name: string;
-  category: AssetCategory;
-  department: string;
+  assignmentType: string;
   location: string;
-  acquisitionDate: string;
-  cost: number;
-  condition: "Good" | "Fair" | "Poor" | "Damaged"; // Display-specific condition
-  status: "In Use" | "In Storage" | "Under Repair" | "Disposed"; // Display-specific status
+  department: string | null;
+  currentHolder: string | null;
+  purchaseDate: string | null;
+  purchaseCost: number | null;
+  currentValue: number | null;
+  supplierName: string | null;
+  serialNumber: string | null;
+  hasActiveMaintenance: boolean;
+  lastUpdated: string;
 }
 
-export interface SimpleBorrowingEntry {
+export interface AssetRegisterSummary {
+  totalAssets: number;
+  totalValuation: number;
+  activeCount: number;
+  needsRepairCount: number;
+  outOfServiceCount: number;
+  retiredCount: number;
+}
+
+// ─── 3. Asset Drill-down Report ───────────────────────────────────────────────
+
+export interface AssetDrilldownReport {
+  asset: {
+    id: string;
+    assetCode: string;
+    name: string;
+    category: string;
+    status: string;
+    assignmentType: string;
+    location: string;
+    department: string | null;
+    currentHolder: string | null;
+    purchaseDate: string | null;
+    value: number | null;
+    supplierName: string | null;
+    serialNumber: string | null;
+    imageUrl: string | null;
+    notes: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  purchaseInfo: {
+    lotCode: string | null;
+    poNumber: string | null;
+    purchasedOn: string | null;
+    supplierName: string | null;
+    unitCost: number | null;
+    reference: string | null;
+    receiptUrl: string | null;
+  } | null;
+  maintenanceHistory: Array<{
+    id: string;
+    logCode: string;
+    condition: string;
+    source: string;
+    dateLogged: string;
+    isResolved: boolean;
+    resolutionDate: string | null;
+    repairCost: number | null;
+    loggedByName: string;
+    resolvedByName: string | null;
+    notes: string;
+  }>;
+  custodyHistory: Array<{
+    id: string;
+    logCode: string;
+    borrowerName: string;
+    borrowerEmail: string;
+    department: string;
+    purpose: string;
+    status: string;
+    borrowedAt: string;
+    expectedReturnDate: string | null;
+    returnedAt: string | null;
+  }>;
+  consumablesConsumed: Array<{
+    id: string;
+    consumableCode: string;
+    consumableName: string;
+    quantity: number;
+    unit: string;
+    unitCost: number | null;
+    totalCost: number | null;
+    usedAt: string;
+    actorName: string;
+  }>;
+  tco: {
+    purchaseCost: number;
+    maintenanceCost: number;
+    consumablesCost: number;
+    totalCostOfOwnership: number;
+  };
+  canViewCosts: boolean;
+}
+
+// ─── 4. Consumables Stock & Usage Report ──────────────────────────────────────
+
+export interface ConsumableStockRow {
   id: string;
-  borrowerName: string;
-  borrowerType: "Faculty" | "Student" | "Staff";
-  department: string;
-  assetTag: string;
-  assetName: string;
-  borrowedDate: string;
-  dueDate: string;
-  returnedDate?: string;
-  status: "Active" | "Returned" | "Overdue";
-  isOverdue: boolean;
+  itemCode: string;
+  name: string;
+  category: string;
+  unit: string;
+  currentQty: number;
+  reservedQty: number;
+  availableQty: number;
+  minThreshold: number;
+  location: string;
+  unitCost: number | null;
+  stockValuation: number | null;
+  usage30d: number;
+  usage90d: number;
+  estimatedDaysRemaining: number | null;
+  isLowStock: boolean;
+  lastRestocked: string | null;
 }
 
-export interface SimpleFrequentBorrowed {
-  assetName: string;
-  category: AssetCategory;
-  borrowCount: number;
-  primaryDepartment: string;
+export interface ConsumableStockSummary {
+  totalSkus: number;
+  lowStockItemsCount: number;
+  totalInventoryValuation: number;
+  totalDispatched30d: number;
+  totalDispatchedValue30d: number;
 }
 
-export interface SimpleMaintenanceLog {
+// ─── 5. Purchase Orders Report ────────────────────────────────────────────────
+
+export interface PurchaseOrderRow {
+  poNumber: string;
+  supplierName: string;
+  status: string;
+  itemType: "consumable" | "asset" | "mixed";
+  totalAmount: number | null;
+  totalQuantity: number;
+  lineItemCount: number;
+  purchasedOn: string;
+  approvedAt: string | null;
+  deliveredAt: string | null;
+  leadTimeDays: number | null;
+  itemsPreview: string;
+}
+
+export interface PurchaseOrdersSummary {
+  totalSpend: number;
+  openOrdersCount: number;
+  deliveredCount: number;
+  avgLeadTimeDays: number;
+  topSuppliers: Array<{ name: string; spend: number }>;
+}
+
+// ─── 6. Requests Report ───────────────────────────────────────────────────────
+
+export interface RequestReportRow {
   id: string;
-  assetTag: string;
-  assetName: string;
+  requestCode: string;
+  requestType: "asset_borrow" | "consumable_issue";
+  requesterName: string;
   department: string;
-  serviceType: "Routine Check" | "Repair" | "Part Replacement";
-  issue: string;
-  repairCost: number;
-  serviceDate: string;
-  isDueForMaintenance: boolean;
-  status: "Completed" | "Pending" | "Due Soon";
+  status: string;
+  itemsCount: number;
+  itemsSummary: string;
+  purpose: string;
+  requestedAt: string;
+  approvedAt: string | null;
+  fulfilledAt: string | null;
+  turnaroundHours: number | null;
 }
 
-export interface SimpleDamagedLostItem {
-  id: string;
-  assetTag: string;
-  assetName: string;
-  department: string;
-  type: "Damaged" | "Lost" | "Condemned";
-  reportedDate: string;
-  costImpact: number;
-  reason: string;
+export interface RequestsSummary {
+  totalRequests: number;
+  pendingCount: number;
+  approvedCount: number;
+  fulfilledCount: number;
+  rejectedCount: number;
+  avgTurnaroundHours: number;
+  departmentBreakdown: Array<{ department: string; count: number }>;
 }
 
-export interface SimpleAcquisitionItem {
+// ─── 7. Maintenance & Repairs Report ──────────────────────────────────────────
+
+export interface MaintenanceReportRow {
   id: string;
+  logCode: string;
+  assetCode: string;
   assetName: string;
-  category: AssetCategory;
-  department: string;
-  quantity: number;
-  totalCost: number;
-  acquisitionDate: string;
-  supplier: string;
+  category: string;
+  condition: string;
+  source: string;
+  dateLogged: string;
+  isResolved: boolean;
+  resolutionDate: string | null;
+  repairCost: number | null;
+  mttrDays: number | null;
+  loggedByName: string;
+  resolvedByName: string | null;
+  notes: string;
 }
 
-export interface SimpleDisposalItem {
-  id: string;
-  assetTag: string;
-  assetName: string;
-  category: AssetCategory;
-  department: string;
-  disposalDate: string;
-  disposalReason: "Beyond Economic Repair" | "Obsolescence" | "Lost/Stolen" | "Damaged";
-  originalCost: number;
-  salvageValue: number;
-  approvedBy: string;
+export interface MaintenanceSummary {
+  totalWorkOrders: number;
+  openWorkOrders: number;
+  resolvedWorkOrders: number;
+  totalRepairSpend: number;
+  avgMttrDays: number;
+  topFaultyAssets: Array<{ assetCode: string; name: string; count: number; totalCost: number }>;
+  conditionBreakdown: Array<{ condition: string; count: number }>;
 }

@@ -58,6 +58,7 @@ export function getApiDocs() {
         { name: "Users", description: "User account administration" },
         { name: "Departments", description: "Department master data and department logins" },
         { name: "Projects", description: "Projects, expenses, and assignments" },
+        { name: "Reports", description: "Operational reports, inventory analytics, and CSV exports" },
       ],
       // Default: require JWT (OAuth2 password *or* raw Bearer JWT).
       security: [{ bearerAuth: [] }, { bearerJwt: [] }],

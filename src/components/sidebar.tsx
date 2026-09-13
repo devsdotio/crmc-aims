@@ -293,8 +293,6 @@ export default function Sidebar({
           name: "Reports",
           href: "/reports",
           icon: FileText,
-          badgeText: "Soon",
-          disabled: true,
           roles: ["superadmin", "admin", "staff"],
         },
         {
