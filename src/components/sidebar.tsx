@@ -29,10 +29,21 @@ import {
   Building2,
   Receipt,
   FlaskConical,
+  ChevronDown,
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
 import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
+
+interface NavSubItem {
+  name: string;
+  href: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  badge?: number;
+  badgeTone?: "accent" | "warning";
+  badgeText?: string;
+  roles?: UserRole[];
+}
 
 interface NavItem {
   name: string;
@@ -43,6 +54,7 @@ interface NavItem {
   badgeText?: string;
   disabled?: boolean;
   roles?: UserRole[];
+  children?: NavSubItem[];
 }
 
 interface NavSection {
@@ -80,6 +92,19 @@ export default function Sidebar({
   const userMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { canToggle, preference, setShowSandbox } = useSandboxVisibility();
+
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>(() => {
+    if (typeof window !== "undefined" && window.location.pathname.startsWith("/purchase-orders")) {
+      return { "/purchase-orders": true };
+    }
+    return { "/purchase-orders": true };
+  });
+
+  useEffect(() => {
+    if (pathname.startsWith("/purchase-orders")) {
+      setOpenSubmenus((prev) => ({ ...prev, "/purchase-orders": true }));
+    }
+  }, [pathname]);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -178,6 +203,20 @@ export default function Sidebar({
           href: "/purchase-orders",
           icon: ShoppingCart,
           roles: ["superadmin", "admin", "staff"],
+          children: [
+            {
+              name: "Asset",
+              href: "/purchase-orders/asset",
+            },
+            {
+              name: "Consumables",
+              href: "/purchase-orders/consumables",
+            },
+            {
+              name: "Projects",
+              href: "/purchase-orders/projects",
+            },
+          ],
         },
         {
           name: "Vouchers",
@@ -284,9 +323,17 @@ export default function Sidebar({
   const sections = allSections
     .map((section) => ({
       ...section,
-      items: section.items.filter(
-        (item) => !item.roles || (userRole && item.roles.includes(userRole)),
-      ),
+      items: section.items
+        .filter(
+          (item) => !item.roles || (userRole && item.roles.includes(userRole)),
+        )
+        .map((item) => ({
+          ...item,
+          children: item.children?.filter(
+            (child) =>
+              !child.roles || (userRole && child.roles.includes(userRole)),
+          ),
+        })),
     }))
     .filter((section) => section.items.length > 0);
 
@@ -298,7 +345,11 @@ export default function Sidebar({
 
   const renderNavItem = (item: NavItem) => {
     const isDisabled = Boolean(item.disabled || item.badgeText === "Soon");
-    const isActive = !isDisabled && pathname === item.href;
+    const isExactActive = !isDisabled && pathname === item.href;
+    const isChildActive =
+      !isDisabled &&
+      Boolean(item.children?.some((child) => pathname === child.href));
+    const isActive = isExactActive || isChildActive;
     const Icon = item.icon;
     const hasBadge = (item.badge ?? 0) > 0;
     const hasBadgeText = Boolean(item.badgeText);
@@ -359,6 +410,194 @@ export default function Sidebar({
               )}
             </div>
           )}
+        </div>
+      );
+    }
+
+    if (item.children && item.children.length > 0) {
+      const isSubmenuOpen = openSubmenus[item.href] ?? isChildActive;
+
+      if (isCollapsed) {
+        return (
+          <div
+            key={item.href}
+            className="relative group/collapsed flex items-center justify-center w-full"
+          >
+            <Link
+              href={item.href}
+              aria-current={isExactActive ? "page" : undefined}
+              className={cn(
+                "relative flex items-center justify-center rounded-lg text-sm font-medium h-10 w-full outline-none focus-visible:ring-2 focus-visible:ring-accent/70 transition-colors duration-150",
+                isActive
+                  ? "text-white font-semibold"
+                  : "text-white/60 hover:text-white hover:bg-white/6",
+              )}
+            >
+              {isExactActive && (
+                <motion.span
+                  layoutId="sidebar-active-pill"
+                  className="absolute inset-0 rounded-lg bg-white/10 ring-1 ring-white/10"
+                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                />
+              )}
+              <Icon
+                className={cn(
+                  "w-4.5 h-4.5 shrink-0 transition-transform duration-150 group-hover/collapsed:scale-110",
+                  isActive
+                    ? "text-accent"
+                    : "text-white/50 group-hover/collapsed:text-white",
+                )}
+              />
+              {isActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.75 rounded-r-full bg-accent" />
+              )}
+            </Link>
+
+            {/* Flyout popup for collapsed sidebar */}
+            <div
+              className={cn(
+                "invisible opacity-0 pointer-events-none group-hover/collapsed:visible group-hover/collapsed:opacity-100 group-hover/collapsed:pointer-events-auto",
+                "absolute left-full top-0 ml-2 z-50 min-w-44 py-1.5 px-1.5 rounded-xl border border-white/15 bg-[#0F1329]/95 backdrop-blur-md shadow-xl shadow-black/40",
+                "scale-95 group-hover/collapsed:scale-100 origin-top-left transition-all duration-150",
+              )}
+            >
+              {/* Hover bridge */}
+              <div className="absolute -left-2 top-0 bottom-0 w-2" />
+
+              <Link
+                href={item.href}
+                className={cn(
+                  "flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold mb-1 border-b border-white/10 transition-colors",
+                  isExactActive
+                    ? "text-accent bg-accent/15"
+                    : "text-white hover:bg-white/10",
+                )}
+              >
+                <span>{item.name}</span>
+                <span className="text-[10px] text-white/40 font-normal">All</span>
+              </Link>
+
+              <div className="space-y-0.5">
+                {item.children.map((subItem) => {
+                  const isSubActive = pathname === subItem.href;
+                  return (
+                    <Link
+                      key={subItem.href}
+                      href={subItem.href}
+                      aria-current={isSubActive ? "page" : undefined}
+                      className={cn(
+                        "block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        isSubActive
+                          ? "text-accent bg-accent/10 font-semibold"
+                          : "text-white/70 hover:text-white hover:bg-white/10",
+                      )}
+                    >
+                      <span className="truncate">{subItem.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Expanded mode with accordion
+      return (
+        <div key={item.href} className="space-y-0.5">
+          <div className="relative flex items-center group">
+            <Link
+              href={item.href}
+              aria-current={isExactActive ? "page" : undefined}
+              className={cn(
+                "relative flex-1 flex items-center justify-between rounded-lg text-sm font-medium py-2.5 pl-3 pr-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
+                isExactActive
+                  ? "text-white font-semibold"
+                  : isChildActive
+                    ? "text-white/90"
+                    : "text-white/60 hover:text-white hover:bg-white/6",
+              )}
+            >
+              {isExactActive && (
+                <motion.span
+                  layoutId="sidebar-active-pill"
+                  className="absolute inset-0 rounded-lg bg-white/10 ring-1 ring-white/10"
+                  transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                />
+              )}
+
+              <span className="relative flex items-center min-w-0 gap-3">
+                <Icon
+                  className={cn(
+                    "w-4.5 h-4.5 shrink-0 transition-transform duration-150 group-hover:scale-110",
+                    isActive
+                      ? "text-accent"
+                      : "text-white/50 group-hover:text-white",
+                  )}
+                />
+                <span className="truncate">{item.name}</span>
+              </span>
+
+              {isExactActive && (
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.75 rounded-r-full bg-accent" />
+              )}
+            </Link>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenSubmenus((prev) => ({
+                  ...prev,
+                  [item.href]: !isSubmenuOpen,
+                }));
+              }}
+              aria-label={`Toggle ${item.name} subpages`}
+              title={`Toggle ${item.name} subpages`}
+              className={cn(
+                "p-1.5 mr-1 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/70",
+                isSubmenuOpen && "text-white/80",
+              )}
+            >
+              <ChevronDown
+                className={cn(
+                  "w-3.5 h-3.5 transition-transform duration-200",
+                  isSubmenuOpen ? "rotate-180" : "rotate-0",
+                )}
+              />
+            </button>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {isSubmenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.18, ease: "easeInOut" }}
+                className="overflow-hidden ml-5 pl-2.5 pr-0 space-y-0.5 border-l border-white/10 my-1"
+              >
+                {item.children.map((subItem) => {
+                  const isSubActive = pathname === subItem.href;
+                  return (
+                    <Link
+                      key={subItem.href}
+                      href={subItem.href}
+                      aria-current={isSubActive ? "page" : undefined}
+                      className={cn(
+                        "relative flex items-center justify-between rounded-lg text-sm font-medium py-2.5 pl-3 pr-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
+                        isSubActive
+                          ? "text-accent font-semibold bg-accent/10 border border-accent/20"
+                          : "text-white/65 hover:text-white hover:bg-white/6",
+                      )}
+                    >
+                      <span className="truncate">{subItem.name}</span>
+                    </Link>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       );
     }
