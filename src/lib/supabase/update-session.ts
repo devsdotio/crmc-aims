@@ -19,6 +19,7 @@ const PUBLIC_API_PATHS = [
   "/api/docs/spec",
   "/api/auth/sign-in",
   "/api/auth/token",
+  "/api/bible-verse",
 ] as const;
 
 /** True when the client presents a Bearer JWT (Swagger / API tools). */
