@@ -13,17 +13,19 @@ import {
   Ban,
   Building2,
   Trash2,
+  Layers,
 } from "lucide-react";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
+import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
 
 interface PurchaseOrdersGridProps {
-  lots: PurchaseLot[];
+  groups: GroupedPurchaseOrder[];
   loading?: boolean;
   onSelectLot: (lot: PurchaseLot) => void;
   onPrintSlip: (lot: PurchaseLot) => void;
-  onDelete?: (lot: PurchaseLot) => void;
+  onDeleteGroup?: (group: GroupedPurchaseOrder) => void;
 }
 
 function getStatusCardClasses(status: PurchaseOrderStatus): {
@@ -141,11 +143,11 @@ function SkeletonCard() {
 }
 
 export function PurchaseOrdersGrid({
-  lots,
+  groups,
   loading = false,
   onSelectLot,
   onPrintSlip,
-  onDelete,
+  onDeleteGroup,
 }: PurchaseOrdersGridProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -166,7 +168,7 @@ export function PurchaseOrdersGrid({
     );
   }
 
-  if (lots.length === 0) {
+  if (groups.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-card rounded-xl border border-border min-h-96">
         <div className="p-3 rounded-2xl bg-accent/10 border border-accent/20 text-accent mb-3">
@@ -182,22 +184,15 @@ export function PurchaseOrdersGrid({
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {lots.map((lot) => {
-        const displayPO = lot.poNumber || lot.lotCode;
+      {groups.map((group) => {
+        const lot = group.representative;
+        const isMultiItem = group.itemCount > 1;
         const poDate = lot.purchasedOn || lot.createdAt.split("T")[0];
-        const unitCostNum = parseFloat(lot.unitCost) || 0;
-        const totalCostNum = parseFloat(lot.totalCost) || 0;
         const statusMeta = getStatusCardClasses(lot.status);
-        const remainingRatio =
-          lot.quantity > 0 ? lot.quantityRemaining / lot.quantity : 0;
-        const isDepleted =
-          lot.status === "delivered" && lot.quantityRemaining === 0;
-        const isLowStock =
-          lot.status === "delivered" && !isDepleted && remainingRatio <= 0.2;
 
         return (
           <div
-            key={lot.id}
+            key={group.poNumber}
             onClick={() => onSelectLot(lot)}
             className={cn(
               "rounded-xl border border-border bg-card p-5 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden",
@@ -207,31 +202,38 @@ export function PurchaseOrdersGrid({
             {/* Subtle Top Gradient Glow */}
             <div
               className={cn(
-                "absolute inset-x-0 top-0 h-16 bg-gradient-to-b pointer-events-none",
+                "absolute inset-x-0 top-0 h-16 bg-linear-to-b pointer-events-none",
                 statusMeta.glow
               )}
             />
 
             <div className="space-y-3.5 relative z-1">
-              {/* Top Row: PO Number, Item Type & Status Badge */}
+              {/* Top Row: PO Number, Item Count & Status Badge */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <span className="font-mono text-xs font-bold text-text bg-bg-subtle/80 px-2 py-0.5 rounded-md border border-border group-hover:border-accent/40 group-hover:text-accent transition-colors truncate shadow-2xs">
-                    {displayPO}
+                    {group.poNumber}
                   </span>
                   <button
                     type="button"
-                    onClick={(e) => handleCopyCode(e, displayPO)}
+                    onClick={(e) => handleCopyCode(e, group.poNumber)}
                     title="Copy PO Number"
                     className="p-1 rounded text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0"
                   >
-                    {copiedCode === displayPO ? (
+                    {copiedCode === group.poNumber ? (
                       <Check className="h-3 w-3 text-status-active-text" />
                     ) : (
                       <Copy className="h-3 w-3" />
                     )}
                   </button>
-                  <ItemTypeBadge itemType={lot.itemType} />
+                  {isMultiItem ? (
+                    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-accent/10 text-accent border border-accent/25">
+                      <Layers className="h-2.5 w-2.5" />
+                      {group.itemCount} items
+                    </span>
+                  ) : (
+                    <ItemTypeBadge itemType={lot.itemType} />
+                  )}
                 </div>
 
                 <StatusBadge status={lot.status} />
@@ -239,67 +241,83 @@ export function PurchaseOrdersGrid({
 
               {/* Item Info */}
               <div>
-                <h3 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1 leading-snug">
-                  {lot.itemName}
-                </h3>
-                <div className="flex items-center justify-between text-[11px] text-text-secondary mt-1">
-                  <span className="font-mono bg-bg-subtle/60 px-1.5 py-0.2 rounded border border-border/60 text-[10px]">
-                    {lot.itemCode}
-                  </span>
-                  <span className="text-[10px] text-text-secondary font-medium">
-                    {poDate}
-                  </span>
-                </div>
+                {isMultiItem ? (
+                  <>
+                    <h3 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1 leading-snug">
+                      {lot.itemName}
+                    </h3>
+                    <div className="mt-1 space-y-0.5">
+                      {group.lineItems.slice(1, 3).map((li) => (
+                        <div key={li.id} className="text-[11px] text-text-secondary truncate flex items-center gap-1">
+                          <span className="text-text-secondary">•</span>
+                          <span className="truncate">{li.itemName}</span>
+                        </div>
+                      ))}
+                      {group.itemCount > 3 && (
+                        <span className="text-[10px] text-text-secondary font-medium">
+                          +{group.itemCount - 3} more item{group.itemCount > 4 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      {Array.from(new Set<"asset" | "consumable">(group.lineItems.map((li) => li.itemType))).map((type) => (
+                        <ItemTypeBadge key={type} itemType={type} />
+                      ))}
+                      <span className="text-[10px] text-text-secondary font-medium">
+                        {poDate}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1 leading-snug">
+                      {lot.itemName}
+                    </h3>
+                    <div className="flex items-center justify-between text-[11px] text-text-secondary mt-1">
+                      <span className="font-mono bg-bg-subtle/60 px-1.5 py-0.2 rounded border border-border/60 text-[10px]">
+                        {lot.itemCode}
+                      </span>
+                      <span className="text-[10px] text-text-secondary font-medium">
+                        {poDate}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Order Specs Box */}
               <div className="p-3 rounded-lg bg-bg-subtle/80 border border-border/80 space-y-2 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="text-text-secondary font-medium">Quantity:</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono font-bold text-text">
-                      {lot.quantity} {lot.itemType === "asset" ? (lot.quantity === 1 ? "unit" : "units") : "pcs"}
-                    </span>
-                    {lot.status === "delivered" && lot.itemType === "consumable" && (
-                      <>
-                        {isDepleted ? (
-                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                            Depleted
-                          </span>
-                        ) : lot.quantityRemaining < lot.quantity ? (
-                          <span
-                            className={cn(
-                              "inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold border",
-                              isLowStock
-                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                                : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25"
-                            )}
-                          >
-                            {lot.quantityRemaining} left
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                            In Stock
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-text-secondary font-medium">Unit Cost:</span>
-                  <span className="font-mono font-semibold text-text">
-                    ₱{unitCostNum.toFixed(2)}
+                  <span className="text-text-secondary font-medium">
+                    {isMultiItem ? "Total Quantity:" : "Quantity:"}
+                  </span>
+                  <span className="font-mono font-bold text-text">
+                    {group.totalQuantity}{" "}
+                    {isMultiItem
+                      ? `(${group.itemCount} items)`
+                      : lot.itemType === "asset"
+                      ? lot.quantity === 1
+                        ? "unit"
+                        : "units"
+                      : "pcs"}
                   </span>
                 </div>
+
+                {!isMultiItem && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-text-secondary font-medium">Unit Cost:</span>
+                    <span className="font-mono font-semibold text-text">
+                      ₱{(parseFloat(lot.unitCost) || 0).toFixed(2)}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex justify-between items-center pt-1.5 border-t border-border/60">
                   <span className="text-text-secondary font-medium text-[11px] uppercase tracking-wider">
                     Total Value:
                   </span>
                   <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                    ₱{totalCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    ₱{group.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>
@@ -343,12 +361,12 @@ export function PurchaseOrdersGrid({
                 >
                   View Details
                 </button>
-                {onDelete && (
+                {onDeleteGroup && (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onDelete(lot);
+                      onDeleteGroup(group);
                     }}
                     title="Delete Purchase Order"
                     aria-label="Delete Purchase Order"

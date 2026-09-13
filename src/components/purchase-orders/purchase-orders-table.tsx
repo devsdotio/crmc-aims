@@ -15,33 +15,32 @@ import {
   PackageCheck,
   Ban,
   Trash2,
+  Layers,
+  Building2,
 } from "lucide-react";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
+import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { cn } from "@/lib/utils";
 import {
-  formatDateTime,
   formatRelativeTime,
 } from "@/components/audit-logs/audit-log-utils";
 
 type SortField =
   | "createdAt"
-  | "lotCode"
-  | "purchasedOn"
   | "poNumber"
   | "itemName"
   | "supplier"
   | "quantity"
-  | "unitCost"
   | "totalCost"
   | "status";
 type SortOrder = "asc" | "desc";
 
 interface PurchaseOrdersTableProps {
-  lots: PurchaseLot[];
+  groups: GroupedPurchaseOrder[];
   loading?: boolean;
   onSelectLot: (lot: PurchaseLot) => void;
   onPrintSlip: (lot: PurchaseLot) => void;
-  onDelete?: (lot: PurchaseLot) => void;
+  onDeleteGroup?: (group: GroupedPurchaseOrder) => void;
 }
 
 function getStatusRowClasses(status: PurchaseOrderStatus): string {
@@ -119,33 +118,34 @@ function StatusBadge({ status }: { status: PurchaseOrderStatus }) {
 function SkeletonTableRow() {
   return (
     <tr className="border-b border-border bg-bg animate-pulse">
-      <td className="px-3 sm:px-4 py-3.5">
-        <div className="h-4 w-24 sm:w-28 bg-border rounded mb-1.5" />
-        <div className="h-3 w-16 sm:w-20 bg-border/60 rounded" />
+      <td className="px-3 sm:px-4 py-3.5 w-[32%] sm:w-[24%] md:w-[20%] lg:w-[16%]">
+        <div className="h-4 w-20 sm:w-24 bg-border rounded mb-1.5" />
+        <div className="h-3 w-14 sm:w-16 bg-border/60 rounded" />
       </td>
-      <td className="px-3 sm:px-4 py-3.5">
+      <td className="px-3 sm:px-4 py-3.5 w-[24%] sm:w-[18%] md:w-[14%] lg:w-[12%]">
         <div className="h-5 w-18 sm:w-20 bg-border rounded-full" />
       </td>
-      <td className="px-3 sm:px-4 py-3.5">
+      <td className="px-3 sm:px-4 py-3.5 w-[34%] sm:w-[38%] md:w-[32%] lg:w-[26%]">
         <div className="h-4 w-32 sm:w-40 bg-border rounded mb-1.5" />
         <div className="flex items-center gap-2">
           <div className="h-3 w-16 bg-border/60 rounded" />
           <div className="h-3.5 w-16 bg-border/60 rounded-full" />
         </div>
       </td>
-      <td className="px-3 sm:px-4 py-3.5 hidden sm:table-cell">
+      <td className="px-3 sm:px-4 py-3.5 hidden sm:table-cell sm:w-[10%] md:w-[10%] lg:w-[8%]">
         <div className="h-4 w-12 bg-border rounded" />
       </td>
-      <td className="px-3 sm:px-4 py-3.5 hidden lg:table-cell">
-        <div className="h-4 w-28 bg-border rounded mb-1" />
+      <td className="px-3 sm:px-4 py-3.5 hidden lg:table-cell lg:w-[17%]">
+        <div className="h-6 w-24 bg-border rounded-full" />
       </td>
-      <td className="px-3 sm:px-4 py-3.5 hidden md:table-cell">
-        <div className="h-4 w-20 bg-border rounded mb-1" />
-        <div className="h-3 w-14 bg-border/60 rounded" />
+      <td className="px-3 sm:px-4 py-3.5 hidden md:table-cell md:w-[15%] lg:w-[13%]">
+        <div className="h-4 w-16 bg-border rounded mb-1" />
+        <div className="h-3 w-12 bg-border/60 rounded" />
       </td>
-      <td className="px-3 sm:px-4 py-3.5 text-right">
-        <div className="flex justify-end">
-          <div className="h-7 w-16 sm:w-20 bg-border rounded-lg" />
+      <td className="px-3 sm:px-4 py-3.5 text-right w-[10%] sm:w-[10%] md:w-[9%] lg:w-[8%]">
+        <div className="flex justify-end gap-1.5">
+          <div className="h-7 w-7 bg-border rounded-lg" />
+          <div className="h-7 w-7 bg-border rounded-lg" />
         </div>
       </td>
     </tr>
@@ -153,11 +153,11 @@ function SkeletonTableRow() {
 }
 
 export function PurchaseOrdersTable({
-  lots,
+  groups,
   loading = false,
   onSelectLot,
   onPrintSlip,
-  onDelete,
+  onDeleteGroup,
 }: PurchaseOrdersTableProps) {
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
@@ -179,36 +179,60 @@ export function PurchaseOrdersTable({
     }
   };
 
-  const sortedLots = useMemo(() => {
-    return [...lots].sort((a, b) => {
-      let aVal: string | number =
-        (a[sortField as keyof PurchaseLot] as string | number) ?? "";
-      let bVal: string | number =
-        (b[sortField as keyof PurchaseLot] as string | number) ?? "";
+  const sortedGroups = useMemo(() => {
+    return [...groups].sort((a, b) => {
+      let aVal: string | number = "";
+      let bVal: string | number = "";
 
-      if (sortField === "totalCost") {
-        aVal = parseFloat(a.totalCost) || 0;
-        bVal = parseFloat(b.totalCost) || 0;
+      switch (sortField) {
+        case "createdAt":
+          aVal = a.representative.createdAt;
+          bVal = b.representative.createdAt;
+          break;
+        case "poNumber":
+          aVal = a.poNumber;
+          bVal = b.poNumber;
+          break;
+        case "itemName":
+          aVal = a.representative.itemName;
+          bVal = b.representative.itemName;
+          break;
+        case "supplier":
+          aVal = a.representative.supplierName || "";
+          bVal = b.representative.supplierName || "";
+          break;
+        case "quantity":
+          aVal = a.totalQuantity;
+          bVal = b.totalQuantity;
+          break;
+        case "totalCost":
+          aVal = a.totalCost;
+          bVal = b.totalCost;
+          break;
+        case "status":
+          aVal = a.representative.status;
+          bVal = b.representative.status;
+          break;
       }
 
       if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
       if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
-  }, [lots, sortField, sortOrder]);
+  }, [groups, sortField, sortOrder]);
 
   if (loading) {
     return (
       <div className="w-full overflow-x-auto min-w-full">
-        <table className="w-full text-xs text-left min-w-[520px] sm:min-w-full">
+        <table className="w-full text-xs text-left min-w-130 sm:min-w-full">
           <thead className="sticky top-0 z-10 bg-bg-subtle text-text-secondary border-b border-border font-semibold uppercase tracking-wider text-[11px] shadow-2xs">
             <tr>
               <th className="px-3 sm:px-4 py-3.5 whitespace-nowrap">PO Number & Date</th>
               <th className="px-3 sm:px-4 py-3.5 whitespace-nowrap">Status</th>
-              <th className="px-3 sm:px-4 py-3.5">Description</th>
-              <th className="px-3 sm:px-4 py-3.5 hidden sm:table-cell whitespace-nowrap">Qty</th>
+              <th className="px-3 sm:px-4 py-3.5">Item(s)</th>
+              <th className="px-3 sm:px-4 py-3.5 hidden sm:table-cell whitespace-nowrap">Total Qty</th>
               <th className="px-3 sm:px-4 py-3.5 hidden lg:table-cell whitespace-nowrap">Dealer / Supplier</th>
-              <th className="px-3 sm:px-4 py-3.5 hidden md:table-cell whitespace-nowrap">Cost (₱)</th>
+              <th className="px-3 sm:px-4 py-3.5 hidden md:table-cell whitespace-nowrap">Total Cost (₱)</th>
               <th className="px-3 sm:px-4 py-3.5 text-right whitespace-nowrap">Actions</th>
             </tr>
           </thead>
@@ -222,7 +246,7 @@ export function PurchaseOrdersTable({
     );
   }
 
-  if (lots.length === 0) {
+  if (groups.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center min-h-96">
         <div className="p-3 rounded-2xl bg-accent/10 border border-accent/20 text-accent mb-3">
@@ -241,15 +265,15 @@ export function PurchaseOrdersTable({
 
   return (
     <div className="w-full overflow-x-auto min-w-full">
-      <table className="w-full text-xs text-left min-w-[520px] sm:min-w-full" aria-label="Purchase orders table">
+      <table className="w-full text-xs text-left min-w-130 sm:min-w-full table-fixed" aria-label="Purchase orders table">
         <thead className="sticky top-0 z-10 bg-bg-subtle text-text-secondary border-b border-border font-semibold uppercase tracking-wider text-[11px] select-none shadow-2xs">
           <tr>
             <th
               onClick={() => handleSort("createdAt")}
-              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap"
+              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap w-[32%] sm:w-[24%] md:w-[20%] lg:w-[16%]"
             >
               <div className="flex items-center gap-1.5">
-                <span>PO Number & Date</span>
+                <span>PO & Date</span>
                 {sortField === "createdAt" ? (
                   sortOrder === "asc" ? (
                     <ArrowUp className="h-3 w-3" />
@@ -264,7 +288,7 @@ export function PurchaseOrdersTable({
 
             <th
               onClick={() => handleSort("status")}
-              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap"
+              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap w-[24%] sm:w-[18%] md:w-[14%] lg:w-[12%]"
             >
               <div className="flex items-center gap-1.5">
                 <span>Status</span>
@@ -282,10 +306,10 @@ export function PurchaseOrdersTable({
 
             <th
               onClick={() => handleSort("itemName")}
-              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors"
+              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors w-[34%] sm:w-[38%] md:w-[32%] lg:w-[26%]"
             >
               <div className="flex items-center gap-1.5">
-                <span>Item Description</span>
+                <span>Item(s)</span>
                 {sortField === "itemName" ? (
                   sortOrder === "asc" ? (
                     <ArrowUp className="h-3 w-3" />
@@ -300,10 +324,10 @@ export function PurchaseOrdersTable({
 
             <th
               onClick={() => handleSort("quantity")}
-              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap hidden sm:table-cell"
+              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap hidden sm:table-cell sm:w-[10%] md:w-[10%] lg:w-[8%]"
             >
               <div className="flex items-center gap-1.5">
-                <span>Qty</span>
+                <span>Total Qty</span>
                 {sortField === "quantity" ? (
                   sortOrder === "asc" ? (
                     <ArrowUp className="h-3 w-3" />
@@ -316,14 +340,30 @@ export function PurchaseOrdersTable({
               </div>
             </th>
 
-            <th className="px-3 sm:px-4 py-3.5 whitespace-nowrap hidden lg:table-cell">Dealer / Supplier</th>
+            <th
+              onClick={() => handleSort("supplier")}
+              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap hidden lg:table-cell lg:w-[17%]"
+            >
+              <div className="flex items-center gap-1.5">
+                <span>Dealer / Supplier</span>
+                {sortField === "supplier" ? (
+                  sortOrder === "asc" ? (
+                    <ArrowUp className="h-3 w-3" />
+                  ) : (
+                    <ArrowDown className="h-3 w-3" />
+                  )
+                ) : (
+                  <ArrowUpDown className="h-3 w-3 opacity-40" />
+                )}
+              </div>
+            </th>
 
             <th
               onClick={() => handleSort("totalCost")}
-              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap hidden md:table-cell"
+              className="px-3 sm:px-4 py-3.5 cursor-pointer hover:text-text transition-colors whitespace-nowrap hidden md:table-cell md:w-[15%] lg:w-[13%]"
             >
               <div className="flex items-center gap-1.5">
-                <span>Total Value (₱)</span>
+                <span>Total Value</span>
                 {sortField === "totalCost" ? (
                   sortOrder === "asc" ? (
                     <ArrowUp className="h-3 w-3" />
@@ -336,24 +376,36 @@ export function PurchaseOrdersTable({
               </div>
             </th>
 
-            <th className="px-3 sm:px-4 py-3.5 text-right whitespace-nowrap">Actions</th>
+            <th className="px-3 sm:px-4 py-3.5 text-right whitespace-nowrap w-[10%] sm:w-[10%] md:w-[9%] lg:w-[8%]">Actions</th>
           </tr>
         </thead>
 
         <tbody className="divide-y divide-border">
-          {sortedLots.map((lot) => {
-            const displayPO = lot.poNumber || lot.lotCode;
+          {sortedGroups.map((group) => {
+            const lot = group.representative;
+            const isMultiItem = group.itemCount > 1;
             const poDate = lot.purchasedOn || lot.createdAt.split("T")[0];
-            const remainingRatio =
-              lot.quantity > 0 ? lot.quantityRemaining / lot.quantity : 0;
-            const isDepleted =
-              lot.status === "delivered" && lot.quantityRemaining === 0;
-            const isLowStock =
-              lot.status === "delivered" && !isDepleted && remainingRatio <= 0.2;
+            const uniqueSuppliers = Array.from(
+              new Set(
+                group.lineItems
+                  .map((li) => li.supplierName?.trim())
+                  .filter((s): s is string => Boolean(s))
+              )
+            );
+            const displaySupplier =
+              uniqueSuppliers.length === 0
+                ? "Internal / Direct"
+                : uniqueSuppliers.length === 1
+                ? uniqueSuppliers[0]
+                : `Multiple (${uniqueSuppliers.length})`;
+            const supplierTooltip =
+              uniqueSuppliers.length > 1
+                ? uniqueSuppliers.join(", ")
+                : displaySupplier;
 
             return (
               <tr
-                key={lot.id}
+                key={group.poNumber}
                 onClick={() => onSelectLot(lot)}
                 className={cn(
                   "transition-all duration-150 cursor-pointer group bg-bg",
@@ -361,122 +413,148 @@ export function PurchaseOrdersTable({
                 )}
               >
                 {/* PO Number & Date */}
-                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap align-middle">
+                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap align-middle w-[32%] sm:w-[24%] md:w-[20%] lg:w-[16%] overflow-hidden">
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono text-xs font-bold text-text bg-bg-subtle/80 px-2 py-0.5 rounded-md border border-border group-hover:border-accent/40 group-hover:text-accent transition-colors shadow-2xs">
-                      {displayPO}
+                      {group.poNumber}
                     </span>
                     <button
                       type="button"
-                      onClick={(e) => handleCopyCode(e, displayPO)}
+                      onClick={(e) => handleCopyCode(e, group.poNumber)}
                       title="Copy PO Code"
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-text hover:bg-bg-subtle transition-all"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded text-text-secondary hover:text-text hover:bg-bg-subtle transition-all shrink-0"
                     >
-                      {copiedCode === displayPO ? (
+                      {copiedCode === group.poNumber ? (
                         <Check className="h-3 w-3 text-status-active-text" />
                       ) : (
                         <Copy className="h-3 w-3" />
                       )}
                     </button>
+                    {isMultiItem && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-accent/10 text-accent border border-accent/25 shrink-0">
+                        <Layers className="h-2.5 w-2.5" />
+                        {group.itemCount}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-[11px] text-text-secondary block font-medium mt-0.5">
+                  <span className="text-[11px] text-text-secondary block font-medium mt-0.5 truncate">
                     {poDate} · <span className="opacity-80">{formatRelativeTime(lot.createdAt)}</span>
                   </span>
                 </td>
 
                 {/* Status Badge */}
-                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap align-middle">
+                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap align-middle w-[24%] sm:w-[18%] md:w-[14%] lg:w-[12%]">
                   <StatusBadge status={lot.status} />
                   {/* On small mobile screens (< sm), show inline quantity badge here */}
                   <div className="sm:hidden mt-1 font-mono text-[11px] text-text-secondary font-medium">
-                    {lot.quantity}{" "}
+                    {group.totalQuantity}{" "}
                     <span className="font-normal">
-                      {lot.itemType === "asset" ? (lot.quantity === 1 ? "unit" : "units") : "pcs"}
+                      {isMultiItem ? "total" : lot.itemType === "asset" ? (lot.quantity === 1 ? "unit" : "units") : "pcs"}
                     </span>
                   </div>
                 </td>
 
                 {/* Description & Type */}
-                <td className="px-3 sm:px-4 py-3.5 align-middle min-w-40 sm:min-w-48">
-                  <span className="font-semibold text-text block max-w-xs truncate group-hover:text-accent transition-colors">
-                    {lot.itemName}
-                  </span>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className="font-mono text-[10px] text-text-secondary bg-bg-subtle/60 px-1.5 py-0.2 rounded border border-border/60">
-                      {lot.itemCode}
-                    </span>
-                    <ItemTypeBadge itemType={lot.itemType} />
-                    {/* On screens < lg where Dealer/Supplier column is hidden, show inline */}
-                    <span className="lg:hidden text-[10px] text-text-secondary truncate max-w-36">
-                      • {lot.supplierName || "Internal / Direct"}
-                    </span>
-                  </div>
-                  {/* On screens < md where Total Cost column is hidden, show inline */}
-                  <div className="md:hidden mt-1 flex items-center gap-1.5 text-[11px]">
-                    <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                      ₱{Number(lot.totalCost).toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </span>
-                    <span className="text-[10px] text-text-secondary">
-                      (@ ₱{Number(lot.unitCost).toFixed(2)})
-                    </span>
-                  </div>
-                </td>
-
-                {/* Quantity & Stock Intake */}
-                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap hidden sm:table-cell align-middle">
-                  <div className="font-mono font-bold text-text text-sm">
-                    {lot.quantity}{" "}
-                    <span className="text-[10px] font-normal text-text-secondary">
-                      {lot.itemType === "asset" ? (lot.quantity === 1 ? "unit" : "units") : "pcs"}
-                    </span>
-                  </div>
-                  {lot.status === "delivered" && lot.itemType === "consumable" && (
-                    <div className="mt-1">
-                      {isDepleted ? (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-                          Depleted
+                <td className="px-3 sm:px-4 py-3.5 align-middle w-[34%] sm:w-[38%] md:w-[32%] lg:w-[26%] overflow-hidden">
+                  {isMultiItem ? (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-text group-hover:text-accent transition-colors truncate max-w-full block">
+                          {group.lineItems[0].itemName}
                         </span>
-                      ) : lot.quantityRemaining < lot.quantity ? (
-                        <span
-                          className={cn(
-                            "inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold border",
-                            isLowStock
-                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25"
-                          )}
-                        >
-                          {lot.quantityRemaining} in stock
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span className="text-[10px] text-text-secondary shrink-0">
+                          +{group.itemCount - 1} more item{group.itemCount > 2 ? "s" : ""}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                          In Stock
+                        {/* Show unique item type badges */}
+                        {Array.from(new Set<"asset" | "consumable">(group.lineItems.map((li) => li.itemType))).map((type) => (
+                          <ItemTypeBadge key={type} itemType={type} />
+                        ))}
+                      </div>
+                      {/* On screens < lg where Dealer/Supplier column is hidden, show inline */}
+                      <span className="lg:hidden text-[10px] text-text-secondary truncate max-w-full block mt-0.5">
+                        • {lot.supplierName || "Internal / Direct"}
+                      </span>
+                      {/* On screens < md where Total Cost column is hidden, show inline */}
+                      <div className="md:hidden mt-1 flex items-center gap-1.5 text-[11px]">
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          ₱{group.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                         </span>
-                      )}
-                    </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-text block max-w-full truncate group-hover:text-accent transition-colors">
+                        {lot.itemName}
+                      </span>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="font-mono text-[10px] text-text-secondary bg-bg-subtle/60 px-1.5 py-0.2 rounded border border-border/60">
+                          {lot.itemCode}
+                        </span>
+                        <ItemTypeBadge itemType={lot.itemType} />
+                        {/* On screens < lg where Dealer/Supplier column is hidden, show inline */}
+                        <span className="lg:hidden text-[10px] text-text-secondary truncate max-w-full">
+                          • {lot.supplierName || "Internal / Direct"}
+                        </span>
+                      </div>
+                      {/* On screens < md where Total Cost column is hidden, show inline */}
+                      <div className="md:hidden mt-1 flex items-center gap-1.5 text-[11px]">
+                        <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          ₱{group.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[10px] text-text-secondary">
+                          (@ ₱{Number(lot.unitCost).toFixed(2)})
+                        </span>
+                      </div>
+                    </>
                   )}
                 </td>
 
+                {/* Quantity */}
+                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap hidden sm:table-cell align-middle sm:w-[10%] md:w-[10%] lg:w-[8%]">
+                  <div className="font-mono font-bold text-text text-sm">
+                    {group.totalQuantity}{" "}
+                    <span className="text-[10px] font-normal text-text-secondary">
+                      {isMultiItem
+                        ? `(${group.itemCount})`
+                        : lot.itemType === "asset"
+                        ? lot.quantity === 1
+                          ? "unit"
+                          : "units"
+                        : "pcs"}
+                    </span>
+                  </div>
+                </td>
+
                 {/* Supplier */}
-                <td className="px-3 sm:px-4 py-3.5 text-text font-medium whitespace-nowrap max-w-40 truncate text-xs hidden lg:table-cell align-middle">
-                  <span className="text-text-secondary font-normal">By: </span>
-                  <span className="font-semibold text-text">{lot.supplierName || "Internal / Direct"}</span>
+                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap hidden lg:table-cell align-middle lg:w-[17%] overflow-hidden">
+                  <span
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-bg-subtle text-text border border-border/80 shadow-2xs max-w-full"
+                    title={supplierTooltip}
+                  >
+                    <Building2 className="h-3 w-3 shrink-0 text-text-secondary" />
+                    <span className="truncate">{displaySupplier}</span>
+                  </span>
                 </td>
 
                 {/* Cost */}
-                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap hidden md:table-cell align-middle">
+                <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap hidden md:table-cell align-middle md:w-[15%] lg:w-[13%]">
                   <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 block text-sm">
                     ₱
-                    {Number(lot.totalCost).toLocaleString("en-US", {
+                    {group.totalCost.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
-                  <span className="font-mono text-[10px] text-text-secondary block">
-                    @ ₱{Number(lot.unitCost).toFixed(2)} / unit
-                  </span>
+                  {!isMultiItem && (
+                    <span className="font-mono text-[10px] text-text-secondary block">
+                      @ ₱{Number(lot.unitCost).toFixed(2)} / unit
+                    </span>
+                  )}
                 </td>
 
                 {/* Action Buttons */}
-                <td className="px-3 sm:px-4 py-3.5 text-right whitespace-nowrap align-middle">
+                <td className="px-3 sm:px-4 py-3.5 text-right whitespace-nowrap align-middle w-[10%] sm:w-[10%] md:w-[9%] lg:w-[8%]">
                   <div className="flex items-center justify-end gap-1.5">
                     <button
                       type="button"
@@ -489,22 +567,13 @@ export function PurchaseOrdersTable({
                     >
                       <FileText className="h-3.5 w-3.5" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectLot(lot);
-                      }}
-                      className="px-2 sm:px-2.5 py-1 text-[11px] font-semibold rounded-lg border border-border bg-bg hover:bg-bg-subtle text-text hover:border-primary/40 transition-colors cursor-pointer shadow-2xs"
-                    >
-                      Details
-                    </button>
-                    {onDelete && (
+
+                    {onDeleteGroup && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDelete(lot);
+                          onDeleteGroup(group);
                         }}
                         title="Delete Purchase Order"
                         aria-label="Delete Purchase Order"

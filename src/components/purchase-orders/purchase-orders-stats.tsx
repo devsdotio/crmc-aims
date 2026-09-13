@@ -10,13 +10,14 @@ import {
   PackageCheck,
 } from "lucide-react";
 import type { PurchaseLot } from "@/types/purchase-lots";
+import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { cn } from "@/lib/utils";
 
 interface PurchaseOrdersStatsProps {
-  lots: PurchaseLot[];
+  groups: GroupedPurchaseOrder[];
 }
 
-export function PurchaseOrdersStats({ lots }: PurchaseOrdersStatsProps) {
+export function PurchaseOrdersStats({ groups }: PurchaseOrdersStatsProps) {
   const stats = useMemo(() => {
     let totalSpend = 0;
     let pendingCount = 0;
@@ -25,21 +26,22 @@ export function PurchaseOrdersStats({ lots }: PurchaseOrdersStatsProps) {
     let deliveredCount = 0;
     const suppliers = new Set<string>();
 
-    for (const lot of lots) {
-      const totalCostNum = parseFloat(lot.totalCost) || 0;
-      totalSpend += totalCostNum;
+    for (const group of groups) {
+      totalSpend += group.totalCost;
 
-      if (lot.status === "pending_approval") pendingCount += 1;
-      else if (lot.status === "approved") approvedCount += 1;
-      else if (lot.status === "ordered") orderedCount += 1;
-      else if (lot.status === "delivered") deliveredCount += 1;
+      const status = group.representative.status;
+      if (status === "pending_approval") pendingCount += 1;
+      else if (status === "approved") approvedCount += 1;
+      else if (status === "ordered") orderedCount += 1;
+      else if (status === "delivered") deliveredCount += 1;
 
-      if (lot.supplierName?.trim()) {
-        suppliers.add(lot.supplierName.trim());
+      const supplierName = group.representative.supplierName?.trim();
+      if (supplierName) {
+        suppliers.add(supplierName);
       }
     }
 
-    const totalOrders = lots.length;
+    const totalOrders = groups.length;
     const activeInPipeline = pendingCount + approvedCount + orderedCount;
 
     return {
@@ -52,7 +54,7 @@ export function PurchaseOrdersStats({ lots }: PurchaseOrdersStatsProps) {
       activeInPipeline,
       supplierCount: suppliers.size,
     };
-  }, [lots]);
+  }, [groups]);
 
   const cards = [
     {

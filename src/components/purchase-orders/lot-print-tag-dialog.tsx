@@ -29,6 +29,7 @@ export function LotPrintTagDialog({
 }: LotPrintTagDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [downloaded, setDownloaded] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState(0);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -42,7 +43,17 @@ export function LotPrintTagDialog({
 
   if (!isOpen || !lot) return null;
 
-  const payload = lot.qrPayload?.trim() || `CRMC-AIMS-LOT:${lot.lotCode.trim()}`;
+  const items = lot.items && lot.items.length > 0 ? lot.items : null;
+  const currentItem = items ? items[selectedIdx] : null;
+
+  const activeLotCode = currentItem?.lotCode || lot.lotCode;
+  const activeItemName = currentItem?.itemName || lot.itemName;
+  const activeItemCode = currentItem?.itemCode || lot.itemCode;
+  const activeQuantity = currentItem?.quantity ?? lot.quantity;
+  const activeUnitCost = currentItem?.unitCost || lot.unitCost;
+  const activeSupplier = currentItem?.suggestedDealer || lot.supplierName;
+  const activeItemType = currentItem?.itemType || lot.itemType;
+  const payload = `CRMC-AIMS-LOT:${activeLotCode.trim()}`;
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -55,7 +66,7 @@ export function LotPrintTagDialog({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Print Lot Tag - ${lot.lotCode}</title>
+          <title>Print Lot Tag - ${activeLotCode}</title>
           <style>
             @page {
               size: 4in 3in;
@@ -144,19 +155,19 @@ export function LotPrintTagDialog({
           <div class="tag-card">
             <div class="header">
               <span class="brand">CRMC-AIMS PHYSICAL BATCH TAG</span>
-              <span class="type-badge">${lot.itemType}</span>
+              <span class="type-badge">${activeItemType}</span>
             </div>
             <div class="content">
               <div class="qr-box">
                 ${content.querySelector("svg")?.outerHTML || ""}
               </div>
               <div class="details">
-                <div class="lot-code">${lot.lotCode}</div>
-                <div class="item-name">${lot.itemName}</div>
-                <div class="row">Code: <strong>${lot.itemCode}</strong></div>
-                <div class="row">Batch Qty: <strong>${lot.quantity} units</strong></div>
-                <div class="row">Unit Cost: <strong>₱${Number(lot.unitCost).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></div>
-                <div class="row">Vendor: <strong>${lot.supplierName || "Internal"}</strong></div>
+                <div class="lot-code">${activeLotCode}</div>
+                <div class="item-name">${activeItemName}</div>
+                <div class="row">Code: <strong>${activeItemCode}</strong></div>
+                <div class="row">Batch Qty: <strong>${activeQuantity} units</strong></div>
+                <div class="row">Unit Cost: <strong>₱${Number(activeUnitCost).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></div>
+                <div class="row">Vendor: <strong>${activeSupplier || "Internal"}</strong></div>
               </div>
             </div>
             <div class="footer">
@@ -241,7 +252,7 @@ export function LotPrintTagDialog({
         const pngUrl = canvas.toDataURL("image/png");
         const downloadLink = document.createElement("a");
         downloadLink.href = pngUrl;
-        downloadLink.download = `TAG-${lot.lotCode}.png`;
+        downloadLink.download = `TAG-${activeLotCode}.png`;
         document.body.appendChild(downloadLink);
         downloadLink.click();
         document.body.removeChild(downloadLink);
@@ -288,6 +299,32 @@ export function LotPrintTagDialog({
 
         {/* Tag Preview Area */}
         <div className="p-6 space-y-4 overflow-y-auto max-h-[75vh]">
+          {/* Multi-lot item selector */}
+          {items && items.length > 1 && (
+            <div className="space-y-1.5 pb-1 border-b border-border">
+              <span className="text-[11px] font-bold text-text-secondary uppercase tracking-wider block">
+                Select Lot Tag ({items.length} lots in PO):
+              </span>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {items.map((it, idx) => (
+                  <button
+                    key={it.id + idx}
+                    type="button"
+                    onClick={() => setSelectedIdx(idx)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer shrink-0",
+                      selectedIdx === idx
+                        ? "bg-accent text-accent-foreground font-bold shadow-xs"
+                        : "bg-bg-subtle text-text-secondary hover:text-text border border-border"
+                    )}
+                  >
+                    <span className="font-mono text-[11px]">{it.lotCode || `Lot ${idx + 1}`}</span>: {it.itemName.slice(0, 14)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p className="text-xs text-text-secondary">
             Attach this physical barcode tag to warehouse shelves, storage bins, or intake pallets for rapid mobile scanning.
           </p>
@@ -302,7 +339,7 @@ export function LotPrintTagDialog({
                 CRMC-AIMS BATCH LOT TAG
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-bg-subtle text-text border border-border">
-                {lot.itemType}
+                {activeItemType}
               </span>
             </div>
 
@@ -314,21 +351,21 @@ export function LotPrintTagDialog({
 
               <div className="space-y-1 text-xs min-w-0 flex-1">
                 <span className="font-mono text-sm font-bold text-text block bg-bg-subtle px-1.5 py-0.5 rounded border border-border truncate">
-                  {lot.lotCode}
+                  {activeLotCode}
                 </span>
-                <p className="font-bold text-text text-sm truncate" title={lot.itemName}>
-                  {lot.itemName}
+                <p className="font-bold text-text text-sm truncate" title={activeItemName}>
+                  {activeItemName}
                 </p>
                 <p className="text-[11px] text-text-secondary font-mono">
-                  Code: {lot.itemCode}
+                  Code: {activeItemCode}
                 </p>
                 <div className="flex items-center gap-2 text-[11px] text-text font-medium pt-0.5">
-                  <span>Batch: <strong>{lot.quantity} units</strong></span>
+                  <span>Batch: <strong>{activeQuantity} units</strong></span>
                   <span>•</span>
-                  <span>Unit: <strong>₱{Number(lot.unitCost).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></span>
+                  <span>Unit: <strong>₱{Number(activeUnitCost).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></span>
                 </div>
                 <p className="text-[11px] text-text-secondary truncate">
-                  Vendor: <strong className="text-text">{lot.supplierName || "Internal Procurement"}</strong>
+                  Vendor: <strong className="text-text">{activeSupplier || "Internal Procurement"}</strong>
                 </p>
               </div>
             </div>

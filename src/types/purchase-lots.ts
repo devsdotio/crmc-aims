@@ -19,6 +19,7 @@ export interface POLineItemDetail {
   totalCost: string;
   purpose?: string | null;
   suggestedDealer?: string | null;
+  lotCode?: string;
 }
 
 export interface PurchaseLot {

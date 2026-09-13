@@ -621,7 +621,7 @@ export function FileNewPODialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-po-title"
-        className="relative w-full max-w-4xl h-[92vh] max-h-[820px] min-h-[640px] rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-4xl h-[92vh] max-h-205 min-h-160 rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
       >
         {/* Header with Title */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-bg-subtle/50 shrink-0">
