@@ -99,7 +99,7 @@ export function PendingPurchaseOrdersCard({
   }, [lots]);
 
   return (
-    <div className="flex-1 min-h-[210px] lg:min-h-0 rounded-2xl border border-border/80 bg-card p-4 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+    <div className="flex-1 min-h-52.5 lg:min-h-0 rounded-2xl border border-border/80 bg-card p-4 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
       {/* Header */}
       <div className="flex items-center justify-between mb-1.5 shrink-0">
         <div className="flex items-center gap-2">

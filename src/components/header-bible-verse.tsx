@@ -56,7 +56,7 @@ export function HeaderBibleVerse() {
         onClick={handleNext}
         className={cn(
           "flex flex-col items-end text-right justify-center cursor-pointer select-none group",
-          "max-w-[260px] lg:max-w-[380px] xl:max-w-[500px] min-w-0"
+          "max-w-65 lg:max-w-95 xl:max-w-125 min-w-0"
         )}
         title={`"${verse.text}"\n— ${verse.reference}\n\nClick to load another verse`}
       >

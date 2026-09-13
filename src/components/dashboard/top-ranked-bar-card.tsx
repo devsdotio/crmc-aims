@@ -52,7 +52,7 @@ export function TopRankedBarCard({
   }
 
   return (
-    <div className="flex-1 min-h-[140px] rounded-2xl border border-border/80 bg-card p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+    <div className="flex-1 min-h-35 rounded-2xl border border-border/80 bg-card p-5 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
       {/* Static Header */}
       <div className="flex items-center justify-between mb-3 shrink-0">
         <div className="flex items-center gap-2">
