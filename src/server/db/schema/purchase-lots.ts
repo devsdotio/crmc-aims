@@ -59,6 +59,7 @@ export const purchaseLots = pgTable(
     purchasedOn: date("purchased_on", { mode: "string" }).notNull(),
     reference: text("reference"),
     notes: text("notes"),
+    receiptUrl: text("receipt_url"),
 
     recordedByUserId: uuid("recorded_by_user_id").notNull(),
     recordedByName: text("recorded_by_name").notNull(),

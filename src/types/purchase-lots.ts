@@ -44,6 +44,7 @@ export interface PurchaseLot {
   reference: string | null;
   purpose?: string | null;
   notes: string | null;
+  receiptUrl?: string | null;
   recordedByUserId: string;
   recordedByName: string;
   approvedByName?: string | null;

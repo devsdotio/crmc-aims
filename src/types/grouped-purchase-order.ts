@@ -67,6 +67,15 @@ export function groupLotsByPO(lots: PurchaseLot[]): GroupedPurchaseOrder[] {
       }
     }
 
+    // Sync receiptUrl across representative and all line items in group
+    const groupReceiptUrl = lineItems.find((li) => Boolean(li.receiptUrl))?.receiptUrl ?? null;
+    if (groupReceiptUrl) {
+      representative.receiptUrl = groupReceiptUrl;
+      for (const li of lineItems) {
+        li.receiptUrl = groupReceiptUrl;
+      }
+    }
+
     groups.push({
       representative,
       lineItems,

@@ -14,5 +14,6 @@ export {
   useUpdatePurchaseOrderMutation,
   useUpdatePOStatusMutation,
   useDeletePurchaseOrderMutation,
+  useUploadPOReceiptMutation,
   useReleaseFromLotMutation,
 } from "./use-purchase-lots";

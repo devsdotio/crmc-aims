@@ -3,6 +3,7 @@ import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
   consumables,
+  purchaseLots,
   stockMovements,
 } from "@/server/db/schema";
 import { auditLogs } from "@/server/db/schema/audit-logs";
@@ -71,6 +72,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   cleanNotes: string | null;
   status: PurchaseOrderStatus;
   purpose: string | null;
+  receiptUrl: string | null;
   approvedByName: string | null;
   approvedAt: string | null;
   orderedAt: string | null;
@@ -80,6 +82,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
 } {
   let status: PurchaseOrderStatus = "delivered";
   let purpose: string | null = null;
+  let receiptUrl: string | null = null;
   let approvedByName: string | null = null;
   let approvedAt: string | null = null;
   let orderedAt: string | null = null;
@@ -94,6 +97,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
         const meta = JSON.parse(rawNotes);
         if (meta.status) status = meta.status;
         if (meta.purpose) purpose = meta.purpose;
+        if (meta.receiptUrl) receiptUrl = meta.receiptUrl;
         if (meta.approvedByName) approvedByName = meta.approvedByName;
         if (meta.approvedAt) approvedAt = meta.approvedAt;
         if (meta.orderedAt) orderedAt = meta.orderedAt;
@@ -122,6 +126,10 @@ export function parseNotesMetadata(rawNotes?: string | null): {
       if (purposeMatch) {
         purpose = purposeMatch[1].trim();
       }
+      const receiptMatch = rawNotes.match(/\[RECEIPT_URL:\s*([^\]]+)\]/i);
+      if (receiptMatch) {
+        receiptUrl = receiptMatch[1].trim();
+      }
       const approvedMatch = rawNotes.match(/\[APPROVED_BY:\s*([^\]]+)\]/i);
       if (approvedMatch) {
         approvedByName = approvedMatch[1].trim();
@@ -133,6 +141,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
     cleanNotes,
     status,
     purpose,
+    receiptUrl,
     approvedByName,
     approvedAt,
     orderedAt,
@@ -146,6 +155,7 @@ export function serializeNotesMetadata(data: {
   notes?: string | null;
   status: PurchaseOrderStatus;
   purpose?: string | null;
+  receiptUrl?: string | null;
   approvedByName?: string | null;
   approvedAt?: string | null;
   orderedAt?: string | null;
@@ -157,6 +167,7 @@ export function serializeNotesMetadata(data: {
     notes: data.notes || "",
     status: data.status,
     purpose: data.purpose || "",
+    receiptUrl: data.receiptUrl || null,
     approvedByName: data.approvedByName || null,
     approvedAt: data.approvedAt || null,
     orderedAt: data.orderedAt || null,
@@ -195,6 +206,7 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     reference: row.reference ?? null,
     purpose: meta.purpose,
     notes: meta.cleanNotes,
+    receiptUrl: row.receiptUrl || meta.receiptUrl || null,
     recordedByUserId: row.recordedByUserId,
     recordedByName: row.recordedByName,
     approvedByName: meta.approvedByName,
@@ -408,6 +420,7 @@ export class PurchaseLotService {
           notes: body.notes,
           status: initialStatus,
           purpose: item.purpose || body.purpose,
+          receiptUrl: body.receiptUrl,
           approvedByName,
           approvedAt,
           orderedAt,
@@ -431,6 +444,7 @@ export class PurchaseLotService {
             purchasedOn: body.poDate,
             reference: poNumber,
             notes: serializedNotes,
+            receiptUrl: body.receiptUrl || null,
             recordedByUserId: actor.userId,
             recordedByName: body.requestedBy || actor.displayName,
           },
@@ -578,10 +592,16 @@ export class PurchaseLotService {
         }
       }
 
+      const nextReceiptUrl =
+        body.receiptUrl !== undefined
+          ? body.receiptUrl
+          : (lot.receiptUrl || currentMeta.receiptUrl || null);
+
       const nextNotes = serializeNotesMetadata({
         notes: body.notes || currentMeta.cleanNotes,
         status: nextStatus,
         purpose: currentMeta.purpose,
+        receiptUrl: nextReceiptUrl,
         approvedByName,
         approvedAt,
         orderedAt,
@@ -596,6 +616,7 @@ export class PurchaseLotService {
           notes: nextNotes,
           quantity: nextQuantity,
           quantityRemaining: nextRemaining,
+          receiptUrl: nextReceiptUrl,
           ...(nextStatus === "delivered" &&
           currentMeta.status !== "delivered" &&
           nextQuantity !== lot.quantity
@@ -687,11 +708,17 @@ export class PurchaseLotService {
         supplierName = body.supplierName;
       }
 
+      const nextReceiptUrl =
+        body.receiptUrl !== undefined
+          ? body.receiptUrl
+          : (lot.receiptUrl || currentMeta.receiptUrl || null);
+
       const updatedNotes = serializeNotesMetadata({
         notes: body.notes !== undefined ? body.notes : currentMeta.cleanNotes,
         status: currentMeta.status,
         purpose:
           body.purpose !== undefined ? body.purpose : currentMeta.purpose,
+        receiptUrl: nextReceiptUrl,
         approvedByName: currentMeta.approvedByName,
         approvedAt: currentMeta.approvedAt,
         orderedAt: currentMeta.orderedAt,
@@ -715,9 +742,18 @@ export class PurchaseLotService {
           reference: resolvedReference,
           purchasedOn: body.purchasedOn || lot.purchasedOn,
           notes: updatedNotes,
+          receiptUrl: nextReceiptUrl,
         },
         session
       );
+
+      // If this PO has a reference (shared across multi-item lots), sync receiptUrl to siblings
+      if (lot.reference && body.receiptUrl !== undefined) {
+        await db
+          .update(purchaseLots)
+          .set({ receiptUrl: nextReceiptUrl, updatedAt: new Date() })
+          .where(eq(purchaseLots.reference, lot.reference));
+      }
 
       const poCode = resolvedReference || lot.reference || lot.lotCode;
       await db.insert(auditLogs).values({
