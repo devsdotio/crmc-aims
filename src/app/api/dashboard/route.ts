@@ -26,5 +26,14 @@ export async function GET(request: Request) {
   if (scope === "notifications") {
     return dashboardController.notifications(request);
   }
+  if (scope === "stock-volume") {
+    return dashboardController.stockVolume(request);
+  }
+  if (scope === "assets") {
+    return dashboardController.assets(request);
+  }
+  if (scope === "top-categories") {
+    return dashboardController.topCategories(request);
+  }
   return dashboardController.snapshot(request);
 }

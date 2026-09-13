@@ -182,6 +182,25 @@ export class ConsumableRepository implements IConsumableRepository {
     return rows.map(withEmptyHistory);
   }
 
+  async getCategoryDistribution(
+    session?: DbSession
+  ): Promise<{ category: string; count: number }[]> {
+    const db = this.db(session);
+    const rows = await db
+      .select({
+        category: consumables.category,
+        value: sql<number>`coalesce(sum(${consumables.currentQty}), 0)`,
+      })
+      .from(consumables)
+      .where(eq(consumables.isSandbox, false))
+      .groupBy(consumables.category);
+
+    return rows.map((r) => ({
+      category: r.category,
+      count: Number(r.value),
+    }));
+  }
+
   async create(
     data: Omit<NewConsumableRow, "id" | "createdAt" | "updatedAt">,
     session?: DbSession

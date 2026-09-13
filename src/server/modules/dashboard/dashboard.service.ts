@@ -6,10 +6,33 @@ import { ConsumableRequestRepository } from "@/server/modules/consumable-request
 import { DepartmentRepository } from "@/server/modules/departments/department.repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { getDb } from "@/server/db";
-import { assetLifecycleEvents, profiles } from "@/server/db/schema";
-import { desc, eq } from "drizzle-orm";
+import {
+  assetLifecycleEvents,
+  assets,
+  borrowTransactions,
+  consumableRequestLines,
+  consumableRequests,
+  consumables,
+  dashboardMetricSnapshots,
+  profiles,
+  purchaseLots,
+} from "@/server/db/schema";
+import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
+import { formatPhp } from "@/components/projects/format-money";
+
+export function invalidateDashboardCache(): void {
+  serverCache.invalidateTag("dashboard");
+}
+
+export type StatDeltaDTO = {
+  percentChange: number | null;
+  direction: "up" | "down" | "flat";
+  periodLabel: string;
+  current?: number;
+  previous?: number;
+};
 
 export type DashboardSummaryDTO = {
   activeBorrows: number;
@@ -20,6 +43,12 @@ export type DashboardSummaryDTO = {
   totalRequests?: number;
   totalAssignable?: number;
   totalBorrowable?: number;
+  deltas?: {
+    activeOps?: StatDeltaDTO;
+    totalStock?: StatDeltaDTO;
+    overdueAssets?: StatDeltaDTO;
+    lowStock?: StatDeltaDTO;
+  };
 };
 
 export type DashboardPendingRequest = {
@@ -54,6 +83,49 @@ export type DashboardCategoryCount = {
   category: string;
   label: string;
   count: number;
+  assetUnits?: number;
+  consumableUnits?: number;
+};
+
+export type DashboardAssetRowDTO = {
+  id: string;
+  name: string;
+  sku: string;
+  category: string;
+  type: "Assignable" | "Borrowable" | "Consumable";
+  custodyHolder: string;
+  department: string;
+  custody: {
+    holder: string;
+    department: string;
+    type: "borrowed" | "assigned" | "unassigned";
+  };
+  totalQty: number;
+  stockIn: number;
+  valuation: number;
+  price: string;
+  status: string;
+  condition: string;
+  statusType: "good" | "warning" | "danger" | "info";
+  href: string;
+  imageUrl?: string | null;
+};
+
+export type StockVolumePointDTO = {
+  period: string;
+  bucketStart: string;
+  bucketEnd: string;
+  stockVolume: number;
+  consumeRate: number;
+  bucket?: string;
+  inflow?: number;
+  outflow?: number;
+};
+
+export type StockVolumeResponseDTO = {
+  timeframe: "weekly" | "monthly" | "yearly";
+  category: string;
+  points: StockVolumePointDTO[];
 };
 
 export type DashboardActivityEntry = {
@@ -83,10 +155,15 @@ export type DashboardSnapshotDTO = {
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
-  computing: "Computing",
-  furniture: "Furniture",
-  av: "AV",
-  transport: "Transport",
+  computing: "Computing & IT",
+  furniture: "Furniture & Fixtures",
+  av: "Audio / Visual (AV)",
+  transport: "Vehicles & Transport",
+  paper: "Paper & Stationery",
+  ink_toner: "Ink & Toner Cartridges",
+  cleaning: "Cleaning & Maintenance",
+  office_supplies: "Office Supplies",
+  medical: "Clinical & Medical",
 };
 
 export class DashboardService {
@@ -271,7 +348,7 @@ export class DashboardService {
           overdueAssets,
         };
       },
-      ["dashboard:sidebar"]
+      ["dashboard", "dashboard:sidebar"]
     );
   }
 
@@ -283,248 +360,266 @@ export class DashboardService {
         )
     );
     const targetUserId = isRealUuid ? userId.trim() : undefined;
-    const { departmentId, includeSandbox } = targetUserId
-      ? await this.resolveBorrowerDeptContext(targetUserId)
-      : { departmentId: null, includeSandbox: false };
+    const cacheKey = `dashboard:snapshot:borrower:${targetUserId ?? "anon"}:${limit}`;
 
-    const [
-      activeBorrows,
-      pendingApprovals,
-      overdueAssets,
-      totalRequests,
-      pendingRows,
-      pendingSupplyRows,
-      overdueRows,
-    ] = await Promise.all([
-      departmentId
-        ? this.borrowLog
-            .countDepartmentHeld(departmentId, { includeSandbox })
-            .catch((err) => {
-              console.error(
-                "[dashboard] failed to count borrower department held assets:",
-                err
-              );
-              return 0;
-            })
-        : Promise.resolve(0),
-      Promise.all([
-        this.requests.countPending(undefined, targetUserId).catch((err) => {
-          console.error("[dashboard] failed to count borrower pending requests:", err);
-          return 0;
-        }),
-        this.consumableRequests.countPending(undefined, targetUserId).catch((err) => {
-          console.error("[dashboard] failed to count borrower pending supply requests:", err);
-          return 0;
-        }),
-      ]).then(([a, b]) => a + b),
-      departmentId
-        ? this.borrowLog
-            .countDepartmentHeld(departmentId, {
-              includeSandbox,
-              overdueOnly: true,
-            })
-            .catch((err) => {
-              console.error(
-                "[dashboard] failed to count borrower department overdue:",
-                err
-              );
-              return 0;
-            })
-        : Promise.resolve(0),
-      Promise.all([
-        this.requests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
-          console.error("[dashboard] failed to count total borrow requests for requester:", err);
-          return 0;
-        }),
-        this.consumableRequests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
-          console.error("[dashboard] failed to count total supply requests for requester:", err);
-          return 0;
-        }),
-      ]).then(([a, b]) => a + b),
-      this.requests.list({ status: "pending", ...(targetUserId ? { requesterUserId: targetUserId } : {}), limit }).catch((err) => {
-        console.error("[dashboard] failed to list borrower pending requests:", err);
-        return [];
-      }),
-      this.consumableRequests.list({
-        status: "pending",
-        ...(targetUserId ? { requesterUserId: targetUserId } : {}),
-        limit,
-      }).catch((err) => {
-        console.error("[dashboard] failed to list borrower pending supply requests:", err);
-        return [];
-      }),
-      departmentId
-        ? this.borrowLog
-            .list({
-              status: "overdue",
-              departmentId,
-              excludeProjects: true,
-              custodyKind: "all",
-              includeSandbox,
-            })
-            .catch((err) => {
-              console.error(
-                "[dashboard] failed to list borrower department overdue rows:",
-                err
-              );
-              return [];
-            })
-        : Promise.resolve([]),
-    ]);
+    return serverCache.wrap(
+      cacheKey,
+      30_000,
+      async () => {
+        const { departmentId, includeSandbox } = targetUserId
+          ? await this.resolveBorrowerDeptContext(targetUserId)
+          : { departmentId: null, includeSandbox: false };
 
-    return {
-      summary: {
-        activeBorrows,
-        activeAssignments: 0,
-        pendingApprovals,
-        lowStockItems: 0,
-        overdueAssets,
-        totalRequests,
-      },
-      pendingRequests: this.mergePendingRequests(
-        pendingRows,
-        pendingSupplyRows,
-        limit
-      ),
-      overdueAssets: overdueRows.slice(0, limit).map((row) => {
-        const dto = toBorrowLogDTO(row);
+        const [
+          activeBorrows,
+          pendingApprovals,
+          overdueAssets,
+          totalRequests,
+          pendingRows,
+          pendingSupplyRows,
+          overdueRows,
+        ] = await Promise.all([
+          departmentId
+            ? this.borrowLog
+                .countDepartmentHeld(departmentId, { includeSandbox })
+                .catch((err) => {
+                  console.error(
+                    "[dashboard] failed to count borrower department held assets:",
+                    err
+                  );
+                  return 0;
+                })
+            : Promise.resolve(0),
+          Promise.all([
+            this.requests.countPending(undefined, targetUserId).catch((err) => {
+              console.error("[dashboard] failed to count borrower pending requests:", err);
+              return 0;
+            }),
+            this.consumableRequests.countPending(undefined, targetUserId).catch((err) => {
+              console.error("[dashboard] failed to count borrower pending supply requests:", err);
+              return 0;
+            }),
+          ]).then(([a, b]) => a + b),
+          departmentId
+            ? this.borrowLog
+                .countDepartmentHeld(departmentId, {
+                  includeSandbox,
+                  overdueOnly: true,
+                })
+                .catch((err) => {
+                  console.error(
+                    "[dashboard] failed to count borrower department overdue:",
+                    err
+                  );
+                  return 0;
+                })
+            : Promise.resolve(0),
+          Promise.all([
+            this.requests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
+              console.error("[dashboard] failed to count total borrow requests for requester:", err);
+              return 0;
+            }),
+            this.consumableRequests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
+              console.error("[dashboard] failed to count total supply requests for requester:", err);
+              return 0;
+            }),
+          ]).then(([a, b]) => a + b),
+          this.requests.list({ status: "pending", ...(targetUserId ? { requesterUserId: targetUserId } : {}), limit }).catch((err) => {
+            console.error("[dashboard] failed to list borrower pending requests:", err);
+            return [];
+          }),
+          this.consumableRequests.list({
+            status: "pending",
+            ...(targetUserId ? { requesterUserId: targetUserId } : {}),
+            limit,
+          }).catch((err) => {
+            console.error("[dashboard] failed to list borrower pending supply requests:", err);
+            return [];
+          }),
+          departmentId
+            ? this.borrowLog
+                .list({
+                  status: "overdue",
+                  departmentId,
+                  excludeProjects: true,
+                  custodyKind: "all",
+                  includeSandbox,
+                })
+                .catch((err) => {
+                  console.error(
+                    "[dashboard] failed to list borrower department overdue rows:",
+                    err
+                  );
+                  return [];
+                })
+            : Promise.resolve([]),
+        ]);
+
         return {
-          id: dto.id,
-          assetName: dto.assetName,
-          assetCode: dto.assetCode,
-          borrowerName: dto.borrowerName,
-          department: dto.department,
-          daysOverdue: dto.daysOverdue ?? 0,
-          dueSince: `${dto.dueDate}T00:00:00Z`,
+          summary: {
+            activeBorrows,
+            activeAssignments: 0,
+            pendingApprovals,
+            lowStockItems: 0,
+            overdueAssets,
+            totalRequests,
+          },
+          pendingRequests: this.mergePendingRequests(
+            pendingRows,
+            pendingSupplyRows,
+            limit
+          ),
+          overdueAssets: overdueRows.slice(0, limit).map((row) => {
+            const dto = toBorrowLogDTO(row);
+            return {
+              id: dto.id,
+              assetName: dto.assetName,
+              assetCode: dto.assetCode,
+              borrowerName: dto.borrowerName,
+              department: dto.department,
+              daysOverdue: dto.daysOverdue ?? 0,
+              dueSince: `${dto.dueDate}T00:00:00Z`,
+            };
+          }),
+          lowStockItems: [],
+          categoryDistribution: [],
+          recentActivity: [],
         };
-      }),
-      lowStockItems: [],
-      categoryDistribution: [],
-      recentActivity: [],
-    };
+      },
+      ["dashboard", "dashboard:snapshot"]
+    );
   }
 
   async getSnapshot(limit = 5): Promise<DashboardSnapshotDTO> {
-    const [
-      activeBorrows,
-      activeAssignments,
-      pendingApprovals,
-      lowStockItems,
-      overdueAssets,
-      totalAssignable,
-      totalBorrowable,
-      pendingRows,
-      pendingSupplyRows,
-      overdueRows,
-      allConsumables,
-      allAssets,
-      recentLifecycle,
-    ] = await Promise.all([
-      this.borrowLog.countActive().catch((err) => {
-        console.error("[dashboard] failed to count active borrows:", err);
-        return 0;
-      }),
-      this.assets.countAssigned().catch((err) => {
-        console.error("[dashboard] failed to count active assignments:", err);
-        return 0;
-      }),
-      Promise.all([
-        this.requests.countPending().catch((err) => {
-          console.error("[dashboard] failed to count pending requests:", err);
-          return 0;
-        }),
-        this.consumableRequests.countPending().catch((err) => {
-          console.error("[dashboard] failed to count pending supply requests:", err);
-          return 0;
-        }),
-      ]).then(([a, b]) => a + b),
-      this.consumables.countLowStock().catch((err) => {
-        console.error("[dashboard] failed to count low stock items:", err);
-        return 0;
-      }),
-      this.borrowLog.countOverdue().catch((err) => {
-        console.error("[dashboard] failed to count overdue assets:", err);
-        return 0;
-      }),
-      this.assets.countByType("assignable").catch((err) => {
-        console.error("[dashboard] failed to count total assignable assets:", err);
-        return 0;
-      }),
-      this.assets.countByType("borrowable").catch((err) => {
-        console.error("[dashboard] failed to count total borrowable assets:", err);
-        return 0;
-      }),
-      this.requests.list({ status: "pending", limit }).catch((err) => {
-        console.error("[dashboard] failed to list pending requests:", err);
-        return [];
-      }),
-      this.consumableRequests.list({ status: "pending", limit }).catch((err) => {
-        console.error("[dashboard] failed to list pending supply requests:", err);
-        return [];
-      }),
-      this.borrowLog.list({ status: "overdue" }).catch((err) => {
-        console.error("[dashboard] failed to list overdue logs:", err);
-        return [];
-      }),
-      this.consumables.getLowStockItems(limit).catch((err) => {
-        console.error("[dashboard] failed to get low stock items:", err);
-        return [];
-      }),
-      this.assets.getCategoryDistribution().catch((err) => {
-        console.error("[dashboard] failed to get category distribution:", err);
-        return [];
-      }),
-      this.listRecentLifecycle(limit).catch((err) => {
-        console.error("[dashboard] failed to list recent lifecycle:", err);
-        return [];
-      }),
-    ]);
+    return serverCache.wrap(
+      `dashboard:snapshot:${limit}`,
+      30_000,
+      async () => {
+        const [
+          activeBorrows,
+          activeAssignments,
+          pendingApprovals,
+          lowStockItems,
+          overdueAssets,
+          totalAssignable,
+          totalBorrowable,
+          pendingRows,
+          pendingSupplyRows,
+          overdueRows,
+          lowStockConsumables,
+          categoryDistribution,
+          recentLifecycle,
+        ] = await Promise.all([
+          this.borrowLog.countActive().catch((err: unknown) => {
+            console.error("[dashboard] failed to count active borrows:", err);
+            return 0;
+          }),
+          this.assets.countAssigned().catch((err: unknown) => {
+            console.error("[dashboard] failed to count active assignments:", err);
+            return 0;
+          }),
+          Promise.all([
+            this.requests.countPending().catch((err: unknown) => {
+              console.error("[dashboard] failed to count pending requests:", err);
+              return 0;
+            }),
+            this.consumableRequests.countPending().catch((err: unknown) => {
+              console.error("[dashboard] failed to count pending supply requests:", err);
+              return 0;
+            }),
+          ]).then(([a, b]) => a + b),
+          this.consumables.countLowStock().catch((err: unknown) => {
+            console.error("[dashboard] failed to count low stock items:", err);
+            return 0;
+          }),
+          this.borrowLog.countOverdue().catch((err: unknown) => {
+            console.error("[dashboard] failed to count overdue assets:", err);
+            return 0;
+          }),
+          this.assets.countByType("assignable").catch((err: unknown) => {
+            console.error("[dashboard] failed to count total assignable assets:", err);
+            return 0;
+          }),
+          this.assets.countByType("borrowable").catch((err: unknown) => {
+            console.error("[dashboard] failed to count total borrowable assets:", err);
+            return 0;
+          }),
+          this.requests.list({ status: "pending", limit }).catch((err: unknown) => {
+            console.error("[dashboard] failed to list pending requests:", err);
+            return [];
+          }),
+          this.consumableRequests.list({ status: "pending", limit }).catch((err: unknown) => {
+            console.error("[dashboard] failed to list pending supply requests:", err);
+            return [];
+          }),
+          this.borrowLog.list({ status: "overdue" }).catch((err: unknown) => {
+            console.error("[dashboard] failed to list overdue assets:", err);
+            return [];
+          }),
+          this.consumables.getLowStockItems(limit).catch((err: unknown) => {
+            console.error("[dashboard] failed to get low stock items:", err);
+            return [];
+          }),
+          this.getCombinedCategoryDistribution(limit, "all").catch((err: unknown) => {
+            console.error("[dashboard] failed to get category distribution:", err);
+            return [];
+          }),
+          this.listRecentLifecycle(limit).catch((err: unknown) => {
+            console.error("[dashboard] failed to list recent lifecycle:", err);
+            return [];
+          }),
+        ]);
 
-    const lowStock = allConsumables.map((c) => ({
-      id: c.id,
-      itemName: c.name,
-      currentQty: c.currentQty,
-      minThreshold: c.minThreshold,
-      unit: c.unit,
-    }));
+        const lowStock: DashboardLowStockItem[] = lowStockConsumables.map((c) => ({
+          id: c.id,
+          itemName: c.name,
+          currentQty: c.currentQty,
+          minThreshold: c.minThreshold,
+          unit: c.unit,
+        }));
 
-    const categoryDistribution: DashboardCategoryCount[] = allAssets.map((c) => ({
-      category: c.category,
-      label: CATEGORY_LABELS[c.category] ?? c.category,
-      count: c.count,
-    }));
+        const deltas = await this.getStatDeltas({
+          activeOps: activeBorrows + activeAssignments,
+          totalStock: totalAssignable + totalBorrowable,
+          overdueAssets,
+          lowStock: lowStockItems,
+        }).catch(() => undefined);
 
-    return {
-      summary: {
-        activeBorrows,
-        activeAssignments,
-        pendingApprovals,
-        lowStockItems,
-        overdueAssets,
-        totalAssignable,
-        totalBorrowable,
-      },
-      pendingRequests: this.mergePendingRequests(
-        pendingRows,
-        pendingSupplyRows,
-        limit
-      ),
-      overdueAssets: overdueRows.slice(0, limit).map((row) => {
-        const dto = toBorrowLogDTO(row);
         return {
-          id: dto.id,
-          assetName: dto.assetName,
-          assetCode: dto.assetCode,
-          borrowerName: dto.borrowerName,
-          department: dto.department,
-          daysOverdue: dto.daysOverdue ?? 0,
-          dueSince: `${dto.dueDate}T00:00:00Z`,
+          summary: {
+            activeBorrows,
+            activeAssignments,
+            pendingApprovals,
+            lowStockItems,
+            overdueAssets,
+            totalAssignable,
+            totalBorrowable,
+            deltas,
+          },
+          pendingRequests: this.mergePendingRequests(
+            pendingRows,
+            pendingSupplyRows,
+            limit
+          ),
+          overdueAssets: overdueRows.slice(0, limit).map((row) => {
+            const dto = toBorrowLogDTO(row);
+            return {
+              id: dto.id,
+              assetName: dto.assetName,
+              assetCode: dto.assetCode,
+              borrowerName: dto.borrowerName,
+              department: dto.department,
+              daysOverdue: dto.daysOverdue ?? 0,
+              dueSince: `${dto.dueDate}T00:00:00Z`,
+            };
+          }),
+          lowStockItems: lowStock,
+          categoryDistribution,
+          recentActivity: recentLifecycle,
         };
-      }),
-      lowStockItems: lowStock,
-      categoryDistribution,
-      recentActivity: recentLifecycle,
-    };
+      },
+      ["dashboard", "snapshot"]
+    );
   }
 
   private async listRecentLifecycle(
@@ -632,5 +727,510 @@ export class DashboardService {
     return items
       .sort((a, b) => Date.parse(b.sortAt) - Date.parse(a.sortAt))
       .slice(0, limit);
+  }
+
+  /**
+   * Records today's metric values in the daily snapshot table.
+   */
+  async recordDailySnapshot(metrics: {
+    activeOps: number;
+    totalStock: number;
+    overdueAssets: number;
+    lowStock: number;
+  }): Promise<void> {
+    try {
+      const db = getDb();
+      const today = new Date().toISOString().slice(0, 10);
+      const rows = [
+        { metricKey: "active_ops", value: String(metrics.activeOps), snapshotDate: today },
+        { metricKey: "total_stock", value: String(metrics.totalStock), snapshotDate: today },
+        { metricKey: "overdue_assets", value: String(metrics.overdueAssets), snapshotDate: today },
+        { metricKey: "low_stock", value: String(metrics.lowStock), snapshotDate: today },
+      ];
+
+      for (const row of rows) {
+        await db
+          .insert(dashboardMetricSnapshots)
+          .values(row)
+          .onConflictDoUpdate({
+            target: [
+              dashboardMetricSnapshots.metricKey,
+              dashboardMetricSnapshots.snapshotDate,
+            ],
+            set: { value: row.value },
+          });
+      }
+    } catch (err) {
+      console.error("[dashboard] failed to record daily snapshot:", err);
+    }
+  }
+
+  /**
+   * Computes period-over-period percentage changes and trend directions.
+   * Bootstrapping logic:
+   *   - Prefers the snapshot at exactly `lookbackDays` ago.
+   *   - Falls back to the oldest available snapshot if none exists that far back.
+   *   - Returns percentChange: null (so UI renders descriptive text instead of 0%) when
+   *     no historical snapshots exist at all.
+   */
+  async getStatDeltas(
+    current: {
+      activeOps: number;
+      totalStock: number;
+      overdueAssets: number;
+      lowStock: number;
+    },
+    lookbackDays = 30
+  ): Promise<{
+    activeOps?: StatDeltaDTO;
+    totalStock?: StatDeltaDTO;
+    overdueAssets?: StatDeltaDTO;
+    lowStock?: StatDeltaDTO;
+  }> {
+    try {
+      const db = getDb();
+      const today = new Date().toISOString().slice(0, 10);
+      const targetDate = new Date(Date.now() - lookbackDays * 86400000)
+        .toISOString()
+        .slice(0, 10);
+
+      // 1. Fetch the newest snapshot at or before the lookback target date
+      const lookbackSnapshots = await db
+        .select()
+        .from(dashboardMetricSnapshots)
+        .where(
+          and(
+            lte(dashboardMetricSnapshots.snapshotDate, targetDate),
+            sql`${dashboardMetricSnapshots.snapshotDate} < ${today}`
+          )
+        )
+        .orderBy(desc(dashboardMetricSnapshots.snapshotDate));
+
+      // 2. If nothing found at lookback date, fall back to oldest snapshot available
+      const fallbackSnapshots =
+        lookbackSnapshots.length === 0
+          ? await db
+              .select()
+              .from(dashboardMetricSnapshots)
+              .where(sql`${dashboardMetricSnapshots.snapshotDate} < ${today}`)
+              .orderBy(asc(dashboardMetricSnapshots.snapshotDate))
+          : [];
+
+      const allCandidates = lookbackSnapshots.length > 0 ? lookbackSnapshots : fallbackSnapshots;
+
+      // No snapshots at all — too early in deployment
+      if (allCandidates.length === 0) {
+        return {};
+      }
+
+      // Build a map keyed by metricKey — take the first occurrence (closest to target date)
+      const snapshotMap = new Map<string, { value: number; date: string }>();
+      for (const s of allCandidates) {
+        if (!snapshotMap.has(s.metricKey)) {
+          snapshotMap.set(s.metricKey, {
+            value: Number(s.value),
+            date: s.snapshotDate,
+          });
+        }
+      }
+
+      const computeDelta = (key: string, currentVal: number): StatDeltaDTO => {
+        const past = snapshotMap.get(key);
+        if (!past) {
+          // This metric was never snapshotted
+          return {
+            percentChange: null,
+            direction: "flat",
+            periodLabel: "",
+            current: currentVal,
+            previous: 0,
+          };
+        }
+        if (past.value <= 0) {
+          // Division by zero guard — we have a snapshot but it's zero
+          return {
+            percentChange: null,
+            direction: currentVal > 0 ? "up" : "flat",
+            periodLabel: `since ${past.date}`,
+            current: currentVal,
+            previous: 0,
+          };
+        }
+
+        const pct = Math.round(((currentVal - past.value) / past.value) * 100);
+        return {
+          percentChange: Math.abs(pct),
+          direction: pct > 0 ? "up" : pct < 0 ? "down" : "flat",
+          periodLabel: `since ${past.date}`,
+          current: currentVal,
+          previous: past.value,
+        };
+      };
+
+      return {
+        activeOps: computeDelta("active_ops", current.activeOps),
+        totalStock: computeDelta("total_stock", current.totalStock),
+        overdueAssets: computeDelta("overdue_assets", current.overdueAssets),
+        lowStock: computeDelta("low_stock", current.lowStock),
+      };
+    } catch (err) {
+      console.error("[dashboard] failed to get stat deltas:", err);
+      return {};
+    }
+  }
+
+  /**
+   * Retrieves combined category distribution for top ranked bar cards.
+   */
+  async getCombinedCategoryDistribution(
+    limit = 10,
+    source: "all" | "assets" | "consumables" = "all"
+  ): Promise<DashboardCategoryCount[]> {
+    const cacheKey = `dashboard:top-categories:${source}:${limit}`;
+    return serverCache.wrap(
+      cacheKey,
+      60_000,
+      async () => {
+        const [assetCats, consumableCats] = await Promise.all([
+          source === "consumables"
+            ? Promise.resolve([])
+            : this.assets.getCategoryDistribution().catch(() => []),
+          source === "assets"
+            ? Promise.resolve([])
+            : this.consumables.getCategoryDistribution().catch(() => []),
+        ]);
+
+        const categoryMap = new Map<string, { assetUnits: number; consumableUnits: number }>();
+
+        for (const a of assetCats) {
+          const cat = (a.category || "uncategorized").toLowerCase();
+          const existing = categoryMap.get(cat) || { assetUnits: 0, consumableUnits: 0 };
+          existing.assetUnits += a.count;
+          categoryMap.set(cat, existing);
+        }
+
+        for (const c of consumableCats) {
+          const cat = (c.category || "uncategorized").toLowerCase();
+          const existing = categoryMap.get(cat) || { assetUnits: 0, consumableUnits: 0 };
+          existing.consumableUnits += c.count;
+          categoryMap.set(cat, existing);
+        }
+
+        return Array.from(categoryMap.entries())
+          .map(([cat, stats]) => {
+            const total = stats.assetUnits + stats.consumableUnits;
+            const rawLabel = CATEGORY_LABELS[cat] ?? (cat.charAt(0).toUpperCase() + cat.slice(1));
+            return {
+              category: cat,
+              label: rawLabel,
+              count: total,
+              assetUnits: stats.assetUnits,
+              consumableUnits: stats.consumableUnits,
+            };
+          })
+          .sort((a, b) => b.count - a.count)
+          .slice(0, limit);
+      },
+      ["dashboard", "dashboard:top-categories"]
+    );
+  }
+
+  /**
+   * Retrieves live asset rows with joined custody, valuation, and statuses for the fleet table card.
+   */
+  async getDashboardAssetRows(params?: {
+    limit?: number;
+    search?: string;
+    tag?: string;
+  }): Promise<DashboardAssetRowDTO[]> {
+    const limit = params?.limit ?? 5;
+    const search = params?.search?.trim() ?? "";
+    const tag = params?.tag ?? "all";
+    const cacheKey = `dashboard:assets:${limit}:${tag}:${search}`;
+
+    return serverCache.wrap(
+      cacheKey,
+      30_000,
+      async () => {
+        const db = getDb();
+        const conditions = [eq(assets.isSandbox, false)];
+
+        if (params?.tag === "assignable") {
+          conditions.push(eq(assets.assignmentType, "assignable"));
+        } else if (params?.tag === "borrowable") {
+          conditions.push(eq(assets.assignmentType, "borrowable"));
+        } else if (params?.tag === "custody") {
+          conditions.push(sql`${assets.currentHolder} IS NOT NULL`);
+        } else if (params?.tag === "low-stock" || params?.tag === "maintenance") {
+          conditions.push(or(eq(assets.status, "needs_repair"), eq(assets.status, "out_of_service"))!);
+        }
+
+        if (params?.search?.trim()) {
+          const q = `%${params.search.trim()}%`;
+          conditions.push(
+            or(
+              ilike(assets.name, q),
+              ilike(assets.assetCode, q),
+              ilike(assets.currentHolder, q),
+              ilike(assets.department, q)
+            )!
+          );
+        }
+
+        const rows = await db
+          .select({
+            id: assets.id,
+            name: assets.name,
+            assetCode: assets.assetCode,
+            category: assets.category,
+            assignmentType: assets.assignmentType,
+            status: assets.status,
+            currentHolder: assets.currentHolder,
+            department: assets.department,
+            location: assets.location,
+            value: assets.value,
+            imageUrl: assets.imageUrl,
+            updatedAt: assets.updatedAt,
+          })
+          .from(assets)
+          .where(and(...conditions))
+          .orderBy(desc(assets.updatedAt))
+          .limit(limit);
+
+        // Fetch active borrow transactions for these assets
+        const activeBorrows = await db
+          .select({
+            assetId: borrowTransactions.assetId,
+            borrowerName: borrowTransactions.borrowerName,
+            department: borrowTransactions.department,
+            releasedAt: borrowTransactions.releasedAt,
+          })
+          .from(borrowTransactions)
+          .where(and(eq(borrowTransactions.status, "active"), isNull(borrowTransactions.returnedAt)));
+
+        const activeBorrowMap = new Map<string, (typeof activeBorrows)[0]>();
+        for (const b of activeBorrows) {
+          if (b.assetId) activeBorrowMap.set(b.assetId, b);
+        }
+
+        return rows.map((a) => {
+          const activeBorrow = activeBorrowMap.get(a.id);
+
+          // Custody precedence: borrow > assigned > unassigned
+          const isBorrowed = Boolean(activeBorrow);
+          const isAssigned = Boolean(a.currentHolder && !activeBorrow);
+
+          const custodyHolder = isBorrowed
+            ? (activeBorrow!.borrowerName ?? "Unknown Borrower")
+            : isAssigned
+            ? a.currentHolder!
+            : "Depot Storage";
+          const custodyDepartment = isBorrowed
+            ? (activeBorrow!.department ?? "")
+            : a.department || a.location || "Central Storage";
+          const custodyType: "borrowed" | "assigned" | "unassigned" = isBorrowed
+            ? "borrowed"
+            : isAssigned
+            ? "assigned"
+            : "unassigned";
+
+          const isUnderRepair = a.status === "needs_repair";
+          const isOutOfService = a.status === "out_of_service";
+
+          let statusLabel = "Available";
+          let statusType: "good" | "warning" | "danger" | "info" = "good";
+
+          if (isUnderRepair) {
+            statusLabel = "Maintenance";
+            statusType = "warning";
+          } else if (isOutOfService || a.status === "missing" || a.status === "retired") {
+            statusLabel =
+              a.status === "missing" ? "Missing" : a.status === "retired" ? "Retired" : "Out of Service";
+            statusType = "danger";
+          } else if (isBorrowed || isAssigned) {
+            statusLabel = "In Custody";
+            statusType = "info";
+          }
+
+          const valuation = Number(a.value ?? 0);
+
+          return {
+            id: a.id,
+            name: a.name,
+            sku: a.assetCode,
+            category: a.category ?? "equipment",
+            type: a.assignmentType === "assignable" ? "Assignable" : "Borrowable",
+            custodyHolder,
+            department: custodyDepartment,
+            custody: {
+              holder: custodyHolder,
+              department: custodyDepartment,
+              type: custodyType,
+            },
+            totalQty: 1,
+            stockIn: isBorrowed ? 0 : 1,
+            valuation,
+            price: a.value ? formatPhp(a.value) : "₱0.00",
+            status: statusLabel,
+            condition: statusLabel,
+            statusType,
+            href: "/assets",
+            imageUrl: a.imageUrl,
+          };
+        });
+      },
+      ["dashboard", "dashboard:assets"]
+    );
+  }
+
+  /**
+   * Computes bucketed time-series inflow (stock volume) vs outflow (consume rate).
+   */
+  async getStockVolumeVsConsumeRate(
+    paramsOrTimeframe:
+      | { timeframe?: "weekly" | "monthly" | "yearly"; category?: string }
+      | ("weekly" | "monthly" | "yearly") = "monthly",
+    categoryArg = "all"
+  ): Promise<StockVolumeResponseDTO> {
+    const timeframe =
+      typeof paramsOrTimeframe === "object"
+        ? (paramsOrTimeframe.timeframe ?? "monthly")
+        : paramsOrTimeframe;
+    const category =
+      typeof paramsOrTimeframe === "object"
+        ? (paramsOrTimeframe.category ?? "all")
+        : categoryArg;
+
+    const cacheKey = `dashboard:stock-volume:${timeframe}:${category}`;
+    return serverCache.wrap(
+      cacheKey,
+      60_000,
+      async () => {
+        const db = getDb();
+        const now = new Date();
+
+        // 1. Generate empty-filled buckets
+        type Bucket = { period: string; bucketStart: Date; bucketEnd: Date };
+        const buckets: Bucket[] = [];
+
+        if (timeframe === "weekly") {
+          for (let i = 3; i >= 0; i--) {
+            const start = new Date(now.getTime() - (i + 1) * 7 * 86400000);
+            const end = new Date(now.getTime() - i * 7 * 86400000);
+            buckets.push({
+              period: `W${4 - i}`,
+              bucketStart: start,
+              bucketEnd: end,
+            });
+          }
+        } else if (timeframe === "yearly") {
+          const curYear = now.getFullYear();
+          for (let y = curYear - 3; y <= curYear; y++) {
+            buckets.push({
+              period: String(y),
+              bucketStart: new Date(y, 0, 1),
+              bucketEnd: new Date(y, 11, 31, 23, 59, 59),
+            });
+          }
+        } else {
+          // Monthly: last 6 months
+          const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const nextD = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
+            buckets.push({
+              period: MONTH_NAMES[d.getMonth()],
+              bucketStart: d,
+              bucketEnd: nextD,
+            });
+          }
+        }
+
+        const rangeStart = buckets[0].bucketStart;
+        const rangeEnd = buckets[buckets.length - 1].bucketEnd;
+        const filterByCategory = category && category !== "all";
+
+        // 2. Inflow — consumable purchase_lots restocked quantity
+        const inflowRows = await db
+          .select({
+            quantity: purchaseLots.quantity,
+            createdAt: purchaseLots.createdAt,
+            category: consumables.category,
+          })
+          .from(purchaseLots)
+          .innerJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
+          .where(
+            and(
+              eq(purchaseLots.itemType, "consumable"),
+              gte(purchaseLots.createdAt, rangeStart),
+              lte(purchaseLots.createdAt, rangeEnd),
+              filterByCategory
+                ? sql`LOWER(${consumables.category}) = LOWER(${category})`
+                : undefined
+            )
+          );
+
+        // 3. Outflow — released consumable request lines only
+        const consumableOutflow = await db
+          .select({
+            quantity: consumableRequestLines.quantityRequested,
+            releasedAt: consumableRequests.releasedAt,
+            category: consumableRequestLines.category,
+          })
+          .from(consumableRequestLines)
+          .innerJoin(
+            consumableRequests,
+            eq(consumableRequestLines.requestId, consumableRequests.id)
+          )
+          .where(
+            and(
+              eq(consumableRequests.status, "released"),
+              gte(consumableRequests.releasedAt, rangeStart),
+              lte(consumableRequests.releasedAt, rangeEnd),
+              filterByCategory
+                ? sql`LOWER(${consumableRequestLines.category}) = LOWER(${category})`
+                : undefined
+            )
+          );
+
+        // 4. Zero-fill bucket aggregation
+        const points: StockVolumePointDTO[] = buckets.map((b) => {
+          let stockVolume = 0;
+          let consumeRate = 0;
+
+          for (const row of inflowRows) {
+            const d = row.createdAt;
+            if (d >= b.bucketStart && d <= b.bucketEnd) {
+              stockVolume += row.quantity;
+            }
+          }
+
+          for (const row of consumableOutflow) {
+            const d = row.releasedAt;
+            if (d && d >= b.bucketStart && d <= b.bucketEnd) {
+              consumeRate += row.quantity;
+            }
+          }
+
+          return {
+            period: b.period,
+            bucket: b.period,
+            bucketStart: b.bucketStart.toISOString(),
+            bucketEnd: b.bucketEnd.toISOString(),
+            stockVolume,
+            consumeRate,
+            inflow: stockVolume,
+            outflow: consumeRate,
+          };
+        });
+
+        return {
+          timeframe,
+          category,
+          points,
+        };
+      },
+      ["dashboard", "dashboard:stock-volume"]
+    );
   }
 }

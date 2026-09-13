@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * React Query hooks for dashboard aggregates.
+ * React Query hooks for dashboard aggregates with optimized client-side caching.
+ * - staleTime: data remains fresh for 60s without refetching
+ * - gcTime: cached in memory for 5 minutes
+ * - placeholderData: keeps previous data during background re-validations (prevents skeleton flashes)
+ * - refetchOnWindowFocus: false (avoids disruptive refetches when switching tabs)
  */
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
@@ -11,6 +15,9 @@ import {
   type DashboardSnapshot,
   type DashboardSummary,
   type DashboardNotification,
+  type DashboardAssetRow,
+  type StockVolumeData,
+  type TopCategoryItem,
 } from "./dashboard-api";
 import { dashboardQueryKeys } from "./query-keys";
 
@@ -23,8 +30,10 @@ export function useDashboardSnapshotQuery(options?: {
     queryKey: dashboardQueryKeys.snapshot(),
     queryFn: () => dashboardApi.getSnapshot(),
     enabled: options?.enabled ?? true,
-    staleTime: 10_000,
-    refetchOnWindowFocus: true,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     refetchInterval: options?.refetchInterval,
   });
@@ -38,6 +47,9 @@ export function useDashboardSidebarSummaryQuery(options?: {
     queryKey: dashboardQueryKeys.sidebarSummary(),
     queryFn: () => dashboardApi.getSidebarSummary(),
     staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
     enabled: options?.enabled ?? true,
   });
 }
@@ -50,7 +62,85 @@ export function useDashboardNotificationsQuery(options?: {
     queryKey: dashboardQueryKeys.notifications(),
     queryFn: () => dashboardApi.getNotifications(),
     staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
     refetchInterval: 120_000,
+    refetchOnWindowFocus: false,
     enabled: options?.enabled ?? true,
+  });
+}
+
+/** Stock Volume inflow vs outflow query. */
+export function useStockVolumeQuery(params?: {
+  timeframe?: "weekly" | "monthly" | "yearly";
+  category?: string;
+  enabled?: boolean;
+}): UseQueryResult<StockVolumeData, Error> {
+  return useQuery({
+    queryKey: dashboardQueryKeys.stockVolume({
+      timeframe: params?.timeframe,
+      category: params?.category,
+    }),
+    queryFn: () =>
+      dashboardApi.getStockVolume({
+        timeframe: params?.timeframe,
+        category: params?.category,
+      }),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
+    enabled: params?.enabled ?? true,
+  });
+}
+
+/** Live dashboard asset rows query with search and tag filters. */
+export function useDashboardAssetsQuery(params?: {
+  limit?: number;
+  search?: string;
+  tag?: string;
+  enabled?: boolean;
+}): UseQueryResult<DashboardAssetRow[], Error> {
+  return useQuery({
+    queryKey: dashboardQueryKeys.assets({
+      limit: params?.limit,
+      search: params?.search,
+      tag: params?.tag,
+    }),
+    queryFn: () =>
+      dashboardApi.getDashboardAssets({
+        limit: params?.limit,
+        search: params?.search,
+        tag: params?.tag,
+      }),
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
+    enabled: params?.enabled ?? true,
+  });
+}
+
+/** Combined top categories query. */
+export function useTopCategoriesQuery(params?: {
+  limit?: number;
+  source?: "all" | "assets" | "consumables";
+  enabled?: boolean;
+}): UseQueryResult<TopCategoryItem[], Error> {
+  return useQuery({
+    queryKey: dashboardQueryKeys.topCategories({
+      limit: params?.limit,
+      source: params?.source,
+    }),
+    queryFn: () =>
+      dashboardApi.getTopCategories({
+        limit: params?.limit,
+        source: params?.source,
+      }),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: (prev) => prev,
+    refetchOnWindowFocus: false,
+    enabled: params?.enabled ?? true,
   });
 }
