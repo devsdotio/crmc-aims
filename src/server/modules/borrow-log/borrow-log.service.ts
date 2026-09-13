@@ -843,6 +843,9 @@ export class BorrowLogService {
   /**
    * Superadmin-only permanent removal of a custody log.
    * If still active, clears asset holder / open project assignment first.
+   *
+   * @param rawId - Borrow log UUID
+   * @param actor - Superadmin actor context
    */
   async hardDelete(rawId: string, actor: ActorContext): Promise<void> {
     if (actor.role !== "superadmin") {

@@ -6,14 +6,18 @@ import { BarChart2, PieChart as PieChartIcon, X } from "lucide-react";
 import {
   BarChart,
   Bar,
+  type BarShapeProps,
   XAxis,
   YAxis,
   CartesianGrid,
   PieChart as RechartsPieChart,
   Pie,
+  type PieSectorShapeProps,
+  type PieSectorDataItem,
   Cell,
   ResponsiveContainer,
   Tooltip,
+  type LabelProps,
   Sector,
 } from "recharts";
 import { cn } from "@/lib/utils";
@@ -121,15 +125,26 @@ function BarTooltipWrapper({
   );
 }
 
+interface CustomBarShapeProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+  payload?: { category?: string };
+  selectedCategory?: string | null;
+  onSelect?: (category: string) => void;
+}
+
 // Custom bar shape to zoom in active bar without black borders
-function CustomBarShape(props: any) {
-  const { x, y, width, height, fill, payload, selectedCategory, onSelect } = props;
+function CustomBarShape(props: CustomBarShapeProps) {
+  const { x = 0, y = 0, width = 0, height = 0, fill, payload, selectedCategory, onSelect } = props;
   const isSelected = selectedCategory === payload?.category;
   const isDimmed = selectedCategory !== null && !isSelected;
 
-  const barY = isSelected ? y - 2 : y;
-  const barHeight = isSelected ? height + 4 : height;
-  const barWidth = isSelected ? width + 5 : width;
+  const barY = isSelected ? Number(y) - 2 : Number(y);
+  const barHeight = isSelected ? Number(height) + 4 : Number(height);
+  const barWidth = isSelected ? Number(width) + 5 : Number(width);
 
   return (
     <rect
@@ -141,7 +156,9 @@ function CustomBarShape(props: any) {
       ry={isSelected ? 6 : 4}
       fill={fill}
       opacity={isDimmed ? 0.25 : 1}
-      onClick={() => onSelect?.(payload?.category)}
+      onClick={() => {
+        if (payload?.category) onSelect?.(payload.category);
+      }}
       style={{
         filter: isSelected ? "drop-shadow(0 2px 6px rgba(0,0,0,0.18))" : "none",
         transition: "all 0.2s ease-in-out",
@@ -151,15 +168,29 @@ function CustomBarShape(props: any) {
   );
 }
 
+interface CustomPieSectorProps {
+  cx?: number;
+  cy?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+  startAngle?: number;
+  endAngle?: number;
+  fill?: string;
+  payload?: { category?: string };
+  selectedCategory?: string | null;
+  onSelect?: (category: string) => void;
+  onHover?: (hoverData: { category: string; midAngle: number } | null) => void;
+}
+
 // Custom pie sector to zoom in active slice without borders
-function CustomPieSector(props: any) {
+function CustomPieSector(props: CustomPieSectorProps) {
   const {
     cx,
     cy,
     innerRadius,
     outerRadius,
-    startAngle,
-    endAngle,
+    startAngle = 0,
+    endAngle = 0,
     fill,
     payload,
     selectedCategory,
@@ -169,15 +200,19 @@ function CustomPieSector(props: any) {
   const isSelected = selectedCategory === payload?.category;
   const isDimmed = selectedCategory !== null && !isSelected;
 
-  const actualInner = isSelected ? Number(innerRadius) - 3 : Number(innerRadius);
-  const actualOuter = isSelected ? Number(outerRadius) + 8 : Number(outerRadius);
+  const actualInner = isSelected ? Number(innerRadius ?? 0) - 3 : Number(innerRadius ?? 0);
+  const actualOuter = isSelected ? Number(outerRadius ?? 0) + 8 : Number(outerRadius ?? 0);
 
   return (
     <g
-      onClick={() => onSelect?.(payload?.category)}
+      onClick={() => {
+        if (payload?.category) onSelect?.(payload.category);
+      }}
       onMouseEnter={() => {
         const midAngle = (startAngle + endAngle) / 2;
-        onHover?.({ category: payload?.category, midAngle });
+        if (payload?.category) {
+          onHover?.({ category: payload.category, midAngle });
+        }
       }}
       onMouseLeave={() => onHover?.(null)}
       className="cursor-pointer transition-all duration-200"
@@ -229,7 +264,7 @@ export function AssetsByCategoryChart({
 
   return (
     <section
-      className="flex flex-col h-[400px] rounded-lg border border-border bg-card overflow-hidden shadow-xs"
+      className="flex flex-col h-100 rounded-lg border border-border bg-card overflow-hidden shadow-xs"
       aria-labelledby="assets-by-category-heading"
     >
       {/* Header */}
@@ -359,24 +394,24 @@ export function AssetsByCategoryChart({
                     />
                     <Bar
                       dataKey="count"
-                      shape={(props: any) => (
+                      shape={(props: BarShapeProps) => (
                         <CustomBarShape
                           {...props}
                           selectedCategory={selectedCategory}
                           onSelect={handleToggleCategory}
                         />
                       )}
-                      label={(props: any) => {
+                      label={(props: LabelProps & { index?: number }) => {
                         const { x, y, width, height, value, index } = props;
-                        const item = data[index];
+                        const item = index !== undefined ? data[index] : undefined;
                         const isSelected = selectedCategory === item?.category;
                         const isDimmed = selectedCategory !== null && !isSelected;
                         if (value === undefined || value === null) return null;
 
                         return (
                           <text
-                            x={Number(x) + Number(width) + (isSelected ? 9 : 5)}
-                            y={Number(y) + Number(height) / 2}
+                            x={Number(x ?? 0) + Number(width ?? 0) + (isSelected ? 9 : 5)}
+                            y={Number(y ?? 0) + Number(height ?? 0) / 2}
                             fill="var(--color-text)"
                             textAnchor="start"
                             dominantBaseline="central"
@@ -418,7 +453,7 @@ export function AssetsByCategoryChart({
                 </span>
               </div>
               <div
-                className="relative flex-1 min-w-0 min-h-[220px] flex items-center justify-center p-1"
+                className="relative flex-1 min-w-0 min-h-55 flex items-center justify-center p-1"
                 aria-hidden="true"
               >
                 <ResponsiveContainer width="100%" height="100%" minHeight={220}>
@@ -434,7 +469,7 @@ export function AssetsByCategoryChart({
                       paddingAngle={2.5}
                       stroke="none"
                       strokeWidth={0}
-                      shape={(props: any) => (
+                      shape={(props: PieSectorShapeProps) => (
                         <CustomPieSector
                           {...props}
                           selectedCategory={selectedCategory}
@@ -442,8 +477,9 @@ export function AssetsByCategoryChart({
                           onHover={setHoveredSlice}
                         />
                       )}
-                      onClick={(entry: any) => {
-                        if (entry?.category) handleToggleCategory(entry.category);
+                      onClick={(entry: PieSectorDataItem) => {
+                        const cat = (entry as PieSectorDataItem & { category?: string }).category;
+                        if (cat) handleToggleCategory(cat);
                       }}
                       isAnimationActive={true}
                     >
@@ -492,7 +528,7 @@ export function AssetsByCategoryChart({
                       <span className="text-2xl sm:text-3xl font-black tracking-tight text-text tabular-nums leading-none">
                         {selectedItem.count.toLocaleString()}
                       </span>
-                      <span className="text-[10px] sm:text-xs font-bold text-accent uppercase tracking-wider mt-1.5 truncate max-w-[100px] text-center">
+                      <span className="text-[10px] sm:text-xs font-bold text-accent uppercase tracking-wider mt-1.5 truncate max-w-25 text-center">
                         {selectedItem.label}
                       </span>
                       <span className="text-[10px] sm:text-xs font-semibold text-text-secondary tabular-nums mt-0.5">

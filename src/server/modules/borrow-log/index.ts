@@ -16,15 +16,14 @@ export class BorrowLogController {
       return ok(
         await this.service.list(
           {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            status: (url.searchParams.get("status") as any) ?? undefined,
+            status: url.searchParams.get("status") ?? undefined,
             department: url.searchParams.get("department") ?? undefined,
             search: url.searchParams.get("search") ?? undefined,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             custodyKind:
-              ((url.searchParams.get("custodyKind") ||
-                url.searchParams.get("custody") ||
-                url.searchParams.get("type")) as any) ?? undefined,
+              url.searchParams.get("custodyKind") ||
+              url.searchParams.get("custody") ||
+              url.searchParams.get("type") ||
+              undefined,
             scope:
               url.searchParams.get("scope") === "department"
                 ? "department"

@@ -200,7 +200,7 @@ export function PurchaseOrdersTable({
   if (loading) {
     return (
       <div className="w-full overflow-x-auto min-w-full">
-        <table className="w-full text-xs text-left min-w-[520px] sm:min-w-full">
+        <table className="w-full text-xs text-left min-w-130 sm:min-w-full">
           <thead className="sticky top-0 z-10 bg-bg-subtle text-text-secondary border-b border-border font-semibold uppercase tracking-wider text-[11px] shadow-2xs">
             <tr>
               <th className="px-3 sm:px-4 py-3.5 whitespace-nowrap">PO Number & Date</th>
@@ -241,7 +241,7 @@ export function PurchaseOrdersTable({
 
   return (
     <div className="w-full overflow-x-auto min-w-full">
-      <table className="w-full text-xs text-left min-w-[520px] sm:min-w-full" aria-label="Purchase orders table">
+      <table className="w-full text-xs text-left min-w-130 sm:min-w-full" aria-label="Purchase orders table">
         <thead className="sticky top-0 z-10 bg-bg-subtle text-text-secondary border-b border-border font-semibold uppercase tracking-wider text-[11px] select-none shadow-2xs">
           <tr>
             <th

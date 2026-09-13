@@ -412,7 +412,7 @@ export function POPrintSlipDialog({
           <div
             ref={printRef}
             style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
-            className="w-full m-auto min-h-[485px] p-5 sm:p-6 bg-card rounded-xl border border-border shadow-md flex flex-col justify-between text-xs text-text font-[Arial,Helvetica,sans-serif]"
+            className="w-full m-auto min-h-121.25 p-5 sm:p-6 bg-card rounded-xl border border-border shadow-md flex flex-col justify-between text-xs text-text font-[Arial,Helvetica,sans-serif]"
           >
             {/* Header */}
             <div className="flex items-start justify-between gap-4 border-b border-border pb-3.5">
@@ -422,7 +422,7 @@ export function POPrintSlipDialog({
                   alt="CRMC Logo"
                   width={72}
                   height={72}
-                  className="w-[72px] h-[72px] object-contain shrink-0"
+                  className="w-18 h-18 object-contain shrink-0"
                   priority
                 />
                 <div className="pt-0.5 space-y-0.5">
