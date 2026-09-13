@@ -12,7 +12,7 @@ export class MaintenanceController {
 
   async list(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
@@ -23,10 +23,10 @@ export class MaintenanceController {
             condition: url.searchParams.get("condition") ?? undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
-              session.role
+              actor.role
             ),
           },
-          session.actor
+          actor
         )
       );
     } catch (error) {

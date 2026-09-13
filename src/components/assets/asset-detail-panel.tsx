@@ -683,8 +683,13 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
       let statusLabel = ev.toStatus || ev.eventType;
 
       if (ev.eventType === "updated") {
-        title = "Asset Updated";
-        statusLabel = "updated";
+        if (ev.payload?.via === "maintenance_resolved") {
+          title = "Maintenance Log Resolved";
+          statusLabel = "maintenance";
+        } else {
+          title = "Asset Updated";
+          statusLabel = "updated";
+        }
       } else if (ev.eventType === "created") {
         title = "Asset Registered";
         statusLabel = "created";
@@ -731,12 +736,6 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
       } else if (ev.eventType === "flagged_maintenance") {
         title = "Flagged for Maintenance";
         statusLabel = "needs_repair";
-      } else if (
-        ev.eventType === "updated" &&
-        ev.payload?.via === "maintenance_resolved"
-      ) {
-        title = "Maintenance Log Resolved";
-        statusLabel = "maintenance";
       } else if (ev.eventType === "deleted") {
         title = "Asset Record Deleted";
         statusLabel = "deleted";
