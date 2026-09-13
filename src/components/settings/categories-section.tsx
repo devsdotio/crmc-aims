@@ -13,7 +13,7 @@ import {
 import type { CategoryItem, CategoryType } from "@/types/settings";
 import { CategoryListItem } from "./category-list-item";
 import { AddEditCategoryDialog } from "./add-edit-category-dialog";
-import { StatMetricCard } from "@/components/ui/stat-metric-card";
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
 
 export interface CategoriesSectionProps {
@@ -82,43 +82,58 @@ export function CategoriesSection({
   return (
     <div className="w-full space-y-6">
       {/* ── KPI Metric Cards ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatMetricCard
+      <StatCardGrid>
+        <StatCard
           title="Total Categories"
+          sublabel="CATALOG // TAXONOMY"
           value={totalCount}
-          subtitle="item groups"
-          description="All item categories used across the school."
           icon={FolderTree}
           tone="blue"
+          badge={{ text: "Catalog Groups", pulse: true }}
+          subtitle="Classification groups across institution"
         />
 
-        <StatMetricCard
+        <StatCard
           title="Asset Categories"
+          sublabel="FIXED // CAPITAL"
           value={totalAssetsCount}
-          subtitle="equipment & machines"
-          description="Categories for equipment and machinery."
           icon={Package}
           tone="purple"
+          toneValue={true}
+          badge="Equipment"
+          subtitle="Equipment, machinery & durable items"
+          progress={{
+            value: totalAssetsCount,
+            max: totalCount || 1,
+          }}
         />
 
-        <StatMetricCard
+        <StatCard
           title="Consumable Groups"
+          sublabel="STOCK // SUPPLIES"
           value={totalConsumablesCount}
-          subtitle="supplies & materials"
-          description="Categories for supplies that get used up."
           icon={Boxes}
           tone="emerald"
+          toneValue={true}
+          badge="Supplies"
+          subtitle="Office, medical & consumable materials"
+          progress={{
+            value: totalConsumablesCount,
+            max: totalCount || 1,
+          }}
         />
 
-        <StatMetricCard
+        <StatCard
           title="Cataloged Items"
+          sublabel="INVENTORY // COUNT"
           value={totalItemCount}
-          subtitle="assigned units"
-          description="Total items currently listed under these categories."
           icon={Tag}
           tone="amber"
+          toneValue={true}
+          badge="Items"
+          subtitle="Total line items categorized"
         />
-      </div>
+      </StatCardGrid>
 
       {/* ── Control Bar (Search, Filter Tabs, Add Button) ─────────── */}
       <div className="p-4 rounded-2xl border border-border bg-bg shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">

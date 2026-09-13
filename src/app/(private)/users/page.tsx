@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { UserPlus, AlertCircle, Users, UserCheck, Building2, Shield } from "lucide-react";
 import type { UserAccount, UserFilterState, UserRole } from "@/types/users";
 
-import { StatMetricCard } from "@/components/ui/stat-metric-card";
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { UserFilters } from "@/components/users/user-filters";
 import { UserTable } from "@/components/users/user-table";
 import { UserDetailPanel } from "@/components/users/user-detail-panel";
@@ -236,42 +236,63 @@ export default function UsersPage() {
       </div>
 
       {/* ── KPI Metric Cards ────────────────────────────────────────── */}
-      <div className="px-4 md:px-6 pt-4 pb-1 shrink-0 grid grid-cols-2 md:grid-cols-4 gap-3 bg-bg">
-        <StatMetricCard
-          title="Total Accounts"
-          value={totalUsersCount}
-          subtitle="system users"
-          description="Total user accounts created in the system."
-          icon={Users}
-          tone="blue"
-        />
+      <div className="px-4 md:px-6 pt-4 pb-1 shrink-0 bg-bg">
+        <StatCardGrid>
+          <StatCard
+            title="Total Accounts"
+            sublabel="DIRECTORY // USERS"
+            value={totalUsersCount}
+            icon={Users}
+            tone="blue"
+            badge={{ text: "Directory", pulse: true }}
+            subtitle="Registered accounts across institution"
+            loading={isLoading}
+          />
 
-        <StatMetricCard
-          title="Active Users"
-          value={activeUsersCount}
-          subtitle="can log in"
-          description="Users who can log in and use the app."
-          icon={UserCheck}
-          tone="emerald"
-        />
+          <StatCard
+            title="Active Users"
+            sublabel="SECURITY // STATUS"
+            value={activeUsersCount}
+            icon={UserCheck}
+            tone="emerald"
+            toneValue={true}
+            badge={
+              totalUsersCount > 0
+                ? `${Math.round((activeUsersCount / totalUsersCount) * 100)}% active`
+                : "0%"
+            }
+            subtitle="Verified credentials enabled to sign in"
+            progress={{
+              value: activeUsersCount,
+              max: totalUsersCount || 1,
+            }}
+            loading={isLoading}
+          />
 
-        <StatMetricCard
-          title="Department Logins"
-          value={departmentLoginsCount}
-          subtitle="borrower accounts"
-          description="Accounts used by offices to request items."
-          icon={Building2}
-          tone="purple"
-        />
+          <StatCard
+            title="Department Logins"
+            sublabel="OFFICE // ACCESS"
+            value={departmentLoginsCount}
+            icon={Building2}
+            tone="purple"
+            toneValue={true}
+            badge="Borrowers"
+            subtitle="Designated accounts assigned to offices"
+            loading={isLoading}
+          />
 
-        <StatMetricCard
-          title="Admin & Staff"
-          value={adminStaffCount}
-          subtitle="managers"
-          description="Users who can approve requests and manage items."
-          icon={Shield}
-          tone="amber"
-        />
+          <StatCard
+            title="Admin & Staff"
+            sublabel="PRIVILEGE // ROLES"
+            value={adminStaffCount}
+            icon={Shield}
+            tone="amber"
+            toneValue={true}
+            badge="Elevated"
+            subtitle="Managers & custodians with operation rights"
+            loading={isLoading}
+          />
+        </StatCardGrid>
       </div>
 
       {loadError && (

@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DepartmentDTO } from "@/features/departments/client";
-import { StatMetricCard } from "@/components/ui/stat-metric-card";
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { SandboxBadge } from "@/components/shared/sandbox-badge";
 
 export interface DepartmentsSectionProps {
@@ -79,43 +79,58 @@ export function DepartmentsSection({
   return (
     <div className="w-full space-y-6">
       {/* ── KPI Metric Cards ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatMetricCard
+      <StatCardGrid>
+        <StatCard
           title="Total Departments"
+          sublabel="OFFICES // UNITS"
           value={totalCount}
-          subtitle="registered offices"
-          description="All academic departments and campus offices."
           icon={Building2}
           tone="blue"
+          badge={{ text: "Campuses & Units", pulse: true }}
+          subtitle="Academic & administrative departments"
         />
 
-        <StatMetricCard
-          title="Linked Accounts"
+        <StatCard
+          title="Linked Logins"
+          sublabel="SECURITY // CREDENTIALS"
           value={withAccountCount}
-          subtitle="with login access"
-          description="Offices that have their own login account."
           icon={UserCheck}
           tone="emerald"
+          toneValue={true}
+          badge={
+            totalCount > 0
+              ? `${Math.round((withAccountCount / totalCount) * 100)}% equipped`
+              : "0%"
+          }
+          subtitle="Offices equipped with portal access"
+          progress={{
+            value: withAccountCount,
+            max: totalCount || 1,
+          }}
         />
 
-        <StatMetricCard
-          title="No Login Assigned"
+        <StatCard
+          title="Pending Setup"
+          sublabel="ACCESS // SETUP"
           value={noAccountCount}
-          subtitle="awaiting account"
-          description="Offices that still need a login account."
           icon={UserX}
           tone="amber"
+          toneValue={noAccountCount > 0}
+          badge={noAccountCount > 0 ? "Setup Required" : "All Assigned"}
+          subtitle="Offices waiting for borrower logins"
         />
 
-        <StatMetricCard
+        <StatCard
           title="Active In Circulation"
+          sublabel="CIRCULATION // LOANS"
           value={activeAccountCount}
-          subtitle="can borrow now"
-          description="Offices allowed to borrow items right now."
           icon={ShieldCheck}
           tone="purple"
+          toneValue={true}
+          badge="Eligible"
+          subtitle="Offices permitted to borrow assets"
         />
-      </div>
+      </StatCardGrid>
 
       {/* ── Control Bar (Search, Filter Tabs, Add Button) ─────────── */}
       <div className="p-4 rounded-2xl border border-border bg-bg shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
