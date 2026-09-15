@@ -19,7 +19,7 @@ export function ReportBreakdownChart({
 }: ReportBreakdownChartProps) {
   if (!data || data.length === 0) {
     return (
-      <div className="flex h-[240px] items-center justify-center text-xs text-text-secondary">
+      <div className="flex h-60 items-center justify-center text-xs text-text-secondary">
         No category distribution recorded yet.
       </div>
     );

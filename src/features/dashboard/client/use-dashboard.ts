@@ -5,7 +5,8 @@
  * - staleTime: data remains fresh for 60s without refetching
  * - gcTime: cached in memory for 5 minutes
  * - placeholderData: keeps previous data during background re-validations (prevents skeleton flashes)
- * - refetchOnWindowFocus: false (avoids disruptive refetches when switching tabs)
+ * - refetchInterval: 60s background polling so the dashboard stays live without user interaction
+ * - refetchOnWindowFocus: true so returning to the tab immediately resyncs if data is stale
  */
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
@@ -33,9 +34,12 @@ export function useDashboardSnapshotQuery(options?: {
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     placeholderData: (prev) => prev,
-    refetchOnWindowFocus: false,
+    // Re-enable window-focus sync so returning to the tab picks up changes made
+    // elsewhere (another tab, another user). placeholderData prevents flashes.
+    refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-    refetchInterval: options?.refetchInterval,
+    // Background poll — keeps widgets live without requiring navigation.
+    refetchInterval: options?.refetchInterval ?? 60_000,
   });
 }
 
@@ -49,7 +53,9 @@ export function useDashboardSidebarSummaryQuery(options?: {
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     placeholderData: (prev) => prev,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    // Keep sidebar badge counts (pending, overdue, low-stock) live.
+    refetchInterval: 60_000,
     enabled: options?.enabled ?? true,
   });
 }

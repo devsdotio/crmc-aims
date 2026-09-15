@@ -8,7 +8,7 @@ export default function ReportsLayout({
   return (
     <div className="flex flex-col w-full pb-6" data-theme="light">
       {/* Sub-navigation bar across report domains (attached directly to the card below) */}
-      <div className="sticky -top-3 z-30 bg-[#F2F3F7] -mt-3 pt-3 transform-gpu print:hidden">
+      <div className="sticky -top-3 z-30 bg-bg-subtle -mt-3 pt-3 transform-gpu print:hidden">
         <ReportLayoutNav />
       </div>
 

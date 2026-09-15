@@ -155,6 +155,8 @@ export interface StatCardProps {
   valueClassName?: string;
   /** Optional visual progress bar */
   progress?: StatCardProgressConfig;
+  /** Optional sizing variant: 'default' (compact) or 'sm' (extra compact for drawers/sheets) */
+  size?: "default" | "sm";
   /** Optional click destination (wraps the card in Next.js Link) */
   href?: string;
   /** Optional click handler */
@@ -180,6 +182,7 @@ export function StatCard({
   toneValue = false,
   valueClassName,
   progress,
+  size = "default",
   href,
   onClick,
   loading = false,
@@ -187,6 +190,7 @@ export function StatCard({
   className,
 }: StatCardProps) {
   const styles = TONE_STYLES[tone] || TONE_STYLES.neutral;
+  const isSm = size === "sm";
 
   // Calculate percentage for progress bar if configured
   const progressPercent = React.useMemo(() => {
@@ -249,7 +253,8 @@ export function StatCard({
       role="region"
       aria-label={`${title}: ${loading ? "loading" : typeof value === "string" || typeof value === "number" ? value : ""}`}
       className={cn(
-        "group relative p-4 rounded-xl border border-border bg-card hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between select-none",
+        "group relative border border-border bg-card hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between select-none",
+        isSm ? "p-2.5 sm:p-3 rounded-lg" : "p-3 sm:p-3.5 rounded-xl",
         styles.hoverBorder,
         (href || onClick) && "cursor-pointer active:scale-[0.99]",
         className
@@ -266,24 +271,35 @@ export function StatCard({
 
       {/* Top Header Row */}
       <div className="relative z-10 flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className={cn("flex items-center min-w-0", isSm ? "gap-2" : "gap-2.5")}>
           {Icon && (
             <div
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-transform duration-300 group-hover:scale-105 shadow-2xs",
+                "flex shrink-0 items-center justify-center border transition-transform duration-300 group-hover:scale-105 shadow-2xs",
+                isSm ? "h-6.5 w-6.5 rounded-md" : "h-7.5 w-7.5 rounded-lg",
                 styles.iconContainer
               )}
             >
-              <Icon className="h-4.5 w-4.5" />
+              <Icon className={isSm ? "h-3.5 w-3.5" : "h-4 w-4"} />
             </div>
           )}
           <div className="min-w-0">
             {sublabel && (
-              <span className="font-mono text-[10px] uppercase tracking-widest text-text-secondary block truncate">
+              <span
+                className={cn(
+                  "font-mono uppercase tracking-widest text-text-secondary block truncate",
+                  isSm ? "text-[9px]" : "text-[10px]"
+                )}
+              >
                 {sublabel}
               </span>
             )}
-            <h2 className="text-xs font-bold uppercase tracking-wider text-text truncate">
+            <h2
+              className={cn(
+                "font-bold uppercase tracking-wider text-text truncate",
+                isSm ? "text-[11px]" : "text-xs"
+              )}
+            >
               {title}
             </h2>
           </div>
@@ -294,13 +310,14 @@ export function StatCard({
       </div>
 
       {/* Metric Display Row */}
-      <div className="relative z-10 mt-3 mb-2 min-w-0">
+      <div className={cn("relative z-10 min-w-0", isSm ? "mt-1.5 mb-1" : "mt-2 mb-1.5")}>
         {loading ? (
-          <div className="h-8 w-24 bg-border/60 rounded-md animate-pulse" />
+          <div className={cn("bg-border/60 rounded-md animate-pulse", isSm ? "h-6 w-20" : "h-7 w-24")} />
         ) : (
           <div
             className={cn(
-              "text-2xl sm:text-3xl font-extrabold font-mono tracking-tight truncate",
+              "font-bold font-mono tracking-tight truncate",
+              isSm ? "text-lg sm:text-xl" : "text-xl sm:text-2xl",
               toneValue ? styles.valueColor : "text-text",
               valueClassName
             )}
@@ -311,7 +328,12 @@ export function StatCard({
 
         {/* Secondary Detail / Context Line */}
         {subtitle && (
-          <div className="text-[11px] text-text-secondary mt-1 min-w-0">
+          <div
+            className={cn(
+              "text-text-secondary min-w-0",
+              isSm ? "text-[10px] mt-0.5" : "text-[11px] mt-0.5"
+            )}
+          >
             {subtitle}
           </div>
         )}
@@ -331,7 +353,7 @@ export function StatCard({
       )}
 
       {/* Custom Children Slot */}
-      {children && <div className="relative z-10 mt-2">{children}</div>}
+      {children && <div className="relative z-10 mt-1.5">{children}</div>}
     </div>
   );
 

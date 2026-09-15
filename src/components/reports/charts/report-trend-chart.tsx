@@ -28,14 +28,14 @@ export function ReportTrendChart({
 }: ReportTrendChartProps) {
   if (!canViewCosts) {
     return (
-      <div className="flex h-[260px] items-center justify-center rounded-2xl border border-dashed border-border text-xs text-text-secondary">
+      <div className="flex h-65 items-center justify-center rounded-2xl border border-dashed border-border text-xs text-text-secondary">
         Financial spend trends are restricted to administrative roles.
       </div>
     );
   }
 
   return (
-    <div className="h-[280px] w-full">
+    <div className="h-70 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
           <defs>
