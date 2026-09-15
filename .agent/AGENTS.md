@@ -15,13 +15,14 @@ The `developer-io` Obsidian vault (`C:/Users/CLIET/.antigravity-ide/developer-io
 
 ### 1. Mandatory Session Bootstrap (Auto-Read Context)
 
-Before performing codebase exploration or writing code for non-trivial tasks:
+Before performing codebase exploration or writing code for non-trivial tasks, check the vault notes to save tokens. Do not blindly read all notes or scan the repository. Read selectively:
 
-- **Do not blindly scan the repository with broad directory searches.**
-- Check the vault notes first to save tokens:
-  1. `Projects/crmc-aims/Overview.md` & `Architecture.md` (Tech stack, feature routing)
-  2. `Projects/crmc-aims/Conventions.md` (Domain constraints)
-  3. `Context/Sessions.md` (Read the last entry to know exactly where the previous session left off)
+1. **Always Read:** `Context/Sessions.md` (read only the last entry to pick up where the previous session left off) and `Projects/crmc-aims/Tasks.md` (read the active/pending roadmap).
+2. **Read Selectively Based on Task:**
+   - Schema/Backend changes -> `Projects/crmc-aims/DataModel.md`
+   - System design/refactoring -> `Projects/crmc-aims/Architecture.md`
+   - UI/Styling constraints -> `Projects/crmc-aims/Conventions.md`
+   - _Only_ read `Projects/crmc-aims/Overview.md` if completely lost on the project domain.
 
 ### 2. Task-to-Agent Delegation Matrix
 
@@ -39,7 +40,6 @@ Whenever code is modified, features complete, or a session concludes:
 
 - **Unlisted Tasks First:** If requested to perform a task that is not already listed in the vault's `Tasks.md`, ALWAYS update `Tasks.md` first to add the new task before starting work on it. This ensures solid documentation and saves tokens.
 - **Task Auto-Completion:** When any feature, bugfix, or subtask is completed and verified, immediately check it off in `Projects/crmc-aims/Tasks.md` (`- [ ]` → `- [x]`) and append the completion date (`✅ YYYY-MM-DD`). If all nested subtasks are done, mark the parent milestone complete as well.
-- **Code Changes:** Create a new markdown file in `Projects/crmc-aims/Changelog/YYYY-MM/` (e.g., `2026-09-15-feature-name.md`) containing a brief title, modified files, and the rationale.
+- **Code Changes:** Prepend a new changelog entry to the top of the `## Recent Changes` section in `Projects/crmc-aims/Changelog.md` containing a brief title, modified files, and the rationale. If the file exceeds 3 entries, move the oldest entries to `Changelog-Archive.md` to conserve context tokens.
 - **Architecture / Tech Decisions:** If an architectural trade-off or permanent standard was decided, append an ADR to `Context/Decisions.md`.
-- **Session End / Compaction:** Create a new session snapshot file in `Context/Sessions/YYYY-MM/` (e.g., `2026-09-15-session-summary.md`) detailing active files, work completed, and pending items.
-
+- **Session End / Compaction:** Prepend a session snapshot to the top of the `## Sessions Log` section in `Context/Sessions.md` detailing active files, work completed, and pending items. Do not create new session files. If the file exceeds 3 entries, move the oldest entries to `Sessions-Archive.md` to conserve context tokens.

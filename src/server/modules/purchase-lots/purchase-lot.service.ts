@@ -743,29 +743,60 @@ export class PurchaseLotService {
           purchasedOn: body.purchasedOn || lot.purchasedOn,
           notes: updatedNotes,
           receiptUrl: nextReceiptUrl,
+          recordedByName: body.recordedByName !== undefined ? (body.recordedByName ?? "") : lot.recordedByName,
         },
         session
       );
 
       // If this PO has a reference (shared across multi-item lots), sync receiptUrl to siblings
-      if (lot.reference && body.receiptUrl !== undefined) {
-        await db
-          .update(purchaseLots)
-          .set({ receiptUrl: nextReceiptUrl, updatedAt: new Date() })
-          .where(eq(purchaseLots.reference, lot.reference));
+      if (lot.reference) {
+        const syncUpdates: Partial<PurchaseLotRow> = {};
+        let needsSync = false;
+        
+        if (body.receiptUrl !== undefined) {
+          syncUpdates.receiptUrl = nextReceiptUrl;
+          needsSync = true;
+        }
+        if (body.recordedByName !== undefined) {
+          syncUpdates.recordedByName = body.recordedByName ?? "";
+          needsSync = true;
+        }
+
+        if (needsSync) {
+          await db
+            .update(purchaseLots)
+            .set({ ...syncUpdates, updatedAt: new Date() })
+            .where(eq(purchaseLots.reference, lot.reference));
+        }
       }
 
       const poCode = resolvedReference || lot.reference || lot.lotCode;
+      const updates = [];
+      if (body.recordedByName !== undefined && body.recordedByName !== lot.recordedByName) {
+        updates.push(`Requester changed from '${lot.recordedByName || "None"}' to '${body.recordedByName}'`);
+      }
+      if (body.receiptUrl !== undefined && body.receiptUrl !== (lot.receiptUrl || currentMeta.receiptUrl)) {
+        updates.push("Receipt attached/updated");
+      }
+      if (body.supplierId !== undefined && body.supplierId !== lot.supplierId) {
+        updates.push("Supplier changed");
+      }
+
+      const updateText = updates.length > 0 
+        ? `Updated details for Purchase Order ${poCode}: ${updates.join("; ")}.` 
+        : `Updated details for Purchase Order ${poCode}.`;
+
       await db.insert(auditLogs).values({
         entityType: "purchase_order",
         entityId: poCode,
         action: "purchase_order_updated",
         actorName: actor.displayName,
         actorUserId: actor.userId,
-        notes: `Updated details for Purchase Order ${poCode}.`,
+        notes: updateText,
         metadata: {
           poNumber: poCode,
           lotCode: lot.lotCode,
+          updatedRequester: body.recordedByName !== undefined ? body.recordedByName : undefined,
         },
       });
 

@@ -12,6 +12,7 @@ import {
   Download,
 } from "lucide-react";
 import type { PurchaseLot, POLineItemDetail } from "@/types/purchase-lots";
+import { useUpdatePurchaseOrderMutation } from "@/features/purchase-lots/client/use-purchase-lots";
 
 interface POPrintSlipDialogProps {
   lot: PurchaseLot | null;
@@ -27,12 +28,15 @@ export function POPrintSlipDialog({
   const printRef = useRef<HTMLDivElement>(null);
   const [requestedBy, setRequestedBy] = useState("");
   const [requestedByTitle, setRequestedByTitle] = useState("Staff / Requester");
+  const updateMutation = useUpdatePurchaseOrderMutation();
 
   useEffect(() => {
-    if (lot) {
+    if (lot && isOpen) {
       setRequestedBy(lot.recordedByName || "");
+      setRequestedByTitle("Staff / Requester");
     }
-  }, [lot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lot?.id, isOpen]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -75,23 +79,23 @@ export function POPrintSlipDialog({
       (lot.items && lot.items.length > 0
         ? lot.items.map((i) => i.suggestedDealer?.trim())
         : [lot.supplierName?.trim()]
-      ).filter((d): d is string => Boolean(d))
-    )
+      ).filter((d): d is string => Boolean(d)),
+    ),
   );
   const displayDealer =
     uniqueDealers.length === 0
       ? "Direct Procurement"
       : uniqueDealers.length === 1
-      ? uniqueDealers[0]
-      : `Multiple Dealers (${uniqueDealers.length})`;
+        ? uniqueDealers[0]
+        : `Multiple Dealers (${uniqueDealers.length})`;
 
   const uniqueLotCodes = Array.from(
     new Set(
       (lot.items && lot.items.length > 0
         ? lot.items.map((i) => i.lotCode?.trim())
         : [lot.lotCode?.trim()]
-      ).filter((c): c is string => Boolean(c))
-    )
+      ).filter((c): c is string => Boolean(c)),
+    ),
   );
   const displayLotCode =
     uniqueLotCodes.length <= 1
@@ -377,11 +381,13 @@ export function POPrintSlipDialog({
                 </tr>
               </thead>
               <tbody>
-                ${lot.items && lot.items.length > 1
-                  ? lot.items.map((item: POLineItemDetail) => {
-                      const iUnit = parseFloat(item.unitCost) || 0;
-                      const iTotal = parseFloat(item.totalCost) || 0;
-                      return `<tr>
+                ${
+                  lot.items && lot.items.length > 1
+                    ? lot.items
+                        .map((item: POLineItemDetail) => {
+                          const iUnit = parseFloat(item.unitCost) || 0;
+                          const iTotal = parseFloat(item.totalCost) || 0;
+                          return `<tr>
                         <td class="col-qty">${item.quantity}</td>
                         <td class="col-desc">
                           <strong>${item.itemName}</strong>
@@ -391,15 +397,16 @@ export function POPrintSlipDialog({
                         <td class="col-unit-price" style="text-align: right;">₱${iUnit.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                         <td class="col-estimated">₱${iTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                       </tr>`;
-                    }).join("")
-                    + `<tr style="border-top: 2px solid #222; font-weight: bold;">
+                        })
+                        .join("") +
+                      `<tr style="border-top: 2px solid #222; font-weight: bold;">
                         <td class="col-qty">${lot.items.reduce((s: number, i: POLineItemDetail) => s + i.quantity, 0)}</td>
                         <td class="col-desc" style="text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Grand Total</td>
                         <td class="col-dealer"></td>
                         <td class="col-unit-price"></td>
                         <td class="col-estimated" style="font-size: 13px;">₱${lot.items.reduce((s: number, i: POLineItemDetail) => s + (parseFloat(i.totalCost) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
                       </tr>`
-                  : `<tr>
+                    : `<tr>
                       <td class="col-qty">${lot.quantity}</td>
                       <td class="col-desc">
                         <strong>${lot.itemName}</strong>
@@ -504,6 +511,19 @@ export function POPrintSlipDialog({
               type="text"
               value={requestedBy}
               onChange={(e) => setRequestedBy(e.target.value)}
+              onBlur={() => {
+                if (requestedBy !== (lot?.recordedByName || "")) {
+                  updateMutation.mutate({
+                    id: lot.id,
+                    payload: { recordedByName: requestedBy },
+                  });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
               placeholder="Requester name…"
               className="h-8 px-2.5 text-xs rounded-lg border border-border bg-bg text-text focus:bg-bg focus:border-accent focus:ring-1 focus:ring-accent focus:outline-hidden transition-colors flex-1 min-w-36 max-w-xs font-semibold"
             />
@@ -597,11 +617,15 @@ export function POPrintSlipDialog({
                     <strong className="text-text font-medium">{poDate}</strong>
                     <span className="mx-1.5 text-text-muted">·</span>
                     <span className="text-text-secondary">Time:</span>{" "}
-                    <strong className="text-text font-mono text-[11px]">{poTimestamp}</strong>
+                    <strong className="text-text font-mono text-[11px]">
+                      {poTimestamp}
+                    </strong>
                   </div>
                   <div className="text-[11px] text-text-secondary">
                     Lot Code:{" "}
-                    <span className="font-mono text-text">{displayLotCode}</span>
+                    <span className="font-mono text-text">
+                      {displayLotCode}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -646,19 +670,31 @@ export function POPrintSlipDialog({
                                 Code: {item.itemCode}
                                 {item.lotCode && (
                                   <>
-                                    {" "}· Lot: <span className="font-mono text-text">{item.lotCode}</span>
+                                    {" "}
+                                    · Lot:{" "}
+                                    <span className="font-mono text-text">
+                                      {item.lotCode}
+                                    </span>
                                   </>
                                 )}
                               </span>
                             </td>
                             <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
-                              {item.suggestedDealer || lot.supplierName || "Direct Procurement"}
+                              {item.suggestedDealer ||
+                                lot.supplierName ||
+                                "Direct Procurement"}
                             </td>
                             <td className="px-3.5 py-2.5 text-right font-mono text-text border-r border-border">
-                              ₱{iUnit.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                              ₱
+                              {iUnit.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                              })}
                             </td>
                             <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
-                              ₱{iTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                              ₱
+                              {iTotal.toLocaleString("en-US", {
+                                minimumFractionDigits: 2,
+                              })}
                             </td>
                           </tr>
                         );
@@ -678,7 +714,7 @@ export function POPrintSlipDialog({
                           {lot.items
                             .reduce(
                               (s, i) => s + (parseFloat(i.totalCost) || 0),
-                              0
+                              0,
                             )
                             .toLocaleString("en-US", {
                               minimumFractionDigits: 2,
@@ -695,7 +731,7 @@ export function POPrintSlipDialog({
                               <td className="border-r border-border"></td>
                               <td></td>
                             </tr>
-                          )
+                          ),
                         )}
                     </>
                   ) : (
@@ -712,7 +748,11 @@ export function POPrintSlipDialog({
                             Code: {lot.itemCode}
                             {lot.lotCode && (
                               <>
-                                {" "}· Lot: <span className="font-mono text-text">{lot.lotCode}</span>
+                                {" "}
+                                · Lot:{" "}
+                                <span className="font-mono text-text">
+                                  {lot.lotCode}
+                                </span>
                               </>
                             )}
                           </span>
@@ -721,7 +761,10 @@ export function POPrintSlipDialog({
                           {lot.supplierName || "Direct / Internal Procurement"}
                         </td>
                         <td className="px-3.5 py-2.5 text-right font-mono text-text border-r border-border">
-                          ₱{unitCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                          ₱
+                          {unitCostNum.toLocaleString("en-US", {
+                            minimumFractionDigits: 2,
+                          })}
                         </td>
                         <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
                           ₱

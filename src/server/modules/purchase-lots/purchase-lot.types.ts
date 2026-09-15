@@ -113,6 +113,7 @@ export type UpdatePurchaseOrderInput = {
   purpose?: string | null;
   receiptUrl?: string | null;
   purchasedOn?: string;
+  recordedByName?: string | null;
 };
 
 export type UpdatePurchaseOrderStatusInput = {

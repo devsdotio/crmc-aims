@@ -81,6 +81,7 @@ export const updatePurchaseOrderSchema = z.object({
   purpose: z.string().trim().nullable().optional(),
   receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
+  recordedByName: z.string().trim().nullable().optional(),
 });
 
 /** Staff scan: release qty from a supplier purchase lot. */

@@ -585,7 +585,7 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <FileText className="h-4 w-4" />
-            <span>Specifications & Order</span>
+            <span>Details</span>
           </button>
 
           <button
@@ -599,7 +599,7 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <Receipt className="h-4 w-4" />
-            <span>Receipt & Proof</span>
+            <span>Receipt</span>
             {lot.receiptUrl ? (
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0 shadow-2xs" />
             ) : null}
@@ -616,7 +616,7 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <History className="h-4 w-4" />
-            <span>Workflow & Activity Logs</span>
+            <span>Activity</span>
           </button>
 
           <button
@@ -630,7 +630,7 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <QrCode className="h-4 w-4" />
-            <span>Tag & QR</span>
+            <span>QR Tag</span>
           </button>
         </div>
 
@@ -1033,69 +1033,77 @@ export function PurchaseOrderDetailSheet({
 
                 {/* Audit Timeline */}
                 <ol className="relative border-l-2 border-border/80 ml-3 space-y-5">
-                  {/* Step 1: Created */}
-                  <li className="pl-5 relative group">
-                    <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-accent border-bg" />
-                    <div className="text-xs space-y-0.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-text">Purchase Order Created</span>
-                        <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.createdAt)}</time>
-                      </div>
-                      <p className="text-text-secondary text-[11px]">
-                        Filed by <strong className="text-text">{lot.recordedByName}</strong>
-                      </p>
-                    </div>
-                  </li>
+                  {auditLogs.length > 0 ? (
+                    auditLogs.map((log) => {
+                      let bgColor = "bg-accent";
+                      let textColor = "text-accent";
+                      let actionLabel = "Purchase Order Activity";
+                      let Icon = History;
 
-                  {/* Step 2: Approved if applicable */}
-                  {lot.approvedAt && (
-                    <li className="pl-5 relative group">
-                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-emerald-500 border-bg" />
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">PO Approved</span>
-                          <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.approvedAt)}</time>
-                        </div>
-                        <p className="text-text-secondary text-[11px]">
-                          Approved by <strong className="text-text">{lot.approvedByName || "Head Property Custodian"}</strong>
-                        </p>
-                      </div>
-                    </li>
-                  )}
+                      if (log.action === "purchase_order_created") {
+                        bgColor = "bg-blue-500";
+                        textColor = "text-blue-600 dark:text-blue-400";
+                        actionLabel = "Purchase Order Created";
+                        Icon = FileText;
+                      } else if (log.action === "purchase_order_approved") {
+                        bgColor = "bg-amber-500";
+                        textColor = "text-amber-600 dark:text-amber-400";
+                        actionLabel = "PO Approved";
+                        Icon = ShieldCheck;
+                      } else if (log.action === "purchase_order_ordered") {
+                        bgColor = "bg-blue-500";
+                        textColor = "text-blue-600 dark:text-blue-400";
+                        actionLabel = "PO Ordered / In-Transit";
+                        Icon = Truck;
+                      } else if (log.action === "purchase_order_delivered") {
+                        bgColor = "bg-emerald-600";
+                        textColor = "text-emerald-600 dark:text-emerald-400";
+                        actionLabel = "Goods Delivered & Stocked";
+                        Icon = PackageCheck;
+                      } else if (log.action === "purchase_order_cancelled") {
+                        bgColor = "bg-rose-500";
+                        textColor = "text-rose-600 dark:text-rose-400";
+                        actionLabel = "PO Cancelled";
+                        Icon = Ban;
+                      } else if (log.action === "purchase_order_updated") {
+                        bgColor = "bg-purple-500";
+                        textColor = "text-purple-600 dark:text-purple-400";
+                        actionLabel = "PO Updated";
+                        Icon = Edit3;
+                      }
 
-                  {/* Step 3: Ordered if applicable */}
-                  {lot.orderedAt && (
+                      return (
+                        <li key={log.id} className="pl-6 relative group">
+                          <span
+                            className={cn(
+                              "absolute -left-[11px] top-0.5 h-5 w-5 rounded-full border-2 border-bg flex items-center justify-center text-white",
+                              bgColor
+                            )}
+                          >
+                            <Icon className="h-3 w-3" />
+                          </span>
+                          <div className="text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className={cn("font-bold", textColor)}>{actionLabel}</span>
+                              <time className="text-[10px] text-text-secondary font-mono">
+                                {formatDateTime(log.timestamp as unknown as string)}
+                              </time>
+                            </div>
+                            <p className="text-text-secondary text-[11.5px] leading-relaxed break-words">
+                              {log.notes || `System recorded action: ${log.action}`}
+                            </p>
+                            <p className="text-text-secondary text-[10px] mt-1 pt-1 border-t border-border/40 inline-block">
+                              by <strong className="text-text">{log.actorName}</strong>
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })
+                  ) : (
                     <li className="pl-5 relative group">
-                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-blue-500 border-bg" />
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-blue-600 dark:text-blue-400">Marked as Ordered / In-Transit</span>
-                          <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.orderedAt)}</time>
-                        </div>
-                        <p className="text-text-secondary text-[11px]">
-                          Vendor: <strong className="text-text">{lot.supplierName || "Internal Supplier"}</strong>
-                        </p>
-                      </div>
-                    </li>
-                  )}
-
-                  {/* Step 4: Delivered if applicable */}
-                  {lot.deliveredAt && (
-                    <li className="pl-5 relative group">
-                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-emerald-600 border-bg" />
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">Goods Delivered & Stocked</span>
-                          <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.deliveredAt)}</time>
-                        </div>
-                        <p className="text-text-secondary text-[11px]">
-                          Received {lot.receivedQuantity ?? lot.quantity} units into active inventory
-                          {lot.orderedQuantity != null &&
-                          lot.orderedQuantity !== (lot.receivedQuantity ?? lot.quantity)
-                            ? ` (ordered ${lot.orderedQuantity})`
-                            : ""}
-                          .
-                        </p>
+                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-border border-bg" />
+                      <div className="text-xs text-text-secondary italic">
+                        No activity logs recorded.
                       </div>
                     </li>
                   )}

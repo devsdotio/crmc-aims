@@ -58,6 +58,7 @@ export type UpdatePurchaseOrderPayload = {
   purpose?: string | null;
   receiptUrl?: string | null;
   purchasedOn?: string;
+  recordedByName?: string | null;
 };
 
 export type UpdatePOStatusPayload = {
