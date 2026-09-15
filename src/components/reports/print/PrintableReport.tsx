@@ -137,31 +137,33 @@ function ChartsRow({ charts }: { charts: ChartBlock[] }) {
 
 function ReportTable({ table }: { table: TableBlock }) {
   return (
-    <div className="mt-2 rounded-xs border border-neutral-200 bg-white overflow-hidden">
+    <div className="mt-2 rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
       {table.title && (
-        <div className="border-b border-neutral-200 bg-neutral-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-teal-800">
+        <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800">
           {table.title}
         </div>
       )}
-      <table className="w-full border-collapse text-xs">
+      <table className="w-full border-collapse text-[11px] table-auto">
         <thead>
-          <tr className="border-b border-neutral-200 bg-neutral-50 text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
+          <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
             {table.columns.map((col) => (
-              <th key={col.key} className="py-1 px-2" style={{ textAlign: col.align ?? "left" }}>
+              <th key={col.key} className="py-1.5 px-3 whitespace-nowrap" style={{ textAlign: col.align ?? "left" }}>
                 {col.label}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-neutral-100 text-neutral-800 text-[9.5px]">
+        <tbody className="divide-y divide-neutral-100 text-neutral-800 text-[11px]">
           {table.rows.map((row, i) => (
             <tr key={i}>
               {table.columns.map((col) => {
                 const val = row[col.key];
                 return (
-                  <td key={col.key} className="py-1 px-2" style={{ textAlign: col.align ?? "left" }}>
+                  <td key={col.key} className="py-1.5 px-3" style={{ textAlign: col.align ?? "left" }}>
                     {col.isStatus ? (
-                      <PrintStatusBadge status={String(val)} />
+                      <span className="whitespace-nowrap inline-block">
+                        <PrintStatusBadge status={String(val)} />
+                      </span>
                     ) : (
                       String(val ?? "—")
                     )}
@@ -172,7 +174,7 @@ function ReportTable({ table }: { table: TableBlock }) {
           ))}
           {table.rows.length === 0 && (
             <tr>
-              <td colSpan={table.columns.length} className="py-3 text-center text-neutral-400 italic">
+              <td colSpan={table.columns.length} className="py-3 text-center text-neutral-400 italic text-[11px]">
                 No records for the selected period.
               </td>
             </tr>
@@ -206,30 +208,30 @@ export function PrintableReport({
   });
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-xs leading-tight font-sans">
+    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
       {/* ─── Standard Report Header ───────────────────────────────────── */}
-      <header className="avoid-break mb-2.5 border-b-2 border-[#2A3260] pb-2">
+      <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
         <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/CRMC%20LOGO.png"
               alt="CRMC Seal"
-              className="h-10 w-10 object-contain shrink-0"
+              className="h-11 w-11 object-contain shrink-0"
             />
             <div className="space-y-0.5">
               <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
                 {organizationName}
               </h1>
-              <div className="text-[10px] font-semibold text-neutral-600">
+              <div className="text-[11px] font-semibold text-neutral-700">
                 {organizationSubtitle}
               </div>
-              <div className="text-[8.5px] font-medium text-neutral-500">
+              <div className="text-[9.5px] font-medium text-neutral-500">
                 Upper Pandan, Bogo City, Cebu, Philippines
               </div>
             </div>
           </div>
-          <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[8.5px] space-y-0.5 shrink-0">
+          <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[9.5px] space-y-0.5 shrink-0">
             <div>
               <span className="text-neutral-500">Generated:</span>{" "}
               <span className="font-semibold text-neutral-800">{formattedDate}, {formattedTime}</span>
@@ -249,7 +251,7 @@ export function PrintableReport({
               {reportTitle}
             </h2>
             {filtersSummary && (
-              <div className="text-[9px] text-neutral-500 mt-0.5">{filtersSummary}</div>
+              <div className="text-[10px] text-neutral-500 mt-0.5">{filtersSummary}</div>
             )}
           </div>
         </div>
@@ -260,14 +262,14 @@ export function PrintableReport({
         {sections.map((section, idx) => (
           <section
             key={section.id}
-            className={`avoid-break space-y-2 ${section.pageBreakBefore ? "break-before-page pt-3" : ""}`}
+            className={`avoid-break space-y-2.5 ${section.pageBreakBefore ? "break-before-page pt-3" : ""}`}
           >
             <div className="flex items-center justify-between">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-teal-800">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-teal-800">
                 {section.title}
               </h3>
               {section.subtitle && (
-                <span className="text-[8.5px] text-neutral-500">{section.subtitle}</span>
+                <span className="text-[9.5px] text-neutral-500">{section.subtitle}</span>
               )}
             </div>
 
@@ -298,14 +300,14 @@ export function PrintableReport({
 
       {/* ─── Optional Signatories ─────────────────────────────────────── */}
       {showSignatories && (
-        <section className="avoid-break mt-4">
+        <section className="avoid-break pt-2">
           <PrintSignatories signers={signers} />
         </section>
       )}
 
       {/* ─── Standard Report Footer ───────────────────────────────────── */}
-      <footer className="avoid-break mt-3 pt-1.5 border-t border-neutral-200">
-        <div className="flex items-center justify-between text-[8px] text-neutral-400 font-mono">
+      <footer className="avoid-break pt-2 border-t border-neutral-200">
+        <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">
           <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS</div>
           <div>Page 1 of {totalPages}</div>
           <div>

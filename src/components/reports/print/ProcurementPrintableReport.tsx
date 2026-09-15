@@ -65,30 +65,30 @@ export function ProcurementPrintableReport({
   ];
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-xs leading-tight font-sans">
+    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
       {/* ─── Header ──────────────────────────────────────────────────────── */}
-      <header className="avoid-break border-b-2 border-[#2A3260] pb-2 mb-2.5">
+      <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
         <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/CRMC%20LOGO.png"
               alt="CRMC Seal"
-              className="h-10 w-10 object-contain shrink-0"
+              className="h-11 w-11 object-contain shrink-0"
             />
             <div className="space-y-0.5">
               <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
                 CRMC-AIMS
               </h1>
-              <div className="text-[10px] font-semibold text-neutral-600">
+              <div className="text-[11px] font-semibold text-neutral-700">
                 Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
               </div>
-              <div className="text-[8.5px] font-medium text-neutral-500">
+              <div className="text-[9.5px] font-medium text-neutral-500">
                 Upper Pandan, Bogo City, Cebu, Philippines
               </div>
             </div>
           </div>
-          <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[8.5px] space-y-0.5 shrink-0">
+          <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[9.5px] space-y-0.5 shrink-0">
             <div>
               <span className="text-neutral-500">Generated:</span>{" "}
               <span className="font-semibold text-neutral-800">{formattedDate}, {formattedTime}</span>
@@ -107,16 +107,16 @@ export function ProcurementPrintableReport({
             <h2 className="text-sm font-extrabold text-[#2A3260] tracking-tight uppercase">
               Procurement &amp; Purchase Orders Report
             </h2>
-            <div className="text-[9px] text-neutral-500 mt-0.5">{filterSummary}</div>
+            <div className="text-[10px] text-neutral-500 mt-0.5">{filterSummary}</div>
           </div>
-          <span className="text-[8.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-xs">
+          <span className="text-[9.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-xs">
             Procurement Audit
           </span>
         </div>
       </header>
 
       {/* ─── Metric Bar ──────────────────────────────────────────────────── */}
-      <section className="avoid-break mb-2.5">
+      <section className="avoid-break">
         <PrintMetricBar
           metrics={[
             {
@@ -152,7 +152,7 @@ export function ProcurementPrintableReport({
       </section>
 
       {/* ─── Distribution & Gauge Row ─────────────────────────────────────── */}
-      <section className="avoid-break mb-2.5 grid grid-cols-12 gap-2 items-stretch">
+      <section className="avoid-break grid grid-cols-12 gap-2.5 items-stretch">
         <div className="col-span-4">
           <PrintGaugeChart
             title="PO Fulfillment Rate"
@@ -172,41 +172,39 @@ export function ProcurementPrintableReport({
       </section>
 
       {/* ─── Purchase Orders Table ───────────────────────────────────────── */}
-      <section className="avoid-break mb-2.5">
-        <div className="mb-1 flex items-center justify-between">
-          <h3 className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
-            Purchase Orders Registry
-          </h3>
-          <span className="text-[8.5px] text-neutral-500 font-mono">
-            Showing {Math.min(data.length, 12)} of {data.length} records
-          </span>
-        </div>
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden">
-          <table className="w-full border-collapse text-xs">
+      <section className="avoid-break">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
+            <span>Purchase Orders Registry</span>
+            <span className="text-[10px] text-neutral-500 font-mono">
+              Showing {Math.min(data.length, 10)} of {data.length} records
+            </span>
+          </div>
+          <table className="w-full border-collapse text-[11px] table-auto">
             <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1 px-2 text-left">PO Number</th>
-                <th className="py-1 px-2 text-left">Supplier</th>
-                <th className="py-1 px-2 text-left">Items Preview</th>
-                <th className="py-1 px-2 text-left">Status</th>
-                <th className="py-1 px-2 text-right">Lead Time</th>
-                {canViewCosts && <th className="py-1 px-2 text-right">Total Amount</th>}
+              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
+                <th className="py-1.5 px-3 text-left whitespace-nowrap w-28">PO Number</th>
+                <th className="py-1.5 px-3 text-left">Supplier</th>
+                <th className="py-1.5 px-3 text-left">Items Preview</th>
+                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Status</th>
+                <th className="py-1.5 px-3 text-right whitespace-nowrap">Lead Time</th>
+                {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Total Amount</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 text-[9.5px] text-neutral-800">
-              {data.slice(0, 12).map((row) => (
+            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
+              {data.slice(0, 10).map((row) => (
                 <tr key={row.poNumber}>
-                  <td className="py-1 px-2 font-mono font-bold text-[#2A3260]">{row.poNumber}</td>
-                  <td className="py-1 px-2 font-medium truncate max-w-35">{row.supplierName}</td>
-                  <td className="py-1 px-2 text-neutral-600 truncate max-w-40">{row.itemsPreview}</td>
-                  <td className="py-1 px-2">
+                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">{row.poNumber}</td>
+                  <td className="py-1.5 px-3 font-semibold text-[#2A3260]">{row.supplierName}</td>
+                  <td className="py-1.5 px-3 text-neutral-600 truncate max-w-44">{row.itemsPreview}</td>
+                  <td className="py-1.5 px-3 whitespace-nowrap">
                     <PrintStatusBadge status={row.status} />
                   </td>
-                  <td className="py-1 px-2 text-right font-mono text-neutral-600">
+                  <td className="py-1.5 px-3 text-right font-mono text-neutral-600 whitespace-nowrap">
                     {row.leadTimeDays != null ? `${row.leadTimeDays}d` : "—"}
                   </td>
                   {canViewCosts && (
-                    <td className="py-1 px-2 text-right font-mono font-semibold text-neutral-900">
+                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
                       {row.totalAmount != null ? `₱${row.totalAmount.toLocaleString()}` : "—"}
                     </td>
                   )}
@@ -214,7 +212,7 @@ export function ProcurementPrintableReport({
               ))}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={canViewCosts ? 6 : 5} className="py-3 text-center text-neutral-400 italic">
+                  <td colSpan={canViewCosts ? 6 : 5} className="py-3 text-center text-neutral-400 italic text-[11px]">
                     No purchase orders found matching active filters.
                   </td>
                 </tr>
@@ -225,14 +223,14 @@ export function ProcurementPrintableReport({
       </section>
 
       {/* ─── Key Observations ─────────────────────────────────────────────── */}
-      <section className="avoid-break mb-2">
+      <section className="avoid-break">
         <PrintObservationsBox observations={observations} />
       </section>
 
       {/* ─── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="avoid-break mt-2 pt-1.5 border-t border-neutral-200">
-        <div className="flex items-center justify-between text-[8px] text-neutral-400 font-mono">
-          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS</div>
+      <footer className="avoid-break pt-2 border-t border-neutral-200">
+        <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">
+          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS Procurement</div>
           <div>Page 1 of 1</div>
           <div>
             Verification Code: CRMC-PO-{generatedAt.getTime().toString(36).toUpperCase()}

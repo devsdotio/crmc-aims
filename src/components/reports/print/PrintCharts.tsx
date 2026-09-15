@@ -54,7 +54,7 @@ export function PrintMetricBar({
 }) {
   return (
     <div
-      className={`avoid-break grid divide-x divide-neutral-200 rounded-md border border-neutral-200 bg-white p-2.5 ${className}`}
+      className={`avoid-break grid divide-x divide-neutral-200 rounded-md border border-neutral-200 bg-white p-3 ${className}`}
       style={{ gridTemplateColumns: `repeat(${metrics.length}, minmax(0, 1fr))` }}
     >
       {metrics.map((m, idx) => {
@@ -64,22 +64,22 @@ export function PrintMetricBar({
         if (m.deltaType === "neutral") deltaColor = "text-neutral-600 bg-neutral-100 border-neutral-200";
 
         return (
-          <div key={idx} className={`px-2.5 first:pl-1 last:pr-1`}>
-            <div className="text-[8.5px] font-bold uppercase tracking-wider text-neutral-500 truncate">
+          <div key={idx} className="px-3 first:pl-1 last:pr-1">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 truncate">
               {m.label}
             </div>
             <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-[13.5px] font-extrabold text-neutral-900 tracking-tight">
+              <span className="text-[15px] font-extrabold text-neutral-900 tracking-tight">
                 {m.value}
               </span>
               {m.delta && (
-                <span className={`text-[8.5px] font-semibold px-1 py-0.2 rounded-xs border ${deltaColor}`}>
+                <span className={`text-[9.5px] font-semibold px-1.5 py-0.5 rounded-xs border ${deltaColor}`}>
                   {m.delta}
                 </span>
               )}
             </div>
             {m.subtext && (
-              <div className="mt-0.5 text-[8px] text-neutral-500 truncate">
+              <div className="mt-0.5 text-[9px] text-neutral-500 truncate">
                 {m.subtext}
               </div>
             )}
@@ -115,7 +115,7 @@ export function PrintStatusBadge({
   }
 
   return (
-    <span className={`inline-flex items-center rounded-xs px-1.5 py-0.5 text-[8.5px] font-semibold border ${style}`}>
+    <span className={`inline-flex items-center rounded-xs px-2 py-0.5 text-[10.5px] font-semibold border ${style}`}>
       {text}
     </span>
   );
@@ -148,36 +148,36 @@ export function PrintHorizontalDistribution({
   const calculatedMax = maxVal || Math.max(...items.map((i) => i.value), 1);
 
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-2.5 ${className}`}>
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 ${className}`}>
       {title && (
-        <h4 className="mb-2 text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+        <h4 className="mb-2 text-[11.5px] font-bold uppercase tracking-wider text-teal-800">
           {title}
         </h4>
       )}
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {items.map((item, idx) => {
           const pct = Math.min(100, Math.max(4, Math.round((item.value / calculatedMax) * 100)));
           const barColor = item.color || "#0D9488";
 
           return (
-            <div key={idx} className="flex items-center gap-2 text-[10px]">
-              <div className="w-24 shrink-0 font-medium text-neutral-700 truncate">
+            <div key={idx} className="flex items-center gap-3 text-[11px]">
+              <div className="w-36 shrink-0 font-semibold text-neutral-800 truncate">
                 {item.label}
               </div>
-              <div className="flex-1 bg-neutral-100 h-2.5 rounded-xs overflow-hidden flex items-center">
+              <div className="flex-1 bg-neutral-100 h-3 rounded-xs overflow-hidden flex items-center">
                 <div
                   className="h-full rounded-xs transition-all duration-300"
                   style={{ width: `${pct}%`, backgroundColor: barColor }}
                 />
               </div>
-              <div className="w-12 shrink-0 text-right font-bold text-neutral-800 font-mono text-[9.5px]">
+              <div className="w-20 shrink-0 text-right font-bold text-neutral-900 font-mono text-[11px]">
                 {item.displayValue || `${item.value.toLocaleString()}${valueSuffix}`}
               </div>
             </div>
           );
         })}
         {items.length === 0 && (
-          <div className="text-[9.5px] text-neutral-400 italic py-1">No distribution data available</div>
+          <div className="text-[11px] text-neutral-400 italic py-1">No distribution data available</div>
         )}
       </div>
     </div>
@@ -194,7 +194,7 @@ export function PrintVerticalValueBars({
   valueFormatter,
   className = "",
   barColor = "#0D9488",
-  height = 100,
+  height = 110,
 }: {
   title: string;
   data: { label: string; value: number }[];
@@ -206,11 +206,11 @@ export function PrintVerticalValueBars({
   const maxVal = Math.max(...data.map((d) => d.value), 1);
 
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-2.5 flex flex-col justify-between ${className}`}>
-      <h4 className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 flex flex-col justify-between ${className}`}>
+      <h4 className="mb-1 text-[11.5px] font-bold uppercase tracking-wider text-teal-800">
         {title}
       </h4>
-      <div className="flex items-end justify-between gap-1.5 pt-4 pb-1" style={{ height: `${height}px` }}>
+      <div className="flex items-end justify-between gap-2 pt-4 pb-1" style={{ height: `${height}px` }}>
         {data.map((d, i) => {
           const heightPct = Math.max(8, Math.min(100, Math.round((d.value / maxVal) * 100)));
           const display = valueFormatter
@@ -223,14 +223,14 @@ export function PrintVerticalValueBars({
 
           return (
             <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
-              <span className="text-[7.5px] font-bold font-mono text-neutral-700 mb-0.5 whitespace-nowrap">
+              <span className="text-[9.5px] font-bold font-mono text-neutral-800 mb-1 whitespace-nowrap">
                 {display}
               </span>
               <div
-                className="w-full max-w-10 rounded-t-xs"
+                className="w-full max-w-12 rounded-t-xs"
                 style={{ height: `${heightPct}%`, backgroundColor: barColor }}
               />
-              <span className="text-[8px] font-medium text-neutral-600 mt-1 truncate max-w-12 text-center">
+              <span className="text-[10px] font-medium text-neutral-700 mt-1 truncate max-w-16 text-center">
                 {d.label}
               </span>
             </div>
@@ -256,14 +256,14 @@ export function PrintObservationsBox({
   if (!observations || observations.length === 0) return null;
 
   return (
-    <div className={`avoid-break rounded-r-md border-l-4 border-teal-600 bg-teal-50/50 p-2.5 ${className}`}>
-      <div className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800 mb-1 flex items-center gap-1.5">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-600" />
+    <div className={`avoid-break rounded-r-md border-l-4 border-teal-600 bg-teal-50/50 p-3 ${className}`}>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-teal-800 mb-1.5 flex items-center gap-1.5">
+        <span className="inline-block h-2 w-2 rounded-full bg-teal-600" />
         {title}
       </div>
-      <ul className="space-y-0.5 text-[9.5px] text-neutral-700 leading-snug">
+      <ul className="space-y-1 text-[11px] text-neutral-800 leading-normal">
         {observations.map((obs, idx) => (
-          <li key={idx} className="flex items-start gap-1.5">
+          <li key={idx} className="flex items-start gap-2">
             <span className="text-teal-700 font-bold">•</span>
             <span>{obs}</span>
           </li>
@@ -291,10 +291,10 @@ export function PrintSignatories({
     <div className={`avoid-break pt-4 border-t border-neutral-200 grid grid-cols-3 gap-6 ${className}`}>
       {signers.map((s, idx) => (
         <div key={idx} className="text-center">
-          <div className="h-6 border-b border-neutral-400 mx-auto w-4/5" />
-          <div className="mt-1 text-[9.5px] font-bold text-neutral-800">{s.name}</div>
-          <div className="text-[8px] text-neutral-500 uppercase tracking-wider">{s.role}</div>
-          {s.title && <div className="text-[7.5px] text-neutral-400 italic">{s.title}</div>}
+          <div className="h-7 border-b border-neutral-400 mx-auto w-4/5" />
+          <div className="mt-1 text-[11px] font-bold text-neutral-800">{s.name}</div>
+          <div className="text-[9.5px] text-neutral-500 uppercase tracking-wider">{s.role}</div>
+          {s.title && <div className="text-[8.5px] text-neutral-400 italic">{s.title}</div>}
         </div>
       ))}
     </div>
@@ -309,7 +309,7 @@ export function PrintDonutChart({
   data,
   valueFormatter,
   className = "",
-  pieSize = 100,
+  pieSize = 110,
 }: {
   title: string;
   data: DonutDatum[];
@@ -322,11 +322,11 @@ export function PrintDonutChart({
   const innerRadius = Math.round(pieSize * 0.28);
 
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-2.5 overflow-hidden flex flex-col justify-between ${className}`}>
-      <h4 className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden flex flex-col justify-between ${className}`}>
+      <h4 className="mb-2 text-[11.5px] font-bold uppercase tracking-wider text-teal-800">
         {title}
       </h4>
-      <div className="flex items-center gap-3 my-auto">
+      <div className="flex items-center gap-4 my-auto">
         <div className="shrink-0 flex items-center justify-center">
           <PieChart width={pieSize} height={pieSize}>
             <Pie
@@ -348,7 +348,7 @@ export function PrintDonutChart({
             </Pie>
           </PieChart>
         </div>
-        <ul className="flex-1 space-y-1 text-xs">
+        <ul className="flex-1 space-y-1.5 text-[11px]">
           {data.map((d, i) => {
             const color = d.color ?? PRINT_PALETTE[i % PRINT_PALETTE.length];
             const pct = total ? Math.round((d.value / total) * 100) : 0;
@@ -359,18 +359,18 @@ export function PrintDonutChart({
             return (
               <li
                 key={d.name}
-                className="flex items-center justify-between gap-1.5 border-b border-neutral-100 pb-0.5 last:border-0"
+                className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-1 last:border-0"
               >
-                <span className="flex items-center gap-1.5 text-neutral-700 font-medium truncate max-w-35">
+                <span className="flex items-center gap-2 text-neutral-800 font-medium truncate">
                   <span
-                    className="h-2 w-2 shrink-0 rounded-xs"
+                    className="h-2.5 w-2.5 shrink-0 rounded-xs"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="truncate text-[9.5px]">{d.name}</span>
+                  <span className="truncate text-[11px]">{d.name}</span>
                 </span>
-                <span className="font-bold text-neutral-900 shrink-0 text-right text-[9.5px]">
+                <span className="font-bold text-neutral-900 shrink-0 text-right text-[11px]">
                   {displayVal}{" "}
-                  <span className="text-[8.5px] font-normal text-neutral-500">
+                  <span className="text-[10px] font-normal text-neutral-500">
                     ({pct}%)
                   </span>
                 </span>
@@ -378,7 +378,7 @@ export function PrintDonutChart({
             );
           })}
           {data.length === 0 && (
-            <li className="text-[9px] text-neutral-400 italic">No category data recorded</li>
+            <li className="text-[10.5px] text-neutral-400 italic">No category data recorded</li>
           )}
         </ul>
       </div>
@@ -398,7 +398,7 @@ export function PrintBarChart({
   seriesKeys,
   valueFormatter,
   width = 680,
-  height = 115,
+  height = 125,
   className = "",
 }: {
   title: string;
@@ -410,16 +410,16 @@ export function PrintBarChart({
   className?: string;
 }) {
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-2.5 overflow-hidden flex flex-col justify-between ${className}`}>
-      <div className="flex items-center justify-between mb-1.5">
-        <h4 className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden flex flex-col justify-between ${className}`}>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-teal-800">
           {title}
         </h4>
-        <div className="flex items-center gap-3 text-[8.5px] text-neutral-600 font-medium">
+        <div className="flex items-center gap-3 text-[10.5px] text-neutral-700 font-medium">
           {seriesKeys.map((s) => (
-            <span key={s.key} className="flex items-center gap-1">
+            <span key={s.key} className="flex items-center gap-1.5">
               <span
-                className="h-1.5 w-1.5 rounded-xs"
+                className="h-2 w-2 rounded-xs"
                 style={{ backgroundColor: s.color }}
               />
               {s.label}
@@ -438,15 +438,15 @@ export function PrintBarChart({
           <CartesianGrid strokeDasharray="2 2" vertical={false} stroke="#E5E7EB" />
           <XAxis
             dataKey="month"
-            tick={{ fontSize: 8.5, fill: "#4B5563" }}
+            tick={{ fontSize: 10, fill: "#374151" }}
             axisLine={{ stroke: "#D1D5DB" }}
             tickLine={false}
           />
           <YAxis
-            tick={{ fontSize: 8.5, fill: "#4B5563" }}
+            tick={{ fontSize: 10, fill: "#374151" }}
             axisLine={false}
             tickLine={false}
-            width={40}
+            width={45}
             tickFormatter={(v) =>
               valueFormatter
                 ? valueFormatter(v)
@@ -487,19 +487,19 @@ export function PrintGaugeChart({
   const data = [{ name: "value", value, fill: "#0D9488" }];
 
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-2.5 overflow-hidden flex flex-col items-center justify-between text-center ${className}`}>
-      <h4 className="w-full text-left text-[9.5px] font-bold uppercase tracking-wider text-teal-800 mb-0.5">
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden flex flex-col items-center justify-between text-center ${className}`}>
+      <h4 className="w-full text-left text-[11.5px] font-bold uppercase tracking-wider text-teal-800 mb-0.5">
         {title}
       </h4>
       <div className="relative my-auto flex flex-col items-center">
         <RadialBarChart
-          width={120}
-          height={75}
+          width={130}
+          height={80}
           cx="50%"
           cy="95%"
-          innerRadius={42}
-          outerRadius={62}
-          barSize={9}
+          innerRadius={46}
+          outerRadius={68}
+          barSize={10}
           data={data}
           startAngle={180}
           endAngle={0}
@@ -517,19 +517,19 @@ export function PrintGaugeChart({
             isAnimationActive={false}
           />
         </RadialBarChart>
-        <div className="-mt-5">
-          <span className="text-lg font-extrabold text-neutral-900 tracking-tight">
+        <div className="-mt-6">
+          <span className="text-xl font-extrabold text-neutral-900 tracking-tight">
             {value}%
           </span>
         </div>
       </div>
       {(label || sublabel) && (
-        <div className="mt-0.5">
+        <div className="mt-1">
           {label && (
-            <div className="text-[10px] font-bold text-neutral-800">{label}</div>
+            <div className="text-[11px] font-bold text-neutral-800">{label}</div>
           )}
           {sublabel && (
-            <div className="text-[8.5px] text-neutral-500">{sublabel}</div>
+            <div className="text-[9.5px] text-neutral-500">{sublabel}</div>
           )}
         </div>
       )}
