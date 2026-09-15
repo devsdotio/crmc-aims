@@ -41,7 +41,7 @@ export function ExecutivePrintableReport({
   });
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-[#1B2140] text-xs leading-tight font-sans">
+    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-xs leading-tight font-sans">
       {/* ─── Institutional Header ───────────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2 mb-2.5">
         <div className="flex items-start justify-between">
@@ -204,7 +204,7 @@ export function ExecutivePrintableReport({
               value={operationalRate}
               label={`${assets?.activeCount || 0} / ${assets?.totalCount || 0} Units`}
               sublabel="Ready for Academic & Administrative Use"
-              className="h-full min-h-[135px]"
+              className="h-full min-h-33.75"
             />
           </div>
 
@@ -217,7 +217,7 @@ export function ExecutivePrintableReport({
                 canViewCosts ? `₱${v.toLocaleString()}` : `${v.toLocaleString()} units`
               }
               pieSize={115}
-              className="h-full min-h-[135px]"
+              className="h-full min-h-33.75"
             />
           </div>
         </div>

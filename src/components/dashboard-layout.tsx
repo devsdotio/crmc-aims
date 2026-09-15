@@ -60,7 +60,7 @@ export default function DashboardLayout({
 
   return (
     <SandboxVisibilityProvider role={currentRole}>
-    <div className="flex h-full w-full overflow-hidden bg-[#F2F3F7] text-[#1B2140] print:h-auto print:overflow-visible print:bg-white">
+    <div className="flex h-full w-full overflow-hidden bg-bg-subtle text-text print:h-auto print:overflow-visible print:bg-white">
       <div className="hidden md:block h-full shrink-0 print:hidden no-print">
         <Sidebar
           userName={userName}
@@ -104,7 +104,7 @@ export default function DashboardLayout({
       </div>
 
       <div
-        className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden bg-[#F2F3F7] text-[#1B2140] print:h-auto print:overflow-visible print:bg-white"
+        className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden bg-bg-subtle text-text print:h-auto print:overflow-visible print:bg-white"
         data-theme="light"
       >
         <div className="print:hidden no-print">
@@ -115,7 +115,7 @@ export default function DashboardLayout({
           />
         </div>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 bg-[#F2F3F7] focus:outline-hidden print:overflow-visible print:h-auto print:p-0 print:bg-white">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 bg-bg-subtle focus:outline-hidden print:overflow-visible print:h-auto print:p-0 print:bg-white">
           {children}
         </main>
       </div>

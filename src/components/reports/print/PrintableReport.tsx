@@ -156,7 +156,7 @@ export function PrintableReport({
   sections,
 }: PrintableReportProps) {
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-[#1B2140] text-xs leading-tight font-sans">
+    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-xs leading-tight font-sans">
       <header className="avoid-break mb-3 flex items-start justify-between border-b-2 border-[#2A3260] pb-2.5">
         <div>
           <div className="text-[9px] font-bold tracking-widest text-[#FF4E45] uppercase">

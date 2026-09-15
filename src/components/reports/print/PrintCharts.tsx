@@ -89,7 +89,7 @@ export function PrintDonutChart({
                 key={d.name}
                 className="flex items-center justify-between gap-1.5 border-b border-neutral-100 pb-0.5 last:border-0"
               >
-                <span className="flex items-center gap-1.5 text-neutral-700 font-medium truncate max-w-[140px]">
+                <span className="flex items-center gap-1.5 text-neutral-700 font-medium truncate max-w-35">
                   <span
                     className="h-2 w-2 shrink-0 rounded-xs"
                     style={{ backgroundColor: color }}
