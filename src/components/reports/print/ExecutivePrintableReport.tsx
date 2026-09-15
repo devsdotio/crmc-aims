@@ -5,6 +5,9 @@ import {
   PrintDonutChart,
   PrintBarChart,
   PrintGaugeChart,
+  PrintMetricBar,
+  PrintObservationsBox,
+  PrintStatusBadge,
 } from "./PrintCharts";
 
 interface ExecutivePrintableReportProps {
@@ -16,7 +19,7 @@ interface ExecutivePrintableReportProps {
 export function ExecutivePrintableReport({
   data,
   generatedAt = new Date(),
-  filtersSummary = "Scope: Institutional Rollup · Academic & Administrative Departments · All Categories",
+  filtersSummary = "Department: All · Location: All · Status: All",
 }: ExecutivePrintableReportProps) {
   const { assets, consumables, procurement, requests, maintenance, charts, canViewCosts } = data;
 
@@ -32,7 +35,7 @@ export function ExecutivePrintableReport({
 
   const formattedDate = generatedAt.toLocaleDateString("en-PH", {
     year: "numeric",
-    month: "long",
+    month: "short",
     day: "numeric",
   });
   const formattedTime = generatedAt.toLocaleTimeString("en-PH", {
@@ -40,159 +43,126 @@ export function ExecutivePrintableReport({
     minute: "2-digit",
   });
 
+  // Dynamic Key Observations generated from live data
+  const observations: string[] = [
+    `${assets?.activeCount || 0} of ${assets?.totalCount || 0} (${operationalRate}%) capital assets are fully operational, with ${assets?.inRepairCount || 0} currently under maintenance.`,
+    consumables?.lowStockCount && consumables.lowStockCount > 0
+      ? `${consumables.lowStockCount} consumable SKUs are below reorder point requiring immediate replenishment.`
+      : `Consumable supply inventory is operating within optimal buffer thresholds across all departments.`,
+    `${procurement?.openOrdersCount || 0} active purchase orders in pipeline (${canViewCosts ? `₱${(procurement?.totalSpend30d || 0).toLocaleString()}` : 'active cycle'}).`,
+    `Maintenance repair turnaround averaging ${maintenance?.avgMttrDays || 0} days MTTR with ${maintenance?.resolvedThisMonth || 0} work orders closed this period.`,
+  ];
+
   return (
     <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-xs leading-tight font-sans">
       {/* ─── Institutional Header ───────────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2 mb-2.5">
         <div className="flex items-start justify-between">
           <div className="space-y-0.5">
-            <div className="text-[9px] font-bold tracking-widest text-[#FF4E45] uppercase">
-              Upper Pandan, Bogo City, Cebu, Philippines
-            </div>
-            <h1 className="text-sm font-extrabold tracking-tight text-[#2A3260] uppercase">
-              Cebu Roosevelt Memorial Colleges, Inc.
+            <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
+              CRMC-AIMS
             </h1>
-            <div className="text-[11px] font-semibold text-neutral-600">
-              Asset &amp; Inventory Management System (CRMC-AIMS)
+            <div className="text-[10px] font-semibold text-neutral-600">
+              Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
+            </div>
+            <div className="text-[8.5px] font-medium text-neutral-500">
+              Upper Pandan, Bogo City, Cebu, Philippines
             </div>
           </div>
 
-          <div className="rounded-xs border border-neutral-300 bg-neutral-50 px-2.5 py-1 text-right font-mono text-[9px] space-y-0.5 shrink-0">
+          <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[8.5px] space-y-0.5 shrink-0">
+            <div>
+              <span className="text-neutral-500">Generated:</span>{" "}
+              <span className="font-semibold text-neutral-800">
+                {formattedDate}, {formattedTime}
+              </span>
+            </div>
             <div>
               <span className="text-neutral-500">Doc ID:</span>{" "}
               <span className="font-bold text-neutral-800">
-                EXEC-RPT-{generatedAt.getFullYear()}
+                CRMC-EXEC-{generatedAt.getFullYear()}
                 {String(generatedAt.getMonth() + 1).padStart(2, "0")}
               </span>
             </div>
-            <div>
-              <span className="text-neutral-500">Generated:</span>{" "}
-              <span className="font-medium text-neutral-800">
-                {formattedDate} {formattedTime}
-              </span>
-            </div>
-            <div>
-              <span className="text-neutral-500">Class:</span>{" "}
-              <span className="font-bold text-emerald-700">OFFICIAL AUDIT</span>
-            </div>
           </div>
         </div>
 
-        <div className="mt-2 flex items-center justify-between border-t border-neutral-200 pt-1 text-[10px]">
+        <div className="mt-2 flex items-baseline justify-between border-t border-neutral-200 pt-1.5">
           <div>
-            <span className="font-bold text-[#2A3260] uppercase tracking-wide">
-              Executive Operational &amp; Financial Audit Overview
-            </span>
+            <h2 className="text-sm font-extrabold text-[#2A3260] tracking-tight">
+              Operational Reports Summary
+            </h2>
+            <div className="text-[9px] text-neutral-500 mt-0.5">{filtersSummary}</div>
           </div>
-          <div className="text-neutral-500">{filtersSummary}</div>
+          <span className="text-[8.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-xs">
+            Executive Audit Overview
+          </span>
         </div>
       </header>
 
-      {/* ─── Pillar KPI Grid ────────────────────────────────────────────── */}
+      {/* ─── Connected Pillar KPI Metric Bar ─────────────────────────────── */}
       <section className="avoid-break mb-2.5">
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-[10px] font-bold uppercase tracking-wider text-[#2A3260]">
-            1. Consolidated Operational Domain Metrics
-          </h2>
-          <span className="text-[9px] text-neutral-500">Live Institutional Rollup</span>
+          <h3 className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+            Executive Domain Performance
+          </h3>
+          <span className="text-[8.5px] text-neutral-500 font-mono">Live Institutional Rollup</span>
         </div>
 
-        <div className="grid grid-cols-5 gap-1.5">
-          {/* Assets */}
-          <div className="rounded-xs border border-neutral-300 bg-neutral-50/50 p-1.5 px-2">
-            <div className="text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
-              Capital Assets
-            </div>
-            <div className="mt-0.5 text-[13px] font-extrabold text-[#2A3260]">
-              {canViewCosts
-                ? `₱${(assets?.totalValue || 0).toLocaleString()}`
-                : `${assets?.totalCount || 0} units`}
-            </div>
-            <div className="mt-0.5 flex items-center justify-between text-[8.5px] text-neutral-600">
-              <span>{assets?.activeCount || 0} active</span>
-              <span className="text-amber-700 font-semibold">{assets?.inRepairCount || 0} repair</span>
-            </div>
-          </div>
-
-          {/* Consumables */}
-          <div className="rounded-xs border border-neutral-300 bg-neutral-50/50 p-1.5 px-2">
-            <div className="text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
-              Consumables Stock
-            </div>
-            <div className="mt-0.5 text-[13px] font-extrabold text-[#2A3260]">
-              {canViewCosts
-                ? `₱${(consumables?.totalValuation || 0).toLocaleString()}`
-                : `${consumables?.totalItems || 0} SKUs`}
-            </div>
-            <div className="mt-0.5 flex items-center justify-between text-[8.5px] text-neutral-600">
-              <span>{consumables?.totalItems || 0} items</span>
-              <span
-                className={
-                  consumables?.lowStockCount
-                    ? "text-amber-700 font-semibold"
-                    : "text-emerald-700 font-semibold"
-                }
-              >
-                {consumables?.lowStockCount
-                  ? `${consumables.lowStockCount} low`
-                  : "Optimal"}
-              </span>
-            </div>
-          </div>
-
-          {/* Procurement */}
-          <div className="rounded-xs border border-neutral-300 bg-neutral-50/50 p-1.5 px-2">
-            <div className="text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
-              Procurement (30d)
-            </div>
-            <div className="mt-0.5 text-[13px] font-extrabold text-[#2A3260]">
-              {canViewCosts
-                ? `₱${(procurement?.totalSpend30d || 0).toLocaleString()}`
-                : `${procurement?.openOrdersCount || 0} orders`}
-            </div>
-            <div className="mt-0.5 flex items-center justify-between text-[8.5px] text-neutral-600">
-              <span>{procurement?.openOrdersCount || 0} open POs</span>
-              <span className="text-neutral-500">{procurement?.pendingDeliveryCount || 0} pending</span>
-            </div>
-          </div>
-
-          {/* Requests */}
-          <div className="rounded-xs border border-neutral-300 bg-neutral-50/50 p-1.5 px-2">
-            <div className="text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
-              Supply Requests
-            </div>
-            <div className="mt-0.5 text-[13px] font-extrabold text-[#2A3260]">
-              {requests?.pendingCount ?? 0} Pending
-            </div>
-            <div className="mt-0.5 flex items-center justify-between text-[8.5px] text-neutral-600">
-              <span>{requests?.fulfilledThisMonth || 0} fulfilled</span>
-              <span className="text-neutral-500">{requests?.avgApprovalHours || 0}h turnaround</span>
-            </div>
-          </div>
-
-          {/* Maintenance */}
-          <div className="rounded-xs border border-neutral-300 bg-neutral-50/50 p-1.5 px-2">
-            <div className="text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
-              Maintenance MTTR
-            </div>
-            <div className="mt-0.5 text-[13px] font-extrabold text-[#FF4E45]">
-              {maintenance?.avgMttrDays || 0} Days
-            </div>
-            <div className="mt-0.5 flex items-center justify-between text-[8.5px] text-neutral-600">
-              <span>{maintenance?.activeIssuesCount || 0} active</span>
-              <span className="text-emerald-700 font-semibold">{maintenance?.resolvedThisMonth || 0} fixed</span>
-            </div>
-          </div>
-        </div>
+        <PrintMetricBar
+          metrics={[
+            {
+              label: "Total Assets",
+              value: canViewCosts
+                ? `₱${((assets?.totalValue || 0) / 1000000).toFixed(1)}M`
+                : `${assets?.totalCount || 0}`,
+              delta: `${operationalRate}% active`,
+              deltaType: "positive",
+              subtext: `${assets?.activeCount || 0} operational units`,
+            },
+            {
+              label: "Consumables",
+              value: canViewCosts
+                ? `₱${((consumables?.totalValuation || 0) / 1000).toFixed(0)}k`
+                : `${consumables?.totalItems || 0} SKUs`,
+              delta: consumables?.lowStockCount ? `${consumables.lowStockCount} low` : "Optimal",
+              deltaType: consumables?.lowStockCount ? "warning" : "positive",
+              subtext: `${consumables?.totalItems || 0} registered SKUs`,
+            },
+            {
+              label: "Procurement (30d)",
+              value: canViewCosts
+                ? `₱${((procurement?.totalSpend30d || 0) / 1000).toFixed(0)}k`
+                : `${procurement?.openOrdersCount || 0} POs`,
+              delta: `${procurement?.openOrdersCount || 0} open`,
+              deltaType: "neutral",
+              subtext: `${procurement?.pendingDeliveryCount || 0} pending delivery`,
+            },
+            {
+              label: "Supply Requests",
+              value: `${requests?.pendingCount ?? 0}`,
+              delta: `${requests?.fulfilledThisMonth || 0} closed`,
+              deltaType: (requests?.pendingCount ?? 0) > 0 ? "warning" : "positive",
+              subtext: `${requests?.avgApprovalHours || 0}h avg turnaround`,
+            },
+            {
+              label: "Maintenance MTTR",
+              value: `${maintenance?.avgMttrDays || 0}d`,
+              delta: `${maintenance?.activeIssuesCount || 0} active`,
+              deltaType: (maintenance?.activeIssuesCount || 0) > 3 ? "warning" : "positive",
+              subtext: `${maintenance?.resolvedThisMonth || 0} resolved this month`,
+            },
+          ]}
+        />
       </section>
 
       {/* ─── Visual Analysis Row (Gauge + Donut, then Spend Trend) ─────── */}
       <section className="avoid-break mb-2.5 space-y-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-[10px] font-bold uppercase tracking-wider text-[#2A3260]">
-            2. Institutional Valuation Share &amp; Equipment Reliability
-          </h2>
-          <span className="text-[9px] text-neutral-500 font-mono">LIVE CHART AUDIT</span>
+          <h3 className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+            Valuation Distribution &amp; Fleet Reliability
+          </h3>
+          <span className="text-[8.5px] text-neutral-500 font-mono">LIVE CHART AUDIT</span>
         </div>
 
         {/* Top Row: Gauge (col-span-4) + Donut (col-span-8) */}
@@ -216,7 +186,7 @@ export function ExecutivePrintableReport({
               valueFormatter={(v) =>
                 canViewCosts ? `₱${v.toLocaleString()}` : `${v.toLocaleString()} units`
               }
-              pieSize={115}
+              pieSize={110}
               className="h-full min-h-33.75"
             />
           </div>
@@ -228,8 +198,8 @@ export function ExecutivePrintableReport({
             title="6-Month Institutional Spend Trend (Procurement vs Maintenance)"
             data={charts?.monthlySpendTrend || []}
             seriesKeys={[
-              { key: "procurement", label: "Procurement Spend", color: "#2A3260" },
-              { key: "maintenance", label: "Maintenance Spend", color: "#FF4E45" },
+              { key: "procurement", label: "Procurement Spend", color: "#0D9488" },
+              { key: "maintenance", label: "Maintenance Spend", color: "#F59E0B" },
             ]}
             valueFormatter={(v) =>
               canViewCosts
@@ -237,25 +207,25 @@ export function ExecutivePrintableReport({
                 : `${v}`
             }
             width={640}
-            height={110}
+            height={105}
             className="w-full"
           />
         </div>
       </section>
 
       {/* ─── Operational Domain Summary Matrix Table ─────────────────────── */}
-      <section className="avoid-break mb-3">
+      <section className="avoid-break mb-2.5">
         <div className="mb-1 flex items-center justify-between">
-          <h2 className="text-[10px] font-bold uppercase tracking-wider text-[#2A3260]">
-            3. Operational Domain Status Matrix
-          </h2>
-          <span className="text-[9px] text-neutral-500">Summary Audit Rollup</span>
+          <h3 className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+            Operational Domain Status Matrix
+          </h3>
+          <span className="text-[8.5px] text-neutral-500">Summary Audit Rollup</span>
         </div>
 
-        <div className="rounded-xs border border-neutral-300 bg-white overflow-hidden">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden">
           <table className="w-full border-collapse text-left text-xs">
             <thead>
-              <tr className="border-b border-neutral-300 bg-neutral-100 text-[9px] font-bold uppercase tracking-wider text-neutral-700">
+              <tr className="border-b border-neutral-200 bg-neutral-50 text-[8.5px] font-bold uppercase tracking-wider text-neutral-600">
                 <th className="py-1 px-2">Audit Domain</th>
                 <th className="py-1 px-2">Primary Valuation / Spend</th>
                 <th className="py-1 px-2">Unit / Queue Volume</th>
@@ -263,7 +233,7 @@ export function ExecutivePrintableReport({
                 <th className="py-1 px-2 text-right">SLA / Efficiency</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-200 text-neutral-800 text-[10.5px]">
+            <tbody className="divide-y divide-neutral-100 text-neutral-800 text-[9.5px]">
               <tr>
                 <td className="py-1 px-2 font-semibold text-[#2A3260]">
                   Capital Asset Registry
@@ -273,9 +243,7 @@ export function ExecutivePrintableReport({
                 </td>
                 <td className="py-1 px-2">{assets?.totalCount || 0} Total Assets</td>
                 <td className="py-1 px-2">
-                  <span className="inline-flex items-center rounded-xs bg-emerald-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-emerald-800 border border-emerald-300">
-                    {operationalRate}% Operational
-                  </span>
+                  <PrintStatusBadge status="active" label={`${operationalRate}% Operational`} />
                 </td>
                 <td className="py-1 px-2 text-right text-neutral-600">
                   {assets?.inRepairCount || 0} Under Maintenance
@@ -293,13 +261,9 @@ export function ExecutivePrintableReport({
                 <td className="py-1 px-2">{consumables?.totalItems || 0} Registered SKUs</td>
                 <td className="py-1 px-2">
                   {consumables?.lowStockCount ? (
-                    <span className="inline-flex items-center rounded-xs bg-amber-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-amber-800 border border-amber-300">
-                      {consumables.lowStockCount} Below Threshold
-                    </span>
+                    <PrintStatusBadge status="low stock" label={`${consumables.lowStockCount} Below Threshold`} />
                   ) : (
-                    <span className="inline-flex items-center rounded-xs bg-emerald-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-emerald-800 border border-emerald-300">
-                      Stock Levels Healthy
-                    </span>
+                    <PrintStatusBadge status="optimal" label="Stock Levels Optimal" />
                   )}
                 </td>
                 <td className="py-1 px-2 text-right text-neutral-600">
@@ -321,9 +285,7 @@ export function ExecutivePrintableReport({
                   {procurement?.openOrdersCount || 0} Active Purchase Orders
                 </td>
                 <td className="py-1 px-2">
-                  <span className="inline-flex items-center rounded-xs bg-blue-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-blue-800 border border-blue-300">
-                    {procurement?.pendingDeliveryCount || 0} Pending Delivery
-                  </span>
+                  <PrintStatusBadge status="ordered" label={`${procurement?.pendingDeliveryCount || 0} Pending Delivery`} />
                 </td>
                 <td className="py-1 px-2 text-right text-neutral-600">30-Day Period Window</td>
               </tr>
@@ -337,13 +299,9 @@ export function ExecutivePrintableReport({
                 <td className="py-1 px-2">{requests?.pendingCount ?? 0} In Review Queue</td>
                 <td className="py-1 px-2">
                   {(requests?.pendingCount ?? 0) > 0 ? (
-                    <span className="inline-flex items-center rounded-xs bg-amber-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-amber-800 border border-amber-300">
-                      Pending Action
-                    </span>
+                    <PrintStatusBadge status="pending" label="Pending Action" />
                   ) : (
-                    <span className="inline-flex items-center rounded-xs bg-emerald-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-emerald-800 border border-emerald-300">
-                      Queue Clear
-                    </span>
+                    <PrintStatusBadge status="fulfilled" label="Queue Clear" />
                   )}
                 </td>
                 <td className="py-1 px-2 text-right text-neutral-600">
@@ -363,9 +321,7 @@ export function ExecutivePrintableReport({
                   {maintenance?.activeIssuesCount || 0} Active Work Orders
                 </td>
                 <td className="py-1 px-2">
-                  <span className="inline-flex items-center rounded-xs bg-emerald-50 px-1.5 py-0.5 text-[8.5px] font-semibold text-emerald-800 border border-emerald-300">
-                    {maintenance?.resolvedThisMonth || 0} Closed this Month
-                  </span>
+                  <PrintStatusBadge status="completed" label={`${maintenance?.resolvedThisMonth || 0} Closed this Month`} />
                 </td>
                 <td className="py-1 px-2 text-right text-neutral-600">
                   {maintenance?.avgMttrDays || 0} Days Avg MTTR
@@ -376,12 +332,18 @@ export function ExecutivePrintableReport({
         </div>
       </section>
 
+      {/* ─── Key Observations Callout Box ─────────────────────────────────── */}
+      <section className="avoid-break mb-2">
+        <PrintObservationsBox observations={observations} />
+      </section>
+
       {/* ─── Institutional Footer ───────────────────────────────────────── */}
-      <footer className="avoid-break mt-3 pt-2 border-t border-neutral-300">
-        <div className="flex items-center justify-between text-[8.5px] text-neutral-500 font-mono">
-          <div>Cebu Roosevelt Memorial Colleges, Inc. · Upper Pandan, Bogo City, Cebu 6010</div>
+      <footer className="avoid-break mt-2 pt-1.5 border-t border-neutral-200">
+        <div className="flex items-center justify-between text-[8px] text-neutral-400 font-mono">
+          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS</div>
+          <div>Page 1 of 1</div>
           <div>
-            CRMC-AIMS Institutional Report · Verification Code: CRMC-
+            Verification Code: CRMC-
             {generatedAt.getTime().toString(36).toUpperCase()}
           </div>
         </div>
