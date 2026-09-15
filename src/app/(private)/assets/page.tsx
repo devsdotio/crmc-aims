@@ -217,9 +217,11 @@ export default function AssetsPage() {
   };
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md" data-theme="light">
-      {/* ── Top Header Bar ────────────────────────────────────────────── */}
-      <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:h-auto print:overflow-visible print:bg-white" data-theme="light">
+      {/* ── Screen Page View (Hidden during print so only dossier prints) ── */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden print:hidden">
+        {/* ── Top Header Bar ────────────────────────────────────────────── */}
+        <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-text">
@@ -296,6 +298,7 @@ export default function AssetsPage() {
           />
         )}
       </main>
+      </div>
 
       {/* ── Asset Detail Slide-over Panel ─────────────────────────────── */}
       <AssetDetailPanel

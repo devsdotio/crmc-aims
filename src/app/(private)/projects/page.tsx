@@ -144,10 +144,11 @@ export default function ProjectsPage() {
 
   return (
     <div
-      className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md"
+      className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:h-auto print:overflow-visible print:bg-white"
       data-theme="light"
     >
-      <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden print:hidden">
+        <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-text">
@@ -203,6 +204,7 @@ export default function ProjectsPage() {
           onDelete={handleDelete}
         />
       </main>
+      </div>
 
       <ProjectDetailPanel
         project={selectedSynced}

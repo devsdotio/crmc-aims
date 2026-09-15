@@ -39,6 +39,7 @@ import {
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
 import type { ProjectReportRow } from "@/types/reports";
+import { IndividualProjectPrintableReport } from "@/components/reports/print/individual/IndividualProjectPrintableReport";
 
 interface ProjectDetailDialogProps {
   project: ProjectReportRow | null;
@@ -206,7 +207,8 @@ export function ProjectDetailDialog({
     }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 print:hidden">
       {/* ── Backdrop ─────────────────────────────────────────────────── */}
       <div
         className={cn(
@@ -972,5 +974,13 @@ export function ProjectDetailDialog({
         </div>
       </div>
     </div>
+
+    <div className="hidden print:block">
+      <IndividualProjectPrintableReport
+        project={effectiveProject}
+        canViewCosts={canViewCosts}
+      />
+    </div>
+  </>
   );
 }

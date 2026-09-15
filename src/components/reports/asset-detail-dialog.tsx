@@ -43,6 +43,7 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { LoadingState } from "@/components/providers/loading-context";
 import { getCategoryStyle } from "@/constants/categories";
 import { cn } from "@/lib/utils";
+import { IndividualAssetPrintableReport } from "@/components/reports/print/individual/IndividualAssetPrintableReport";
 
 interface AssetDetailDialogProps {
   assetId: string | null;
@@ -166,7 +167,8 @@ export function AssetDetailDialog({
     }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 print:hidden">
       {/* ── Backdrop ─────────────────────────────────────────────────── */}
       <div
         className={cn(
@@ -785,7 +787,7 @@ export function AssetDetailDialog({
                                   {custody.status}
                                 </span>
                               </div>
-                              <p className="text-text-secondary italic">"{custody.purpose}"</p>
+                              <p className="text-text-secondary italic">&quot;{custody.purpose}&quot;</p>
                             </div>
 
                             <div className="text-right text-[11px] font-mono text-text-secondary">
@@ -906,5 +908,23 @@ export function AssetDetailDialog({
         </div>
       </div>
     </div>
+
+    {asset && (
+      <div className="hidden print:block print:w-full">
+        <IndividualAssetPrintableReport
+          asset={asset}
+          maintenanceHistory={maintenanceHistory.map((m) => ({
+            id: m.id,
+            cost: m.totalCost || m.repairCost || 0,
+            date: m.dateLogged,
+            type: m.condition,
+            description: m.notes || `Work Order ${m.logCode}`,
+            technician: m.serviceProvider || "Internal Maintenance",
+          }))}
+          canViewCosts={canViewCosts}
+        />
+      </div>
+    )}
+  </>
   );
 }

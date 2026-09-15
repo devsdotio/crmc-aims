@@ -34,6 +34,7 @@ import {
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
 import type { DepartmentReportRow } from "@/types/reports";
+import { IndividualDepartmentPrintableReport } from "@/components/reports/print/individual/IndividualDepartmentPrintableReport";
 
 interface DepartmentDetailDialogProps {
   department: DepartmentReportRow | null;
@@ -163,7 +164,8 @@ export function DepartmentDetailDialog({
     }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 print:hidden">
       {/* ── Backdrop ─────────────────────────────────────────────────── */}
       <div
         className={cn(
@@ -898,5 +900,13 @@ export function DepartmentDetailDialog({
         </div>
       </div>
     </div>
+
+    <div className="hidden print:block">
+        <IndividualDepartmentPrintableReport
+          department={effectiveDepartment}
+          canViewCosts={canViewCosts}
+        />
+      </div>
+    </>
   );
 }

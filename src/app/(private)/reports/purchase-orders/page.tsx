@@ -41,25 +41,28 @@ export default function PurchaseOrdersReportPage() {
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
 
+  const reportRows = data?.data;
+  const topSuppliers = summary?.topSuppliers;
+
   const vendorSpendDonutData = useMemo(() => {
-    if (summary?.topSuppliers && summary.topSuppliers.length > 0) {
-      return summary.topSuppliers.map((s) => ({
+    if (topSuppliers && topSuppliers.length > 0) {
+      return topSuppliers.map((s) => ({
         name: s.name,
         value: s.spend,
       }));
     }
-    if (!data?.data || data.data.length === 0) return [];
+    if (!reportRows || reportRows.length === 0) return [];
     const map: Record<string, number> = {};
-    for (const row of data.data) {
+    for (const row of reportRows) {
       const name = row.supplierName || "Other";
       map[name] = (map[name] || 0) + (row.totalAmount || 0);
     }
     return Object.entries(map).map(([name, value]) => ({ name, value }));
-  }, [summary?.topSuppliers, data?.data]);
+  }, [topSuppliers, reportRows]);
 
   const pendingOrders = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
-    return data.data
+    if (!reportRows || reportRows.length === 0) return [];
+    return reportRows
       .filter(
         (po) =>
           po.status.toLowerCase() !== "delivered" &&
@@ -79,7 +82,7 @@ export default function PurchaseOrdersReportPage() {
           variant: "amber" as const,
         },
       }));
-  }, [data?.data]);
+  }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));

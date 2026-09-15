@@ -157,14 +157,16 @@ export default function DepartmentReportsPage() {
 
   return (
     <>
-      <div className="hidden print:block print:w-full">
-        <DepartmentsPrintableReport
-          data={data?.data || []}
-          summary={summary}
-          canViewCosts={canViewCosts}
-          filters={filters}
-        />
-      </div>
+      {!selectedDepartment && (
+        <div className="hidden print:block print:w-full">
+          <DepartmentsPrintableReport
+            data={data?.data || []}
+            summary={summary}
+            canViewCosts={canViewCosts}
+            filters={filters}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner ─────────────────────────────────────────── */}
@@ -259,6 +261,8 @@ export default function DepartmentReportsPage() {
         onRowClick={(row) => setSelectedDepartment(row)}
       />
 
+    </div>
+
       {/* ── Department Detail Modal Dialog ─────────────────────────── */}
       <DepartmentDetailDialog
         department={selectedDepartment}
@@ -266,7 +270,6 @@ export default function DepartmentReportsPage() {
         onClose={() => setSelectedDepartment(null)}
         canViewCosts={canViewCosts}
       />
-    </div>
     </>
   );
 }

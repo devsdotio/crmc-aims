@@ -53,11 +53,12 @@ export default function MaintenanceReportPage() {
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
   const topFaulty = summary?.topFaultyAssets || [];
+  const reportRows = data?.data;
 
   const maintenanceCategoryData = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
+    if (!reportRows || reportRows.length === 0) return [];
     const map: Record<string, { total: number; resolved: number; cost: number }> = {};
-    for (const row of data.data) {
+    for (const row of reportRows) {
       const cat = row.category || "General";
       if (!map[cat]) map[cat] = { total: 0, resolved: 0, cost: 0 };
       map[cat].total += 1;
@@ -70,12 +71,12 @@ export default function MaintenanceReportPage() {
       resolvedWorkOrders: s.resolved,
       cost: s.cost,
     }));
-  }, [data?.data]);
+  }, [reportRows]);
 
   const activeMaintenanceList = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
-    const openOrders = data.data.filter((w) => !w.isResolved);
-    const candidateList = openOrders.length > 0 ? openOrders : data.data;
+    if (!reportRows || reportRows.length === 0) return [];
+    const openOrders = reportRows.filter((w) => !w.isResolved);
+    const candidateList = openOrders.length > 0 ? openOrders : reportRows;
 
     return candidateList.slice(0, 5).map((w) => ({
       id: w.id,
@@ -89,7 +90,7 @@ export default function MaintenanceReportPage() {
       },
       onClick: () => setSelectedAssetCode(w.assetCode),
     }));
-  }, [data?.data]);
+  }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -222,14 +223,16 @@ export default function MaintenanceReportPage() {
 
   return (
     <>
-      <div className="hidden print:block print:w-full">
-        <MaintenancePrintableReport
-          data={data?.data || []}
-          summary={summary}
-          canViewCosts={canViewCosts}
-          filters={filters}
-        />
-      </div>
+      {!selectedAssetCode && (
+        <div className="hidden print:block print:w-full">
+          <MaintenancePrintableReport
+            data={data?.data || []}
+            summary={summary}
+            canViewCosts={canViewCosts}
+            filters={filters}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
@@ -451,13 +454,14 @@ export default function MaintenanceReportPage() {
         onPageChange={(page) => handleFilterChange({ page })}
       />
 
+    </div>
+
       {/* ── Asset Detail Modal Dialog ─────────────────────────────── */}
       <AssetDetailDialog
         assetId={selectedAssetCode}
         isOpen={Boolean(selectedAssetCode)}
         onClose={() => setSelectedAssetCode(null)}
       />
-    </div>
     </>
   );
 }

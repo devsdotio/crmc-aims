@@ -51,19 +51,20 @@ export default function ConsumablesReportPage() {
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
+  const reportRows = data?.data;
 
   const usageTrendData = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
-    return data.data.slice(0, 6).map((item) => ({
+    if (!reportRows || reportRows.length === 0) return [];
+    return reportRows.slice(0, 6).map((item) => ({
       name: item.name.length > 14 ? item.name.slice(0, 12) + "…" : item.name,
       onHand: item.currentQty,
       usage30d: item.usage30d,
     }));
-  }, [data?.data]);
+  }, [reportRows]);
 
   const lowStockItems = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
-    return data.data
+    if (!reportRows || reportRows.length === 0) return [];
+    return reportRows
       .filter((item) => item.isLowStock || item.currentQty <= item.minThreshold)
       .slice(0, 5)
       .map((item) => ({
@@ -80,7 +81,7 @@ export default function ConsumablesReportPage() {
         },
         onClick: () => setSelectedConsumable(item),
       }));
-  }, [data?.data]);
+  }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -265,14 +266,16 @@ export default function ConsumablesReportPage() {
 
   return (
     <>
-      <div className="hidden print:block print:w-full">
-        <ConsumablesPrintableReport
-          data={data?.data || []}
-          summary={summary}
-          canViewCosts={canViewCosts}
-          filters={filters}
-        />
-      </div>
+      {!selectedConsumable && (
+        <div className="hidden print:block print:w-full">
+          <ConsumablesPrintableReport
+            data={data?.data || []}
+            summary={summary}
+            canViewCosts={canViewCosts}
+            filters={filters}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
@@ -424,6 +427,8 @@ export default function ConsumablesReportPage() {
         onRowClick={(row) => setSelectedConsumable(row)}
       />
 
+    </div>
+
       {/* ── Consumables Stock Detail Modal Dialog ─────────────────── */}
       <ConsumableDetailDialog
         consumable={selectedConsumable}
@@ -431,7 +436,6 @@ export default function ConsumablesReportPage() {
         onClose={() => setSelectedConsumable(null)}
         canViewCosts={canViewCosts}
       />
-    </div>
     </>
   );
 }

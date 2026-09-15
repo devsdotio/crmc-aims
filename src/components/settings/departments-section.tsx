@@ -7,6 +7,7 @@ import {
   Edit3,
   Mail,
   Plus,
+  Printer,
   Search,
   ShieldCheck,
   Trash2,
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 import type { DepartmentDTO } from "@/features/departments/client";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { SandboxBadge } from "@/components/shared/sandbox-badge";
+import { IndividualDepartmentPrintableReport } from "@/components/reports/print/individual/IndividualDepartmentPrintableReport";
 
 export interface DepartmentsSectionProps {
   departments: DepartmentDTO[];
@@ -39,8 +41,16 @@ export function DepartmentsSection({
 }: DepartmentsSectionProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<DepartmentDTO | null>(null);
+  const [printDepartment, setPrintDepartment] = useState<DepartmentDTO | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [accountFilter, setAccountFilter] = useState<AccountFilter>("all");
+
+  const handlePrintDossier = (dept: DepartmentDTO) => {
+    setPrintDepartment(dept);
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
 
   // Metric summaries
   const totalCount = departments.length;
@@ -77,7 +87,8 @@ export function DepartmentsSection({
   }, [departments, accountFilter, searchQuery]);
 
   return (
-    <div className="w-full space-y-6">
+    <>
+      <div className="w-full space-y-6 print:hidden">
       {/* ── KPI Metric Cards ────────────────────────────────────────── */}
       <StatCardGrid>
         <StatCard
@@ -294,6 +305,16 @@ export function DepartmentsSection({
                   <div className="flex items-center gap-1.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                     <button
                       type="button"
+                      onClick={() => handlePrintDossier(dept)}
+                      aria-label={`Print dossier for ${dept.name}`}
+                      title="Print Department Dossier (PDF)"
+                      className="p-2 rounded-lg border border-border bg-bg text-text-secondary hover:text-text hover:border-primary/50 hover:bg-bg-subtle transition-all cursor-pointer shadow-2xs"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => {
                         setEditTarget(dept);
                         setDialogOpen(true);
@@ -373,6 +394,13 @@ export function DepartmentsSection({
         onSave={onSave}
       />
     </div>
+
+    {printDepartment && (
+      <div className="hidden print:block">
+        <IndividualDepartmentPrintableReport department={printDepartment} />
+      </div>
+    )}
+  </>
   );
 }
 

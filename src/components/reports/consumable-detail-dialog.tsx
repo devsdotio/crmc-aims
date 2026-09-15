@@ -37,6 +37,7 @@ import {
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
 import type { ConsumableStockRow } from "@/types/reports";
+import { IndividualConsumablePrintableReport } from "@/components/reports/print/individual/IndividualConsumablePrintableReport";
 
 interface ConsumableDetailDialogProps {
   consumable: ConsumableStockRow | null;
@@ -139,7 +140,8 @@ export function ConsumableDetailDialog({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 print:hidden">
       {/* ── Backdrop ─────────────────────────────────────────────────── */}
       <div
         className={cn(
@@ -694,5 +696,13 @@ export function ConsumableDetailDialog({
         </div>
       </div>
     </div>
+
+    <div className="hidden print:block print:w-full">
+      <IndividualConsumablePrintableReport
+        item={effectiveConsumable}
+        canViewCosts={canViewCosts}
+      />
+    </div>
+  </>
   );
 }

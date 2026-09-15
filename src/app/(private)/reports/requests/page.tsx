@@ -49,9 +49,11 @@ export default function RequestsReportPage() {
     ];
   }, [summary]);
 
+  const reportRows = data?.data;
+
   const recentRequests = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
-    return data.data.slice(0, 5).map((req) => {
+    if (!reportRows || reportRows.length === 0) return [];
+    return reportRows.slice(0, 5).map((req) => {
       const isPending = req.status === "pending";
       const isRejected = req.status === "rejected";
       const isReleased = req.status === "released";
@@ -75,7 +77,7 @@ export default function RequestsReportPage() {
         },
       };
     });
-  }, [data?.data]);
+  }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));

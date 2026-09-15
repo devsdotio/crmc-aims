@@ -43,14 +43,15 @@ export default function ExecutiveReportsPage() {
     return Math.round(((assets.activeCount || 0) / assets.totalCount) * 100);
   }, [assets]);
 
+  const categoryDistribution = data?.charts?.categoryDistribution;
   const categoryDonutData = useMemo(() => {
-    if (!data?.charts?.categoryDistribution) return [];
-    return data.charts.categoryDistribution.map((cat) => ({
+    if (!categoryDistribution) return [];
+    return categoryDistribution.map((cat) => ({
       name: cat.name,
       value: canViewCosts && cat.value > 0 ? cat.value : cat.count,
       count: cat.count,
     }));
-  }, [data?.charts?.categoryDistribution, canViewCosts]);
+  }, [categoryDistribution, canViewCosts]);
 
   return (
     <>

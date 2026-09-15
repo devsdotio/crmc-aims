@@ -137,6 +137,8 @@ export interface AssetDrilldownReport {
     receiptUrl: string | null;
   } | null;
   maintenanceHistory: Array<{
+    totalCost: number | null;
+    serviceProvider: string;
     id: string;
     logCode: string;
     condition: string;

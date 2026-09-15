@@ -212,14 +212,16 @@ export default function ProjectReportsPage() {
 
   return (
     <>
-      <div className="hidden print:block print:w-full">
-        <ProjectsPrintableReport
-          data={data?.data || []}
-          summary={summary}
-          canViewCosts={canViewCosts}
-          filters={filters}
-        />
-      </div>
+      {!selectedProject && (
+        <div className="hidden print:block print:w-full">
+          <ProjectsPrintableReport
+            data={data?.data || []}
+            summary={summary}
+            canViewCosts={canViewCosts}
+            filters={filters}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Page Header ─────────────────────────────────────────────────── */}
@@ -323,6 +325,8 @@ export default function ProjectReportsPage() {
         onRowClick={(row) => setSelectedProject(row)}
       />
 
+    </div>
+
       {/* ── Project Detail Modal Dialog ────────────────────────────── */}
       <ProjectDetailDialog
         project={selectedProject}
@@ -330,7 +334,6 @@ export default function ProjectReportsPage() {
         onClose={() => setSelectedProject(null)}
         canViewCosts={canViewCosts}
       />
-    </div>
     </>
   );
 }

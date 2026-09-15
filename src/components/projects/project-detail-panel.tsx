@@ -21,7 +21,9 @@ import {
   Boxes,
   Undo2,
   Wrench,
+  Printer,
 } from "lucide-react";
+import { IndividualProjectPrintableReport } from "@/components/reports/print/individual/IndividualProjectPrintableReport";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import type {
@@ -317,48 +319,66 @@ export function ProjectDetailPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+    <>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200 print:hidden">
+        <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="project-detail-heading"
-        className={cn(
-          "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
-          "animate-in slide-in-from-right duration-250 ease-in-out"
-        )}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
-          <div className="min-w-0 flex-1 pr-3">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold tracking-tight px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/25">
-                <FolderKanban className="h-3.5 w-3.5" />
-                {project.projectCode}
-              </span>
-              <ProjectStatusBadge status={project.status} />
-              {!project.isMutable && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-bg-subtle border border-border text-text-secondary">
-                  <Lock className="h-3 w-3" />
-                  Read-only
+        <aside
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="project-detail-heading"
+          className={cn(
+            "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
+            "animate-in slide-in-from-right duration-250 ease-in-out"
+          )}
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
+            <div className="min-w-0 flex-1 pr-3">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold tracking-tight px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/25">
+                  <FolderKanban className="h-3.5 w-3.5" />
+                  {project.projectCode}
                 </span>
-              )}
+                <ProjectStatusBadge status={project.status} />
+                {!project.isMutable && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-bg-subtle border border-border text-text-secondary">
+                    <Lock className="h-3 w-3" />
+                    Read-only
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-secondary font-medium mt-1 truncate">
+                Project Workspace • <strong className="text-text font-semibold">{project.name}</strong>
+              </p>
             </div>
-            <p className="text-xs text-text-secondary font-medium mt-1 truncate">
-              Project Workspace • <strong className="text-text font-semibold">{project.name}</strong>
-            </p>
-          </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close project detail"
-            className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                aria-label="Print Project Dossier Report"
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+              >
+                <Printer className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
+                >
+                  Print Report (PDF)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close project detail"
+                className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <section className="grid grid-cols-2 gap-3">
@@ -903,5 +923,14 @@ export function ProjectDetailPanel({
         onClose={() => setDeleteExpenseTarget(null)}
       />
     </div>
+
+    <div className="hidden print:block">
+      <IndividualProjectPrintableReport
+        project={project}
+        assignedAssets={assignments}
+        expenses={expenses}
+      />
+    </div>
+    </>
   );
 }

@@ -64,10 +64,12 @@ export default function AssetRegisterReportPage() {
     ];
   }, [summary]);
 
+  const reportRows = data?.data;
+
   const categoryTrendData = useMemo(() => {
-    if (!data?.data || data.data.length === 0) return [];
+    if (!reportRows || reportRows.length === 0) return [];
     const map: Record<string, { count: number; value: number; active: number }> = {};
-    for (const row of data.data) {
+    for (const row of reportRows) {
       const cat = row.category || "Unassigned";
       if (!map[cat]) map[cat] = { count: 0, value: 0, active: 0 };
       map[cat].count += 1;
@@ -80,7 +82,7 @@ export default function AssetRegisterReportPage() {
       activeCount: stats.active,
       valuation: stats.value,
     }));
-  }, [data?.data]);
+  }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -225,14 +227,16 @@ export default function AssetRegisterReportPage() {
 
   return (
     <>
-      <div className="hidden print:block print:w-full">
-        <AssetRegisterPrintableReport
-          data={data?.data || []}
-          summary={summary}
-          canViewCosts={canViewCosts}
-          filters={filters}
-        />
-      </div>
+      {!selectedAssetId && (
+        <div className="hidden print:block print:w-full">
+          <AssetRegisterPrintableReport
+            data={data?.data || []}
+            summary={summary}
+            canViewCosts={canViewCosts}
+            filters={filters}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
@@ -392,13 +396,14 @@ export default function AssetRegisterReportPage() {
         onRowClick={(row) => setSelectedAssetId(row.id)}
       />
 
+    </div>
+
       {/* ── Asset Detail Modal Dialog ─────────────────────────────── */}
       <AssetDetailDialog
         assetId={selectedAssetId}
         isOpen={Boolean(selectedAssetId)}
         onClose={() => setSelectedAssetId(null)}
       />
-    </div>
     </>
   );
 }

@@ -19,8 +19,10 @@ import {
   Boxes,
   Layers,
   StickyNote,
+  Printer,
 } from "lucide-react";
 
+import { IndividualConsumablePrintableReport } from "@/components/reports/print/individual/IndividualConsumablePrintableReport";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import type { ConsumableItem } from "@/types/inventory";
@@ -164,13 +166,14 @@ export function ConsumableDetailPanel({
   const categoryMeta = getCategoryStyle(displayItem.category);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+    <>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200 print:hidden">
+        <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
+        <aside
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
         aria-labelledby="consumable-detail-heading"
         className={cn(
           "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
@@ -204,22 +207,38 @@ export function ConsumableDetailPanel({
             </div>
           </div>
 
-          {onDelete && (
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => onDelete(displayItem)}
-              aria-label="Delete item"
-              className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer shadow-xs shrink-0"
+              onClick={() => window.print()}
+              aria-label="Print SKU Report"
+              className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
             >
-              <Trash2 className="h-5 w-5" />
+              <Printer className="h-4 w-4" />
               <span
                 role="tooltip"
                 className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
               >
-                Delete Item
+                Print Report (PDF)
               </span>
             </button>
-          )}
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(displayItem)}
+                aria-label="Delete item"
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer shadow-xs shrink-0"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
+                >
+                  Delete Item
+                </span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -640,5 +659,10 @@ export function ConsumableDetailPanel({
         </div>
       </aside>
     </div>
+
+    <div className="hidden print:block">
+      <IndividualConsumablePrintableReport item={displayItem} lots={lots} movements={movements} />
+    </div>
+    </>
   );
 }
