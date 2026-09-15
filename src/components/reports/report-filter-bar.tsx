@@ -21,11 +21,48 @@ interface ReportFilterBarProps {
 
 const DATE_PRESETS = [
   { label: "All Time", value: "all" },
-  { label: "7 Days", value: "7d" },
-  { label: "30 Days", value: "30d" },
-  { label: "90 Days", value: "90d" },
-  { label: "YTD", value: "ytd" },
+  { label: "Today", value: "today" },
+  { label: "This Week", value: "this_week" },
+  { label: "This Month", value: "this_month" },
+  { label: "Fiscal Qtr", value: "fiscal_quarter" },
 ];
+
+function getPresetDates(preset: string): { start: string | undefined; end: string | undefined } {
+  const now = new Date();
+  
+  if (preset === "all") return { start: undefined, end: undefined };
+  
+  if (preset === "today") {
+    const today = now.toISOString().split("T")[0];
+    return { start: today, end: today };
+  }
+  
+  if (preset === "this_week") {
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diff));
+    const start = monday.toISOString().split("T")[0];
+    
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    return { start, end: sunday.toISOString().split("T")[0] };
+  }
+  
+  if (preset === "this_month") {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { start: firstDay.toISOString().split("T")[0], end: lastDay.toISOString().split("T")[0] };
+  }
+  
+  if (preset === "fiscal_quarter") {
+    const quarter = Math.floor(now.getMonth() / 3);
+    const firstDate = new Date(now.getFullYear(), quarter * 3, 1);
+    const lastDate = new Date(now.getFullYear(), firstDate.getMonth() + 3, 0);
+    return { start: firstDate.toISOString().split("T")[0], end: lastDate.toISOString().split("T")[0] };
+  }
+  
+  return { start: undefined, end: undefined };
+}
 
 export function ReportFilterBar({
   filters,
@@ -53,24 +90,8 @@ export function ReportFilterBar({
   }, [localSearch, filters.search, onFilterChange]);
 
   const handleDatePreset = (preset: string) => {
-    const now = new Date();
-    let startDate: string | undefined = undefined;
-    const endDate = now.toISOString().split("T")[0];
-
-    if (preset === "7d") {
-      const d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      startDate = d.toISOString().split("T")[0];
-    } else if (preset === "30d") {
-      const d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      startDate = d.toISOString().split("T")[0];
-    } else if (preset === "90d") {
-      const d = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-      startDate = d.toISOString().split("T")[0];
-    } else if (preset === "ytd") {
-      startDate = `${now.getFullYear()}-01-01`;
-    }
-
-    onFilterChange({ startDate, endDate: startDate ? endDate : undefined, page: 1 });
+    const { start, end } = getPresetDates(preset);
+    onFilterChange({ startDate: start, endDate: end, page: 1 });
   };
 
   const hasActiveFilters = Boolean(
@@ -165,9 +186,10 @@ export function ReportFilterBar({
               Timeframe:
             </span>
             {DATE_PRESETS.map((p) => {
+              const { start, end } = getPresetDates(p.value);
               const isActive =
                 (p.value === "all" && !filters.startDate) ||
-                (p.value === "30d" && filters.startDate?.includes("-"));
+                (filters.startDate === start && filters.endDate === end);
 
               return (
                 <button
