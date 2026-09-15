@@ -6,8 +6,8 @@ import {
   LayoutDashboard,
   Package,
   Layers,
-  ShoppingCart,
-  ClipboardList,
+  FolderKanban,
+  Building2,
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,17 +35,17 @@ const REPORT_TABS = [
     exact: false,
   },
   {
-    name: "Purchase Orders",
-    shortName: "Purchases",
-    href: "/reports/purchase-orders",
-    icon: ShoppingCart,
+    name: "Project Reports",
+    shortName: "Projects",
+    href: "/reports/projects",
+    icon: FolderKanban,
     exact: false,
   },
   {
-    name: "Requests & Requisitions",
-    shortName: "Requisitions",
-    href: "/reports/requests",
-    icon: ClipboardList,
+    name: "Department Reports",
+    shortName: "Departments",
+    href: "/reports/departments",
+    icon: Building2,
     exact: false,
   },
   {
@@ -89,7 +89,7 @@ export function ReportLayoutNav() {
                   "group relative flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 w-full h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-[13px] font-semibold transition-all duration-150 rounded-t-xl cursor-pointer min-w-0",
                   isActive
                     ? "bg-card text-text font-bold shadow-xs border-t-2 border-t-accent border-x border-border/90 -mb-px z-10"
-                    : "text-text-secondary/80 hover:text-text hover:bg-card/60 border-t-2 border-transparent border-x border-transparent"
+                    : "text-text-secondary/80 hover:text-text hover:bg-card/60 border-t-2 border-transparent border-x"
                 )}
               >
                 {/* Tab Favicon Icon */}

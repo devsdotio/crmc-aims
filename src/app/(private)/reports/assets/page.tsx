@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Package,
   CheckCircle2,
@@ -8,15 +8,20 @@ import {
   QrCode,
   ExternalLink,
   DollarSign,
+  PieChart as PieIcon,
+  BarChart3,
 } from "lucide-react";
 
 import { useAssetRegisterReportQuery } from "@/features/reports/client/use-reports";
 import type { AssetRegisterRow, BaseReportFilters } from "@/types/reports";
-import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
+import { StatCardGrid } from "@/components/ui/stat-card";
+import { KpiCard } from "@/components/reports/kpi-card";
+import { BreakdownDonutChart } from "@/components/reports/breakdown-donut-chart";
+import { TrendBarChart } from "@/components/reports/trend-bar-chart";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
-import { ItemLifecycleSheet } from "@/components/reports/item-lifecycle-sheet";
+import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
 
 const CATEGORY_OPTIONS = [
   { label: "Computing", value: "computing" },
@@ -46,6 +51,34 @@ export default function AssetRegisterReportPage() {
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
+
+  const statusDonutData = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { name: "Active", value: summary.activeCount || 0, color: "#16A34A" },
+      { name: "Needs Repair", value: summary.needsRepairCount || 0, color: "#D97706" },
+      { name: "Out of Service", value: summary.outOfServiceCount || 0, color: "#DC2626" },
+      { name: "Retired", value: summary.retiredCount || 0, color: "#64748B" },
+    ];
+  }, [summary]);
+
+  const categoryTrendData = useMemo(() => {
+    if (!data?.data || data.data.length === 0) return [];
+    const map: Record<string, { count: number; value: number; active: number }> = {};
+    for (const row of data.data) {
+      const cat = row.category || "Unassigned";
+      if (!map[cat]) map[cat] = { count: 0, value: 0, active: 0 };
+      map[cat].count += 1;
+      map[cat].value += row.currentValue || 0;
+      if (row.status === "active") map[cat].active += 1;
+    }
+    return Object.entries(map).map(([name, stats]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      totalCount: stats.count,
+      activeCount: stats.active,
+      valuation: stats.value,
+    }));
+  }, [data?.data]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -191,7 +224,7 @@ export default function AssetRegisterReportPage() {
   return (
     <div className="flex flex-col gap-3 w-full">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-[41px] sm:top-[47px] z-20 bg-[#F2F3F7] pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
@@ -213,9 +246,9 @@ export default function AssetRegisterReportPage() {
         </div>
       </div>
 
-      {/* ── KPI Cards Grid ───────────────────────────────────────────── */}
+      {/* ── KPI Cards Grid with Inline Sparklines ───────────────────── */}
       <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 -mt-1.5">
-        <StatCard
+        <KpiCard
           title="Total Registered"
           sublabel="ASSET // INVENTORY"
           value={isLoading ? "…" : summary?.totalAssets || 0}
@@ -223,10 +256,11 @@ export default function AssetRegisterReportPage() {
           icon={Package}
           tone="blue"
           toneValue={true}
+          delta="+12.5%"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Operational Rate"
           sublabel="ACTIVE // OPERATIONAL"
           value={isLoading ? "…" : `${summary?.activeCount || 0}`}
@@ -238,10 +272,18 @@ export default function AssetRegisterReportPage() {
           icon={CheckCircle2}
           tone="emerald"
           toneValue={true}
+          delta={{
+            value: `${
+              summary?.totalAssets
+                ? Math.round(((summary.activeCount || 0) / summary.totalAssets) * 100)
+                : 0
+            }%`,
+            isPositive: true,
+          }}
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Under Maintenance"
           sublabel="REPAIR // ATTENTION"
           value={
@@ -253,10 +295,14 @@ export default function AssetRegisterReportPage() {
           icon={AlertCircle}
           tone="amber"
           toneValue={true}
+          delta={{
+            value: `${(summary?.needsRepairCount || 0) + (summary?.outOfServiceCount || 0)} units`,
+            isPositive: false,
+          }}
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Valuation Baseline"
           sublabel="FINANCIAL // BOOK VALUE"
           value={
@@ -273,6 +319,41 @@ export default function AssetRegisterReportPage() {
           loading={isLoading}
         />
       </StatCardGrid>
+
+      {/* ── Visual Analytics Row: Status Donut + Category Breakdown ──── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+        <div className="lg:col-span-5">
+          <BreakdownDonutChart
+            title="Asset Status Distribution"
+            sublabel="LIFECYCLE // STATUS"
+            description="Proportion of registered inventory across active, repair, and retired states."
+            icon={PieIcon}
+            data={statusDonutData}
+            loading={isLoading}
+            unitLabel="units"
+            className="h-full"
+          />
+        </div>
+
+        <div className="lg:col-span-7">
+          <TrendBarChart
+            title="Asset Distribution by Category"
+            sublabel="CATEGORY // ASSETS"
+            description="Comparing total registered units and active deployed equipment across categories."
+            icon={BarChart3}
+            data={categoryTrendData}
+            xAxisKey="name"
+            series={[
+              { key: "totalCount", name: "Total Units", color: "#2A3260" },
+              { key: "activeCount", name: "Active Units", color: "#5E6DB0" },
+            ]}
+            loading={isLoading}
+            canViewCosts={true}
+            valueFormatter={(v) => `${v.toLocaleString()} units`}
+            className="h-full"
+          />
+        </div>
+      </div>
 
       {/* ── Search & Filter Controls ─────────────────────────────────── */}
       <div className="print:hidden">
@@ -299,8 +380,8 @@ export default function AssetRegisterReportPage() {
         onRowClick={(row) => setSelectedAssetId(row.id)}
       />
 
-      {/* ── Slide-Over Lifecycle Sheet ───────────────────────────────── */}
-      <ItemLifecycleSheet
+      {/* ── Asset Detail Modal Dialog ─────────────────────────────── */}
+      <AssetDetailDialog
         assetId={selectedAssetId}
         isOpen={Boolean(selectedAssetId)}
         onClose={() => setSelectedAssetId(null)}

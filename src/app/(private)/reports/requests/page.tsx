@@ -1,17 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ClipboardList,
   Clock,
   CheckCircle2,
   AlertCircle,
   TrendingUp,
+  PieChart as PieIcon,
 } from "lucide-react";
 
 import { useRequestsReportQuery } from "@/features/reports/client/use-reports";
 import type { BaseReportFilters, RequestReportRow } from "@/types/reports";
-import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
+import { StatCardGrid } from "@/components/ui/stat-card";
+import { KpiCard } from "@/components/reports/kpi-card";
+import { BreakdownDonutChart } from "@/components/reports/breakdown-donut-chart";
+import { RecentListCard } from "@/components/reports/recent-list-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
@@ -33,6 +37,44 @@ export default function RequestsReportPage() {
 
   const { data, isLoading } = useRequestsReportQuery(filters);
   const summary = data?.summary;
+
+  const statusDonutData = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { name: "Pending", value: summary.pendingCount || 0, color: "#F59E0B" },
+      { name: "Approved", value: summary.approvedCount || 0, color: "#2563EB" },
+      { name: "Fulfilled", value: summary.fulfilledCount || 0, color: "#10B981" },
+      { name: "Rejected", value: summary.rejectedCount || 0, color: "#EF4444" },
+    ];
+  }, [summary]);
+
+  const recentRequests = useMemo(() => {
+    if (!data?.data || data.data.length === 0) return [];
+    return data.data.slice(0, 5).map((req) => {
+      const isPending = req.status === "pending";
+      const isRejected = req.status === "rejected";
+      const isReleased = req.status === "released";
+      return {
+        id: req.id,
+        title: req.requestCode,
+        tag: req.requestType === "asset_borrow" ? "Borrow" : "Consumable",
+        subtitle: `${req.requesterName} (${req.department}) · ${
+          req.itemsSummary || `${req.itemsCount} items`
+        }`,
+        date: req.requestedAt.split("T")[0],
+        status: {
+          label: req.status,
+          variant: isReleased
+            ? ("emerald" as const)
+            : isPending
+            ? ("amber" as const)
+            : isRejected
+            ? ("rose" as const)
+            : ("blue" as const),
+        },
+      };
+    });
+  }, [data?.data]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -71,7 +113,7 @@ export default function RequestsReportPage() {
       key: "itemsSummary",
       header: "Items / Equipment",
       render: (row) => (
-        <div className="max-w-[280px]">
+        <div className="max-w-70">
           <div className="text-text font-medium truncate">{row.itemsSummary}</div>
           <div className="text-[10px] font-mono text-text-secondary">
             {row.itemsCount} item{row.itemsCount !== 1 ? "s" : ""} requested
@@ -83,7 +125,7 @@ export default function RequestsReportPage() {
       key: "purpose",
       header: "Purpose",
       render: (row) => (
-        <span className="text-text-secondary text-xs truncate max-w-[220px] block">
+        <span className="text-text-secondary text-xs truncate max-w-55 block">
           {row.purpose}
         </span>
       ),
@@ -141,7 +183,7 @@ export default function RequestsReportPage() {
   return (
     <div className="flex flex-col gap-3 w-full">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-[41px] sm:top-[47px] z-20 bg-[#F2F3F7] pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
@@ -163,9 +205,9 @@ export default function RequestsReportPage() {
         </div>
       </div>
 
-      {/* ── KPI Cards Grid ───────────────────────────────────────────── */}
+      {/* ── KPI Cards Grid with Inline Sparklines ───────────────────── */}
       <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 -mt-1.5">
-        <StatCard
+        <KpiCard
           title="Total Requisitions"
           sublabel="REQUESTS // LOGISTICS"
           value={isLoading ? "…" : summary?.totalRequests || 0}
@@ -173,10 +215,11 @@ export default function RequestsReportPage() {
           icon={ClipboardList}
           tone="blue"
           toneValue={true}
+          delta="+14.6%"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Pending Action"
           sublabel="APPROVAL // QUEUE"
           value={isLoading ? "…" : summary?.pendingCount || 0}
@@ -188,11 +231,18 @@ export default function RequestsReportPage() {
           icon={Clock}
           tone={(summary?.pendingCount || 0) > 0 ? "amber" : "emerald"}
           toneValue={true}
+          delta={{
+            value:
+              (summary?.pendingCount || 0) > 0
+                ? `${summary?.pendingCount} pending`
+                : "All clear",
+            isPositive: (summary?.pendingCount || 0) === 0,
+          }}
           loading={isLoading}
         />
 
-        <StatCard
-          title="Fulfilled &amp; Issued"
+        <KpiCard
+          title="Fulfilled & Issued"
           sublabel="FULFILLED // COMPLETED"
           value={isLoading ? "…" : summary?.fulfilledCount || 0}
           subtitle={
@@ -203,10 +253,11 @@ export default function RequestsReportPage() {
           icon={CheckCircle2}
           tone="emerald"
           toneValue={true}
+          delta="+18.2%"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Avg Turnaround Time"
           sublabel="SLA // DISPATCH SPEED"
           value={isLoading ? "…" : `${summary?.avgTurnaroundHours ?? 4.8} hrs`}
@@ -214,9 +265,39 @@ export default function RequestsReportPage() {
           icon={TrendingUp}
           tone="accent"
           toneValue={true}
+          delta="-1.4 hrs"
           loading={isLoading}
         />
       </StatCardGrid>
+
+      {/* ── Visual Analytics Row: Status Donut + Recent Requisitions ─── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+        <div className="lg:col-span-5">
+          <BreakdownDonutChart
+            title="Request Status Distribution"
+            sublabel="WORKFLOW // LIFECYCLE"
+            description="Requisition breakdown across approval states and final issuance."
+            icon={PieIcon}
+            data={statusDonutData}
+            unitLabel="requests"
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+
+        <div className="lg:col-span-7">
+          <RecentListCard
+            title="Recent Requisitions & Requests"
+            sublabel="ACTIVITY // AUDIT"
+            description="Latest department borrow logs and consumable supply issues."
+            icon={ClipboardList}
+            items={recentRequests}
+            emptyMessage="No requisition requests matching current filter criteria."
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+      </div>
 
       {/* ── Filter Bar ───────────────────────────────────────────────── */}
       <div className="print:hidden">

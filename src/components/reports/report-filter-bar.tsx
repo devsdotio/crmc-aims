@@ -85,7 +85,7 @@ export function ReportFilterBar({
     <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-3 sm:p-4 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Search Input */}
-        <div className="relative min-w-[220px] flex-1 max-w-md">
+        <div className="relative min-w-55 flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
           <input
             type="text"

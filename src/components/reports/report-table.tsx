@@ -50,7 +50,7 @@ export function ReportTable<T>({
         className
       )}
     >
-      <div className="overflow-x-auto min-h-[460px]">
+      <div className="overflow-x-auto min-h-115">
         <table className="w-full text-left text-xs" aria-label="Report Data Table">
           <thead className="sticky top-0 z-10 border-b border-border/80 bg-bg-subtle/80 backdrop-blur-xs text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary">
             <tr>

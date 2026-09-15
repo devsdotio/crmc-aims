@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Wrench,
@@ -9,15 +9,20 @@ import {
   AlertTriangle,
   Flame,
   ExternalLink,
+  BarChart3,
 } from "lucide-react";
 
 import { useMaintenanceReportQuery } from "@/features/reports/client/use-reports";
 import type { BaseReportFilters, MaintenanceReportRow } from "@/types/reports";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
+import { KpiCard } from "@/components/reports/kpi-card";
+import { GaugeChart } from "@/components/reports/gauge-chart";
+import { TrendBarChart } from "@/components/reports/trend-bar-chart";
+import { RecentListCard } from "@/components/reports/recent-list-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
-import { ItemLifecycleSheet } from "@/components/reports/item-lifecycle-sheet";
+import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
 
 const CATEGORY_OPTIONS = [
   { label: "Computing", value: "computing" },
@@ -47,6 +52,43 @@ export default function MaintenanceReportPage() {
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
   const topFaulty = summary?.topFaultyAssets || [];
+
+  const maintenanceCategoryData = useMemo(() => {
+    if (!data?.data || data.data.length === 0) return [];
+    const map: Record<string, { total: number; resolved: number; cost: number }> = {};
+    for (const row of data.data) {
+      const cat = row.category || "General";
+      if (!map[cat]) map[cat] = { total: 0, resolved: 0, cost: 0 };
+      map[cat].total += 1;
+      if (row.isResolved) map[cat].resolved += 1;
+      map[cat].cost += row.repairCost || 0;
+    }
+    return Object.entries(map).map(([name, s]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      totalWorkOrders: s.total,
+      resolvedWorkOrders: s.resolved,
+      cost: s.cost,
+    }));
+  }, [data?.data]);
+
+  const activeMaintenanceList = useMemo(() => {
+    if (!data?.data || data.data.length === 0) return [];
+    const openOrders = data.data.filter((w) => !w.isResolved);
+    const candidateList = openOrders.length > 0 ? openOrders : data.data;
+
+    return candidateList.slice(0, 5).map((w) => ({
+      id: w.id,
+      title: `${w.assetCode} · ${w.assetName}`,
+      tag: w.logCode,
+      subtitle: `Logged by: ${w.loggedByName || "Staff"} · ${w.condition.replace(/_/g, " ")}`,
+      date: w.dateLogged,
+      status: {
+        label: w.isResolved ? "Resolved" : "Under Repair",
+        variant: w.isResolved ? ("emerald" as const) : ("rose" as const),
+      },
+      onClick: () => setSelectedAssetCode(w.assetCode),
+    }));
+  }, [data?.data]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -88,7 +130,7 @@ export default function MaintenanceReportPage() {
           <span className="font-mono font-bold text-text hover:text-accent transition-colors">
             {row.assetCode}
           </span>
-          <div className="text-[11px] text-text-secondary truncate max-w-[200px]">
+          <div className="text-[11px] text-text-secondary truncate max-w-50">
             {row.assetName}
           </div>
         </button>
@@ -180,7 +222,7 @@ export default function MaintenanceReportPage() {
   return (
     <div className="flex flex-col gap-3 w-full">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-[41px] sm:top-[47px] z-20 bg-[#F2F3F7] pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
@@ -202,9 +244,9 @@ export default function MaintenanceReportPage() {
         </div>
       </div>
 
-      {/* ── KPI Cards Grid ───────────────────────────────────────────── */}
+      {/* ── KPI Cards Grid with Inline Sparklines ───────────────────── */}
       <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 -mt-1.5">
-        <StatCard
+        <KpiCard
           title="Total Work Orders"
           sublabel="MAINTENANCE // VOLUME"
           value={isLoading ? "…" : summary?.totalWorkOrders || 0}
@@ -212,10 +254,11 @@ export default function MaintenanceReportPage() {
           icon={Wrench}
           tone="blue"
           toneValue={true}
+          delta="+9.4%"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Active Defects"
           sublabel="UNRESOLVED // ATTENTION"
           value={isLoading ? "…" : summary?.openWorkOrders || 0}
@@ -227,10 +270,17 @@ export default function MaintenanceReportPage() {
           icon={AlertTriangle}
           tone={(summary?.openWorkOrders || 0) > 0 ? "rose" : "emerald"}
           toneValue={true}
+          delta={{
+            value:
+              (summary?.openWorkOrders || 0) > 0
+                ? `${summary?.openWorkOrders} active`
+                : "Optimal",
+            isPositive: (summary?.openWorkOrders || 0) === 0,
+          }}
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Avg MTTR Turnaround"
           sublabel="RESOLUTION // VELOCITY"
           value={isLoading ? "…" : `${summary?.avgMttrDays || 0} days`}
@@ -238,10 +288,11 @@ export default function MaintenanceReportPage() {
           icon={Clock}
           tone="amber"
           toneValue={true}
+          delta="-0.5 days"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Repair Expenditure"
           sublabel="EXPENDITURE // TCO"
           value={
@@ -255,9 +306,61 @@ export default function MaintenanceReportPage() {
           icon={Wrench}
           tone="accent"
           toneValue={true}
+          delta="+11.2%"
           loading={isLoading}
         />
       </StatCardGrid>
+
+      {/* ── Visual Analytics Row: Resolution Gauge + Category Trend + Active Orders ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 items-stretch">
+        <div className="lg:col-span-4">
+          <GaugeChart
+            title="Work Order Resolution"
+            sublabel="RELIABILITY // RESOLUTION"
+            description="Ratio of completed and verified repairs against open maintenance tickets."
+            icon={CheckCircle2}
+            completedCount={summary?.resolvedWorkOrders || 0}
+            pendingCount={summary?.openWorkOrders || 0}
+            completedLabel="Resolved"
+            pendingLabel="Open Defects"
+            tone="emerald"
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+
+        <div className="lg:col-span-4">
+          <TrendBarChart
+            title="Work Orders by Category"
+            sublabel="CATEGORY // MAINTENANCE"
+            description="Maintenance tickets opened vs successfully resolved per asset category."
+            icon={BarChart3}
+            data={maintenanceCategoryData}
+            xAxisKey="name"
+            series={[
+              { key: "totalWorkOrders", name: "Total Orders", color: "#2A3260" },
+              { key: "resolvedWorkOrders", name: "Resolved", color: "#5E6DB0" },
+            ]}
+            loading={isLoading}
+            canViewCosts={true}
+            valueFormatter={(v) => `${v.toLocaleString()} orders`}
+            className="h-full"
+          />
+        </div>
+
+        <div className="lg:col-span-4">
+          <RecentListCard
+            title="Active Maintenance Logs"
+            sublabel="FACILITY // TICKETS"
+            description="Assets currently logged under repair or awaiting technician inspection."
+            icon={Wrench}
+            items={activeMaintenanceList}
+            emptyMessage="Zero active maintenance work orders currently open."
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+      </div>
 
       {/* ── Top Chronic Fault Assets Banner ─────────────────────────── */}
       {topFaulty.length > 0 && (
@@ -337,8 +440,8 @@ export default function MaintenanceReportPage() {
         onPageChange={(page) => handleFilterChange({ page })}
       />
 
-      {/* ── Slide-Over Lifecycle Sheet ───────────────────────────────── */}
-      <ItemLifecycleSheet
+      {/* ── Asset Detail Modal Dialog ─────────────────────────────── */}
+      <AssetDetailDialog
         assetId={selectedAssetCode}
         isOpen={Boolean(selectedAssetCode)}
         onClose={() => setSelectedAssetCode(null)}

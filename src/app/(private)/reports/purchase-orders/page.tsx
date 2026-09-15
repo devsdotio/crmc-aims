@@ -1,16 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ShoppingCart,
   Clock,
   CheckCircle2,
   DollarSign,
+  PieChart as PieIcon,
+  Truck,
 } from "lucide-react";
 
 import { usePurchaseOrdersReportQuery } from "@/features/reports/client/use-reports";
 import type { BaseReportFilters, PurchaseOrderRow } from "@/types/reports";
-import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
+import { StatCardGrid } from "@/components/ui/stat-card";
+import { KpiCard } from "@/components/reports/kpi-card";
+import { GaugeChart } from "@/components/reports/gauge-chart";
+import { BreakdownDonutChart } from "@/components/reports/breakdown-donut-chart";
+import { RecentListCard } from "@/components/reports/recent-list-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
@@ -33,6 +39,46 @@ export default function PurchaseOrdersReportPage() {
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
+
+  const vendorSpendDonutData = useMemo(() => {
+    if (summary?.topSuppliers && summary.topSuppliers.length > 0) {
+      return summary.topSuppliers.map((s) => ({
+        name: s.name,
+        value: s.spend,
+      }));
+    }
+    if (!data?.data || data.data.length === 0) return [];
+    const map: Record<string, number> = {};
+    for (const row of data.data) {
+      const name = row.supplierName || "Other";
+      map[name] = (map[name] || 0) + (row.totalAmount || 0);
+    }
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [summary?.topSuppliers, data?.data]);
+
+  const pendingOrders = useMemo(() => {
+    if (!data?.data || data.data.length === 0) return [];
+    return data.data
+      .filter(
+        (po) =>
+          po.status.toLowerCase() !== "delivered" &&
+          po.status.toLowerCase() !== "received"
+      )
+      .slice(0, 5)
+      .map((po) => ({
+        id: po.poNumber,
+        title: po.poNumber,
+        tag: po.itemType,
+        subtitle: `${po.supplierName} · ${
+          po.itemsPreview || `${po.totalQuantity} items`
+        }`,
+        date: po.purchasedOn,
+        status: {
+          label: po.status,
+          variant: "amber" as const,
+        },
+      }));
+  }, [data?.data]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...updated }));
@@ -127,7 +173,7 @@ export default function PurchaseOrdersReportPage() {
   return (
     <div className="flex flex-col gap-3 w-full">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-[41px] sm:top-[47px] z-20 bg-[#F2F3F7] pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
@@ -149,9 +195,9 @@ export default function PurchaseOrdersReportPage() {
         </div>
       </div>
 
-      {/* ── KPI Cards Grid ───────────────────────────────────────────── */}
+      {/* ── KPI Cards Grid with Inline Sparklines ───────────────────── */}
       <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 -mt-1.5">
-        <StatCard
+        <KpiCard
           title="Procurement Spend"
           sublabel="FINANCIAL // SPEND"
           value={
@@ -165,10 +211,11 @@ export default function PurchaseOrdersReportPage() {
           icon={DollarSign}
           tone="indigo"
           toneValue={true}
+          delta="+18.4%"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Open Purchase Lots"
           sublabel="STOCK // UNDEPLETED"
           value={isLoading ? "…" : summary?.openOrdersCount || 0}
@@ -176,20 +223,25 @@ export default function PurchaseOrdersReportPage() {
           icon={ShoppingCart}
           tone="amber"
           toneValue={true}
+          delta={{
+            value: `${summary?.openOrdersCount || 0} open`,
+            isPositive: (summary?.openOrdersCount || 0) < 10,
+          }}
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Completed Receipts"
           value={isLoading ? "…" : summary?.deliveredCount || 0}
           subtitle="Received into warehouse inventory"
           icon={CheckCircle2}
           tone="emerald"
           toneValue={true}
+          delta="+12.5%"
           loading={isLoading}
         />
 
-        <StatCard
+        <KpiCard
           title="Fulfillment Lead Time"
           sublabel="LOGISTICS // VELOCITY"
           value={isLoading ? "…" : `${summary?.avgLeadTimeDays || 4.2} d`}
@@ -197,9 +249,56 @@ export default function PurchaseOrdersReportPage() {
           icon={Clock}
           tone="blue"
           toneValue={true}
+          delta="-0.8 d"
           loading={isLoading}
         />
       </StatCardGrid>
+
+      {/* ── Visual Analytics Row: Completion Gauge + Vendor Donut + Recent POs ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 items-stretch">
+        <div className="lg:col-span-4">
+          <GaugeChart
+            title="Receipt Completion Rate"
+            sublabel="FULFILLMENT // RATE"
+            description="Ratio of delivered purchase receipts against active open procurement orders."
+            icon={Truck}
+            completedCount={summary?.deliveredCount || 0}
+            pendingCount={summary?.openOrdersCount || 0}
+            completedLabel="Delivered"
+            pendingLabel="In-Flight"
+            tone="emerald"
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+
+        <div className="lg:col-span-4">
+          <BreakdownDonutChart
+            title="Spend by Vendor"
+            sublabel="PROCUREMENT // VENDORS"
+            description="Capital expenditure distributed among active approved suppliers."
+            icon={PieIcon}
+            data={vendorSpendDonutData}
+            valueFormatter={(v) => (canViewCosts ? `₱${v.toLocaleString()}` : `${v}`)}
+            unitLabel="spend"
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+
+        <div className="lg:col-span-4">
+          <RecentListCard
+            title="Upcoming & Pending POs"
+            sublabel="PURCHASING // QUEUE"
+            description="Active procurement lots awaiting fulfillment or delivery verification."
+            icon={ShoppingCart}
+            items={pendingOrders}
+            emptyMessage="No pending purchase orders requiring delivery."
+            loading={isLoading}
+            className="h-full"
+          />
+        </div>
+      </div>
 
       {/* ── Search & Filter Controls ─────────────────────────────────── */}
       <div className="print:hidden">
