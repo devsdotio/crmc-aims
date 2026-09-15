@@ -22,6 +22,7 @@ import { PROJECT_EXPENSE_CATEGORY_LABELS } from "@/types/projects";
 export type ExpenseFormInput = {
   lineType: "miscellaneous" | "adjustment";
   category: ProjectExpenseCategory;
+  categoryLabel: string;
   description: string;
   amount: string;
   incurredOn: string;
@@ -43,6 +44,7 @@ export function AddEditExpenseDialog({
   const [form, setForm] = useState<ExpenseFormInput>({
     lineType: "miscellaneous",
     category: "miscellaneous",
+    categoryLabel: "",
     description: "",
     amount: "",
     incurredOn: new Date().toISOString().slice(0, 10),
@@ -57,6 +59,7 @@ export function AddEditExpenseDialog({
       lineType:
         expense?.lineType === "adjustment" ? "adjustment" : "miscellaneous",
       category: expense?.category ?? "miscellaneous",
+      categoryLabel: expense?.categoryLabel ?? "",
       description: expense?.description ?? "",
       amount: expense?.amount ?? "",
       incurredOn: expense?.incurredOn ?? new Date().toISOString().slice(0, 10),
@@ -98,6 +101,14 @@ export function AddEditExpenseDialog({
       setError("Expenses must be positive. Use Adjustment / credit for refunds.");
       return;
     }
+    if (
+      form.lineType === "miscellaneous" &&
+      form.category === "other" &&
+      !form.categoryLabel.trim()
+    ) {
+      setError("Enter a custom category for Other.");
+      return;
+    }
 
     setIsSubmitting(true);
     setError("");
@@ -106,6 +117,7 @@ export function AddEditExpenseDialog({
         ...form,
         description: form.description.trim(),
         notes: form.notes.trim(),
+        categoryLabel: form.categoryLabel.trim(),
         category:
           form.lineType === "adjustment" ? "adjustment" : form.category,
       });
@@ -207,33 +219,53 @@ export function AddEditExpenseDialog({
 
           {/* Category Dropdown (if miscellaneous) */}
           {form.lineType === "miscellaneous" && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label htmlFor="exp-cat" className={labelClass}>
-                  Category
-                </label>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10">
-                  <Tag className="h-2.5 w-2.5" />
-                  {PROJECT_EXPENSE_CATEGORY_LABELS[form.category]}
-                </span>
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label htmlFor="exp-cat" className={labelClass}>
+                    Category
+                  </label>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-accent px-1.5 py-0.5 rounded bg-accent/10">
+                    <Tag className="h-2.5 w-2.5" />
+                    {form.category === "other" && form.categoryLabel.trim()
+                      ? form.categoryLabel.trim()
+                      : PROJECT_EXPENSE_CATEGORY_LABELS[form.category]}
+                  </span>
+                </div>
+                <select
+                  id="exp-cat"
+                  value={form.category}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      category: e.target.value as ProjectExpenseCategory,
+                    }))
+                  }
+                  className={cn(fieldClass, "cursor-pointer")}
+                >
+                  {categoryOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <select
-                id="exp-cat"
-                value={form.category}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    category: e.target.value as ProjectExpenseCategory,
-                  }))
-                }
-                className={cn(fieldClass, "cursor-pointer")}
-              >
-                {categoryOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
+              {form.category === "other" && (
+                <div>
+                  <label htmlFor="exp-cat-label" className={labelClass}>
+                    Custom category <span className="text-accent">*</span>
+                  </label>
+                  <input
+                    id="exp-cat-label"
+                    value={form.categoryLabel}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, categoryLabel: e.target.value }))
+                    }
+                    className={fieldClass}
+                    placeholder="e.g. Permits, utilities, catering"
+                  />
+                </div>
+              )}
             </div>
           )}
 

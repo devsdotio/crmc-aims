@@ -48,6 +48,7 @@ function toDTO(row: ProjectExpenseLineRow): ProjectExpenseLineDTO {
     projectId: row.projectId,
     lineType: row.lineType,
     category: row.category,
+    categoryLabel: metadata.customCategory ?? null,
     description: row.description,
     amount: formatMoney(row.amount) ?? "0.00",
     quantity: formatMoney(row.quantity),
@@ -108,6 +109,27 @@ export class ProjectExpenseService {
     return project;
   }
 
+  /** Resolve an expense for a project; list fallback if by-id lookup misses. */
+  private async requireExpenseForProject(
+    projectId: string,
+    expenseId: string
+  ): Promise<ProjectExpenseLineRow> {
+    let existing = await this.expenses.findById(expenseId);
+    if (!existing || existing.projectId !== projectId) {
+      const listed = await this.expenses.listByProject(projectId);
+      existing =
+        listed.find((row) => row.id === expenseId) ??
+        listed.find(
+          (row) => row.id.toLowerCase() === expenseId.toLowerCase()
+        ) ??
+        null;
+    }
+    if (!existing || existing.projectId !== projectId) {
+      throw new NotFoundError("Project expense", expenseId);
+    }
+    return existing;
+  }
+
   async listForProject(rawProjectId: string): Promise<ProjectExpenseLineDTO[]> {
     const projectId = projectIdSchema.parse(rawProjectId);
     const project = await this.projects.findById(projectId);
@@ -127,7 +149,27 @@ export class ProjectExpenseService {
 
     const lineType = input.lineType;
     const category =
-      lineType === "adjustment" ? "adjustment" : input.category;
+      lineType === "adjustment"
+        ? "adjustment"
+        : lineType === "material"
+          ? "miscellaneous"
+          : input.category;
+
+    const metadata: ProjectExpenseMetadata =
+      category === "other" && input.categoryLabel?.trim()
+        ? { customCategory: input.categoryLabel.trim() }
+        : {};
+
+    const quantity = input.quantity;
+    let unitCost = input.unitCost;
+    if (
+      lineType === "material" &&
+      quantity &&
+      Number(quantity) > 0 &&
+      (!unitCost || Number(unitCost) === 0)
+    ) {
+      unitCost = (Number(input.amount) / Number(quantity)).toFixed(2);
+    }
 
     const row = await this.expenses.create({
       projectId,
@@ -135,13 +177,13 @@ export class ProjectExpenseService {
       category,
       description: input.description,
       amount: input.amount,
-      quantity: input.quantity,
-      unitCost: input.unitCost,
+      quantity,
+      unitCost,
       consumableId: null,
       assetId: null,
       incurredOn: input.incurredOn ?? todayDateString(),
       notes: input.notes ?? null,
-      metadata: {},
+      metadata,
       recordedByUserId: actor.userId,
       recordedByName: actor.displayName,
     });
@@ -341,14 +383,12 @@ export class ProjectExpenseService {
     const expenseId = expenseIdSchema.parse(rawExpenseId);
     await this.requireMutableProject(projectId);
 
-    const existing = await this.expenses.findById(expenseId);
-    if (!existing || existing.projectId !== projectId) {
-      throw new NotFoundError("Project expense", expenseId);
-    }
+    const existing = await this.requireExpenseForProject(projectId, expenseId);
 
     if (
       existing.lineType !== "miscellaneous" &&
-      existing.lineType !== "adjustment"
+      existing.lineType !== "adjustment" &&
+      existing.lineType !== "material"
     ) {
       throw new ConflictError(
         "Inventory and write-off lines cannot be edited. Delete/reverse where supported, or record an adjustment."
@@ -357,29 +397,66 @@ export class ProjectExpenseService {
 
     const input = updateProjectExpenseSchema.parse(rawInput);
     const nextLineType = input.lineType ?? existing.lineType;
-    if (nextLineType !== "miscellaneous" && nextLineType !== "adjustment") {
+    if (
+      nextLineType !== "miscellaneous" &&
+      nextLineType !== "adjustment" &&
+      nextLineType !== "material"
+    ) {
       throw new ConflictError("Invalid line type for manual expenses.");
     }
 
     if (
-      (input.lineType === "miscellaneous" ||
-        (!input.lineType && existing.lineType === "miscellaneous")) &&
-      input.amount !== undefined &&
-      Number(input.amount) < 0
+      ((input.lineType === "miscellaneous" ||
+        input.lineType === "material" ||
+        (!input.lineType &&
+          (existing.lineType === "miscellaneous" ||
+            existing.lineType === "material"))) &&
+        input.amount !== undefined &&
+        Number(input.amount) < 0)
     ) {
       throw new ConflictError(
-        "Miscellaneous spend must be positive. Use an adjustment line for credits."
+        "Spend lines must be positive. Use an adjustment line for credits."
       );
     }
 
     const category =
       nextLineType === "adjustment"
         ? "adjustment"
-        : input.category !== undefined
-          ? input.category
-          : existing.category;
+        : nextLineType === "material"
+          ? "miscellaneous"
+          : input.category !== undefined
+            ? input.category
+            : existing.category;
 
-    const updated = await this.expenses.update(expenseId, {
+    if (category === "other") {
+      const label =
+        input.categoryLabel !== undefined
+          ? input.categoryLabel?.trim() || null
+          : ((existing.metadata ?? {}) as ProjectExpenseMetadata).customCategory ??
+            null;
+      if (!label) {
+        throw new BadRequestError(
+          "Enter a custom category when Other is selected."
+        );
+      }
+    }
+
+    const existingMeta = (existing.metadata ?? {}) as ProjectExpenseMetadata;
+    let nextMetadata: ProjectExpenseMetadata | undefined;
+    if (input.categoryLabel !== undefined || input.category !== undefined) {
+      nextMetadata = { ...existingMeta };
+      if (category === "other") {
+        const label =
+          input.categoryLabel?.trim() ||
+          existingMeta.customCategory ||
+          undefined;
+        if (label) nextMetadata.customCategory = label;
+      } else {
+        delete nextMetadata.customCategory;
+      }
+    }
+
+    const updated = await this.expenses.update(existing.id, {
       ...(input.lineType !== undefined ? { lineType: input.lineType } : {}),
       category,
       ...(input.description !== undefined
@@ -392,9 +469,10 @@ export class ProjectExpenseService {
         ? { incurredOn: input.incurredOn }
         : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(nextMetadata !== undefined ? { metadata: nextMetadata } : {}),
     });
 
-    if (!updated) throw new NotFoundError("Project expense", expenseId);
+    if (!updated) throw new NotFoundError("Project expense", existing.id);
     return toDTO(updated);
   }
 
@@ -407,17 +485,24 @@ export class ProjectExpenseService {
     const expenseId = expenseIdSchema.parse(rawExpenseId);
     await this.requireMutableProject(projectId);
 
-    const existing = await this.expenses.findById(expenseId);
-    if (!existing || existing.projectId !== projectId) {
-      throw new NotFoundError("Project expense", expenseId);
+    // Prefer list-scoped lookup — same source as GET /expenses — then delete by
+    // the row's own id. Avoids by-id misses that still appear in the project ledger.
+    const listed = await this.expenses.listByProject(projectId);
+    const existing =
+      listed.find((row) => row.id === expenseId) ??
+      listed.find((row) => row.id.toLowerCase() === expenseId.toLowerCase()) ??
+      null;
+
+    if (!existing) {
+      return;
     }
 
     if (
       existing.lineType === "miscellaneous" ||
-      existing.lineType === "adjustment"
+      existing.lineType === "adjustment" ||
+      existing.lineType === "material"
     ) {
-      const deleted = await this.expenses.delete(expenseId);
-      if (!deleted) throw new NotFoundError("Project expense", expenseId);
+      await this.expenses.delete(existing.id);
       return;
     }
 

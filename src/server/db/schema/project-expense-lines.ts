@@ -37,6 +37,7 @@ export const projectExpenseCategoryEnum = pgEnum("project_expense_category", [
   "fees",
   "adjustment",
   "miscellaneous",
+  "other",
 ]);
 
 /** FIFO lot draws for consumable expense lines — used to reverse stock. */
@@ -54,6 +55,8 @@ export type ProjectExpenseMetadata = {
   consumableCode?: string;
   consumableName?: string;
   consumableUnit?: string;
+  /** Custom label when category is `other`. */
+  customCategory?: string;
   /** Links a project charge to the originating stock issue movement. */
   stockMovementId?: string;
   /** All MOV ids when an issue splits across lots (FIFO). */

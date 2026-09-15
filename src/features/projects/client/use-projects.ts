@@ -177,6 +177,26 @@ export function useDeleteProjectExpenseMutation(): UseMutationResult<
   return useMutation({
     mutationFn: ({ projectId, expenseId }) =>
       projectsApi.deleteExpense(projectId, expenseId),
+    onMutate: async ({ projectId, expenseId }) => {
+      const key = projectQueryKeys.expenses(projectId);
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ProjectExpenseLine[]>(key);
+      if (previous) {
+        queryClient.setQueryData<ProjectExpenseLine[]>(
+          key,
+          previous.filter((line) => line.id !== expenseId)
+        );
+      }
+      return { previous, projectId };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(
+          projectQueryKeys.expenses(context.projectId),
+          context.previous
+        );
+      }
+    },
     onSettled: () => {
       void invalidateDomains(queryClient, PROJECT_MATERIAL_DOMAINS);
     },

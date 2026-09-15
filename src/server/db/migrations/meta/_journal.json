@@ -183,6 +183,13 @@
       "when": 1786361000000,
       "tag": "0025_maintenance_repair_cost",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786362000000,
+      "tag": "0026_project_expense_category_other",
+      "breakpoints": true
     }
   ]
 }
