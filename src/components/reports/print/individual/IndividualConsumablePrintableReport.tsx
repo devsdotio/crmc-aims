@@ -283,24 +283,6 @@ export function IndividualConsumablePrintableReport({
         </div>
       </section>
 
-      {/* ─── Signatories Block ───────────────────────────────────────────── */}
-      <section className="avoid-break pt-1">
-        <PrintSignatories
-          signers={[
-            {
-              role: "Stock Custodian / Issuer",
-              name: "Consumables Inventory In-Charge",
-              title: "Property & Supply Division",
-            },
-            {
-              role: "Audited & Verified By",
-              name: "Internal Auditor",
-              title: "Office of Quality Assurance & Audit",
-            },
-          ]}
-        />
-      </section>
-
       {/* ─── Institutional Footer ───────────────────────────────────────── */}
       <footer className="avoid-break pt-2 border-t border-neutral-200">
         <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">

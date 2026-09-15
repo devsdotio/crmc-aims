@@ -267,24 +267,6 @@ export function IndividualAssetPrintableReport({
         </div>
       </section>
 
-      {/* ─── Signatories Block ───────────────────────────────────────────── */}
-      <section className="avoid-break pt-1">
-        <PrintSignatories
-          signers={[
-            {
-              role: "Property Custodian / Issuer",
-              name: "Property Management Officer",
-              title: "CRMC Property & Supply Division",
-            },
-            {
-              role: "Verified & Audited By",
-              name: "Internal Auditor",
-              title: "Office of Quality Assurance & Audit",
-            },
-          ]}
-        />
-      </section>
-
       {/* ─── Institutional Footer ───────────────────────────────────────── */}
       <footer className="avoid-break pt-2 border-t border-neutral-200">
         <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">

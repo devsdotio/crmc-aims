@@ -298,13 +298,6 @@ export function PrintableReport({
         ))}
       </div>
 
-      {/* ─── Optional Signatories ─────────────────────────────────────── */}
-      {showSignatories && (
-        <section className="avoid-break pt-2">
-          <PrintSignatories signers={signers} />
-        </section>
-      )}
-
       {/* ─── Standard Report Footer ───────────────────────────────────── */}
       <footer className="avoid-break pt-2 border-t border-neutral-200">
         <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">

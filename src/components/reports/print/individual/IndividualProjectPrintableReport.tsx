@@ -350,24 +350,6 @@ export function IndividualProjectPrintableReport({
         </div>
       </section>
 
-      {/* ─── Signatories Block ───────────────────────────────────────────── */}
-      <section className="avoid-break pt-1">
-        <PrintSignatories
-          signers={[
-            {
-              role: "Project Head / Supervisor",
-              name: projectLead,
-              title: project.department || "CRMC Infrastructure Division",
-            },
-            {
-              role: "Approved & Audited By",
-              name: "VP of Administration / Auditor",
-              title: "Office of the Vice President for Administration",
-            },
-          ]}
-        />
-      </section>
-
       {/* ─── Institutional Footer ───────────────────────────────────────── */}
       <footer className="avoid-break pt-2 border-t border-neutral-200">
         <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">
