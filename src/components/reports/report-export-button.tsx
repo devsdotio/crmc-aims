@@ -8,11 +8,13 @@ import type { BaseReportFilters } from "@/types/reports";
 interface ReportExportButtonProps {
   reportType: string;
   filters?: BaseReportFilters;
+  onPrint?: () => void;
 }
 
 export function ReportExportButton({
   reportType,
   filters = {},
+  onPrint,
 }: ReportExportButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -24,7 +26,11 @@ export function ReportExportButton({
 
   const handlePrint = () => {
     setIsOpen(false);
-    window.print();
+    if (onPrint) {
+      onPrint();
+    } else {
+      window.print();
+    }
   };
 
   return (

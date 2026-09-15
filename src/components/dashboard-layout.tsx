@@ -60,8 +60,8 @@ export default function DashboardLayout({
 
   return (
     <SandboxVisibilityProvider role={currentRole}>
-    <div className="flex h-full w-full overflow-hidden bg-[#F2F3F7] text-[#1B2140]">
-      <div className="hidden md:block h-full shrink-0">
+    <div className="flex h-full w-full overflow-hidden bg-[#F2F3F7] text-[#1B2140] print:h-auto print:overflow-visible print:bg-white">
+      <div className="hidden md:block h-full shrink-0 print:hidden no-print">
         <Sidebar
           userName={userName}
           userEmail={userEmail}
@@ -74,7 +74,7 @@ export default function DashboardLayout({
 
       <div
         className={cn(
-          "fixed inset-0 z-50 md:hidden transition-opacity duration-300 ease-in-out",
+          "fixed inset-0 z-50 md:hidden transition-opacity duration-300 ease-in-out print:hidden no-print",
           isMobileOpen
             ? "opacity-100 pointer-events-auto"
             : "opacity-0 pointer-events-none"
@@ -104,16 +104,18 @@ export default function DashboardLayout({
       </div>
 
       <div
-        className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden bg-[#F2F3F7] text-[#1B2140]"
+        className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden bg-[#F2F3F7] text-[#1B2140] print:h-auto print:overflow-visible print:bg-white"
         data-theme="light"
       >
-        <GlobalHeader
-          onMobileMenuOpen={() => setIsMobileOpen(true)}
-          userName={userName}
-          userRoleLabel={userRoleLabel}
-        />
+        <div className="print:hidden no-print">
+          <GlobalHeader
+            onMobileMenuOpen={() => setIsMobileOpen(true)}
+            userName={userName}
+            userRoleLabel={userRoleLabel}
+          />
+        </div>
 
-        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 bg-[#F2F3F7] focus:outline-hidden">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 bg-[#F2F3F7] focus:outline-hidden print:overflow-visible print:h-auto print:p-0 print:bg-white">
           {children}
         </main>
       </div>

@@ -328,3 +328,71 @@ nextjs-portal {
     transform: translateX(100%);
   }
 }
+
+/* ─── Printable Document Styles (Standard Letter: 8.5in x 11in) ─────────── */
+@page {
+  size: letter portrait;
+  margin: 0.35in 0.45in 0.35in 0.45in;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #1b2140 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide screen chrome and controls */
+  .no-print,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print-only,
+  .print\:block {
+    display: block !important;
+  }
+
+  .print-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Pagination and page-break utilities */
+  .avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .page-break-before {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  tr {
+    break-inside: avoid;
+    break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+}
+
+.print-only {
+  display: none;
+}
