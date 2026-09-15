@@ -98,7 +98,7 @@ export function ConsumablesPrintableReport({
               </div>
             </div>
           </div>
-          <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[9.5px] space-y-0.5 shrink-0">
+          <div suppressHydrationWarning className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[9.5px] space-y-0.5 shrink-0">
             <div>
               <span className="text-neutral-500">Generated:</span>{" "}
               <span className="font-semibold text-neutral-800">{formattedDate}, {formattedTime}</span>
@@ -339,7 +339,7 @@ export function ConsumablesPrintableReport({
         <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">
           <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS Consumables Audit</div>
           <div>Official Institutional Report</div>
-          <div>
+          <div suppressHydrationWarning>
             Verification Code: CRMC-CSM-{generatedAt.getTime().toString(36).toUpperCase()}
           </div>
         </div>
