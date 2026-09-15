@@ -22,6 +22,7 @@ import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
 import { ProjectDetailDialog } from "@/components/reports/project-detail-dialog";
+import { ProjectsPrintableReport } from "@/components/reports/print/ProjectsPrintableReport";
 
 const STATUS_OPTIONS = [
   { label: "Active", value: "active" },
@@ -210,7 +211,17 @@ export default function ProjectReportsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-3 w-full">
+    <>
+      <div className="hidden print:block print:w-full">
+        <ProjectsPrintableReport
+          data={data?.data || []}
+          summary={summary}
+          canViewCosts={canViewCosts}
+          filters={filters}
+        />
+      </div>
+
+      <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Page Header ─────────────────────────────────────────────────── */}
       <div className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -320,5 +331,6 @@ export default function ProjectReportsPage() {
         canViewCosts={canViewCosts}
       />
     </div>
+    </>
   );
 }

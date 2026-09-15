@@ -23,6 +23,8 @@ import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
 import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
 
+import { AssetRegisterPrintableReport } from "@/components/reports/print/AssetRegisterPrintableReport";
+
 const CATEGORY_OPTIONS = [
   { label: "Computing", value: "computing" },
   { label: "Transport", value: "transport" },
@@ -222,7 +224,17 @@ export default function AssetRegisterReportPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-3 w-full">
+    <>
+      <div className="hidden print:block print:w-full">
+        <AssetRegisterPrintableReport
+          data={data?.data || []}
+          summary={summary}
+          canViewCosts={canViewCosts}
+          filters={filters}
+        />
+      </div>
+
+      <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
       <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
@@ -387,5 +399,6 @@ export default function AssetRegisterReportPage() {
         onClose={() => setSelectedAssetId(null)}
       />
     </div>
+    </>
   );
 }
