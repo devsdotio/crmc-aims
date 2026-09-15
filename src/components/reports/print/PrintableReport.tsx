@@ -210,15 +210,23 @@ export function PrintableReport({
       {/* ─── Standard Report Header ───────────────────────────────────── */}
       <header className="avoid-break mb-2.5 border-b-2 border-[#2A3260] pb-2">
         <div className="flex items-start justify-between">
-          <div className="space-y-0.5">
-            <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
-              {organizationName}
-            </h1>
-            <div className="text-[10px] font-semibold text-neutral-600">
-              {organizationSubtitle}
-            </div>
-            <div className="text-[8.5px] font-medium text-neutral-500">
-              Upper Pandan, Bogo City, Cebu, Philippines
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/CRMC%20LOGO.png"
+              alt="CRMC Seal"
+              className="h-10 w-10 object-contain shrink-0"
+            />
+            <div className="space-y-0.5">
+              <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
+                {organizationName}
+              </h1>
+              <div className="text-[10px] font-semibold text-neutral-600">
+                {organizationSubtitle}
+              </div>
+              <div className="text-[8.5px] font-medium text-neutral-500">
+                Upper Pandan, Bogo City, Cebu, Philippines
+              </div>
             </div>
           </div>
           <div className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[8.5px] space-y-0.5 shrink-0">

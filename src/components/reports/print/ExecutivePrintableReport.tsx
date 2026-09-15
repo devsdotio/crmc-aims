@@ -58,15 +58,23 @@ export function ExecutivePrintableReport({
       {/* ─── Institutional Header ───────────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2 mb-2.5">
         <div className="flex items-start justify-between">
-          <div className="space-y-0.5">
-            <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
-              CRMC-AIMS
-            </h1>
-            <div className="text-[10px] font-semibold text-neutral-600">
-              Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
-            </div>
-            <div className="text-[8.5px] font-medium text-neutral-500">
-              Upper Pandan, Bogo City, Cebu, Philippines
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/CRMC%20LOGO.png"
+              alt="CRMC Seal"
+              className="h-10 w-10 object-contain shrink-0"
+            />
+            <div className="space-y-0.5">
+              <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
+                CRMC-AIMS
+              </h1>
+              <div className="text-[10px] font-semibold text-neutral-600">
+                Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
+              </div>
+              <div className="text-[8.5px] font-medium text-neutral-500">
+                Upper Pandan, Bogo City, Cebu, Philippines
+              </div>
             </div>
           </div>
 
