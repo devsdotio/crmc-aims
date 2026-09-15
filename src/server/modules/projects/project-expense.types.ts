@@ -14,13 +14,16 @@ export type ProjectExpenseCategory =
   | "broken_asset"
   | "fees"
   | "adjustment"
-  | "miscellaneous";
+  | "miscellaneous"
+  | "other";
 
 export type ProjectExpenseLineDTO = {
   id: string;
   projectId: string;
   lineType: ProjectExpenseLineType;
   category: ProjectExpenseCategory;
+  /** Present when category is `other`. */
+  categoryLabel?: string | null;
   description: string;
   amount: string;
   quantity: string | null;

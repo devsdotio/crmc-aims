@@ -22,8 +22,10 @@ export type CreateProjectPayload = {
 export type UpdateProjectPayload = Partial<CreateProjectPayload>;
 
 export type CreateProjectExpensePayload = {
-  lineType?: "miscellaneous" | "adjustment";
+  lineType?: "miscellaneous" | "adjustment" | "material";
   category?: ProjectExpenseCategory;
+  /** Required when category is `other`. */
+  categoryLabel?: string | null;
   description: string;
   amount: string | number;
   quantity?: string | number | null;
@@ -157,8 +159,9 @@ export const projectsApi = {
     expenseId: string,
     payload: UpdateProjectExpensePayload
   ): Promise<ProjectExpenseLine> {
+    const sp = new URLSearchParams({ expenseId });
     const response = await fetchJson<ApiResponse<ProjectExpenseLine>>(
-      `/api/projects/${projectId}/expenses/${expenseId}`,
+      `/api/projects/${projectId}/expenses?${sp}`,
       {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -168,10 +171,10 @@ export const projectsApi = {
   },
 
   async deleteExpense(projectId: string, expenseId: string): Promise<void> {
-    await fetchJson<void>(
-      `/api/projects/${projectId}/expenses/${expenseId}`,
-      { method: "DELETE" }
-    );
+    const sp = new URLSearchParams({ expenseId });
+    await fetchJson<void>(`/api/projects/${projectId}/expenses?${sp}`, {
+      method: "DELETE",
+    });
   },
 
   async listAssets(
