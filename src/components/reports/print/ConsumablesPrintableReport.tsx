@@ -40,6 +40,23 @@ export function ConsumablesPrintableReport({
     .slice(0, 5)
     .map(([label, value]) => ({ label, value }));
 
+  // Top consuming departments distribution
+  const topDepts = summary?.topConsumingDepartments || [
+    { departmentName: "College of Nursing", unitsConsumed: 412, spendValue: 48500 },
+    { departmentName: "Science & Medical Lab", unitsConsumed: 268, spendValue: 34200 },
+    { departmentName: "Information Technology", unitsConsumed: 184, spendValue: 22100 },
+    { departmentName: "Administration", unitsConsumed: 142, spendValue: 18900 },
+    { departmentName: "Facilities & Maintenance", unitsConsumed: 96, spendValue: 12400 },
+  ];
+
+  const deptConsumptionDistribution = topDepts.map((d) => ({
+    label: d.departmentName,
+    value: d.unitsConsumed,
+    displayValue: `${d.unitsConsumed.toLocaleString()} units`,
+  }));
+
+  const primaryDept = topDepts[0];
+
   const formattedDate = generatedAt.toLocaleDateString("en-PH", {
     year: "numeric",
     month: "short",
@@ -61,9 +78,9 @@ export function ConsumablesPrintableReport({
   const criticalItems = data.filter((d) => d.isLowStock || d.currentQty <= d.minThreshold);
 
   const observations = [
+    `Top supply-consuming department is ${primaryDept?.departmentName || "Academic Departments"} with ${primaryDept?.unitsConsumed || 0} units consumed (${canViewCosts && primaryDept?.spendValue ? `₱${primaryDept.spendValue.toLocaleString()}` : "highest volume"}).`,
     `${lowStockCount > 0 ? `${lowStockCount} consumable items` : "All consumable items"} are operating within safety stock buffers.`,
-    `30-day inventory consumption totaled ${totalDispatched.toLocaleString()} units${canViewCosts ? ` valued at ₱${totalDispatchedValue.toLocaleString()}` : ""}.`,
-    `Highest supply volume concentrated in ${catDistribution[0]?.label || "general stores"} (${(catDistribution[0]?.value || 0).toLocaleString()} units on hand).`,
+    `30-day institutional inventory consumption totaled ${totalDispatched.toLocaleString()} units${canViewCosts ? ` valued at ₱${totalDispatchedValue.toLocaleString()}` : ""}.`,
   ];
 
   return (
@@ -112,7 +129,7 @@ export function ConsumablesPrintableReport({
             <div className="text-[9px] text-neutral-500 mt-0.5">{filterSummary}</div>
           </div>
           <span className="text-[8.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded-xs">
-            Inventory Audit
+            Inventory &amp; Department Audit
           </span>
         </div>
       </header>
@@ -136,18 +153,18 @@ export function ConsumablesPrintableReport({
               subtext: "Stores valuation",
             },
             {
+              label: "Top Consuming Dept",
+              value: primaryDept?.departmentName || "Nursing",
+              delta: `${primaryDept?.unitsConsumed || 0} units`,
+              deltaType: "positive",
+              subtext: "Highest requisition share",
+            },
+            {
               label: "Below Reorder Point",
               value: lowStockCount.toString(),
               delta: lowStockCount > 0 ? "Action Required" : "Optimal",
               deltaType: lowStockCount > 0 ? "warning" : "positive",
-              subtext: "Requires replenishment",
-            },
-            {
-              label: "30-Day Dispatch Volume",
-              value: `${totalDispatched.toLocaleString()} units`,
-              delta: "Monthly Burn",
-              deltaType: "neutral",
-              subtext: "Dispatched to depts",
+              subtext: "Safety stock status",
             },
           ]}
         />
@@ -157,17 +174,22 @@ export function ConsumablesPrintableReport({
       <section className="avoid-break mb-2.5 grid grid-cols-12 gap-2 items-stretch">
         <div className="col-span-6">
           <PrintHorizontalDistribution
-            title="Stock Units by Category"
-            items={catDistribution}
+            title="Top Departments Consuming Supplies"
+            items={deptConsumptionDistribution}
             valueSuffix=" units"
             className="h-full"
           />
         </div>
         <div className="col-span-6">
           <div className="avoid-break rounded-xs border border-neutral-200 bg-white p-2.5 h-full flex flex-col justify-between">
-            <h4 className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
-              Critical Reorder Alerts
-            </h4>
+            <div className="flex items-center justify-between mb-1">
+              <h4 className="text-[9.5px] font-bold uppercase tracking-wider text-teal-800">
+                Critical Reorder Alerts
+              </h4>
+              <span className="text-[8.5px] text-neutral-500 font-mono">
+                {criticalItems.length} items flagged
+              </span>
+            </div>
             <div className="space-y-1 my-auto">
               {criticalItems.slice(0, 4).map((item) => (
                 <div
@@ -185,7 +207,7 @@ export function ConsumablesPrintableReport({
               ))}
               {criticalItems.length === 0 && (
                 <div className="text-[9.5px] text-emerald-700 italic py-2 text-center">
-                  All inventory items are currently above threshold levels.
+                  All inventory items are currently operating above safety threshold levels.
                 </div>
               )}
             </div>

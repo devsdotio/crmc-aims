@@ -209,6 +209,11 @@ export interface ConsumableStockSummary {
   totalInventoryValuation: number;
   totalDispatched30d: number;
   totalDispatchedValue30d: number;
+  topConsumingDepartments?: Array<{
+    departmentName: string;
+    unitsConsumed: number;
+    spendValue?: number;
+  }>;
 }
 
 // ─── 5. Purchase Orders Report ────────────────────────────────────────────────
