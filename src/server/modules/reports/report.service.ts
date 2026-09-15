@@ -179,7 +179,50 @@ export class ReportService {
     };
   }
 
-  // ─── 8. CSV Export Generation ─────────────────────────────────────────────
+  // ─── 8. Projects Report ───────────────────────────────────────────────────
+
+  async getProjectsReport(filters: BaseReportQuery, actorRole: AppRole) {
+    const canViewCosts = isAssetOperatorRole(actorRole);
+    const result = await this.repo.getProjectsReport(filters);
+
+    if (!canViewCosts) {
+      result.summary.totalProjectSpend = 0;
+      result.data = result.data.map((row) => ({
+        ...row,
+        consumablesValue: null,
+        totalProjectCost: null,
+      }));
+    }
+
+    return {
+      ...result,
+      canViewCosts,
+    };
+  }
+
+  // ─── 9. Departments Report ────────────────────────────────────────────────
+
+  async getDepartmentsReport(filters: BaseReportQuery, actorRole: AppRole) {
+    const canViewCosts = isAssetOperatorRole(actorRole);
+    const result = await this.repo.getDepartmentsReport(filters);
+
+    if (!canViewCosts) {
+      result.summary.totalAssetsValue = 0;
+      result.summary.totalConsumablesValue = 0;
+      result.data = result.data.map((row) => ({
+        ...row,
+        assetsValue: null,
+        consumablesValue: null,
+      }));
+    }
+
+    return {
+      ...result,
+      canViewCosts,
+    };
+  }
+
+  // ─── 10. CSV Export Generation ────────────────────────────────────────────
 
   async exportReportCsv(query: ExportReportQuery, actorRole: AppRole): Promise<{ filename: string; csv: string }> {
     const canViewCosts = isAssetOperatorRole(actorRole);
@@ -361,6 +404,147 @@ export class ReportService {
         return {
           filename: `maintenance-report-${dateStamp}.csv`,
           csv: toCsv(headers, rows),
+        };
+      }
+
+      case "projects": {
+        const res = await this.getProjectsReport(exportFilters, actorRole);
+        const headers = [
+          "Project Code",
+          "Project Name",
+          "Department",
+          "Status",
+          "Start Date",
+          "End Date",
+          "Assigned Assets",
+          "Consumables Consumed",
+          ...(canViewCosts ? ["Consumables Value", "Total Project Cost"] : []),
+          "Manager",
+          "Description",
+        ];
+        const rows = res.data.map((r) => [
+          r.projectCode,
+          r.projectName,
+          r.department,
+          r.status,
+          r.startDate,
+          r.endDate || "",
+          r.assignedAssetsCount,
+          r.consumablesConsumedCount,
+          ...(canViewCosts
+            ? [
+                r.consumablesValue != null ? r.consumablesValue.toFixed(2) : "",
+                r.totalProjectCost != null ? r.totalProjectCost.toFixed(2) : "",
+              ]
+            : []),
+          r.managerName || "",
+          r.description || "",
+        ]);
+        return {
+          filename: `project-report-${dateStamp}.csv`,
+          csv: toCsv(headers, rows),
+        };
+      }
+
+      case "departments": {
+        const res = await this.getDepartmentsReport(exportFilters, actorRole);
+        const headers = [
+          "Department Name",
+          "Assets Assigned",
+          ...(canViewCosts ? ["Assets Valuation"] : []),
+          "Consumables Consumed",
+          ...(canViewCosts ? ["Consumables Valuation"] : []),
+          "Active Maintenance",
+          "Active Projects",
+          "Top Assets",
+        ];
+        const rows = res.data.map((r) => [
+          r.departmentName,
+          r.assetsAssignedCount,
+          ...(canViewCosts ? [r.assetsValue != null ? r.assetsValue.toFixed(2) : ""] : []),
+          r.consumablesConsumedCount,
+          ...(canViewCosts ? [r.consumablesValue != null ? r.consumablesValue.toFixed(2) : ""] : []),
+          r.activeMaintenanceCount,
+          r.activeProjects,
+          (r.topAssets || []).join("; "),
+        ]);
+        return {
+          filename: `department-report-${dateStamp}.csv`,
+          csv: toCsv(headers, rows),
+        };
+      }
+
+      case "executive": {
+        const summary = await this.getExecutiveSummary(actorRole);
+        const headers = [
+          "Operational Domain",
+          "Primary Metric / Valuation",
+          "Unit / Volume",
+          "Active / Health Status",
+          "Operational Efficiency / Remarks",
+        ];
+        const rows: (string | number)[][] = [
+          [
+            "Capital Asset Registry",
+            canViewCosts ? summary.assets.totalValue.toFixed(2) : "N/A",
+            `${summary.assets.totalCount} Units`,
+            `${summary.assets.activeCount} Active Ready`,
+            `${summary.assets.inRepairCount} Under Repair`,
+          ],
+          [
+            "Consumable Supply Stores",
+            canViewCosts ? summary.consumables.totalValuation.toFixed(2) : "N/A",
+            `${summary.consumables.totalItems} SKUs`,
+            summary.consumables.lowStockCount ? `${summary.consumables.lowStockCount} Below Threshold` : "Healthy",
+            canViewCosts ? `₱${summary.consumables.monthBurnRateValue.toFixed(2)} 30d burn` : "N/A",
+          ],
+          [
+            "Procurement & Purchase Orders",
+            canViewCosts ? summary.procurement.totalSpend30d.toFixed(2) : "N/A",
+            `${summary.procurement.openOrdersCount} Open POs`,
+            `${summary.procurement.pendingDeliveryCount} Pending Delivery`,
+            "30-Day Window",
+          ],
+          [
+            "Supply Requests & Requisitions",
+            `${summary.requests.fulfilledThisMonth} Fulfilled`,
+            `${summary.requests.pendingCount} Pending Action`,
+            summary.requests.pendingCount === 0 ? "Queue Clear" : "Action Required",
+            `${summary.requests.avgApprovalHours}h Avg Turnaround`,
+          ],
+          [
+            "Maintenance & Repairs",
+            canViewCosts ? summary.maintenance.totalRepairSpend30d.toFixed(2) : "N/A",
+            `${summary.maintenance.activeIssuesCount} Active Work Orders`,
+            `${summary.maintenance.resolvedThisMonth} Resolved this Month`,
+            `${summary.maintenance.avgMttrDays} Days MTTR`,
+          ],
+        ];
+
+        // Append monthly spend and categories if available
+        let csvContent = toCsv(headers, rows);
+        if (summary.charts.monthlySpendTrend && summary.charts.monthlySpendTrend.length > 0) {
+          const spendHeaders = ["Month", ...(canViewCosts ? ["Procurement Spend", "Maintenance Spend"] : ["Status"])];
+          const spendRows = summary.charts.monthlySpendTrend.map((m) => [
+            m.month,
+            ...(canViewCosts ? [m.procurement.toFixed(2), m.maintenance.toFixed(2)] : ["Recorded"]),
+          ]);
+          csvContent += "\r\n\r\n" + toCsv(spendHeaders, spendRows);
+        }
+
+        if (summary.charts.categoryDistribution && summary.charts.categoryDistribution.length > 0) {
+          const catHeaders = ["Category Name", "Item Count", ...(canViewCosts ? ["Total Valuation"] : [])];
+          const catRows = summary.charts.categoryDistribution.map((c) => [
+            c.name,
+            c.count,
+            ...(canViewCosts ? [c.value.toFixed(2)] : []),
+          ]);
+          csvContent += "\r\n\r\n" + toCsv(catHeaders, catRows);
+        }
+
+        return {
+          filename: `executive-overview-report-${dateStamp}.csv`,
+          csv: csvContent,
         };
       }
 

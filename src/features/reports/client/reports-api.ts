@@ -5,10 +5,14 @@ import type {
   BaseReportFilters,
   ConsumableStockRow,
   ConsumableStockSummary,
+  DepartmentReportRow,
+  DepartmentReportSummary,
   ExecutiveKpiSummary,
   MaintenanceReportRow,
   MaintenanceSummary,
   PaginatedReportResponse,
+  ProjectReportRow,
+  ProjectReportSummary,
   PurchaseOrderRow,
   PurchaseOrdersSummary,
   RequestReportRow,
@@ -83,6 +87,24 @@ export async function fetchMaintenanceReport(
 ): Promise<PaginatedReportResponse<MaintenanceReportRow, MaintenanceSummary>> {
   const res = await fetch(`/api/reports/maintenance${toQueryString(filters)}`);
   if (!res.ok) throw new Error("Failed to fetch maintenance report");
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchProjectReport(
+  filters: BaseReportFilters
+): Promise<PaginatedReportResponse<ProjectReportRow, ProjectReportSummary>> {
+  const res = await fetch(`/api/reports/projects${toQueryString(filters)}`);
+  if (!res.ok) throw new Error("Failed to fetch project report");
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchDepartmentReport(
+  filters: BaseReportFilters
+): Promise<PaginatedReportResponse<DepartmentReportRow, DepartmentReportSummary>> {
+  const res = await fetch(`/api/reports/departments${toQueryString(filters)}`);
+  if (!res.ok) throw new Error("Failed to fetch department report");
   const json = await res.json();
   return json.data;
 }

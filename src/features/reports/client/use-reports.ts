@@ -9,10 +9,14 @@ import type {
   BaseReportFilters,
   ConsumableStockRow,
   ConsumableStockSummary,
+  DepartmentReportRow,
+  DepartmentReportSummary,
   ExecutiveKpiSummary,
   MaintenanceReportRow,
   MaintenanceSummary,
   PaginatedReportResponse,
+  ProjectReportRow,
+  ProjectReportSummary,
   PurchaseOrderRow,
   PurchaseOrdersSummary,
   RequestReportRow,
@@ -22,8 +26,10 @@ import {
   fetchAssetDrilldownReport,
   fetchAssetRegisterReport,
   fetchConsumablesReport,
+  fetchDepartmentReport,
   fetchExecutiveSummary,
   fetchMaintenanceReport,
+  fetchProjectReport,
   fetchPurchaseOrdersReport,
   fetchRequestsReport,
 } from "./reports-api";
@@ -37,6 +43,8 @@ export const reportKeys = {
   purchaseOrders: (filters: BaseReportFilters) => [...reportKeys.all, "purchase-orders", filters] as const,
   requests: (filters: BaseReportFilters) => [...reportKeys.all, "requests", filters] as const,
   maintenance: (filters: BaseReportFilters) => [...reportKeys.all, "maintenance", filters] as const,
+  projects: (filters: BaseReportFilters) => [...reportKeys.all, "projects", filters] as const,
+  departments: (filters: BaseReportFilters) => [...reportKeys.all, "departments", filters] as const,
 };
 
 export function useExecutiveReportQuery(initialData?: ExecutiveKpiSummary) {
@@ -122,6 +130,32 @@ export function useMaintenanceReportQuery(
   return useQuery({
     queryKey: reportKeys.maintenance(filters),
     queryFn: () => fetchMaintenanceReport(filters),
+    initialData,
+    staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useProjectReportQuery(
+  filters: BaseReportFilters,
+  initialData?: PaginatedReportResponse<ProjectReportRow, ProjectReportSummary>
+) {
+  return useQuery({
+    queryKey: reportKeys.projects(filters),
+    queryFn: () => fetchProjectReport(filters),
+    initialData,
+    staleTime: 30 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useDepartmentReportQuery(
+  filters: BaseReportFilters,
+  initialData?: PaginatedReportResponse<DepartmentReportRow, DepartmentReportSummary>
+) {
+  return useQuery({
+    queryKey: reportKeys.departments(filters),
+    queryFn: () => fetchDepartmentReport(filters),
     initialData,
     staleTime: 30 * 1000,
     placeholderData: keepPreviousData,

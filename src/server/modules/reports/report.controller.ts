@@ -95,6 +95,28 @@ export class ReportController {
     }
   }
 
+  async getProjectsReport(request: NextRequest | Request) {
+    try {
+      const session = await requireStaffShell();
+      const params = baseReportQuerySchema.parse(this.extractParams(request));
+      const data = await this.service.getProjectsReport(params, session.profile.role);
+      return ok(data);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async getDepartmentsReport(request: NextRequest | Request) {
+    try {
+      const session = await requireStaffShell();
+      const params = baseReportQuerySchema.parse(this.extractParams(request));
+      const data = await this.service.getDepartmentsReport(params, session.profile.role);
+      return ok(data);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async exportReport(request: NextRequest | Request) {
     try {
       const session = await requireStaffShell();

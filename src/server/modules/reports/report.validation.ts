@@ -8,13 +8,15 @@ export const reportTypeSchema = z.enum([
   "purchase-orders",
   "requests",
   "maintenance",
+  "projects",
+  "departments",
 ]);
 
 export const reportSortOrderSchema = z.enum(["asc", "desc"]);
 
 export const baseReportQuerySchema = z.object({
   search: z.string().optional(),
-  departmentId: z.string().uuid().optional(),
+  departmentId: z.string().optional(),
   category: z.string().optional(),
   status: z.string().optional(),
   startDate: z.string().optional(),

@@ -5,7 +5,9 @@ export type ReportType =
   | "consumables"
   | "purchase-orders"
   | "requests"
-  | "maintenance";
+  | "maintenance"
+  | "projects"
+  | "departments";
 
 export interface DateRangeFilter {
   startDate?: string;
@@ -290,4 +292,87 @@ export interface MaintenanceSummary {
   avgMttrDays: number;
   topFaultyAssets: Array<{ assetCode: string; name: string; count: number; totalCost: number }>;
   conditionBreakdown: Array<{ condition: string; count: number }>;
+}
+
+// ─── Shared Report Drilldown Types ──────────────────────────────────────────
+
+export interface AssignedAssetItem {
+  id: string;
+  assetCode: string;
+  name: string;
+  category: string;
+  status: string;
+  serialNumber?: string | null;
+  value?: number | null;
+  location?: string | null;
+  assignedAt?: string | null;
+  assignedByName?: string | null;
+}
+
+export interface ConsumedSupplyItem {
+  id: string;
+  itemCode: string;
+  name: string;
+  category?: string | null;
+  quantity: number;
+  unit: string;
+  unitCost?: number | null;
+  totalCost?: number | null;
+  incurredOn?: string | null;
+  purpose?: string | null;
+}
+
+// ─── 8. Project Report ────────────────────────────────────────────────────────
+
+export interface ProjectReportRow {
+  id: string;
+  projectCode: string;
+  projectName: string;
+  department: string;
+  status: "active" | "completed" | "on_hold" | "cancelled";
+  startDate: string;
+  endDate: string | null;
+  assignedAssetsCount: number;
+  consumablesConsumedCount: number;
+  consumablesValue: number | null;
+  totalProjectCost: number | null;
+  managerName: string | null;
+  description: string | null;
+  assignedAssets?: AssignedAssetItem[];
+  consumedSupplies?: ConsumedSupplyItem[];
+}
+
+export interface ProjectReportSummary {
+  totalProjects: number;
+  activeProjects: number;
+  completedProjects: number;
+  totalAssetsAssigned: number;
+  totalConsumablesConsumed: number;
+  totalProjectSpend: number;
+}
+
+// ─── 9. Department Report ─────────────────────────────────────────────────────
+
+export interface DepartmentReportRow {
+  id: string;
+  departmentName: string;
+  assetsAssignedCount: number;
+  assetsValue: number | null;
+  consumablesConsumedCount: number;
+  consumablesValue: number | null;
+  activeMaintenanceCount: number;
+  staffCount?: number | null;
+  activeProjects: number;
+  topAssets: string[];
+  assignedAssets?: AssignedAssetItem[];
+  consumedSupplies?: ConsumedSupplyItem[];
+}
+
+export interface DepartmentReportSummary {
+  totalDepartments: number;
+  totalAssetsDeployed: number;
+  totalAssetsValue: number;
+  totalConsumablesConsumed: number;
+  totalConsumablesValue: number;
+  mostActiveByAssets: string | null;
 }
