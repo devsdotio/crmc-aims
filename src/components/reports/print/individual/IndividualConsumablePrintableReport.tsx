@@ -72,19 +72,13 @@ export function IndividualConsumablePrintableReport({
     }
   }
 
-  // If no movements yet, provide sample distribution data for complete printable presentation
-  const deptConsumptionList = Object.keys(deptConsumptionMap).length > 0
-    ? Object.entries(deptConsumptionMap).map(([dept, qty]) => ({
-        departmentName: dept,
-        unitsConsumed: qty,
-        spendValue: qty * unitPrice,
-      })).sort((a, b) => b.unitsConsumed - a.unitsConsumed)
-    : [
-        { departmentName: "College of Nursing", unitsConsumed: Math.max(12, Math.round(totalStock * 0.4)), spendValue: Math.round(totalStock * 0.4) * unitPrice },
-        { departmentName: "Science & Medical Lab", unitsConsumed: Math.max(8, Math.round(totalStock * 0.25)), spendValue: Math.round(totalStock * 0.25) * unitPrice },
-        { departmentName: "Information Technology", unitsConsumed: Math.max(5, Math.round(totalStock * 0.15)), spendValue: Math.round(totalStock * 0.15) * unitPrice },
-        { departmentName: "Administration & Finance", unitsConsumed: Math.max(3, Math.round(totalStock * 0.1)), spendValue: Math.round(totalStock * 0.1) * unitPrice },
-      ];
+  const deptConsumptionList = Object.entries(deptConsumptionMap)
+    .map(([dept, qty]) => ({
+      departmentName: dept,
+      unitsConsumed: qty,
+      spendValue: qty * unitPrice,
+    }))
+    .sort((a, b) => b.unitsConsumed - a.unitsConsumed);
 
   const totalDeptConsumption = deptConsumptionList.reduce((sum, d) => sum + d.unitsConsumed, 0) || 1;
 
@@ -277,6 +271,13 @@ export function IndividualConsumablePrintableReport({
                   </tr>
                 );
               })}
+              {deptConsumptionList.length === 0 && (
+                <tr>
+                  <td colSpan={canViewCosts ? 5 : 4} className="py-3 text-center text-neutral-400 italic text-[11px]">
+                    No departmental consumption data recorded for this SKU.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -576,13 +576,7 @@ export class ReportRepository {
             : rows.reduce((sum, r) => sum + ((lotMap.get(r.id)?.valuation) ?? (r.currentQty * 15.5)), 0),
         totalDispatched30d: dispatchSummary?.totalQty ?? 0,
         totalDispatchedValue30d: dispatchSummary?.totalVal ?? 0,
-        topConsumingDepartments: topDeptRows.length > 0 ? topDeptRows : [
-          { departmentName: "College of Nursing", unitsConsumed: 412, spendValue: 48500 },
-          { departmentName: "Science & Medical Lab", unitsConsumed: 268, spendValue: 34200 },
-          { departmentName: "Information Technology", unitsConsumed: 184, spendValue: 22100 },
-          { departmentName: "Administration", unitsConsumed: 142, spendValue: 18900 },
-          { departmentName: "Facilities & Maintenance", unitsConsumed: 96, spendValue: 12400 },
-        ],
+        topConsumingDepartments: topDeptRows,
       },
     };
   }

@@ -29,16 +29,7 @@ export function ConsumablesPrintableReport({
   const totalDispatched = summary?.totalDispatched30d || 0;
   const totalDispatchedValue = summary?.totalDispatchedValue30d || 0;
 
-  // All consuming departments ranked by consumption volume
-  const departmentRankings = (summary?.topConsumingDepartments || [
-    { departmentName: "College of Nursing", unitsConsumed: 412, spendValue: 48500 },
-    { departmentName: "Science & Medical Lab", unitsConsumed: 268, spendValue: 34200 },
-    { departmentName: "Information Technology", unitsConsumed: 184, spendValue: 22100 },
-    { departmentName: "Administration & Finance", unitsConsumed: 142, spendValue: 18900 },
-    { departmentName: "Facilities & Maintenance", unitsConsumed: 96, spendValue: 12400 },
-    { departmentName: "Basic Education Department", unitsConsumed: 82, spendValue: 9800 },
-    { departmentName: "Library & Learning Commons", unitsConsumed: 54, spendValue: 6200 },
-  ]).sort((a, b) => b.unitsConsumed - a.unitsConsumed);
+  const departmentRankings = (summary?.topConsumingDepartments || []).sort((a, b) => b.unitsConsumed - a.unitsConsumed);
 
   const totalDeptConsumption = departmentRankings.reduce((sum, d) => sum + d.unitsConsumed, 0) || 1;
 
@@ -218,6 +209,13 @@ export function ConsumablesPrintableReport({
                   </tr>
                 );
               })}
+              {departmentRankings.length === 0 && (
+                <tr>
+                  <td colSpan={canViewCosts ? 5 : 4} className="py-3 text-center text-neutral-400 italic text-[11px]">
+                    No departmental consumption data recorded for this period.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
