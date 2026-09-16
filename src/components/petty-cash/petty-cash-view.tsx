@@ -2,46 +2,49 @@
 
 import React, { useState, useMemo } from "react";
 import {
-  Receipt,
+  Wallet,
   FilePlus2,
   Search,
   X,
-  Filter,
-  Layers,
   Clock,
   ShieldCheck,
   CheckCircle2,
   Banknote,
+  Tag,
 } from "lucide-react";
-import { useVouchersQuery, useVouchersRealtimeSync } from "@/features/vouchers/client";
-import type { Voucher, VoucherStatus } from "@/types/vouchers";
+import {
+  usePettyCashListQuery,
+  usePettyCashRealtimeSync,
+} from "@/features/petty-cash/client";
+import type { PettyCashVoucher, PettyCashStatus } from "@/types/petty-cash";
+import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
 import { formatPhp } from "@/components/projects/format-money";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
-import { VouchersTable } from "./vouchers-table";
-import { CreateVoucherDialog } from "./create-voucher-dialog";
-import { VoucherDetailSheet } from "./voucher-detail-sheet";
-import { cn } from "@/lib/utils";
+import { PettyCashTable } from "./petty-cash-table";
+import { CreatePettyCashDialog } from "./create-petty-cash-dialog";
+import { PettyCashDetailSheet } from "./petty-cash-detail-sheet";
 
-export function VouchersView() {
+export function PettyCashView() {
   // Real-time synchronization via Supabase postgres_changes
-  useVouchersRealtimeSync();
+  usePettyCashRealtimeSync();
 
   const [search, setSearch] = useState("");
-  const [selectedStatus, setSelectedStatus] = useState<VoucherStatus | "all">("all");
+  const [selectedStatus, setSelectedStatus] = useState<PettyCashStatus | "all">("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
+  const [selectedVoucher, setSelectedVoucher] = useState<PettyCashVoucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  // Fetch vouchers query (specifically for disbursement vouchers with live polling)
+  // Fetch petty cash vouchers query
   const {
     data,
     isLoading,
     refetch,
-  } = useVouchersQuery({
+  } = usePettyCashListQuery({
     search: search.trim() || undefined,
     status: selectedStatus === "all" ? undefined : selectedStatus,
-    type: "disbursement",
+    category: selectedCategory === "all" ? undefined : selectedCategory,
     limit: 100,
   });
 
@@ -72,7 +75,7 @@ export function VouchersView() {
     };
   }, [vouchers]);
 
-  const handleSelectVoucher = (voucher: Voucher) => {
+  const handleSelectVoucher = (voucher: PettyCashVoucher) => {
     setSelectedVoucher(voucher);
     setIsDetailOpen(true);
   };
@@ -84,14 +87,14 @@ export function VouchersView() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-text">
-              Disbursement Vouchers
+              Petty Cash Vouchers
             </h1>
             <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
-              {isLoading ? "Loading vouchers…" : `${vouchers.length} voucher${vouchers.length === 1 ? "" : "s"}`}
+              {isLoading ? "Loading records…" : `${vouchers.length} record${vouchers.length === 1 ? "" : "s"}`}
             </span>
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Disbursement voucher records for purchasing items and settling purchase orders.
+            Petty cash micro-disbursement records for immediate small expenses and urgent cash purchases.
           </p>
         </div>
 
@@ -102,12 +105,12 @@ export function VouchersView() {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <FilePlus2 className="h-4 w-4" />
-            <span>New Voucher</span>
+            <span>New Petty Cash</span>
           </button>
         </div>
       </div>
 
-      {/* Search & Filter Toolbar (flush below header with border-b, matching assets/consumables) */}
+      {/* Search & Filter Toolbar (flush below header with border-b, matching vouchers/assets) */}
       <div className="px-4 md:px-6 py-2.5 bg-bg border-b border-border shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         {/* Search */}
         <div className="relative flex-1 max-w-md">
@@ -116,7 +119,7 @@ export function VouchersView() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by code, payee, PO#, asset..."
+            placeholder="Search by PCV#, claimant, category, receipt, particulars..."
             className="w-full h-8.5 rounded-lg border border-border bg-bg-subtle/50 pl-8.5 pr-8 text-xs text-text placeholder:text-text-secondary/60 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-bg transition-colors"
           />
           {search && (
@@ -133,22 +136,36 @@ export function VouchersView() {
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Classification Indicator */}
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-            <Receipt className="h-3.5 w-3.5" />
-            <span>Disbursement Voucher (DV)</span>
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            <Wallet className="h-3.5 w-3.5" />
+            <span>Petty Cash Voucher (PCV)</span>
           </div>
+
+          {/* Category Filter */}
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="h-8.5 rounded-lg border border-border bg-bg px-2.5 text-xs text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+          >
+            <option value="all">All Categories</option>
+            {PETTY_CASH_CATEGORIES.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.label}
+              </option>
+            ))}
+          </select>
 
           {/* Status Filter */}
           <select
             value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value as VoucherStatus | "all")}
+            onChange={(e) => setSelectedStatus(e.target.value as PettyCashStatus | "all")}
             className="h-8.5 rounded-lg border border-border bg-bg px-2.5 text-xs text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
           >
             <option value="all">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="pending_approval">Pending Approval</option>
             <option value="approved">Approved</option>
-            <option value="completed">Completed / Paid</option>
+            <option value="completed">Disbursed / Paid</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -159,10 +176,10 @@ export function VouchersView() {
         {/* Summary Stat Cards */}
         <StatCardGrid columns={4} className="gap-3 shrink-0">
           <StatCard
-            title="Total Disbursement Vouchers"
+            title="Total Petty Cash Vouchers"
             value={stats.total}
-            subtitle="All recorded vouchers"
-            icon={Receipt}
+            subtitle="All recorded PCVs"
+            icon={Wallet}
             tone="accent"
           />
           <StatCard
@@ -182,7 +199,7 @@ export function VouchersView() {
           <StatCard
             title="Total Disbursed"
             value={formatPhp(stats.totalDisbursed)}
-            subtitle={`${stats.completedCount} completed voucher(s)`}
+            subtitle={`${stats.completedCount} completed disbursement(s)`}
             icon={Banknote}
             tone="emerald"
           />
@@ -190,7 +207,7 @@ export function VouchersView() {
 
         {/* Table / Empty State Container */}
         <div className="flex-1 min-h-0 flex flex-col">
-          <VouchersTable
+          <PettyCashTable
             vouchers={vouchers}
             loading={isLoading}
             onSelectVoucher={handleSelectVoucher}
@@ -199,21 +216,20 @@ export function VouchersView() {
       </main>
 
       {/* Detail Slide-out Sheet */}
-      <VoucherDetailSheet
+      <PettyCashDetailSheet
         voucher={selectedVoucher}
         isOpen={isDetailOpen}
         onClose={() => {
           setIsDetailOpen(false);
           setSelectedVoucher(null);
         }}
-        onRefresh={() => refetch()}
       />
 
-      {/* Create Voucher Dialog */}
-      <CreateVoucherDialog
+      {/* Create Dialog */}
+      <CreatePettyCashDialog
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={() => refetch()}
+        onSuccess={() => void refetch()}
       />
     </div>
   );

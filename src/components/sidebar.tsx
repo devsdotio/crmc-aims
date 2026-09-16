@@ -28,6 +28,7 @@ import {
   Tags,
   Building2,
   Receipt,
+  Wallet,
   FlaskConical,
   ChevronDown,
 } from "lucide-react";
@@ -219,11 +220,20 @@ export default function Sidebar({
           ],
         },
         {
-          name: "Vouchers",
-          href: "/vouchers",
+          name: "Disbursements",
+          href: "/disbursements/vouchers",
           icon: Receipt,
-          badgeText: "Beta",
           roles: ["superadmin", "admin", "staff"],
+          children: [
+            {
+              name: "Vouchers",
+              href: "/disbursements/vouchers",
+            },
+            {
+              name: "Petty Cash",
+              href: "/disbursements/petty-cash",
+            },
+          ],
         },
         {
           name: "Suppliers",

@@ -39,6 +39,7 @@ import {
 } from "@/features/vouchers/client";
 import { useUsersQuery } from "@/features/users/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
+import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
 
@@ -175,6 +176,9 @@ export function VoucherDetailSheet({
 
   const { data: users = [] } = useUsersQuery();
   const { data: purchaseLots = [] } = usePurchaseLotsQuery();
+  const { data: auditLogs = [] } = useAuditLogsQuery({
+    entityId: voucher?.id,
+  });
 
   // Handle escape key listener
   useEffect(() => {
@@ -1140,7 +1144,7 @@ export function VoucherDetailSheet({
                     {voucher.purchaseOrderNumber && (
                       <Link
                         href={`/purchase-orders?search=${encodeURIComponent(voucher.purchaseOrderNumber)}`}
-                        className="group rounded-xl border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-all p-3.5 flex flex-col justify-between block cursor-pointer shadow-xs hover:shadow-sm"
+                        className="group rounded-xl border border-primary/20 bg-primary/5 hover:bg-primary/10 hover:border-primary/50 transition-all p-3.5 flex flex-col justify-between cursor-pointer shadow-xs hover:shadow-sm"
                         title="Open Purchase Order in PO Module"
                       >
                         <div>
@@ -1185,7 +1189,7 @@ export function VoucherDetailSheet({
                     {voucher.assetCode && (
                       <Link
                         href={`/assets?search=${encodeURIComponent(voucher.assetCode)}`}
-                        className="group rounded-xl border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/50 transition-all p-3.5 flex flex-col justify-between block cursor-pointer shadow-xs hover:shadow-sm"
+                        className="group rounded-xl border border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/50 transition-all p-3.5 flex flex-col justify-between cursor-pointer shadow-xs hover:shadow-sm"
                         title="Open Asset in Inventory Module"
                       >
                         <div>
@@ -1420,6 +1424,64 @@ export function VoucherDetailSheet({
                     </div>
                   </div>
                 </div>
+
+                {/* Detailed System Activity & Audit Trail */}
+                {auditLogs.length > 0 && (
+                  <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3">
+                    <div className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center justify-between border-b border-border/60 pb-2">
+                      <div className="flex items-center gap-1.5">
+                        <FileText className="h-3.5 w-3.5 text-primary" />
+                        <span>Detailed Change & Mutation History ({auditLogs.length})</span>
+                      </div>
+                    </div>
+
+                    <div className="divide-y divide-border/50 border border-border/60 rounded-xl overflow-hidden bg-bg text-xs">
+                      {auditLogs.map((log) => (
+                        <div key={log.id} className="p-3 space-y-1 hover:bg-bg-subtle/30 transition-colors">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className={cn(
+                                "px-2 py-0.5 text-[10px] font-bold rounded-full border uppercase tracking-wider",
+                                log.action === "created" && "bg-blue-500/10 text-blue-600 border-blue-500/20",
+                                log.action === "updated" && "bg-amber-500/10 text-amber-600 border-amber-500/20",
+                                log.action === "approved" && "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                                log.action === "completed" && "bg-primary/10 text-primary border-primary/20",
+                                log.action === "cancelled" && "bg-rose-500/10 text-rose-600 border-rose-500/20",
+                                !["created", "updated", "approved", "completed", "cancelled"].includes(log.action) && "bg-bg-subtle text-text-secondary border-border"
+                              )}>
+                                {log.action.replace("_", " ")}
+                              </span>
+                              <span className="font-semibold text-xs text-text">
+                                {log.actorName}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-text-muted font-mono">
+                              {new Date(log.timestamp).toLocaleString()}
+                            </span>
+                          </div>
+
+                          {log.notes && (
+                            <p className="text-xs text-text-secondary pl-0.5">
+                              {log.notes}
+                            </p>
+                          )}
+
+                          {Boolean(log.metadata && typeof log.metadata === "object") && (
+                            <div className="text-[10px] text-text-muted font-mono bg-bg-subtle/60 px-2 py-1 rounded-md border border-border/40 mt-1">
+                              {Object.entries(log.metadata as Record<string, unknown>)
+                                .filter(([key]) => key !== "changes")
+                                .map(([key, val]) => (
+                                  <span key={key} className="mr-3 inline-block">
+                                    <span className="text-text-secondary font-medium">{key}:</span> {String(val)}
+                                  </span>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

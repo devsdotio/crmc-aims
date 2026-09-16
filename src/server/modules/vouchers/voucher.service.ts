@@ -5,6 +5,7 @@ import { serverCache } from "@/server/shared/cache";
 import type { VoucherType } from "@/types/vouchers";
 
 import { VoucherRepository } from "./voucher.repository";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import type { VoucherDTO, ListVoucherFilters } from "./voucher.types";
 import {
   createVoucherSchema,
@@ -52,7 +53,8 @@ function toDTO(row: VoucherRow): VoucherDTO {
 
 export class VoucherService {
   constructor(
-    private readonly repo: VoucherRepository = new VoucherRepository()
+    private readonly repo: VoucherRepository = new VoucherRepository(),
+    private readonly auditLogs: AuditLogService = new AuditLogService()
   ) {}
 
   async generateNextVoucherCode(
@@ -152,11 +154,31 @@ export class VoucherService {
       completedAt: null,
     });
 
+    void this.auditLogs.log({
+      entityType: "voucher",
+      entityId: row.id,
+      action: "created",
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Created disbursement voucher ${row.voucherCode} for ${row.payeeName} (₱${row.amount})`,
+      metadata: {
+        voucherCode: row.voucherCode,
+        payeeName: row.payeeName,
+        amount: row.amount,
+        status: row.status,
+        purchaseOrderNumber: row.purchaseOrderNumber,
+      },
+    });
+
     serverCache.invalidateTag("vouchers");
     return toDTO(row);
   }
 
-  async update(rawId: string, rawInput: unknown): Promise<VoucherDTO> {
+  async update(
+    rawId: string,
+    rawInput: unknown,
+    actor?: ActorContext
+  ): Promise<VoucherDTO> {
     const id = voucherIdSchema.parse(rawId);
     const input = updateVoucherSchema.parse(rawInput);
 
@@ -190,6 +212,20 @@ export class VoucherService {
     });
 
     if (!updated) throw new NotFoundError("Voucher", id);
+
+    void this.auditLogs.log({
+      entityType: "voucher",
+      entityId: id,
+      action: "updated",
+      actorName: actor?.displayName || "System",
+      actorUserId: actor?.userId,
+      notes: `Updated voucher ${updated.voucherCode} details`,
+      metadata: {
+        updatedFields: Object.keys(input),
+        changes: input,
+      },
+    });
+
     serverCache.invalidateTag("vouchers");
     return toDTO(updated);
   }
@@ -222,16 +258,39 @@ export class VoucherService {
     const updated = await this.repo.update(id, updatePayload);
     if (!updated) throw new NotFoundError("Voucher", id);
 
+    void this.auditLogs.log({
+      entityType: "voucher",
+      entityId: id,
+      action: input.status,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Status changed from ${existing.status.replace("_", " ")} to ${input.status.replace("_", " ")}`,
+      metadata: {
+        previousStatus: existing.status,
+        newStatus: input.status,
+      },
+    });
+
     serverCache.invalidateTag("vouchers");
     return toDTO(updated);
   }
 
-  async delete(rawId: string): Promise<{ success: boolean }> {
+  async delete(rawId: string, actor?: ActorContext): Promise<{ success: boolean }> {
     const id = voucherIdSchema.parse(rawId);
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundError("Voucher", id);
 
     const success = await this.repo.delete(id);
+
+    void this.auditLogs.log({
+      entityType: "voucher",
+      entityId: id,
+      action: "deleted",
+      actorName: actor?.displayName || "System",
+      actorUserId: actor?.userId,
+      notes: `Deleted voucher ${existing.voucherCode}`,
+    });
+
     serverCache.invalidateTag("vouchers");
     return { success };
   }

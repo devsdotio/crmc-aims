@@ -121,4 +121,24 @@ export class AuditLogService {
       return log;
     });
   }
+
+  async log(data: {
+    entityType: string;
+    entityId: string;
+    action: string;
+    actorName: string;
+    actorUserId?: string | null;
+    notes?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<AuditLogRow> {
+    return this.repo.create({
+      entityType: data.entityType,
+      entityId: data.entityId,
+      action: data.action,
+      actorName: data.actorName,
+      actorUserId: data.actorUserId ?? null,
+      notes: data.notes ?? null,
+      metadata: data.metadata ?? null,
+    });
+  }
 }

@@ -42,7 +42,7 @@ import { POPrintSlipDialog } from "@/components/purchase-orders/po-print-slip-di
 import { LotPrintTagDialog } from "@/components/purchase-orders/lot-print-tag-dialog";
 import { LotReleaseDialog } from "@/components/purchase-orders/lot-release-dialog";
 import { FileNewPODialog } from "@/components/purchase-orders/file-new-po-dialog";
-import type { POCategoryScope } from "@/app/(private)/purchase-orders/types";
+import type { POCategoryScope, POType } from "@/app/(private)/purchase-orders/types";
 import { formatPhp } from "@/components/projects/format-money";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";

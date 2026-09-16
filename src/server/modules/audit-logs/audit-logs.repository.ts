@@ -33,19 +33,9 @@ export class AuditLogRepository {
   }
 
   async create(data: NewAuditLogRow, session?: DbSession): Promise<AuditLogRow> {
-    // General audit_logs table is unused. Operational history lives in
-    // borrow_transactions, stock_movements, and request JSON timelines.
-    void session;
-    return {
-      id: crypto.randomUUID(),
-      entityType: data.entityType,
-      entityId: data.entityId,
-      action: data.action,
-      actorName: data.actorName,
-      actorUserId: data.actorUserId ?? null,
-      timestamp: data.timestamp ?? new Date(),
-      notes: data.notes ?? null,
-      metadata: data.metadata ?? null,
-    };
+    const db = this.db(session);
+    const [row] = await db.insert(auditLogs).values(data).returning();
+    if (!row) throw new Error("Failed to create audit log.");
+    return row;
   }
 }

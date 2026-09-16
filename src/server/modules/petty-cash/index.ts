@@ -3,11 +3,11 @@ import type { NextRequest } from "next/server";
 import { requireActor, requireAssetOperator } from "@/server/shared/auth";
 import { created, handleError, ok } from "@/server/shared/http";
 
-import { VoucherService } from "./voucher.service";
+import { PettyCashService } from "./petty-cash.service";
 
-export class VoucherController {
+export class PettyCashController {
   constructor(
-    private readonly service: VoucherService = new VoucherService()
+    private readonly service: PettyCashService = new PettyCashService()
   ) {}
 
   async list(request: NextRequest | Request) {
@@ -16,8 +16,9 @@ export class VoucherController {
       const url = new URL(request.url);
       const data = await this.service.list({
         search: url.searchParams.get("search") ?? undefined,
-        type: url.searchParams.get("type") ?? undefined,
         status: url.searchParams.get("status") ?? undefined,
+        category: url.searchParams.get("category") ?? undefined,
+        departmentId: url.searchParams.get("departmentId") ?? undefined,
         startDate: url.searchParams.get("startDate") ?? undefined,
         endDate: url.searchParams.get("endDate") ?? undefined,
         limit: url.searchParams.get("limit") ?? undefined,
@@ -29,13 +30,11 @@ export class VoucherController {
     }
   }
 
-  async nextCode(request: NextRequest | Request) {
+  async nextCode() {
     try {
       await requireActor();
-      const url = new URL(request.url);
-      const type = (url.searchParams.get("type") as "disbursement" | "property_transfer" | "liquidation") ?? "disbursement";
-      const voucherCode = await this.service.generateNextVoucherCode(type);
-      return ok({ voucherCode });
+      const pcvNumber = await this.service.generateNextPcvCode();
+      return ok({ pcvNumber });
     } catch (error) {
       return handleError(error);
     }
@@ -90,8 +89,8 @@ export class VoucherController {
   }
 }
 
-export const voucherController = new VoucherController();
-export { VoucherService } from "./voucher.service";
-export { VoucherRepository } from "./voucher.repository";
-export * from "./voucher.types";
-export * from "./voucher.validation";
+export const pettyCashController = new PettyCashController();
+export { PettyCashService } from "./petty-cash.service";
+export { PettyCashRepository } from "./petty-cash.repository";
+export * from "./petty-cash.types";
+export * from "./petty-cash.validation";
