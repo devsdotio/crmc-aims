@@ -281,6 +281,16 @@ export function POPrintSlipDialog({
               color: #111;
               line-height: 1.5;
             }
+            .nothing-follows {
+              text-align: center;
+              font-weight: 700;
+              font-style: italic;
+              font-size: 11px;
+              letter-spacing: 2px;
+              color: #444;
+              padding: 6px 8px;
+              background-color: #fafafa;
+            }
             .empty-row td {
               height: 30px;
             }
@@ -399,6 +409,9 @@ export function POPrintSlipDialog({
                       </tr>`;
                         })
                         .join("") +
+                      `<tr>
+                        <td colspan="5" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
+                      </tr>` +
                       `<tr style="border-top: 2px solid #222; font-weight: bold;">
                         <td class="col-qty">${lot.items.reduce((s: number, i: POLineItemDetail) => s + i.quantity, 0)}</td>
                         <td class="col-desc" style="text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Grand Total</td>
@@ -420,7 +433,9 @@ export function POPrintSlipDialog({
                         ₱${totalCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>
-                    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr>
+                      <td colspan="5" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
+                    </tr>
                     <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
                     <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
                     <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>`
@@ -699,6 +714,15 @@ export function POPrintSlipDialog({
                           </tr>
                         );
                       })}
+                      {/* Nothing Follows Prompt */}
+                      <tr className="bg-bg-subtle/30 border-t border-border">
+                        <td
+                          colSpan={5}
+                          className="px-3.5 py-1.5 text-center font-bold tracking-widest text-[11px] text-text-secondary italic select-none"
+                        >
+                          *** NOTHING FOLLOWS ***
+                        </td>
+                      </tr>
                       {/* Grand Total Row */}
                       <tr className="border-t-2 border-border bg-bg-subtle/50 font-bold">
                         <td className="px-3.5 py-2.5 text-center font-mono font-bold text-text border-r border-border text-sm">
@@ -773,7 +797,16 @@ export function POPrintSlipDialog({
                           })}
                         </td>
                       </tr>
-                      {Array.from({ length: 4 }).map((_, i) => (
+                      {/* Nothing Follows Prompt */}
+                      <tr className="bg-bg-subtle/30 border-t border-border">
+                        <td
+                          colSpan={5}
+                          className="px-3.5 py-1.5 text-center font-bold tracking-widest text-[11px] text-text-secondary italic select-none"
+                        >
+                          *** NOTHING FOLLOWS ***
+                        </td>
+                      </tr>
+                      {Array.from({ length: 3 }).map((_, i) => (
                         <tr key={i} className="h-7.5">
                           <td className="border-r border-border"></td>
                           <td className="border-r border-border"></td>
