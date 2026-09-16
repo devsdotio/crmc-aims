@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Plus, QrCode } from "lucide-react";
 import { 
   useAssetsQuery, 
@@ -25,7 +26,9 @@ import { useToast } from "@/components/providers/toast-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import { isAssetAvailableForRequest } from "@/lib/assets-custody";
 
-export default function AssetsPage() {
+function AssetsContent() {
+  const searchParams = useSearchParams();
+  const searchParamQuery = searchParams.get("search");
   const {
     data: assets = [],
     isLoading,
@@ -62,6 +65,22 @@ export default function AssetsPage() {
   const [scanOpen, setScanOpen] = useState(false);
   const [issueAsset, setIssueAsset] = useState<Asset | null>(null);
   const [maintenanceAsset, setMaintenanceAsset] = useState<Asset | null>(null);
+
+  // Sync URL search param if navigating from associated references (e.g. vouchers)
+  useEffect(() => {
+    if (searchParamQuery) {
+      setFilters((prev) => ({ ...prev, searchQuery: searchParamQuery }));
+      const q = searchParamQuery.toLowerCase().trim();
+      const matched = assets.find(
+        (a) =>
+          a.assetCode.toLowerCase().trim() === q ||
+          a.name.toLowerCase().trim() === q
+      );
+      if (matched) {
+        setSelectedAsset(matched);
+      }
+    }
+  }, [searchParamQuery, assets]);
 
   // Filter & Sort Assets
   const filteredAssets = useMemo(() => {
@@ -393,3 +412,12 @@ export default function AssetsPage() {
     </div>
   );
 }
+
+export default function AssetsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AssetsContent />
+    </Suspense>
+  );
+}
+
