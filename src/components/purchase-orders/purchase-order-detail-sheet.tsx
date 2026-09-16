@@ -182,6 +182,10 @@ export function PurchaseOrderDetailSheet({
       : `Multiple Dealers (${uniqueDealers.length})`;
 
   const currentStepIdx = WORKFLOW_STEPS.findIndex((s) => s.status === lot.status);
+  const isApproved =
+    lot.status === "approved" ||
+    lot.status === "ordered" ||
+    lot.status === "delivered";
 
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
     setIsUpdatingStatus(true);
@@ -990,12 +994,28 @@ export function PurchaseOrderDetailSheet({
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                       Receipt Attached
                     </span>
+                  ) : !isApproved ? (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                      Upload Disabled ({lot.status === "cancelled" ? "Cancelled" : "Pending Approval"})
+                    </span>
                   ) : (
                     <span className="text-[10px] text-text-secondary bg-bg-subtle px-2 py-0.5 rounded-full border border-border">
                       Pending Upload
                     </span>
                   )}
                 </div>
+
+                {!isApproved && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <div className="space-y-0.5">
+                      <p className="font-semibold">Receipt Upload Disabled</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400/90 leading-relaxed">
+                        Receipt upload is disabled while this Purchase Order is {lot.status === "cancelled" ? "cancelled" : "pending approval"}. Official vendor receipts and sales invoices can only be uploaded once the purchase order is approved.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <p className="text-xs text-text-secondary leading-relaxed">
                   Maintain compliance and proof of purchase by archiving the scanned receipt, delivery receipt (DR), or sales invoice issued for purchase order <strong className="text-text font-mono">{lot.poNumber || lot.lotCode}</strong>.
@@ -1006,6 +1026,14 @@ export function PurchaseOrderDetailSheet({
                   poNumber={lot.poNumber || lot.lotCode}
                   lotId={lot.id}
                   canOperate={canOperate}
+                  disabled={!isApproved}
+                  disabledReason={
+                    !isApproved
+                      ? lot.status === "cancelled"
+                        ? "Receipt upload is disabled because this Purchase Order is cancelled."
+                        : "Receipt upload is disabled until this Purchase Order is approved."
+                      : undefined
+                  }
                   onUploadSuccess={async (url) => {
                     await updatePOMutation.mutateAsync({
                       id: lot.id,

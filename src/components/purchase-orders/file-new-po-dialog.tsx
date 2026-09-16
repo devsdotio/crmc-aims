@@ -25,6 +25,7 @@ import {
   Search,
   School,
   Receipt,
+  Lock,
 } from "lucide-react";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useSuppliersQuery } from "@/features/suppliers/client";
@@ -42,7 +43,6 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
-import { POReceiptUploader } from "./po-receipt-uploader";
 
 interface FileNewPODialogProps {
   isOpen: boolean;
@@ -151,7 +151,6 @@ export function FileNewPODialog({
   const [targetDepartment, setTargetDepartment] = useState("");
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
-  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
   // Step 2 Line items & catalog quick-add states
   const [items, setItems] = useState<POLineItemForm[]>([generateInitialRow("consumable", false)]);
@@ -176,7 +175,6 @@ export function FileNewPODialog({
       setTargetDepartment(me?.department || "");
       setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
-      setReceiptUrl(null);
     }
   }, [isOpen, me?.department, defaultPoType, defaultPurpose]);
 
@@ -598,7 +596,6 @@ export function FileNewPODialog({
         supplierName: masterSupplierName,
         purpose: combinedPurpose,
         notes: generalNotes.trim() || undefined,
-        receiptUrl: receiptUrl || undefined,
         status: "pending_approval",
         items: formattedItems,
       });
@@ -1651,34 +1648,28 @@ export function FileNewPODialog({
                 </div>
               </div>
 
-              {/* Optional Receipt / Invoice Attachment Card */}
-              <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
+              {/* Receipt Upload Information Notice */}
+              <div className="p-4 rounded-xl border border-border bg-card/60 space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2.5">
                   <div className="flex items-center gap-2">
                     <Receipt className="h-4 w-4 text-accent" />
                     <h3 className="font-bold text-xs text-text uppercase tracking-wider">
-                      Attach Vendor Receipt / Invoice (Optional)
+                      Official Vendor Receipt Upload
                     </h3>
                   </div>
-                  {receiptUrl && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                      Receipt Attached
-                    </span>
-                  )}
+                  <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25">
+                    Disabled Until Approved
+                  </span>
                 </div>
 
-                <p className="text-xs text-text-secondary">
-                  If you already have a physical sales invoice, quotation, or delivery receipt photo, you can attach it to this purchase order now.
-                </p>
-
-                <POReceiptUploader
-                  receiptUrl={receiptUrl}
-                  poNumber={poNumberMode === "manual" ? customPoNumber.trim() : undefined}
-                  canOperate={true}
-                  compact
-                  onUploadSuccess={(url) => setReceiptUrl(url)}
-                  onRemove={() => setReceiptUrl(null)}
-                />
+                <div className="flex items-start gap-2.5 pt-0.5">
+                  <div className="h-7 w-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                    <Lock className="h-3.5 w-3.5" />
+                  </div>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    Proof of purchase documents (scanned official receipts, delivery receipts, or sales invoices) can only be attached after this Purchase Order is reviewed and approved by the Property Custodian.
+                  </p>
+                </div>
               </div>
             </div>
           )}

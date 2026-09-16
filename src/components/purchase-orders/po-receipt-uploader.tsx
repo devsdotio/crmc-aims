@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Receipt,
   Download,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUploadPOReceiptMutation } from "@/features/purchase-lots/client";
@@ -25,6 +26,8 @@ interface POReceiptUploaderProps {
   poNumber?: string;
   lotId?: string;
   canOperate?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
   onUploadSuccess?: (url: string) => void;
   onRemove?: () => void;
   compact?: boolean;
@@ -36,6 +39,8 @@ export function POReceiptUploader({
   poNumber,
   lotId,
   canOperate = false,
+  disabled = false,
+  disabledReason,
   onUploadSuccess,
   onRemove,
   compact = false,
@@ -47,7 +52,10 @@ export function POReceiptUploader({
   const toast = useToast();
   const uploadMutation = useUploadPOReceiptMutation();
 
+  const isUploadAllowed = canOperate && !disabled;
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isUploadAllowed) return;
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const file = files[0];
@@ -59,6 +67,7 @@ export function POReceiptUploader({
   };
 
   const processUpload = async (file: File) => {
+    if (!isUploadAllowed) return;
     // 10MB limit
     if (file.size > 10 * 1024 * 1024) {
       toast.error("File exceeds 10MB size limit.");
@@ -91,7 +100,7 @@ export function POReceiptUploader({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (canOperate) {
+    if (isUploadAllowed) {
       setIsDragging(true);
     }
   };
@@ -106,7 +115,7 @@ export function POReceiptUploader({
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
-    if (!canOperate) return;
+    if (!isUploadAllowed) return;
 
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
@@ -125,7 +134,7 @@ export function POReceiptUploader({
         accept="image/jpeg,image/png,image/webp,image/gif,image/heic,application/pdf"
         className="hidden"
         onChange={handleFileChange}
-        disabled={!canOperate || uploadMutation.isPending}
+        disabled={!isUploadAllowed || uploadMutation.isPending}
       />
 
       {receiptUrl ? (
@@ -164,7 +173,7 @@ export function POReceiptUploader({
                 <span className="hidden sm:inline">Inspect</span>
               </button>
 
-              {canOperate && (
+              {isUploadAllowed && (
                 <>
                   <button
                     type="button"
@@ -234,15 +243,17 @@ export function POReceiptUploader({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => {
-            if (canOperate && !uploadMutation.isPending) {
+            if (isUploadAllowed && !uploadMutation.isPending) {
               fileInputRef.current?.click();
             }
           }}
           className={cn(
             "relative rounded-xl border-2 border-dashed transition-all p-6 text-center flex flex-col items-center justify-center gap-3",
-            canOperate ? "cursor-pointer" : "cursor-not-allowed opacity-80",
+            isUploadAllowed ? "cursor-pointer" : "cursor-not-allowed opacity-85",
             isDragging
               ? "border-accent bg-accent/10 scale-[1.01]"
+              : disabled
+              ? "border-border/80 bg-bg-subtle/40"
               : "border-border hover:border-accent/60 hover:bg-bg-subtle/50 bg-card/60",
             compact && "p-4 gap-2"
           )}
@@ -257,6 +268,28 @@ export function POReceiptUploader({
                 Saving to secure CRMC-AIMS cloud archive
               </p>
             </div>
+          ) : disabled ? (
+            <>
+              <div className="h-12 w-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-xs">
+                <Lock className="h-6 w-6" />
+              </div>
+
+              <div className="space-y-1 max-w-sm">
+                <p className="text-xs font-bold text-text">
+                  Receipt Upload Disabled
+                </p>
+                <p className="text-[11px] text-text-secondary leading-relaxed">
+                  {disabledReason ||
+                    "Receipt upload is disabled until this Purchase Order is approved."}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2.5 py-1 rounded-md border border-amber-500/25">
+                  Awaiting PO Approval
+                </span>
+              </div>
+            </>
           ) : (
             <>
               <div className="h-12 w-12 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shadow-xs group-hover:scale-105 transition-transform">

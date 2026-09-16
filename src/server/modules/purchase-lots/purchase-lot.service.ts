@@ -708,6 +708,18 @@ export class PurchaseLotService {
         supplierName = body.supplierName;
       }
 
+      if (
+        body.receiptUrl &&
+        (currentMeta.status === "pending_approval" || currentMeta.status === "cancelled")
+      ) {
+        throw new BadRequestError(
+          `Receipt upload is disabled while purchase order status is ${currentMeta.status.replace(
+            "_",
+            " "
+          )}. Receipts can only be attached once the purchase order is approved.`
+        );
+      }
+
       const nextReceiptUrl =
         body.receiptUrl !== undefined
           ? body.receiptUrl
