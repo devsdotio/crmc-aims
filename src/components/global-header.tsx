@@ -54,8 +54,8 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     category: "Operations",
   },
   "/vouchers": {
-    title: "Vouchers",
-    subtitle: "Disbursement, property accountability, and liquidation vouchers",
+    title: "Disbursement Vouchers",
+    subtitle: "Custodian disbursement records for purchasing items and settling orders",
     category: "Operations",
   },
   "/consumables": {

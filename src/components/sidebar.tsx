@@ -222,8 +222,6 @@ export default function Sidebar({
           name: "Vouchers",
           href: "/vouchers",
           icon: Receipt,
-          badgeText: "Soon",
-          disabled: true,
           roles: ["superadmin", "admin", "staff"],
         },
         {
