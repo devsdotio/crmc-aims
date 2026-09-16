@@ -55,7 +55,8 @@ export interface IVoucherRepository {
   create(data: Omit<NewVoucherRow, "id" | "createdAt" | "updatedAt">): Promise<VoucherRow>;
   update(
     id: string,
-    data: Partial<Omit<VoucherRow, "id" | "createdAt" | "voucherCode">>
+    data: Partial<Omit<VoucherRow, "id" | "createdAt">>
   ): Promise<VoucherRow | null>;
+  findLatestVoucherCode(prefix: string): Promise<string | null>;
   delete(id: string): Promise<boolean>;
 }

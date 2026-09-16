@@ -25,12 +25,13 @@ export const listVouchersQuerySchema = z.object({
 });
 
 export const createVoucherSchema = z.object({
-  /** Hybrid code e.g. DDR2026-000428 */
+  /** Hybrid code e.g. DDR2026-000428 (or auto-generated if omitted) */
   voucherCode: z
     .string()
     .trim()
-    .min(1, "Voucher code is required.")
-    .max(50),
+    .max(50)
+    .optional()
+    .nullable(),
   type: z.enum(VOUCHER_TYPES).default("disbursement"),
   status: z.enum(VOUCHER_STATUSES).optional().default("draft"),
   voucherDate: z
@@ -54,6 +55,7 @@ export const createVoucherSchema = z.object({
 
 export const updateVoucherSchema = z
   .object({
+    voucherCode: z.string().trim().max(50).optional(),
     payeeName: z.string().trim().min(1).max(255).optional(),
     voucherDate: z
       .string()

@@ -109,7 +109,7 @@ export class VoucherRepository implements IVoucherRepository {
 
   async update(
     id: string,
-    data: Partial<Omit<VoucherRow, "id" | "createdAt" | "voucherCode">>,
+    data: Partial<Omit<VoucherRow, "id" | "createdAt">>,
     session?: DbSession
   ): Promise<VoucherRow | null> {
     const db = this.db(session);
@@ -121,9 +121,36 @@ export class VoucherRepository implements IVoucherRepository {
     return row ?? null;
   }
 
+  async findLatestVoucherCode(prefix: string, session?: DbSession): Promise<string | null> {
+    const db = this.db(session);
+    const rows = await db
+      .select({ voucherCode: vouchers.voucherCode })
+      .from(vouchers)
+      .where(ilike(vouchers.voucherCode, `${prefix}%`))
+      .orderBy(desc(vouchers.createdAt))
+      .limit(100);
+
+    if (!rows.length) return null;
+
+    let maxNum = 0;
+    let latestCode: string | null = null;
+
+    for (const r of rows) {
+      const suffix = r.voucherCode.slice(prefix.length);
+      const parsed = parseInt(suffix, 10);
+      if (!isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+        latestCode = r.voucherCode;
+      }
+    }
+
+    return latestCode ?? rows[0]?.voucherCode ?? null;
+  }
+
   async delete(id: string, session?: DbSession): Promise<boolean> {
     const db = this.db(session);
     const result = await db.delete(vouchers).where(eq(vouchers.id, id)).returning();
     return result.length > 0;
   }
 }
+

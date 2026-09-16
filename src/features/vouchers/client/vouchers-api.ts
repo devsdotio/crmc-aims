@@ -2,7 +2,7 @@ import type { Voucher, VoucherType, VoucherStatus } from "@/types/vouchers";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 
 export type CreateVoucherPayload = {
-  voucherCode: string;
+  voucherCode?: string;
   type?: VoucherType;
   status?: VoucherStatus;
   voucherDate: string;
@@ -32,6 +32,13 @@ export interface VoucherListResponse {
 }
 
 export const vouchersApi = {
+  async getNextCode(type: VoucherType = "disbursement"): Promise<{ voucherCode: string }> {
+    const res = await fetchJson<ApiResponse<{ voucherCode: string }>>(
+      `/api/vouchers/next-code?type=${type}`
+    );
+    return res.data;
+  },
+
   async list(params?: {
     search?: string;
     type?: VoucherType;

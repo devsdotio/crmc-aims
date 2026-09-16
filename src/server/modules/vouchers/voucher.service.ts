@@ -2,6 +2,7 @@ import type { VoucherRow } from "@/server/db/schema";
 import type { ActorContext } from "@/server/shared/auth";
 import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
+import type { VoucherType } from "@/types/vouchers";
 
 import { VoucherRepository } from "./voucher.repository";
 import type { VoucherDTO, ListVoucherFilters } from "./voucher.types";
@@ -40,20 +41,48 @@ function toDTO(row: VoucherRow): VoucherDTO {
     createdByName: row.createdByName,
     approvedByUserId: row.approvedByUserId ?? null,
     approvedByName: row.approvedByName ?? null,
-    approvedAt: row.approvedAt?.toISOString() ?? null,
+    approvedAt: row.approvedAt ? row.approvedAt.toISOString() : null,
     completedByUserId: row.completedByUserId ?? null,
     completedByName: row.completedByName ?? null,
-    completedAt: row.completedAt?.toISOString() ?? null,
+    completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
 
 export class VoucherService {
-  constructor(private readonly repo = new VoucherRepository()) {}
+  constructor(
+    private readonly repo: VoucherRepository = new VoucherRepository()
+  ) {}
 
-  async list(rawQuery: unknown): Promise<{ vouchers: VoucherDTO[]; total: number }> {
-    const filters = listVouchersQuerySchema.parse(rawQuery ?? {});
+  async generateNextVoucherCode(
+    type: VoucherType = "disbursement",
+    now = new Date()
+  ): Promise<string> {
+    const year = now.getFullYear();
+    const prefix =
+      type === "disbursement"
+        ? `DDR${year}-`
+        : type === "property_transfer"
+          ? `PTR${year}-`
+          : `LQD${year}-`;
+
+    const latestCode = await this.repo.findLatestVoucherCode(prefix);
+    if (!latestCode) {
+      return `${prefix}000001`;
+    }
+
+    const suffix = latestCode.replace(prefix, "");
+    const parsed = parseInt(suffix, 10);
+    if (isNaN(parsed)) {
+      return `${prefix}000001`;
+    }
+
+    return `${prefix}${String(parsed + 1).padStart(6, "0")}`;
+  }
+
+  async list(rawFilters: unknown): Promise<{ vouchers: VoucherDTO[]; total: number }> {
+    const filters = listVouchersQuerySchema.parse(rawFilters);
     const cacheKey = `vouchers:list:${JSON.stringify(filters)}`;
 
     return serverCache.wrap(
@@ -80,15 +109,25 @@ export class VoucherService {
   async create(rawInput: unknown, actor: ActorContext): Promise<VoucherDTO> {
     const input = createVoucherSchema.parse(rawInput);
 
-    const existing = await this.repo.findByCode(input.voucherCode);
+    let voucherCode = input.voucherCode?.trim();
+    if (!voucherCode) {
+      voucherCode = await this.generateNextVoucherCode(input.type);
+    }
+
+    const existing = await this.repo.findByCode(voucherCode);
     if (existing) {
-      throw new ConflictError(
-        `Voucher with code "${input.voucherCode}" already exists.`
-      );
+      if (!input.voucherCode?.trim()) {
+        const token = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
+        voucherCode = `${voucherCode.split("-")[0]}-${new Date().getFullYear()}-${token}`;
+      } else {
+        throw new ConflictError(
+          `Voucher with code "${voucherCode}" already exists.`
+        );
+      }
     }
 
     const row = await this.repo.create({
-      voucherCode: input.voucherCode,
+      voucherCode,
       type: input.type,
       status: input.status,
       voucherDate: input.voucherDate,
@@ -124,7 +163,17 @@ export class VoucherService {
     const existing = await this.repo.findById(id);
     if (!existing) throw new NotFoundError("Voucher", id);
 
+    if (input.voucherCode && input.voucherCode !== existing.voucherCode) {
+      const codeConflict = await this.repo.findByCode(input.voucherCode);
+      if (codeConflict) {
+        throw new ConflictError(
+          `Voucher with code "${input.voucherCode}" already exists.`
+        );
+      }
+    }
+
     const updated = await this.repo.update(id, {
+      ...(input.voucherCode !== undefined ? { voucherCode: input.voucherCode } : {}),
       ...(input.payeeName !== undefined ? { payeeName: input.payeeName } : {}),
       ...(input.voucherDate !== undefined ? { voucherDate: input.voucherDate } : {}),
       ...(input.amount !== undefined ? { amount: input.amount } : {}),

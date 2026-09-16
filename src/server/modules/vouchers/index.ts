@@ -29,6 +29,18 @@ export class VoucherController {
     }
   }
 
+  async nextCode(request: NextRequest | Request) {
+    try {
+      await requireActor();
+      const url = new URL(request.url);
+      const type = (url.searchParams.get("type") as "disbursement" | "property_transfer" | "liquidation") ?? "disbursement";
+      const voucherCode = await this.service.generateNextVoucherCode(type);
+      return ok({ voucherCode });
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async get(id: string) {
     try {
       await requireActor();

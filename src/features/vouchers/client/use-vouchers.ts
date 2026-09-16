@@ -93,6 +93,19 @@ export function useVoucherQuery(id: string): UseQueryResult<Voucher, Error> {
   });
 }
 
+export function useNextVoucherCodeQuery(
+  type: VoucherType = "disbursement",
+  enabled: boolean = true
+): UseQueryResult<{ voucherCode: string }, Error> {
+  return useQuery({
+    queryKey: [...voucherQueryKeys.all, "next-code", type],
+    queryFn: () => vouchersApi.getNextCode(type),
+    enabled,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useCreateVoucherMutation(): UseMutationResult<
   Voucher,
   Error,
