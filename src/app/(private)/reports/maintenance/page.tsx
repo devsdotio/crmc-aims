@@ -247,7 +247,7 @@ export default function MaintenanceReportPage() {
                 Work Orders &amp; Reliability
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-1">
+            <p className="text-xs text-text-secondary mt-0.5">
               Equipment breakdown frequency, mean-time-to-resolution (MTTR), and cumulative repair expenditure.
             </p>
           </div>

@@ -86,11 +86,11 @@ export function VouchersView() {
             <h1 className="text-xl font-bold tracking-tight text-text">
               Disbursement Vouchers
             </h1>
-            <span className="px-2.5 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isLoading ? "Loading vouchers…" : `${vouchers.length} voucher${vouchers.length === 1 ? "" : "s"}`}
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-text-secondary">
+          <p className="text-xs text-text-secondary mt-0.5">
             Custodian disbursement records for purchasing items and settling purchase orders.
           </p>
         </div>
@@ -99,7 +99,7 @@ export function VouchersView() {
           <button
             type="button"
             onClick={() => setIsCreateOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-bold text-primary-foreground shadow-2xs hover:bg-primary/90 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <FilePlus2 className="h-4 w-4" />
             <span>New Voucher</span>

@@ -439,25 +439,18 @@ export function PurchaseOrdersView({
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="h-9 w-9 rounded-xl bg-accent/15 border border-accent/25 flex items-center justify-center text-accent shrink-0 shadow-2xs">
-                <HeaderIcon className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text">
-                    {title || defaultHeader.title}
-                  </h1>
-                  <span className="inline-flex items-center text-[10px] font-semibold text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded-full">
-                    {defaultHeader.badgeText}
-                  </span>
-                </div>
-                <p className="text-xs sm:text-sm text-text-secondary">
-                  {subtitle || defaultHeader.subtitle}
-                </p>
-              </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-text">
+                {title || defaultHeader.title}
+              </h1>
+              <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+                {defaultHeader.badgeText}
+              </span>
             </div>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {subtitle || defaultHeader.subtitle}
+            </p>
           </div>
 
           {/* Header Action: File New PO */}
@@ -466,7 +459,7 @@ export function PurchaseOrdersView({
               <button
                 type="button"
                 onClick={() => setIsFileNewPOOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-xl bg-accent text-accent-foreground hover:opacity-90 transition-all cursor-pointer shadow-xs active:scale-98"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <FilePlus2 className="h-4 w-4" />
                 <span>{defaultHeader.newPoLabel}</span>

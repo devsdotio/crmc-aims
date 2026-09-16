@@ -247,13 +247,13 @@ export default function ConsumablesPage() {
             <h1 className="text-xl font-bold tracking-tight text-text">
               Consumables Inventory
             </h1>
-            <span className="px-2.5 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isConsumablesLoading
                 ? "Loading supply items…"
                 : `${filteredItems.length} of ${items.length} supply items`}
             </span>
           </div>
-          <p className="text-xs text-text-secondary mt-0.5 max-w-xl">
+          <p className="text-xs text-text-secondary mt-0.5">
             Non-serialized stock (paper, ink, cleaning). Issue from lots; all restocks are handled via official Purchase Orders.
           </p>
         </div>
@@ -277,7 +277,7 @@ export default function ConsumablesPage() {
           <button
             type="button"
             onClick={() => setAddEditState({ isOpen: true, item: null })}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Add supply item

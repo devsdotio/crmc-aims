@@ -154,7 +154,7 @@ export default function ProjectsPage() {
             <h1 className="text-xl font-bold tracking-tight text-text">
               Projects
             </h1>
-            <span className="px-2.5 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isLoading
                 ? "Loading projects…"
                 : `${filtered.length} of ${projects.length}`}
@@ -171,7 +171,7 @@ export default function ProjectsPage() {
             type="button"
             onClick={() => setEditTarget(null)}
             disabled={Boolean(loadError) || !isManager}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FolderPlus className="h-4 w-4" strokeWidth={2.5} />
             Add Project

@@ -181,7 +181,7 @@ export default function DepartmentReportsPage() {
                 Dept. Breakdown
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-1">
+            <p className="text-xs text-text-secondary mt-0.5">
               All assets assigned, consumables consumed, maintenance activity, and statistics per department.
             </p>
           </div>

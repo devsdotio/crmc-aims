@@ -390,10 +390,10 @@ export function BorrowerDashboard() {
           <TrendingUp className="h-6 w-6 text-accent" aria-hidden />
         </div>
         <div className="flex-1">
-          <h1 className="text-lg font-bold text-text">
+          <h1 className="text-xl font-bold tracking-tight text-text">
             {me?.department ? `${me.department} Requester Portal` : "Requester Portal"}
           </h1>
-          <p className="text-sm text-text-secondary mt-0.5">
+          <p className="text-xs text-text-secondary mt-0.5">
             Submit and track equipment, borrow, and supply requests for your department. You have{" "}
             {loading ? (
               <span className="inline-block w-12 h-3.5 bg-border animate-pulse rounded align-middle" />
@@ -416,7 +416,7 @@ export function BorrowerDashboard() {
           <button
             type="button"
             onClick={() => openWizard(null)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-accent text-accent-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
           >
             <Package className="h-4 w-4" aria-hidden />
             New Request

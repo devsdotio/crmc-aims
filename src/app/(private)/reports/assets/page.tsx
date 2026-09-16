@@ -251,7 +251,7 @@ export default function AssetRegisterReportPage() {
                 Capital Equipment
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-1">
+            <p className="text-xs text-text-secondary mt-0.5">
               Physical registry of coded capital assets, custody status, locations, condition, and valuation.
             </p>
           </div>

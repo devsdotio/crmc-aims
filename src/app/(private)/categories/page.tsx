@@ -64,20 +64,22 @@ export default function CategoriesPage() {
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle">
       {/* Top Header */}
       <div className="px-4 md:px-6 py-4 bg-bg shrink-0 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/5 text-primary">
-            <Tags className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight text-text">
-              Category Management
-            </h1>
-            <p className="text-xs text-text-secondary">
-              Configure asset and consumable supply categories
+        <div>
+          <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold tracking-tight text-text">
+                Category Management
+              </h1>
+              <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+                {categoriesLoading
+                  ? "Loading categories…"
+                  : `${allCategories?.length ?? 0} categories`}
+              </span>
+            </div>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Configure asset and consumable supply categories.
             </p>
           </div>
         </div>
-      </div>
 
       {/* Main Scoped Scroll Area */}
       <main className="flex-1 overflow-y-auto scrollbar-gutter-stable p-4 md:p-6 min-h-0">

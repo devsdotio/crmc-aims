@@ -213,7 +213,7 @@ export function DepartmentsSection({
               setEditTarget(null);
               setDialogOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-opacity cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-opacity cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             <span>Add Department</span>

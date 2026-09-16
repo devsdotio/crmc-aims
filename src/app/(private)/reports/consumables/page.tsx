@@ -290,7 +290,7 @@ export default function ConsumablesReportPage() {
                 Warehouse Inventory
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-1">
+            <p className="text-xs text-text-secondary mt-0.5">
               Real-time stock availability, depletion burn-rates, and reorder point forecasts.
             </p>
           </div>

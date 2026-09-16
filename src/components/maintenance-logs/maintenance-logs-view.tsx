@@ -223,7 +223,7 @@ export function MaintenanceLogsView() {
           <button
             type="button"
             onClick={() => setFlagDialogOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <Wrench className="h-4 w-4" strokeWidth={2.5} />
             Flag for Maintenance

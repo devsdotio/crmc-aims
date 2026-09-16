@@ -217,8 +217,7 @@ export default function UsersPage() {
             </span>
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Set passwords and department logins. Create departments in Settings
-            first, then attach one login per department.
+            Set passwords and department logins. Create departments in Settings first, then attach one login per department.
           </p>
         </div>
 
@@ -227,7 +226,7 @@ export default function UsersPage() {
             type="button"
             onClick={() => setInviteDialogOpen(true)}
             disabled={Boolean(loadError) || !me}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <UserPlus className="h-4 w-4" strokeWidth={2.5} />
             Create User

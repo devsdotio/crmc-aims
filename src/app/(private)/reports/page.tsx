@@ -69,7 +69,7 @@ export default function ExecutiveReportsPage() {
                   Live Institutional Rollup
                 </span>
               </div>
-              <p className="text-xs text-text-secondary mt-1">
+              <p className="text-xs text-text-secondary mt-0.5">
                 Cross-domain metrics, inventory valuation, procurement spend trends, and SLA turnaround.
               </p>
             </div>

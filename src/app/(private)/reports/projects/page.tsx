@@ -236,7 +236,7 @@ export default function ProjectReportsPage() {
                 Project Audit
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-1">
+            <p className="text-xs text-text-secondary mt-0.5">
               Assigned assets, consumables consumed, overall project cost, and project timelines.
             </p>
           </div>
