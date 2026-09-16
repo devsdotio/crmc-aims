@@ -1,8 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import { PurchaseOrdersView } from "@/components/purchase-orders/purchase-orders-view";
 
 export default function PurchaseOrdersPage() {
-  return <PurchaseOrdersView categoryScope="all" />;
+  return (
+    <Suspense fallback={null}>
+      <PurchaseOrdersView categoryScope="all" />
+    </Suspense>
+  );
 }
+

@@ -38,6 +38,7 @@ import {
   useUpdatePurchaseOrderMutation,
 } from "@/features/purchase-lots/client";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
+import { useUsersQuery } from "@/features/users/client";
 import { formatDateTime, formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
 import { useToast } from "@/components/providers/toast-context";
 import { POReceiptUploader } from "./po-receipt-uploader";
@@ -129,6 +130,7 @@ export function PurchaseOrderDetailSheet({
     entityId: entityCode,
     entityType: "purchase_order",
   });
+  const { data: users = [] } = useUsersQuery();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -186,6 +188,42 @@ export function PurchaseOrderDetailSheet({
     lot.status === "approved" ||
     lot.status === "ordered" ||
     lot.status === "delivered";
+
+  const matchedUser =
+    users.find(
+      (u) =>
+        (lot.recordedByUserId && u.id === lot.recordedByUserId) ||
+        (lot.recordedByName && u.name.toLowerCase() === lot.recordedByName.toLowerCase())
+    ) ?? null;
+
+  const purposeDeptMatch = lot.purpose?.match(/^\[(.*?)\]/);
+  const extractedDeptFromPurpose = purposeDeptMatch ? purposeDeptMatch[1].trim() : null;
+
+  const displayRequesterName =
+    lot.recordedByName?.trim() || matchedUser?.name || "Authorized Staff";
+
+  const displayDepartment =
+    extractedDeptFromPurpose ||
+    matchedUser?.department?.trim() ||
+    "General Administration";
+
+  const displayRole = (() => {
+    const role = matchedUser?.role;
+    if (role === "superadmin") return "Superadmin";
+    if (role === "admin") return "Property Custodian / Admin";
+    if (role === "borrower") return "Department Custodian";
+    if (role === "staff") return "Staff Requester";
+    return "Staff Requester";
+  })();
+
+  const cleanPurpose = (() => {
+    if (!lot.purpose) return "General Operations Replenishment";
+    if (purposeDeptMatch) {
+      const remainder = lot.purpose.replace(/^\[(.*?)\]\s*/, "").trim();
+      return remainder || "General Operations Replenishment";
+    }
+    return lot.purpose;
+  })();
 
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
     setIsUpdatingStatus(true);
@@ -401,7 +439,7 @@ export function PurchaseOrderDetailSheet({
           </div>
 
           {/* Key Metadata Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-0.5 text-xs">
             {/* Supplier Chip */}
             <div className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-bg/80 min-w-0">
               <Building2 className="h-3.5 w-3.5 text-text-secondary shrink-0" />
@@ -409,6 +447,20 @@ export function PurchaseOrderDetailSheet({
                 <span className="text-[10px] text-text-secondary uppercase tracking-wider block font-medium">Dealer</span>
                 <span className="font-semibold text-text truncate block text-xs" title={displayDealer}>
                   {displayDealer}
+                </span>
+              </div>
+            </div>
+
+            {/* Requester & Department Chip */}
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-bg/80 min-w-0">
+              <User className="h-3.5 w-3.5 text-accent shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider block font-medium">Requester</span>
+                <span className="font-semibold text-text truncate block text-xs" title={displayRequesterName}>
+                  {displayRequesterName}
+                </span>
+                <span className="text-[10px] text-text-secondary truncate block" title={`${displayDepartment} · ${displayRole}`}>
+                  {displayDepartment}
                 </span>
               </div>
             </div>
@@ -853,7 +905,7 @@ export function PurchaseOrderDetailSheet({
                       </div>
                       <div className="space-y-1">
                         <span className="text-[10px] uppercase font-bold text-text-secondary">Purpose / Usage</span>
-                        <p className="font-medium text-text">{lot.purpose || "General Operations Replenishment"}</p>
+                        <p className="font-medium text-text">{cleanPurpose}</p>
                       </div>
                     </div>
                   </div>
@@ -899,7 +951,7 @@ export function PurchaseOrderDetailSheet({
 
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-bold text-text-secondary">Purpose / Usage</span>
-                      <p className="font-medium text-text">{lot.purpose || "General Operations Replenishment"}</p>
+                      <p className="font-medium text-text">{cleanPurpose}</p>
                     </div>
 
                     <div className="space-y-1">
@@ -919,6 +971,68 @@ export function PurchaseOrderDetailSheet({
                     <p className="text-text leading-relaxed">{lot.notes}</p>
                   </div>
                 )}
+              </div>
+
+              {/* Requester & Department Information Card */}
+              <div className="p-4 rounded-xl border border-border bg-card space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-accent" />
+                    Requester & Department Details
+                  </span>
+                  <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2.5 py-0.5 rounded-full border border-accent/20">
+                    {displayRole}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-text-secondary">
+                      Requested By
+                    </span>
+                    <p className="font-bold text-text text-sm flex items-center gap-1.5">
+                      <User className="h-4 w-4 text-accent shrink-0" />
+                      <span className="truncate">{displayRequesterName}</span>
+                    </p>
+                    {matchedUser?.email ? (
+                      <span className="text-[10px] text-text-secondary font-mono truncate block">
+                        {matchedUser.email}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-text-secondary block">
+                        CRMC-AIMS Staff Account
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-text-secondary">
+                      Department / Office
+                    </span>
+                    <p className="font-semibold text-text text-sm flex items-center gap-1.5">
+                      <Building2 className="h-4 w-4 text-accent shrink-0" />
+                      <span className="truncate">{displayDepartment}</span>
+                    </p>
+                    <span className="text-[10px] text-text-secondary block">
+                      Target Requisitioning Unit
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-text-secondary">
+                      Authorizing Officer
+                    </span>
+                    <p className="font-semibold text-text text-sm flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span className="truncate">{lot.approvedByName || "Pending Custodian Review"}</span>
+                    </p>
+                    <span className="text-[10px] text-text-secondary block">
+                      {lot.approvedAt
+                        ? `Approved ${formatDateTime(lot.approvedAt)}`
+                        : "Property Custodian Office"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Stock Availability Card (for delivered consumable lots) */}
@@ -1104,7 +1218,7 @@ export function PurchaseOrderDetailSheet({
                         <li key={log.id} className="pl-6 relative group">
                           <span
                             className={cn(
-                              "absolute -left-[11px] top-0.5 h-5 w-5 rounded-full border-2 border-bg flex items-center justify-center text-white",
+                              "absolute -left-2.75 top-0.5 h-5 w-5 rounded-full border-2 border-bg flex items-center justify-center text-white",
                               bgColor
                             )}
                           >
@@ -1117,7 +1231,7 @@ export function PurchaseOrderDetailSheet({
                                 {formatDateTime(log.timestamp as unknown as string)}
                               </time>
                             </div>
-                            <p className="text-text-secondary text-[11.5px] leading-relaxed break-words">
+                            <p className="text-text-secondary text-[11.5px] leading-relaxed wrap-break-word">
                               {log.notes || `System recorded action: ${log.action}`}
                             </p>
                             <p className="text-text-secondary text-[10px] mt-1 pt-1 border-t border-border/40 inline-block">

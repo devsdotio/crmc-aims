@@ -55,7 +55,11 @@ export type LotCostAllocation = {
 
 export function derivePONumber(lotCode: string, reference?: string | null): string {
   if (reference && reference.trim()) {
-    return reference.trim();
+    const trimmed = reference.trim();
+    const lower = trimmed.toLowerCase();
+    if (lower !== "initial stock" && lower !== "opening balance") {
+      return trimmed;
+    }
   }
   return lotCode.startsWith("LOT-")
     ? lotCode.replace(/^LOT-/, "PO-")

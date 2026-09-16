@@ -136,7 +136,7 @@ export interface StatCardProgressConfig {
 
 export interface StatCardProps {
   /** Primary label / title of the card, e.g. "Total Orders" */
-  title: string;
+  title: string | React.ReactNode;
   /** Primary metric value to display */
   value: React.ReactNode;
   /** Optional telemetry mono micro-label above the title, e.g. "VOLUME // ORDERS" */
@@ -167,6 +167,12 @@ export interface StatCardProps {
   children?: React.ReactNode;
   /** Container custom classes */
   className?: string;
+  /** Optional contextual info indicator and tooltip popup content */
+  infoTooltip?: React.ReactNode;
+  /** Alignment of info tooltip popup: 'left' | 'center' | 'right' (defaults to 'center') */
+  infoTooltipAlign?: "left" | "center" | "right";
+  /** Placement of info tooltip popup: 'top' | 'bottom' (defaults to 'bottom') */
+  infoTooltipPlacement?: "top" | "bottom";
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -188,6 +194,9 @@ export function StatCard({
   loading = false,
   children,
   className,
+  infoTooltip,
+  infoTooltipAlign = "center",
+  infoTooltipPlacement = "bottom",
 }: StatCardProps) {
   const styles = TONE_STYLES[tone] || TONE_STYLES.neutral;
   const isSm = size === "sm";
@@ -248,12 +257,15 @@ export function StatCard({
     );
   };
 
+  const isPlacementTop = infoTooltipPlacement === "top";
+
   const cardInner = (
     <div
       role="region"
-      aria-label={`${title}: ${loading ? "loading" : typeof value === "string" || typeof value === "number" ? value : ""}`}
+      aria-label={`${typeof title === "string" ? title : "Statistic"}: ${loading ? "loading" : typeof value === "string" || typeof value === "number" ? value : ""}`}
       className={cn(
-        "group relative border border-border bg-card hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between select-none",
+        "group relative border border-border bg-card hover:shadow-md transition-all duration-200 flex flex-col justify-between select-none",
+        infoTooltip ? "overflow-visible z-10 hover:z-40 focus-within:z-40" : "overflow-hidden",
         isSm ? "p-2.5 sm:p-3 rounded-lg" : "p-3 sm:p-3.5 rounded-xl",
         styles.hoverBorder,
         (href || onClick) && "cursor-pointer active:scale-[0.99]",
@@ -264,7 +276,7 @@ export function StatCard({
       {/* Ambient Gradient Glow on Hover */}
       <div
         className={cn(
-          "absolute inset-0 bg-linear-to-br via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300",
+          "absolute inset-0 rounded-[inherit] bg-linear-to-br via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300",
           styles.glowGradient
         )}
       />
@@ -308,6 +320,42 @@ export function StatCard({
         {/* Top-Right Badge / Pill */}
         {renderBadge()}
       </div>
+
+      {/* Optional Card Hover Tooltip */}
+      {infoTooltip && (
+        <div
+          role="tooltip"
+          className={cn(
+            "pointer-events-none absolute z-50",
+            isPlacementTop
+              ? "bottom-full mb-2.5 origin-bottom translate-y-1"
+              : "top-full mt-2.5 origin-top -translate-y-1",
+            infoTooltipAlign === "left" && "left-0",
+            infoTooltipAlign === "center" && "left-1/2 -translate-x-1/2",
+            infoTooltipAlign === "right" && "left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0",
+            "w-72 sm:w-80 p-3 rounded-xl",
+            "bg-[#2a3260] text-white text-xs",
+            "border border-white/15 shadow-2xl",
+            "opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible",
+            "group-hover:translate-y-0 group-focus-within:translate-y-0",
+            "transition-all duration-200"
+          )}
+        >
+          {infoTooltip}
+          {/* Tooltip Caret */}
+          <div
+            className={cn(
+              "absolute border-4 border-transparent",
+              isPlacementTop
+                ? "top-full border-t-[#2a3260]"
+                : "bottom-full border-b-[#2a3260]",
+              infoTooltipAlign === "right"
+                ? "left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0"
+                : "left-1/2 -translate-x-1/2"
+            )}
+          />
+        </div>
+      )}
 
       {/* Metric Display Row */}
       <div className={cn("relative z-10 min-w-0", isSm ? "mt-1.5 mb-1" : "mt-2 mb-1.5")}>

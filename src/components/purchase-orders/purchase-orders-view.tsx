@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Boxes,
   FilePlus2,
@@ -38,14 +39,13 @@ import { PurchaseOrdersTable } from "@/components/purchase-orders/purchase-order
 import { PurchaseOrdersGrid } from "@/components/purchase-orders/purchase-orders-grid";
 import { PurchaseOrderDetailSheet } from "@/components/purchase-orders/purchase-order-detail-sheet";
 import { POPrintSlipDialog } from "@/components/purchase-orders/po-print-slip-dialog";
-import { FileNewPODialog, type POType } from "@/components/purchase-orders/file-new-po-dialog";
 import { LotPrintTagDialog } from "@/components/purchase-orders/lot-print-tag-dialog";
 import { LotReleaseDialog } from "@/components/purchase-orders/lot-release-dialog";
+import { FileNewPODialog } from "@/components/purchase-orders/file-new-po-dialog";
+import type { POCategoryScope } from "@/app/(private)/purchase-orders/types";
 import { formatPhp } from "@/components/projects/format-money";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
-
-export type POCategoryScope = "all" | "asset" | "consumable" | "projects";
 
 interface PurchaseOrdersViewProps {
   categoryScope?: POCategoryScope;
@@ -58,6 +58,9 @@ export function PurchaseOrdersView({
   title,
   subtitle,
 }: PurchaseOrdersViewProps) {
+  const searchParams = useSearchParams();
+  const searchParamQuery = searchParams?.get("search") || searchParams?.get("po") || "";
+
   const {
     data: lots = [],
     isLoading,
@@ -70,7 +73,7 @@ export function PurchaseOrdersView({
   const toast = useToast();
 
   const [filters, setFilters] = useState<PurchaseOrderFilterState>({
-    search: "",
+    search: searchParamQuery,
     itemType:
       categoryScope === "asset"
         ? "asset"
@@ -92,6 +95,28 @@ export function PurchaseOrdersView({
   const [releaseLot, setReleaseLot] = useState<PurchaseLot | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<GroupedPurchaseOrder | null>(null);
   const [isFileNewPOOpen, setIsFileNewPOOpen] = useState(false);
+
+  // Sync search parameter from URL if redirected from Vouchers or other links
+  useEffect(() => {
+    if (searchParamQuery) {
+      setFilters((prev) => ({ ...prev, search: searchParamQuery }));
+    }
+  }, [searchParamQuery]);
+
+  // Automatically open matching purchase order detail sheet if landed via direct link
+  useEffect(() => {
+    if (searchParamQuery && lots.length > 0) {
+      const q = searchParamQuery.toLowerCase().trim();
+      const matched = lots.find(
+        (l) =>
+          (l.poNumber && l.poNumber.toLowerCase().trim() === q) ||
+          l.lotCode.toLowerCase().trim() === q
+      );
+      if (matched) {
+        setSelectedLot(matched);
+      }
+    }
+  }, [searchParamQuery, lots]);
 
   // Group flat lot rows into PO-level groups
   const groupedPOs = useMemo(() => groupLotsByPO(lots), [lots]);
@@ -325,6 +350,28 @@ export function PurchaseOrdersView({
     };
   }, [scopedGroups]);
 
+  const categoryScopeLabel = useMemo(() => {
+    if (categoryScope === "asset") return "Asset Purchases";
+    if (categoryScope === "consumable") return "Consumables & Supplies";
+    if (categoryScope === "projects") return "Project Procurement";
+    return "All Purchase Orders";
+  }, [categoryScope]);
+
+  const activePipelineValue = Math.max(
+    0,
+    stats.totalValue - stats.deliveredValue - stats.pendingValue
+  );
+  const deliveredPct =
+    stats.totalValue > 0
+      ? Math.round((stats.deliveredValue / stats.totalValue) * 100)
+      : 0;
+  const pendingPct =
+    stats.totalValue > 0
+      ? Math.round((stats.pendingValue / stats.totalValue) * 100)
+      : 0;
+  const pipelinePct =
+    stats.totalValue > 0 ? Math.max(0, 100 - deliveredPct - pendingPct) : 0;
+
   const handleFilterChange = (updates: Partial<PurchaseOrderFilterState>) => {
     setFilters((prev) => ({ ...prev, ...updates }));
   };
@@ -555,6 +602,64 @@ export function PurchaseOrdersView({
             icon={Banknote}
             tone="indigo"
             badge="PHP (₱)"
+            infoTooltipAlign="right"
+            infoTooltipPlacement="bottom"
+            infoTooltip={
+              <div className="space-y-2.5 text-left font-sans normal-case tracking-normal">
+                <div className="flex items-center justify-between pb-1.5 border-b border-white/10">
+                  <span className="font-semibold text-white flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    Total PO Valuation
+                  </span>
+                  <span className="font-mono font-bold text-indigo-300">
+                    {formatPhp(stats.totalValue)}
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-neutral-300 leading-relaxed">
+                  Coincides with the cumulative contracted outlay across all line items (Quantity × Unit Cost) for <strong className="text-white">{categoryScopeLabel}</strong>.
+                </p>
+
+                <div className="space-y-1.5 text-[11px] pt-0.5">
+                  <div className="flex items-center justify-between text-neutral-300">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                      Delivered & Stocked
+                    </span>
+                    <span className="font-mono text-emerald-400 font-medium">
+                      {formatPhp(stats.deliveredValue)} ({deliveredPct}%)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-neutral-300">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
+                      Pending Approval
+                    </span>
+                    <span className="font-mono text-purple-300 font-medium">
+                      {formatPhp(stats.pendingValue)} ({pendingPct}%)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-neutral-300">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                      In Pipeline (Approved/Ordered)
+                    </span>
+                    <span className="font-mono text-indigo-300 font-medium">
+                      {formatPhp(activePipelineValue)} ({pipelinePct}%)
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-1.5 border-t border-white/10 flex items-center justify-between text-[10px] text-neutral-400">
+                  <span>Average per Order</span>
+                  <span className="font-mono text-neutral-200">
+                    {formatPhp(stats.avgOrderValue)} • {stats.totalOrders} PO{stats.totalOrders === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+            }
             subtitle={
               <div className="flex items-center justify-between">
                 <span className="truncate">
