@@ -222,6 +222,7 @@ export default function Sidebar({
           name: "Vouchers",
           href: "/vouchers",
           icon: Receipt,
+          badgeText: "Beta",
           roles: ["superadmin", "admin", "staff"],
         },
         {
@@ -274,6 +275,7 @@ export default function Sidebar({
           name: "Maintenance Logs",
           href: "/maintenance-logs",
           icon: Wrench,
+          badgeText: "Beta",
           roles: ["superadmin", "admin", "staff"],
         },
         {
@@ -291,6 +293,7 @@ export default function Sidebar({
           name: "Reports",
           href: "/reports",
           icon: FileText,
+          badgeText: "Beta",
           roles: ["superadmin", "admin", "staff"],
         },
         {
@@ -657,11 +660,13 @@ export default function Sidebar({
         )}
 
         {/* Indicator dot when collapsed */}
-        {isCollapsed && hasBadge && (
+        {isCollapsed && (hasBadge || hasBadgeText) && (
           <span
             className={cn(
-              "absolute top-2 right-2 w-2 h-2 rounded-full",
-              item.badgeTone === "accent" ? "bg-accent" : "bg-amber-400",
+              "absolute top-2 right-2 rounded-full",
+              hasBadge
+                ? cn("w-2 h-2", item.badgeTone === "accent" ? "bg-accent" : "bg-amber-400")
+                : "w-1.5 h-1.5 bg-accent/80",
             )}
           />
         )}
