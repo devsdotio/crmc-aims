@@ -41,6 +41,7 @@ import {
 } from "@/features/vouchers/client";
 import { useUsersQuery } from "@/features/users/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
+import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
@@ -177,6 +178,7 @@ export function VoucherDetailSheet({
     purchaseOrderNumber: "",
     assetCode: "",
     purpose: "",
+    departmentId: "" as string,
   });
   const [editListItems, setEditListItems] = useState<ParticularLineItem[]>([
     { description: "", amount: "" },
@@ -188,6 +190,7 @@ export function VoucherDetailSheet({
 
   const { data: users = [] } = useUsersQuery();
   const { data: purchaseLots = [] } = usePurchaseLotsQuery();
+  const { data: departments = [] } = useDepartmentsQuery();
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: voucher?.id,
   });
@@ -220,6 +223,7 @@ export function VoucherDetailSheet({
         purchaseOrderNumber: voucher.purchaseOrderNumber || "",
         assetCode: voucher.assetCode || "",
         purpose: voucher.purpose || "",
+        departmentId: voucher.departmentId || "",
       });
       const parsed = parseParticulars(voucher.particulars);
       setEditListItems(
@@ -272,6 +276,7 @@ export function VoucherDetailSheet({
     voucher.createdByName?.trim() || matchedUser?.name || "Authorized Staff";
 
   const displayDepartment =
+    voucher.departmentName?.trim() ||
     extractedDeptFromPurpose ||
     extractedDeptFromParticulars ||
     extractedDeptFromLot ||
@@ -368,6 +373,8 @@ export function VoucherDetailSheet({
       return;
     }
 
+    const selectedDept = departments.find((d) => d.id === editForm.departmentId);
+
     setActionLoading(true);
     try {
       await updateVoucherMutation.mutateAsync({
@@ -383,6 +390,8 @@ export function VoucherDetailSheet({
           assetCode: editForm.assetCode.trim() || null,
           purpose: editForm.purpose.trim(),
           particulars: serializeParticulars(editListItems),
+          departmentId: editForm.departmentId || null,
+          departmentName: selectedDept?.name || null,
         },
       });
       toast.success("Voucher updated successfully.");
@@ -961,6 +970,30 @@ export function VoucherDetailSheet({
                   </div>
                 </div>
 
+                {/* Requesting Department */}
+                <div className="space-y-1.5 text-xs">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                    Requesting Department
+                  </label>
+                  <select
+                    value={editForm.departmentId}
+                    onChange={(e) =>
+                      setEditForm((prev) => ({
+                        ...prev,
+                        departmentId: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+                  >
+                    <option value="">None / General Custodian Fund</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name} ({d.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Purpose + Particulars */}
                 <div className="space-y-3">
                   <div className="space-y-1.5 text-xs">
@@ -1173,7 +1206,9 @@ export function VoucherDetailSheet({
                         <span className="truncate">{displayDepartment}</span>
                       </p>
                       <span className="text-[10px] text-text-secondary block">
-                        Requisitioning Unit
+                        {voucher.departmentName
+                          ? "Requesting Department"
+                          : "Requisitioning Unit"}
                       </span>
                     </div>
                   </div>

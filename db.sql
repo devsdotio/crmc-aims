@@ -284,6 +284,8 @@ CREATE TABLE public.purchase_lots (
   item_name text NOT NULL,
   supplier_id uuid,
   supplier_name text,
+  department_id uuid,
+  department_name text,
   quantity integer NOT NULL,
   quantity_remaining integer NOT NULL,
   unit_cost numeric NOT NULL,
@@ -299,6 +301,7 @@ CREATE TABLE public.purchase_lots (
   tenant_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001'::uuid,
   CONSTRAINT purchase_lots_pkey PRIMARY KEY (id),
   CONSTRAINT purchase_lots_consumable_id_consumables_id_fk FOREIGN KEY (consumable_id) REFERENCES public.consumables(id),
+  CONSTRAINT purchase_lots_department_id_departments_id_fk FOREIGN KEY (department_id) REFERENCES public.departments(id),
   CONSTRAINT purchase_lots_asset_id_assets_id_fk FOREIGN KEY (asset_id) REFERENCES public.assets(id),
   CONSTRAINT purchase_lots_supplier_id_suppliers_id_fk FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
   CONSTRAINT purchase_lots_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id)
@@ -498,6 +501,8 @@ CREATE TABLE public.vouchers (
   particulars text NOT NULL DEFAULT ''::text,
   check_number text,
   payment_method text,
+  department_id uuid,
+  department_name text,
   is_legacy boolean NOT NULL DEFAULT false,
   created_by_user_id uuid NOT NULL,
   created_by_name text NOT NULL,
@@ -514,7 +519,8 @@ CREATE TABLE public.vouchers (
   CONSTRAINT vouchers_pkey PRIMARY KEY (id),
   CONSTRAINT vouchers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT vouchers_supplier_id_suppliers_id_fk FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT vouchers_asset_id_assets_id_fk FOREIGN KEY (asset_id) REFERENCES public.assets(id)
+  CONSTRAINT vouchers_asset_id_assets_id_fk FOREIGN KEY (asset_id) REFERENCES public.assets(id),
+  CONSTRAINT vouchers_department_id_departments_id_fk FOREIGN KEY (department_id) REFERENCES public.departments(id)
 );
 CREATE TABLE public.petty_cash_vouchers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

@@ -122,3 +122,116 @@ function normalizeAmount(value: string): string {
   if (!Number.isFinite(n) || n < 0) return "";
   return n.toFixed(2);
 }
+
+/** Extract department label from PO purpose format: `[Dept Name] remaining purpose…` */
+export function extractDepartmentNameFromPoPurpose(
+  purpose: string | null | undefined
+): string | null {
+  if (!purpose?.trim()) return null;
+  const match = purpose.match(/^\[(.*?)\]/);
+  const name = match?.[1]?.trim();
+  return name || null;
+}
+
+export type PoDepartmentSource = {
+  departmentId?: string | null;
+  departmentName?: string | null;
+  purpose?: string | null;
+  recordedByUserId?: string | null;
+};
+
+/**
+ * Resolve a department id from a linked PO:
+ * 1) explicit departmentId on the lot
+ * 2) departmentName / [Dept] purpose matched to catalog
+ * 3) recorded-by user's departmentId (legacy fallback)
+ */
+export function resolveDepartmentIdFromPo(
+  sources: PoDepartmentSource | PoDepartmentSource[],
+  departments: Array<{ id: string; name: string; code?: string | null }>,
+  users?: Array<{
+    id: string;
+    departmentId?: string | null;
+    department?: string | null;
+  }>
+): string | null {
+  const list = Array.isArray(sources) ? sources : [sources];
+
+  for (const source of list) {
+    if (source.departmentId) {
+      const exists = departments.some((d) => d.id === source.departmentId);
+      if (exists) return source.departmentId;
+    }
+  }
+
+  const labels: string[] = [];
+  for (const source of list) {
+    if (source.departmentName?.trim()) labels.push(source.departmentName.trim());
+    const fromPurpose = extractDepartmentNameFromPoPurpose(source.purpose);
+    if (fromPurpose) labels.push(fromPurpose);
+  }
+
+  for (const label of labels) {
+    const needle = label.toLowerCase();
+    const match = departments.find(
+      (d) =>
+        d.name.trim().toLowerCase() === needle ||
+        (d.code && d.code.trim().toLowerCase() === needle)
+    );
+    if (match) return match.id;
+  }
+
+  if (users?.length) {
+    for (const source of list) {
+      if (!source.recordedByUserId) continue;
+      const user = users.find((u) => u.id === source.recordedByUserId);
+      if (user?.departmentId) {
+        const exists = departments.some((d) => d.id === user.departmentId);
+        if (exists) return user.departmentId;
+      }
+      if (user?.department?.trim()) {
+        const needle = user.department.trim().toLowerCase();
+        const match = departments.find(
+          (d) =>
+            d.name.trim().toLowerCase() === needle ||
+            (d.code && d.code.trim().toLowerCase() === needle)
+        );
+        if (match) return match.id;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Build voucher/petty-cash particulars from PO line items. */
+export function particularsFromPurchaseOrderLines(
+  lineItems: Array<{
+    itemName?: string | null;
+    quantity?: number | null;
+    unitCost?: string | number | null;
+    totalCost?: string | number | null;
+  }>
+): ParticularLineItem[] {
+  const items = lineItems
+    .filter((li) => Boolean(li?.itemName?.trim()))
+    .map((li) => {
+      const qty = li.quantity ? `${li.quantity}x ` : "";
+      const tCost = parseFloat(String(li.totalCost || "0"));
+      const uCost = parseFloat(String(li.unitCost || "0"));
+      const lineAmount =
+        tCost > 0
+          ? tCost.toFixed(2)
+          : uCost > 0 && li.quantity
+            ? (uCost * Number(li.quantity)).toFixed(2)
+            : uCost > 0
+              ? uCost.toFixed(2)
+              : "";
+      return {
+        description: `${qty}${li.itemName}`.trim(),
+        amount: lineAmount,
+      };
+    });
+
+  return items.length > 0 ? items : [{ description: "", amount: "" }];
+}

@@ -93,7 +93,8 @@ export class VoucherRepository implements IVoucherRepository {
           ilike(vouchers.assetName, q),
           ilike(vouchers.purpose, q),
           ilike(vouchers.particulars, q),
-          ilike(vouchers.checkNumber, q)
+          ilike(vouchers.checkNumber, q),
+          ilike(vouchers.departmentName, q)
         )!
       );
     }

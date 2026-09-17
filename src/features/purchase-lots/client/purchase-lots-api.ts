@@ -44,6 +44,8 @@ export type CreatePurchaseOrderPayload = {
   requestedBy: string;
   supplierId?: string;
   supplierName?: string;
+  departmentId?: string;
+  departmentName?: string;
   purpose?: string;
   notes?: string;
   receiptUrl?: string | null;

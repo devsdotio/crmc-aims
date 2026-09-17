@@ -42,6 +42,7 @@ import { useUsersQuery } from "@/features/users/client";
 import { formatDateTime, formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
 import { useToast } from "@/components/providers/toast-context";
 import { POReceiptUploader } from "./po-receipt-uploader";
+import { PoDisbursementBadge } from "./po-disbursement-badge";
 
 interface PurchaseOrderDetailSheetProps {
   lot: PurchaseLot | null;
@@ -203,6 +204,7 @@ export function PurchaseOrderDetailSheet({
     lot.recordedByName?.trim() || matchedUser?.name || "Authorized Staff";
 
   const displayDepartment =
+    lot.departmentName?.trim() ||
     extractedDeptFromPurpose ||
     matchedUser?.department?.trim() ||
     "General Administration";
@@ -346,6 +348,10 @@ export function PurchaseOrderDetailSheet({
                 {lot.status.replace("_", " ")}
               </span>
 
+              <PoDisbursementBadge
+                disbursement={lot.disbursement}
+                showCode
+              />
 
             </div>
 

@@ -19,6 +19,7 @@ import {
   type VoucherListResponse,
 } from "./vouchers-api";
 import { voucherQueryKeys } from "./query-keys";
+import { invalidateDomains } from "@/features/shared/cache-invalidation";
 
 /**
  * Real-time synchronization hook for vouchers.
@@ -116,6 +117,7 @@ export function useCreateVoucherMutation(): UseMutationResult<
     mutationFn: (payload) => vouchersApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
+      void invalidateDomains(queryClient, ["purchaseLots"]);
     },
   });
 }
@@ -130,6 +132,7 @@ export function useUpdateVoucherMutation(): UseMutationResult<
     mutationFn: ({ id, payload }) => vouchersApi.update(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
+      void invalidateDomains(queryClient, ["purchaseLots"]);
     },
   });
 }
@@ -144,6 +147,7 @@ export function useUpdateVoucherStatusMutation(): UseMutationResult<
     mutationFn: ({ id, payload }) => vouchersApi.updateStatus(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
+      void invalidateDomains(queryClient, ["purchaseLots"]);
     },
   });
 }
@@ -158,6 +162,7 @@ export function useDeleteVoucherMutation(): UseMutationResult<
     mutationFn: (id) => vouchersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
+      void invalidateDomains(queryClient, ["purchaseLots"]);
     },
   });
 }

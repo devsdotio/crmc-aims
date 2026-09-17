@@ -17,6 +17,8 @@ export type CreateVoucherPayload = {
   purpose?: string;
   particulars?: string;
   checkNumber?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
   isLegacy?: boolean;
 };
 

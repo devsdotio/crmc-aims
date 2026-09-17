@@ -20,6 +20,7 @@ import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
 import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
+import { PoDisbursementBadge } from "./po-disbursement-badge";
 
 interface PurchaseOrdersGridProps {
   groups: GroupedPurchaseOrder[];
@@ -246,7 +247,10 @@ export function PurchaseOrdersGrid({
                   )}
                 </div>
 
-                <StatusBadge status={lot.status} />
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                  <StatusBadge status={lot.status} />
+                  <PoDisbursementBadge disbursement={lot.disbursement} />
+                </div>
               </div>
 
               {/* Item Info */}

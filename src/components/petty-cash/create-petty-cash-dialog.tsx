@@ -34,6 +34,7 @@ import {
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
 import { useSuppliersQuery } from "@/features/suppliers/client/use-suppliers";
 import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
+import { useUsersQuery } from "@/features/users/client";
 import { groupLotsByPO, type GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { formatPhp } from "@/components/projects/format-money";
 import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
@@ -42,6 +43,8 @@ import { filterMoneyInput } from "@/lib/numeric-input";
 import {
   serializeParticulars,
   sumParticularAmounts,
+  resolveDepartmentIdFromPo,
+  particularsFromPurchaseOrderLines,
   type ParticularLineItem,
 } from "@/lib/voucher-particulars";
 
@@ -86,7 +89,8 @@ export function CreatePettyCashDialog({
   // Queries
   const { data: lots = [] } = usePurchaseLotsQuery({ enabled: isOpen });
   const { data: suppliers = [] } = useSuppliersQuery({ enabled: isOpen, activeOnly: true });
-  const { data: departments = [] } = useDepartmentsQuery();
+  const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+  const { data: users = [] } = useUsersQuery();
   const {
     data: nextCodeData,
     isLoading: isLoadingNextCode,
@@ -94,7 +98,8 @@ export function CreatePettyCashDialog({
   } = useNextPcvCodeQuery(isOpen);
 
   const groupedPOs = useMemo(() => {
-    return groupLotsByPO(lots);
+    // Only POs that are not yet linked to an active voucher or petty cash.
+    return groupLotsByPO(lots).filter((po) => !po.representative.disbursement);
   }, [lots]);
 
   // Filtered PO list based on user search in the second column
@@ -158,16 +163,13 @@ export function CreatePettyCashDialog({
     }
   };
 
-  // Handle PO selection and auto-fill purpose + line items
-  const handleSelectPO = (po: GroupedPurchaseOrder) => {
-    if (isLegacy) return;
+  // Handle PO selection and auto-fill purpose + line items + department
+  const applyPoSelection = (po: GroupedPurchaseOrder) => {
     setPurchaseOrderNumber(po.poNumber);
     const suppName = po.representative.supplierName || "";
     setSupplierName(suppName);
     setPayeeName(suppName);
     setSupplierId(po.representative.supplierId || null);
-    setAmount(po.totalCost ? String(po.totalCost) : "0");
-    setPurpose(`Petty cash disbursement for Purchase Order #${po.poNumber}`);
 
     const rawItems =
       po.lineItems && po.lineItems.length > 0
@@ -176,37 +178,57 @@ export function CreatePettyCashDialog({
           ? [po.representative]
           : [];
 
-    const formattedList: ParticularLineItem[] = rawItems
-      .filter((li) => Boolean(li && li.itemName))
-      .map((li) => {
-        const qty = li.quantity ? `${li.quantity}x ` : "";
-        const tCost = parseFloat(li.totalCost || "0");
-        const uCost = parseFloat(li.unitCost || "0");
-        const lineAmount =
-          tCost > 0
-            ? tCost.toFixed(2)
-            : uCost > 0 && li.quantity
-              ? (uCost * Number(li.quantity)).toFixed(2)
-              : uCost > 0
-                ? uCost.toFixed(2)
-                : "";
-        return {
-          description: `${qty}${li.itemName}`.trim(),
-          amount: lineAmount,
-        };
-      });
-
+    const formattedList = particularsFromPurchaseOrderLines(rawItems);
+    const fallbackAmount = po.totalCost ? Number(po.totalCost).toFixed(2) : "0.00";
+    const lineTotal = sumParticularAmounts(formattedList);
     setListItems(
-      formattedList.length > 0
+      formattedList.some((i) => i.description)
         ? formattedList
         : [
             {
               description: `Items from Purchase Order #${po.poNumber}`,
-              amount: po.totalCost ? String(po.totalCost) : "",
+              amount: fallbackAmount,
             },
           ]
     );
+    setAmount(lineTotal > 0 ? lineTotal.toFixed(2) : fallbackAmount);
+    setPurpose(`Petty cash disbursement for Purchase Order #${po.poNumber}`);
+
+    const resolvedDeptId = resolveDepartmentIdFromPo(
+      [po.representative, ...po.lineItems],
+      departments,
+      users
+    );
+    setDepartmentId(resolvedDeptId);
   };
+
+  const handleSelectPO = (po: GroupedPurchaseOrder) => {
+    if (isLegacy) return;
+    applyPoSelection(po);
+  };
+
+  useEffect(() => {
+    if (!isOpen || !purchaseOrderNumber || isLegacy) return;
+    if (departments.length === 0) return;
+    const po = groupedPOs.find((p) => p.poNumber === purchaseOrderNumber);
+    if (!po) return;
+    const resolvedDeptId = resolveDepartmentIdFromPo(
+      [po.representative, ...po.lineItems],
+      departments,
+      users
+    );
+    if (resolvedDeptId && resolvedDeptId !== departmentId) {
+      setDepartmentId(resolvedDeptId);
+    }
+  }, [
+    isOpen,
+    purchaseOrderNumber,
+    isLegacy,
+    departments,
+    users,
+    groupedPOs,
+    departmentId,
+  ]);
 
   const handleClearPO = () => {
     setPurchaseOrderNumber("");
@@ -216,9 +238,13 @@ export function CreatePettyCashDialog({
     setListItems([{ description: "", amount: "" }]);
     setSupplierId(null);
     setSupplierName("");
+    setDepartmentId(null);
   };
 
+  const isPoLinked = Boolean(purchaseOrderNumber) && !isLegacy;
+
   const syncAmountFromLines = (items: ParticularLineItem[]) => {
+    if (isPoLinked) return;
     const total = sumParticularAmounts(items);
     if (total > 0) {
       setAmount(total.toFixed(2));
@@ -230,6 +256,7 @@ export function CreatePettyCashDialog({
     field: keyof ParticularLineItem,
     val: string
   ) => {
+    if (isPoLinked) return;
     setListItems((prev) => {
       const updated = [...prev];
       const nextVal =
@@ -243,10 +270,12 @@ export function CreatePettyCashDialog({
   };
 
   const handleAddItem = () => {
+    if (isPoLinked) return;
     setListItems((prev) => [...prev, { description: "", amount: "" }]);
   };
 
   const handleRemoveItem = (index: number) => {
+    if (isPoLinked) return;
     setListItems((prev) => {
       if (prev.length <= 1) return [{ description: "", amount: "" }];
       const next = prev.filter((_, i) => i !== index);
@@ -256,6 +285,7 @@ export function CreatePettyCashDialog({
   };
 
   const handleItemKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isPoLinked) return;
     if (e.key === "Enter") {
       e.preventDefault();
       handleAddItem();
@@ -554,22 +584,38 @@ export function CreatePettyCashDialog({
                           Amount (PHP)
                           <span className="text-rose-500 font-bold ml-1">*</span>
                         </label>
-                        <span className="text-[11px] font-semibold text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded">
-                          Required
-                        </span>
+                        {isPoLinked ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                            <Lock className="h-3 w-3" />
+                            From linked PO
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold text-rose-500 bg-rose-500/10 px-1.5 py-0.5 rounded">
+                            Required
+                          </span>
+                        )}
                       </div>
                       <input
                         type="number"
                         step="0.01"
                         min="0"
                         value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
+                        onChange={(e) => {
+                          if (!isPoLinked) setAmount(e.target.value);
+                        }}
                         placeholder="0.00"
                         required
-                        className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-mono text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        readOnly={isPoLinked}
+                        disabled={isPoLinked}
+                        className={cn(
+                          "w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-mono text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                          isPoLinked && "cursor-not-allowed opacity-75 bg-bg-subtle"
+                        )}
                       />
                       <p className="mt-1 text-[11px] text-text-secondary">
-                        Total cash disbursed for this expense.
+                        {isPoLinked
+                          ? "Amount is calculated from the linked PO line items and cannot be edited."
+                          : "Total cash disbursed for this expense."}
                       </p>
                     </div>
                   </div>
@@ -613,23 +659,50 @@ export function CreatePettyCashDialog({
                     </div>
                   </div>
 
-                  {/* Department (Optional) */}
+                  {/* Department (locked when PO linked) */}
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-text mb-1.5">
-                      Requesting Department
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-text">
+                        Requesting Department
+                      </label>
+                      {isPoLinked ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                          <Lock className="h-3 w-3" />
+                          From linked PO
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-text-secondary">
+                          Optional
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={departmentId || ""}
                       onChange={(e) => setDepartmentId(e.target.value || null)}
-                      className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+                      disabled={isPoLinked}
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                        isPoLinked
+                          ? "cursor-not-allowed opacity-75 bg-bg-subtle"
+                          : "cursor-pointer"
+                      )}
                     >
-                      <option value="">None / General Custodian Fund</option>
+                      <option value="">
+                        {isPoLinked
+                          ? "No department on linked PO"
+                          : "None / General Custodian Fund"}
+                      </option>
                       {departments.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name} ({d.code})
                         </option>
                       ))}
                     </select>
+                    {isPoLinked ? (
+                      <p className="mt-1 text-[11px] text-text-secondary">
+                        Department is taken from the linked purchase order and cannot be changed until the PO link is cleared.
+                      </p>
+                    ) : null}
                   </div>
 
                   {/* Purpose (paragraph) + Particulars (itemized with costs) */}
@@ -660,12 +733,19 @@ export function CreatePettyCashDialog({
                           </label>
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-secondary">
                             <ListOrdered className="h-3 w-3" />
-                            Itemized list
+                            {isPoLinked ? "PO line items" : "Itemized list"}
                           </span>
                         </div>
-                        <span className="text-[11px] text-text-secondary">
-                          Optional
-                        </span>
+                        {isPoLinked ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                            <Lock className="h-3 w-3" />
+                            From linked PO
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-text-secondary">
+                            Optional
+                          </span>
+                        )}
                       </div>
 
                       <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
@@ -693,7 +773,12 @@ export function CreatePettyCashDialog({
                                 }
                                 onKeyDown={handleItemKeyDown}
                                 placeholder={`Item / expense #${idx + 1}...`}
-                                className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                readOnly={isPoLinked}
+                                disabled={isPoLinked}
+                                className={cn(
+                                  "w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                                  isPoLinked && "cursor-not-allowed bg-bg-subtle"
+                                )}
                               />
                               <input
                                 type="text"
@@ -703,19 +788,25 @@ export function CreatePettyCashDialog({
                                   handleItemChange(idx, "amount", e.target.value)
                                 }
                                 placeholder="0.00"
-                                className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                readOnly={isPoLinked}
+                                disabled={isPoLinked}
+                                className={cn(
+                                  "w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                                  isPoLinked && "cursor-not-allowed bg-bg-subtle"
+                                )}
                               />
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItem(idx)}
                                 disabled={
-                                  listItems.length <= 1 &&
-                                  idx === 0 &&
-                                  !item.description &&
-                                  !item.amount
+                                  isPoLinked ||
+                                  (listItems.length <= 1 &&
+                                    idx === 0 &&
+                                    !item.description &&
+                                    !item.amount)
                                 }
                                 className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-bg transition-colors cursor-pointer disabled:opacity-30 disabled:hover:text-text-secondary disabled:cursor-not-allowed"
-                                title="Remove item"
+                                title={isPoLinked ? "Locked to PO line items" : "Remove item"}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -725,20 +816,28 @@ export function CreatePettyCashDialog({
 
                         <div className="flex items-center justify-between pt-1 border-t border-border/50">
                           <span className="text-[11px] text-text-secondary">
-                            Line costs update the total amount when provided. Press{" "}
-                            <kbd className="px-1 py-0.5 text-[10px] font-mono bg-bg rounded border border-border">
-                              Enter
-                            </kbd>{" "}
-                            to add a row.
+                            {isPoLinked
+                              ? "Particulars are linked to the selected PO line items."
+                              : (
+                                <>
+                                  Line costs update the total amount when provided. Press{" "}
+                                  <kbd className="px-1 py-0.5 text-[10px] font-mono bg-bg rounded border border-border">
+                                    Enter
+                                  </kbd>{" "}
+                                  to add a row.
+                                </>
+                              )}
                           </span>
-                          <button
-                            type="button"
-                            onClick={handleAddItem}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer shadow-2xs"
-                          >
-                            <Plus className="h-3 w-3" />
-                            Add Item
-                          </button>
+                          {!isPoLinked ? (
+                            <button
+                              type="button"
+                              onClick={handleAddItem}
+                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer shadow-2xs"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add Item
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -867,7 +966,9 @@ export function CreatePettyCashDialog({
                       })
                     ) : (
                       <div className="p-8 text-center text-xs text-text-secondary">
-                        No purchase orders match your search.
+                        {poSearch.trim()
+                          ? "No available purchase orders match your search."
+                          : "No available purchase orders. POs already linked to a voucher or petty cash are hidden."}
                       </div>
                     )}
                   </div>

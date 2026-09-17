@@ -27,6 +27,8 @@ export type PurchaseLotDTO = {
   purchasedOn: string;
   reference: string | null;
   purpose?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;
@@ -40,6 +42,12 @@ export type PurchaseLotDTO = {
   items?: POLineItemDetail[];
   /** Print/scan payload: `CRMC-AIMS-LOT:{lotCode}` */
   qrPayload: string;
+  disbursement?: {
+    kind: "voucher" | "petty_cash";
+    id: string;
+    code: string;
+    status: string;
+  } | null;
 };
 
 export type ListPurchaseLotFilters = {
@@ -98,6 +106,8 @@ export type CreatePurchaseOrderInput = {
   requestedBy: string;
   supplierId?: string;
   supplierName?: string;
+  departmentId?: string;
+  departmentName?: string;
   purpose?: string;
   notes?: string;
   receiptUrl?: string | null;
