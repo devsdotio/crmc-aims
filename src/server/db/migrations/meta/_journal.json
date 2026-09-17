@@ -253,6 +253,13 @@
       "when": 1786370000000,
       "tag": "0035_voucher_department",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786371000000,
+      "tag": "0036_purchase_lot_department",
+      "breakpoints": true
     }
   ]
 }

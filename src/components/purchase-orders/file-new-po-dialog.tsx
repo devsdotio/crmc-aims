@@ -167,7 +167,7 @@ export function FileNewPODialog({
   const [customPoNumber, setCustomPoNumber] = useState("");
   const [poDate, setPoDate] = useState(() => new Date().toISOString().split("T")[0]);
   const accountRequesterName = me?.name || me?.email || "Authorized Staff";
-  const [targetDepartment, setTargetDepartment] = useState("");
+  const [targetDepartmentId, setTargetDepartmentId] = useState("");
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
 
@@ -191,11 +191,11 @@ export function FileNewPODialog({
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setErrorMessage(null);
-      setTargetDepartment(me?.department || "");
+      setTargetDepartmentId(me?.departmentId || "");
       setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
     }
-  }, [isOpen, me?.department, defaultPoType, defaultPurpose]);
+  }, [isOpen, me?.departmentId, defaultPoType, defaultPurpose]);
 
   // Safe Close Guard to prevent accidental data loss
   const handleSafeClose = () => {
@@ -203,7 +203,7 @@ export function FileNewPODialog({
       Boolean(customPoNumber.trim()) ||
       Boolean(generalPurpose.trim()) ||
       Boolean(generalNotes.trim()) ||
-      Boolean(targetDepartment.trim() && targetDepartment !== (me?.department || "")) ||
+      Boolean(targetDepartmentId.trim() && targetDepartmentId !== (me?.departmentId || "")) ||
       items.some((i) => Boolean(i.name.trim()) || Boolean(i.consumableId) || Boolean(i.assetId));
 
     if (hasData) {
@@ -511,7 +511,7 @@ export function FileNewPODialog({
       setErrorMessage("Order date is required.");
       return false;
     }
-    if (!targetDepartment.trim()) {
+    if (!targetDepartmentId.trim()) {
       setErrorMessage("Target department is required.");
       return false;
     }
@@ -613,7 +613,14 @@ export function FileNewPODialog({
       const masterSupplierId =
         uniqueSuppliers.length === 1 ? items[0]?.supplierId : undefined;
 
-      const combinedPurpose = `[${targetDepartment.trim()}] ${generalPurpose.trim()}`;
+      const selectedDepartment = departments.find((d) => d.id === targetDepartmentId);
+      const departmentName = selectedDepartment?.name?.trim() || "";
+      if (!departmentName) {
+        setErrorMessage("Please select a valid target department.");
+        return;
+      }
+
+      const combinedPurpose = `[${departmentName}] ${generalPurpose.trim()}`;
 
       await createPOMutation.mutateAsync({
         poNumber: poNumberMode === "manual" ? customPoNumber.trim() : undefined,
@@ -621,6 +628,8 @@ export function FileNewPODialog({
         requestedBy: accountRequesterName,
         supplierId: masterSupplierId,
         supplierName: masterSupplierName,
+        departmentId: targetDepartmentId,
+        departmentName,
         purpose: combinedPurpose,
         notes: generalNotes.trim() || undefined,
         status: "pending_approval",
@@ -944,8 +953,8 @@ export function FileNewPODialog({
                       <span className="text-[10px] text-rose-500 font-bold">* Required</span>
                     </label>
                     <select
-                      value={targetDepartment}
-                      onChange={(e) => setTargetDepartment(e.target.value)}
+                      value={targetDepartmentId}
+                      onChange={(e) => setTargetDepartmentId(e.target.value)}
                       required
                       disabled={departmentsLoading}
                       className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer font-medium disabled:opacity-60"
@@ -958,7 +967,7 @@ export function FileNewPODialog({
                             : "-- Choose Department --"}
                       </option>
                       {departments.map((dept) => (
-                        <option key={dept.id} value={dept.name}>
+                        <option key={dept.id} value={dept.id}>
                           {dept.name} {dept.code ? `(${dept.code})` : ""}
                         </option>
                       ))}
@@ -1609,7 +1618,9 @@ export function FileNewPODialog({
                 <div className="space-y-2 pt-2 border-t border-border/50 text-xs">
                   <div>
                     <span className="text-[10px] text-text-secondary font-medium block">Target Department</span>
-                    <span className="font-bold text-text">{targetDepartment}</span>
+                    <span className="font-bold text-text">
+                      {departments.find((d) => d.id === targetDepartmentId)?.name || "—"}
+                    </span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div>

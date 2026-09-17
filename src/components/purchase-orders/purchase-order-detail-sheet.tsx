@@ -203,6 +203,7 @@ export function PurchaseOrderDetailSheet({
     lot.recordedByName?.trim() || matchedUser?.name || "Authorized Staff";
 
   const displayDepartment =
+    lot.departmentName?.trim() ||
     extractedDeptFromPurpose ||
     matchedUser?.department?.trim() ||
     "General Administration";

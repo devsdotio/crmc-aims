@@ -56,6 +56,8 @@ export const createPurchaseOrderSchema = z.object({
   requestedBy: z.string().trim().min(1, "Requested by is required."),
   supplierId: z.string().uuid().optional(),
   supplierName: z.string().trim().optional(),
+  departmentId: z.string().uuid().optional(),
+  departmentName: z.string().trim().max(255).optional(),
   purpose: z.string().trim().optional(),
   notes: z.string().trim().optional(),
   receiptUrl: z.string().trim().nullable().optional(),

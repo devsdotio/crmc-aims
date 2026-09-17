@@ -27,6 +27,8 @@ export type PurchaseLotDTO = {
   purchasedOn: string;
   reference: string | null;
   purpose?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;
@@ -98,6 +100,8 @@ export type CreatePurchaseOrderInput = {
   requestedBy: string;
   supplierId?: string;
   supplierName?: string;
+  departmentId?: string;
+  departmentName?: string;
   purpose?: string;
   notes?: string;
   receiptUrl?: string | null;

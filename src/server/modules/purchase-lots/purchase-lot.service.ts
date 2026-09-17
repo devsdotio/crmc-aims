@@ -209,6 +209,8 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     purchasedOn: row.purchasedOn,
     reference: row.reference ?? null,
     purpose: meta.purpose,
+    departmentId: row.departmentId ?? null,
+    departmentName: row.departmentName ?? null,
     notes: meta.cleanNotes,
     receiptUrl: row.receiptUrl || meta.receiptUrl || null,
     recordedByUserId: row.recordedByUserId,
@@ -421,10 +423,20 @@ export class PurchaseLotService {
         const totalCost = formatMoney(Number(unitCost) * item.quantity);
         const lotCode = generateOperationalCode("PO");
 
+        const lotPurposeRaw = (item.purpose || body.purpose || "").trim();
+        const departmentName = body.departmentName?.trim() || null;
+        const departmentId = body.departmentId ?? null;
+        // Prefer body-level purpose with department prefix so [Dept] is preserved
+        // even when line items also send a purpose string.
+        const lotPurpose =
+          departmentName && !lotPurposeRaw.startsWith("[")
+            ? `[${departmentName}] ${lotPurposeRaw}`.trim()
+            : body.purpose?.trim() || lotPurposeRaw || null;
+
         const serializedNotes = serializeNotesMetadata({
           notes: body.notes,
           status: initialStatus,
-          purpose: item.purpose || body.purpose,
+          purpose: lotPurpose,
           receiptUrl: body.receiptUrl,
           approvedByName,
           approvedAt,
@@ -443,6 +455,8 @@ export class PurchaseLotService {
             itemName,
             supplierId,
             supplierName: resolvedSupplierName || item.suggestedDealer || null,
+            departmentId,
+            departmentName,
             quantity: item.quantity,
             quantityRemaining: initialStatus === "delivered" ? item.quantity : 0,
             unitCost,
