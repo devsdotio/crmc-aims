@@ -18,6 +18,15 @@ import {
   isUserManagerRole,
 } from "@/server/shared/roles";
 import { serverCache } from "@/server/shared/cache";
+import {
+  DEFAULT_TENANT_ID,
+  getCachedTenantById,
+  getCachedTenantBySlug,
+  getDefaultTenant,
+  resolveTenantFromHeaders,
+  setTenantContext,
+} from "@/server/shared/tenant-context";
+import type { TenantRow } from "@/server/db/schema";
 
 /** Short-lived cache — parallel APIs hit requireActor(); avoid N× slow profile selects. */
 const PROFILE_CACHE_TTL_MS = 60_000;
@@ -60,15 +69,25 @@ export interface ActorContext {
   role: AppRole;
   departmentId: string | null;
   departmentName: string | null;
+  tenantId: string;
+  tenantSlug: string;
+  tenantName: string;
+  isCrossTenant?: boolean;
 }
 
 export interface AppSession {
   user: User;
   actor: ActorContext;
   profile: ProfileRow;
+  tenant: TenantRow;
 }
 
-export function toActorContext(user: User, profile: ProfileRow): ActorContext {
+export function toActorContext(
+  user: User,
+  profile: ProfileRow,
+  tenant: TenantRow,
+  isCrossTenant = false
+): ActorContext {
   return {
     userId: user.id,
     email: profile.email || user.email || null,
@@ -76,6 +95,10 @@ export function toActorContext(user: User, profile: ProfileRow): ActorContext {
     role: profile.role,
     departmentId: profile.departmentId ?? null,
     departmentName: profile.department ?? null,
+    tenantId: tenant.id,
+    tenantSlug: tenant.slug,
+    tenantName: tenant.name,
+    isCrossTenant,
   };
 }
 
@@ -182,6 +205,7 @@ export async function requireUser(): Promise<User> {
 
 /**
  * Session + profile gate. Rejects missing/deactivated profiles.
+ * Enforces strict multi-tenant isolation.
  */
 export async function requireSession(): Promise<AppSession> {
   const user = await requireUser();
@@ -197,10 +221,55 @@ export async function requireSession(): Promise<AppSession> {
     throw new ForbiddenError("This account has been deactivated.");
   }
 
+  // Resolve requested tenant from headers / async context
+  const resolved = await resolveTenantFromHeaders();
+  let activeTenant: TenantRow | null = null;
+
+  if (resolved.tenantId) {
+    activeTenant = await getCachedTenantById(resolved.tenantId);
+  }
+  if (!activeTenant && resolved.tenantSlug) {
+    activeTenant = await getCachedTenantBySlug(resolved.tenantSlug);
+  }
+  if (!activeTenant) {
+    activeTenant = await getDefaultTenant();
+  }
+
+  // Strict Tenant Isolation Guard:
+  const isSuperadmin = profile.role === "superadmin";
+
+  if (!isSuperadmin) {
+    if (!profile.tenantId) {
+      throw new ForbiddenError(
+        "This account is not assigned to an organization tenant."
+      );
+    }
+    
+    // Force active tenant to the user's assigned workspace for non-superadmins
+    if (activeTenant.id !== profile.tenantId) {
+      const realTenant = await getCachedTenantById(profile.tenantId);
+      if (realTenant) {
+        activeTenant = realTenant;
+      } else {
+        throw new ForbiddenError("Assigned institutional workspace not found.");
+      }
+    }
+  }
+
+  const isCrossTenant = isSuperadmin;
+
+  setTenantContext({
+    tenantId: activeTenant.id,
+    tenantSlug: activeTenant.slug,
+    tenantName: activeTenant.name,
+    isCrossTenant,
+  });
+
   return {
     user,
     profile,
-    actor: toActorContext(user, profile),
+    tenant: activeTenant,
+    actor: toActorContext(user, profile, activeTenant, isCrossTenant),
   };
 }
 
@@ -256,6 +325,31 @@ export async function requireAssetOperator(): Promise<AppSession> {
     throw new ForbiddenError(
       "Only administrators can manage assets and inventory."
     );
+  }
+  return session;
+}
+
+/**
+ * Gate for platform developers / superadministrators.
+ * Used for tenant management, global configuration, and cross-tenant operations.
+ */
+export async function requireSuperAdmin(): Promise<AppSession> {
+  const session = await requireSession();
+  if (session.profile.role !== "superadmin") {
+    throw new ForbiddenError(
+      "Platform superadministrator privileges required."
+    );
+  }
+  return session;
+}
+
+/**
+ * Gate for tenant administrators (or platform superadmins).
+ */
+export async function requireTenantAdmin(): Promise<AppSession> {
+  const session = await requireSession();
+  if (session.profile.role !== "admin" && session.profile.role !== "superadmin") {
+    throw new ForbiddenError("Tenant administrator access required.");
   }
   return session;
 }
