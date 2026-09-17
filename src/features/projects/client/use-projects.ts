@@ -12,18 +12,24 @@ import type {
   Project,
   ProjectAssetAssignment,
   ProjectExpenseLine,
+  ProjectProgressIndicator,
+  ProjectProgressSummary,
 } from "@/types/projects";
 import {
   projectsApi,
   type AssignProjectAssetPayload,
+  type BatchManualMaterialsPayload,
+  type CreateIndicatorPayload,
   type CreateProjectExpensePayload,
   type CreateProjectPayload,
   type ReportProjectAssetDamagePayload,
   type ReturnProjectAssetPayload,
+  type UpdateIndicatorPayload,
   type UpdateProjectExpensePayload,
   type UpdateProjectPayload,
   type UseProjectMaterialPayload,
 } from "./projects-api";
+
 import { projectQueryKeys } from "./query-keys";
 import {
   CUSTODY_DOMAINS,
@@ -264,3 +270,117 @@ export function useReportProjectAssetDamageMutation(): UseMutationResult<
     },
   });
 }
+
+export function useCreateBatchManualMaterialsMutation(): UseMutationResult<
+  ProjectExpenseLine[],
+  Error,
+  { projectId: string; payload: BatchManualMaterialsPayload }
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, payload }) =>
+      projectsApi.createBatchMaterials(projectId, payload),
+    onSettled: () => {
+      void invalidateDomains(queryClient, PROJECT_DOMAINS);
+    },
+  });
+}
+
+export function useProjectProgressQuery(
+  projectId: string | null | undefined
+): UseQueryResult<ProjectProgressSummary, Error> {
+  return useQuery({
+    queryKey: projectQueryKeys.progress(projectId ?? ""),
+    queryFn: () => projectsApi.getProgress(projectId!),
+    enabled: Boolean(projectId),
+  });
+}
+
+export function useCreateIndicatorMutation(): UseMutationResult<
+  ProjectProgressIndicator,
+  Error,
+  { projectId: string; payload: CreateIndicatorPayload }
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, payload }) =>
+      projectsApi.createIndicator(projectId, payload),
+    onSettled: (_data, _err, { projectId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progress(projectId),
+      });
+      void invalidateDomains(queryClient, PROJECT_DOMAINS);
+    },
+  });
+}
+
+export function useUpdateIndicatorMutation(): UseMutationResult<
+  ProjectProgressIndicator,
+  Error,
+  {
+    projectId: string;
+    indicatorId: string;
+    payload: UpdateIndicatorPayload;
+  }
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, indicatorId, payload }) =>
+      projectsApi.updateIndicator(projectId, indicatorId, payload),
+    onSettled: (_data, _err, { projectId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progress(projectId),
+      });
+      void invalidateDomains(queryClient, PROJECT_DOMAINS);
+    },
+  });
+}
+
+export function useToggleIndicatorMutation(): UseMutationResult<
+  ProjectProgressIndicator,
+  Error,
+  {
+    projectId: string;
+    indicatorId: string;
+    isCompleted: boolean;
+  }
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, indicatorId, isCompleted }) =>
+      projectsApi.toggleIndicator(projectId, indicatorId, isCompleted),
+    onSettled: (_data, _err, { projectId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progress(projectId),
+      });
+      void invalidateDomains(queryClient, PROJECT_DOMAINS);
+    },
+  });
+}
+
+export function useDeleteIndicatorMutation(): UseMutationResult<
+  void,
+  Error,
+  {
+    projectId: string;
+    indicatorId: string;
+  }
+> {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ projectId, indicatorId }) =>
+      projectsApi.deleteIndicator(projectId, indicatorId),
+    onSettled: (_data, _err, { projectId }) => {
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progress(projectId),
+      });
+      void invalidateDomains(queryClient, PROJECT_DOMAINS);
+    },
+  });
+}
+

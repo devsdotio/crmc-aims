@@ -23,6 +23,10 @@ import {
   Wrench,
   PackagePlus,
   Printer,
+  Flag,
+  CheckCircle2,
+  Clock,
+  Check,
 } from "lucide-react";
 import { IndividualProjectPrintableReport } from "@/components/reports/print/individual/IndividualProjectPrintableReport";
 import { cn } from "@/lib/utils";
@@ -39,14 +43,20 @@ import { ProjectStatusBadge } from "./project-status-badge";
 import { formatPhp } from "./format-money";
 import {
   useAssignProjectAssetMutation,
+  useCreateBatchManualMaterialsMutation,
+  useCreateIndicatorMutation,
   useCreateProjectExpenseMutation,
+  useDeleteIndicatorMutation,
   useDeleteProjectExpenseMutation,
   useProjectAssetsQuery,
   useProjectExpensesQuery,
   useProjectMaterialMutation,
+  useProjectProgressQuery,
   useReportProjectAssetDamageMutation,
   useReturnProjectAssetMutation,
+  useToggleIndicatorMutation,
   useUpdateProjectExpenseMutation,
+  type ManualMaterialItemPayload,
 } from "@/features/projects/client";
 import { useConsumablesQuery } from "@/features/consumables/client";
 import { useAssetsQuery } from "@/features/assets/client";
@@ -60,9 +70,9 @@ import {
 } from "./add-material-dialog";
 import {
   AddManualMaterialDialog,
-  type ManualMaterialFormInput,
 } from "./add-manual-material-dialog";
 import { ProjectExpensePrintDialog } from "./project-expense-print-dialog";
+import { ProjectProgressPrintDialog } from "./project-progress-print-dialog";
 import {
   AssignAssetDialog,
   type AssignAssetFormInput,
@@ -73,6 +83,7 @@ import {
 } from "./report-damage-dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useToast } from "@/components/providers/toast-context";
+
 
 export interface ProjectDetailPanelProps {
   project: Project | null;
@@ -110,13 +121,6 @@ export function ProjectDetailPanel({
     isLoading: expensesLoading,
   } = useProjectExpensesQuery(isOpen && project ? project.id : null);
 
-  const createExpense = useCreateProjectExpenseMutation();
-  const updateExpense = useUpdateProjectExpenseMutation();
-  const deleteExpense = useDeleteProjectExpenseMutation();
-  const useMaterial = useProjectMaterialMutation();
-  const assignAsset = useAssignProjectAssetMutation();
-  const returnAsset = useReturnProjectAssetMutation();
-  const reportDamage = useReportProjectAssetDamageMutation();
   const {
     data: consumablesPage,
     isLoading: consumablesLoading,
@@ -133,6 +137,23 @@ export function ProjectDetailPanel({
     data: assignments = [],
     isLoading: assignmentsLoading,
   } = useProjectAssetsQuery(isOpen && project ? project.id : null, "all");
+  const {
+    data: progressSummary,
+    isLoading: progressLoading,
+  } = useProjectProgressQuery(isOpen && project ? project.id : null);
+
+  const createExpense = useCreateProjectExpenseMutation();
+  const updateExpense = useUpdateProjectExpenseMutation();
+  const deleteExpense = useDeleteProjectExpenseMutation();
+  const createBatchManualMaterials = useCreateBatchManualMaterialsMutation();
+  const useMaterial = useProjectMaterialMutation();
+  const assignAsset = useAssignProjectAssetMutation();
+  const returnAsset = useReturnProjectAssetMutation();
+  const reportDamage = useReportProjectAssetDamageMutation();
+  const createIndicator = useCreateIndicatorMutation();
+  const toggleIndicator = useToggleIndicatorMutation();
+  const deleteIndicator = useDeleteIndicatorMutation();
+
 
   const [editExpense, setEditExpense] = useState<
     ProjectExpenseLine | null | undefined
@@ -140,6 +161,7 @@ export function ProjectDetailPanel({
   const [materialOpen, setMaterialOpen] = useState(false);
   const [manualMaterialOpen, setManualMaterialOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  const [progressPrintOpen, setProgressPrintOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [damageTarget, setDamageTarget] =
     useState<ProjectAssetAssignment | null>(null);
@@ -148,6 +170,15 @@ export function ProjectDetailPanel({
   const [deleteExpenseTarget, setDeleteExpenseTarget] =
     useState<ProjectExpenseLine | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // Progress indicator state
+  const [addIndicatorOpen, setAddIndicatorOpen] = useState(false);
+  const [newIndicatorTitle, setNewIndicatorTitle] = useState("");
+  const [newIndicatorDate, setNewIndicatorDate] = useState("");
+  const [newIndicatorDesc, setNewIndicatorDesc] = useState("");
+  const [indicatorSubmitting, setIndicatorSubmitting] = useState(false);
+  const [indicatorError, setIndicatorError] = useState<string | null>(null);
+
   const toast = useToast();
 
   useEffect(() => {
@@ -159,10 +190,12 @@ export function ProjectDetailPanel({
         !materialOpen &&
         !manualMaterialOpen &&
         !printOpen &&
+        !progressPrintOpen &&
         !assignOpen &&
         !damageTarget &&
         !returnTarget &&
-        !deleteExpenseTarget
+        !deleteExpenseTarget &&
+        !addIndicatorOpen
       )
         onClose();
     }
@@ -175,10 +208,12 @@ export function ProjectDetailPanel({
     materialOpen,
     manualMaterialOpen,
     printOpen,
+    progressPrintOpen,
     assignOpen,
     damageTarget,
     returnTarget,
     deleteExpenseTarget,
+    addIndicatorOpen,
   ]);
 
   useEffect(() => {
@@ -187,11 +222,17 @@ export function ProjectDetailPanel({
       setMaterialOpen(false);
       setManualMaterialOpen(false);
       setPrintOpen(false);
+      setProgressPrintOpen(false);
       setAssignOpen(false);
       setDamageTarget(null);
       setReturnTarget(null);
       setDeleteExpenseTarget(null);
       setActionError(null);
+      setAddIndicatorOpen(false);
+      setNewIndicatorTitle("");
+      setNewIndicatorDate("");
+      setNewIndicatorDesc("");
+      setIndicatorError(null);
     }
   }, [isOpen]);
 
@@ -235,34 +276,91 @@ export function ProjectDetailPanel({
     }
   };
 
-  const handleManualMaterialSubmit = async (input: ManualMaterialFormInput) => {
+  const handleManualMaterialSubmit = async (items: ManualMaterialItemPayload[]) => {
     setActionError(null);
-    const qty = Number(input.quantity);
-    const amount = Number(input.amount);
-    const unitCost =
-      Number.isFinite(qty) && qty > 0 ? amount / qty : undefined;
-    const notesParts = [input.description, input.notes].filter(Boolean);
     try {
-      await createExpense.mutateAsync({
+      await createBatchManualMaterials.mutateAsync({
         projectId: project.id,
-        payload: {
-          lineType: "material",
-          description: input.materialName,
-          amount,
-          quantity: qty,
-          unitCost,
-          incurredOn: input.incurredOn || undefined,
-          notes: notesParts.length > 0 ? notesParts.join(" · ") : null,
-        },
+        payload: { items },
       });
-      toast.success("Manual material charged to project.");
+      toast.success(
+        `${items.length} manual material${items.length === 1 ? "" : "s"} charged to project.`
+      );
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to record material."
+        err instanceof Error ? err.message : "Failed to record manual materials."
       );
       throw err;
     }
   };
+
+  const handleCreateIndicator = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newIndicatorTitle.trim()) {
+      setIndicatorError("Milestone title is required.");
+      return;
+    }
+    setIndicatorSubmitting(true);
+    setIndicatorError(null);
+    try {
+      await createIndicator.mutateAsync({
+        projectId: project.id,
+        payload: {
+          title: newIndicatorTitle.trim(),
+          targetDate: newIndicatorDate || undefined,
+          description: newIndicatorDesc.trim() || undefined,
+        },
+      });
+      setNewIndicatorTitle("");
+      setNewIndicatorDate("");
+      setNewIndicatorDesc("");
+      setAddIndicatorOpen(false);
+      toast.success("Milestone indicator added.");
+    } catch (err) {
+      setIndicatorError(
+        err instanceof Error ? err.message : "Failed to add milestone indicator."
+      );
+    } finally {
+      setIndicatorSubmitting(false);
+    }
+  };
+
+  const handleToggleIndicator = async (
+    indicatorId: string,
+    currentStatus: boolean
+  ) => {
+    try {
+      await toggleIndicator.mutateAsync({
+        projectId: project.id,
+        indicatorId,
+        isCompleted: !currentStatus,
+      });
+      toast.success(
+        !currentStatus
+          ? "Milestone marked as completed."
+          : "Milestone marked as pending."
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update milestone status."
+      );
+    }
+  };
+
+  const handleDeleteIndicator = async (indicatorId: string) => {
+    try {
+      await deleteIndicator.mutateAsync({
+        projectId: project.id,
+        indicatorId,
+      });
+      toast.success("Milestone indicator removed.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete milestone indicator."
+      );
+    }
+  };
+
 
   const handleMaterialSubmit = async (input: MaterialFormInput) => {
     setActionError(null);
@@ -403,6 +501,16 @@ export function ProjectDetailPanel({
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
+                onClick={() => setProgressPrintOpen(true)}
+                className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer shadow-xs"
+                title="Export progress report"
+              >
+                <Flag className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                Progress
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setPrintOpen(true)}
                 className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer shadow-xs"
                 title="Export expense report"
@@ -414,6 +522,7 @@ export function ProjectDetailPanel({
               <button
                 type="button"
                 onClick={() => window.print()}
+
                 aria-label="Print Project Dossier Report"
                 className="relative group inline-flex items-center justify-center p-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
               >
@@ -573,7 +682,173 @@ export function ProjectDetailPanel({
             </section>
           )}
 
+          <section className="space-y-3 p-4 rounded-xl border border-border bg-bg-subtle/30">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-teal-500/15 text-teal-600 dark:text-teal-400">
+                  <Flag className="h-3.5 w-3.5" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-text">
+                    Progress &amp; Milestones
+                  </h3>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/25">
+                  {progressSummary?.progressPercentage ?? 0}% Complete ({progressSummary?.completedIndicators ?? 0}/{progressSummary?.totalIndicators ?? 0})
+                </span>
+                {project.isMutable && !addIndicatorOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setAddIndicatorOpen(true)}
+                    className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-bold rounded-md bg-accent text-accent-foreground cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full bg-border rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-teal-600 dark:bg-teal-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${progressSummary?.progressPercentage ?? 0}%` }}
+              />
+            </div>
+
+            {/* Add indicator form */}
+            {addIndicatorOpen && (
+              <form onSubmit={handleCreateIndicator} className="p-3 rounded-lg border border-border bg-bg space-y-2.5 animate-in fade-in zoom-in-95 duration-150">
+                <div className="text-[11px] font-bold text-text">New Progress Indicator / Milestone</div>
+                <div>
+                  <input
+                    value={newIndicatorTitle}
+                    onChange={(e) => setNewIndicatorTitle(e.target.value)}
+                    placeholder="Milestone title (e.g. Foundation & Excavation, Floor Tiling)"
+                    className="w-full h-7 px-2 text-xs bg-bg-subtle border border-border rounded-md text-text focus:outline-none focus:ring-1 focus:ring-accent"
+                    autoFocus
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] font-bold uppercase text-text-secondary mb-0.5">Target Date</label>
+                    <input
+                      type="date"
+                      value={newIndicatorDate}
+                      onChange={(e) => setNewIndicatorDate(e.target.value)}
+                      className="w-full h-7 px-2 text-xs bg-bg-subtle border border-border rounded-md text-text"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold uppercase text-text-secondary mb-0.5">Details (Optional)</label>
+                    <input
+                      value={newIndicatorDesc}
+                      onChange={(e) => setNewIndicatorDesc(e.target.value)}
+                      placeholder="Notes or deliverables"
+                      className="w-full h-7 px-2 text-xs bg-bg-subtle border border-border rounded-md text-text"
+                    />
+                  </div>
+                </div>
+                {indicatorError && (
+                  <p className="text-[10px] text-destructive">{indicatorError}</p>
+                )}
+                <div className="flex items-center justify-end gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddIndicatorOpen(false);
+                      setIndicatorError(null);
+                    }}
+                    disabled={indicatorSubmitting}
+                    className="h-6 px-2.5 text-[10px] font-bold rounded border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={indicatorSubmitting}
+                    className="inline-flex items-center gap-1 h-6 px-2.5 text-[10px] font-bold rounded bg-accent text-accent-foreground cursor-pointer disabled:opacity-50"
+                  >
+                    {indicatorSubmitting ? "Saving…" : "Save Milestone"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Indicator items */}
+            {progressLoading ? (
+              <div className="py-2 text-center text-xs text-text-secondary">Loading indicators…</div>
+            ) : (progressSummary?.indicators.length ?? 0) === 0 ? (
+              <div className="p-3 text-center rounded-lg border border-dashed border-border bg-bg/50 text-[11px] text-text-secondary">
+                No progress indicators added yet. Add indicators to establish the progress baseline for this project.
+              </div>
+            ) : (
+              <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {progressSummary?.indicators.map((item) => (
+                  <li
+                    key={item.id}
+                    className={cn(
+                      "p-2 rounded-lg border border-border flex items-start justify-between gap-2 text-xs transition-colors",
+                      item.isCompleted ? "bg-bg/40 opacity-80" : "bg-bg"
+                    )}
+                  >
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleIndicator(item.id, item.isCompleted)}
+                        className={cn(
+                          "mt-0.5 h-4 w-4 rounded flex items-center justify-center border transition-colors cursor-pointer shrink-0",
+                          item.isCompleted
+                            ? "bg-teal-600 border-teal-600 text-white"
+                            : "border-border hover:border-accent bg-bg"
+                        )}
+                        aria-label={`Toggle ${item.title}`}
+                      >
+                        {item.isCompleted && <Check className="h-3 w-3 stroke-3" />}
+
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className={cn("font-semibold text-[11px] truncate text-text", item.isCompleted && "line-through text-text-secondary")}>
+                          {item.title}
+                        </div>
+                        <div className="flex items-center gap-2 text-[9.5px] text-text-secondary flex-wrap mt-0.5">
+                          {item.targetDate && <span>Target: {item.targetDate}</span>}
+                          {item.isCompleted && item.completedDate && (
+                            <span className="text-teal-600 dark:text-teal-400 font-medium">
+                              Done: {item.completedDate}
+                            </span>
+                          )}
+                        </div>
+                        {item.description && (
+                          <p className="text-[10px] text-text-secondary mt-0.5 truncate">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {project.isMutable && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteIndicator(item.id)}
+                        className="p-1 text-text-secondary hover:text-destructive rounded transition-colors cursor-pointer shrink-0"
+                        aria-label={`Delete ${item.title}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section className="space-y-2">
+
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                 Expenses & materials
@@ -971,6 +1246,14 @@ export function ProjectDetailPanel({
         isOpen={printOpen}
         onClose={() => setPrintOpen(false)}
       />
+
+      <ProjectProgressPrintDialog
+        project={project}
+        progress={progressSummary ?? null}
+        isOpen={progressPrintOpen}
+        onClose={() => setProgressPrintOpen(false)}
+      />
+
 
       <AssignAssetDialog
         isOpen={assignOpen}

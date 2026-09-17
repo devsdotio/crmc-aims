@@ -124,6 +124,32 @@ export const PROJECT_EXPENSE_LINE_TYPE_LABELS: Record<
   material: "Manual material",
 };
 
+export interface ProjectProgressIndicator {
+  id: string;
+  projectId: string;
+  tenantId: string;
+  title: string;
+  description: string | null;
+  targetDate: string | null;
+  completedDate: string | null;
+  isCompleted: boolean;
+  orderIndex: number;
+  completedByUserId: string | null;
+  completedByName: string | null;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectProgressSummary {
+  totalIndicators: number;
+  completedIndicators: number;
+  pendingIndicators: number;
+  progressPercentage: number;
+  indicators: ProjectProgressIndicator[];
+}
+
 /** Display label for expense category (uses custom text for Other). */
 export function expenseCategoryDisplay(
   category: ProjectExpenseCategory,
@@ -134,3 +160,4 @@ export function expenseCategoryDisplay(
   }
   return PROJECT_EXPENSE_CATEGORY_LABELS[category];
 }
+

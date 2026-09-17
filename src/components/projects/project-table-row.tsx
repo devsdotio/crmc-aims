@@ -1,8 +1,9 @@
 "use client";
 
-import { MoreHorizontal, Pencil, Trash2, Eye, Loader2, MapPin, Building2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Eye, Loader2, MapPin, Building2, Flag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/types/projects";
+import { useProjectProgressQuery } from "@/features/projects/client";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { formatPhp } from "./format-money";
 
@@ -21,6 +22,8 @@ export function ProjectTableRow({
   onEdit,
   onDelete,
 }: ProjectTableRowProps) {
+  const { data: progress } = useProjectProgressQuery(project.id);
+
   const canDelete =
     project.isMutable &&
     (project.status === "draft" || project.status === "cancelled");
@@ -29,6 +32,10 @@ export function ProjectTableRow({
   const spentNum = Number(project.totalSpent) || 0;
   const percentUsed = budgetNum > 0 ? Math.round((spentNum / budgetNum) * 100) : null;
   const isOverBudget = budgetNum > 0 && spentNum > budgetNum;
+
+  const totalInd = progress?.totalIndicators ?? 0;
+  const doneInd = progress?.completedIndicators ?? 0;
+  const progressPct = progress?.progressPercentage ?? 0;
 
   return (
     <tr
@@ -92,7 +99,28 @@ export function ProjectTableRow({
       <td className="px-3 py-3.5 text-xs font-mono tabular-nums text-text-secondary hidden sm:table-cell">
         {formatPhp(project.totalSpent)}
       </td>
+      <td className="px-3 py-3.5 hidden xl:table-cell">
+        {totalInd > 0 ? (
+          <div className="space-y-1 w-28">
+            <div className="flex items-center justify-between text-[10px] font-bold text-text">
+              <span className="text-teal-700 dark:text-teal-400">{progressPct}%</span>
+              <span className="text-text-secondary font-normal font-mono">
+                {doneInd}/{totalInd}
+              </span>
+            </div>
+            <div className="w-full bg-border rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-teal-600 dark:bg-teal-500 h-full rounded-full transition-all duration-300"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <span className="text-[10px] text-text-secondary/70 italic">No indicators</span>
+        )}
+      </td>
       <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+
         <div className="flex justify-end items-center gap-1.5">
           <button
             type="button"

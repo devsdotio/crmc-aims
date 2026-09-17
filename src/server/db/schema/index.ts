@@ -21,3 +21,4 @@ export * from "./dashboard-snapshots";
 export * from "./vouchers";
 export * from "./petty-cash";
 export * from "./tenants";
+export * from "./project-progress-indicators";

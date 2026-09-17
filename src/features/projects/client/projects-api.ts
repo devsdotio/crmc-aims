@@ -3,6 +3,8 @@ import type {
   ProjectAssetAssignment,
   ProjectExpenseCategory,
   ProjectExpenseLine,
+  ProjectProgressIndicator,
+  ProjectProgressSummary,
   ProjectStatus,
 } from "@/types/projects";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
@@ -36,6 +38,30 @@ export type CreateProjectExpensePayload = {
 
 export type UpdateProjectExpensePayload = Partial<CreateProjectExpensePayload>;
 
+export type ManualMaterialItemPayload = {
+  materialName: string;
+  description?: string | null;
+  quantity: string | number;
+  unitCost: string | number;
+  incurredOn?: string;
+  notes?: string | null;
+};
+
+export type BatchManualMaterialsPayload = {
+  items: ManualMaterialItemPayload[];
+};
+
+export type CreateIndicatorPayload = {
+  title: string;
+  description?: string | null;
+  targetDate?: string | null;
+  orderIndex?: number;
+};
+
+export type UpdateIndicatorPayload = Partial<CreateIndicatorPayload> & {
+  isCompleted?: boolean;
+};
+
 export type UseProjectMaterialPayload = {
   consumableId: string;
   quantity: number;
@@ -44,6 +70,7 @@ export type UseProjectMaterialPayload = {
   incurredOn?: string;
   notes?: string | null;
 };
+
 
 export type AssignProjectAssetPayload = {
   assetId: string;
@@ -236,4 +263,83 @@ export const projectsApi = {
     );
     return response.data;
   },
+
+  async createBatchMaterials(
+    projectId: string,
+    payload: BatchManualMaterialsPayload
+  ): Promise<ProjectExpenseLine[]> {
+    const response = await fetchJson<ApiResponse<ProjectExpenseLine[]>>(
+      `/api/projects/${projectId}/expenses/batch-materials`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return response.data;
+  },
+
+  async getProgress(projectId: string): Promise<ProjectProgressSummary> {
+    const response = await fetchJson<ApiResponse<ProjectProgressSummary>>(
+      `/api/projects/${projectId}/indicators`,
+      { method: "GET" }
+    );
+    return response.data;
+  },
+
+  async createIndicator(
+    projectId: string,
+    payload: CreateIndicatorPayload
+  ): Promise<ProjectProgressIndicator> {
+    const response = await fetchJson<ApiResponse<ProjectProgressIndicator>>(
+      `/api/projects/${projectId}/indicators`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return response.data;
+  },
+
+  async updateIndicator(
+    projectId: string,
+    indicatorId: string,
+    payload: UpdateIndicatorPayload
+  ): Promise<ProjectProgressIndicator> {
+    const sp = new URLSearchParams({ indicatorId });
+    const response = await fetchJson<ApiResponse<ProjectProgressIndicator>>(
+      `/api/projects/${projectId}/indicators?${sp}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }
+    );
+    return response.data;
+  },
+
+  async toggleIndicator(
+    projectId: string,
+    indicatorId: string,
+    isCompleted: boolean
+  ): Promise<ProjectProgressIndicator> {
+    const sp = new URLSearchParams({ indicatorId });
+    const response = await fetchJson<ApiResponse<ProjectProgressIndicator>>(
+      `/api/projects/${projectId}/indicators?${sp}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ isCompleted }),
+      }
+    );
+    return response.data;
+  },
+
+  async deleteIndicator(
+    projectId: string,
+    indicatorId: string
+  ): Promise<void> {
+    const sp = new URLSearchParams({ indicatorId });
+    await fetchJson<void>(`/api/projects/${projectId}/indicators?${sp}`, {
+      method: "DELETE",
+    });
+  },
 };
+

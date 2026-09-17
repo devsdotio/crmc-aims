@@ -35,14 +35,14 @@ export function getDb(): Database {
    * hung statements so pool slots free up).
    */
   const client = postgres(connectionString, {
-    max: process.env.NODE_ENV === "development" ? 10 : 15,
+    max: process.env.NODE_ENV === "development" ? 20 : 25,
     idle_timeout: 30,
     connect_timeout: 30,
     max_lifetime: 60 * 30,
     prepare: false,
     ssl: "require",
     connection: {
-      statement_timeout: 20000,
+      statement_timeout: 45000,
     },
   });
   const db = drizzle(client, { schema });

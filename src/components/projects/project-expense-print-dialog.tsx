@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { X, Printer, FileText } from "lucide-react";
+import { X, Printer, FileText, Calendar, Filter } from "lucide-react";
 import type { Project, ProjectExpenseLine } from "@/types/projects";
 import {
   expenseCategoryDisplay,
@@ -95,6 +95,13 @@ function sectionLetter(index: number): string {
   return String.fromCharCode(65 + index); // A, B, C...
 }
 
+export type DateFilterMode =
+  | "all"
+  | "this_month"
+  | "last_month"
+  | "specific_month"
+  | "custom";
+
 export function ProjectExpensePrintDialog({
   project,
   expenses,
@@ -106,6 +113,13 @@ export function ProjectExpensePrintDialog({
   isOpen: boolean;
   onClose: () => void;
 }) {
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>("all");
+  const [specificMonth, setSpecificMonth] = useState(() =>
+    new Date().toISOString().slice(0, 7)
+  );
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+
   useEffect(() => {
     if (!isOpen) return;
     function handleKeyDown(e: KeyboardEvent) {
@@ -115,10 +129,61 @@ export function ProjectExpensePrintDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
+  const filteredExpenses = useMemo(() => {
+    if (dateFilterMode === "this_month") {
+      const cur = new Date().toISOString().slice(0, 7);
+      return expenses.filter((e) => e.incurredOn.startsWith(cur));
+    }
+    if (dateFilterMode === "last_month") {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      const last = d.toISOString().slice(0, 7);
+      return expenses.filter((e) => e.incurredOn.startsWith(last));
+    }
+    if (dateFilterMode === "specific_month") {
+      if (!specificMonth) return expenses;
+      return expenses.filter((e) => e.incurredOn.startsWith(specificMonth));
+    }
+    if (dateFilterMode === "custom") {
+      return expenses.filter((e) => {
+        if (customStart && e.incurredOn < customStart) return false;
+        if (customEnd && e.incurredOn > customEnd) return false;
+        return true;
+      });
+    }
+    return expenses;
+  }, [expenses, dateFilterMode, specificMonth, customStart, customEnd]);
+
+  const periodLabel = useMemo(() => {
+    if (dateFilterMode === "this_month") {
+      const d = new Date();
+      return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
+    if (dateFilterMode === "last_month") {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
+    if (dateFilterMode === "specific_month" && specificMonth) {
+      const [y, m] = specificMonth.split("-");
+      const d = new Date(Number(y), Number(m) - 1, 1);
+      return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    }
+    if (dateFilterMode === "custom") {
+      if (customStart && customEnd) {
+        return `${formatLongDate(customStart)} – ${formatLongDate(customEnd)}`;
+      }
+      if (customStart) return `From ${formatLongDate(customStart)}`;
+      if (customEnd) return `Until ${formatLongDate(customEnd)}`;
+      return "Custom Date Range (All Records)";
+    }
+    return "All Time (Whole Project)";
+  }, [dateFilterMode, specificMonth, customStart, customEnd]);
+
   const sections = useMemo(() => {
     const map = new Map<SectionKey, ProjectExpenseLine[]>();
     for (const key of SECTION_ORDER) map.set(key, []);
-    for (const line of expenses) {
+    for (const line of filteredExpenses) {
       map.get(sectionKey(line))!.push(line);
     }
     for (const key of SECTION_ORDER) {
@@ -135,18 +200,18 @@ export function ProjectExpensePrintDialog({
           .reduce((s, l) => s + (Number(l.amount) || 0), 0),
       })
     );
-  }, [expenses]);
+  }, [filteredExpenses]);
 
   const totals = useMemo(() => {
     let spend = 0;
     let credits = 0;
-    for (const line of expenses) {
+    for (const line of filteredExpenses) {
       const n = Number(line.amount) || 0;
       if (n < 0) credits += Math.abs(n);
       else spend += n;
     }
     return { spend, credits, net: spend - credits };
-  }, [expenses]);
+  }, [filteredExpenses]);
 
   if (!isOpen || !project) return null;
 
@@ -168,7 +233,7 @@ export function ProjectExpensePrintDialog({
 
     const sectionsHtml =
       sections.length === 0
-        ? `<p class="empty">No expense lines recorded for this project.</p>`
+        ? `<p class="empty">No expense lines recorded for this project in the selected period (${escapeHtml(periodLabel)}).</p>`
         : sections
             .map((section) => {
               const colCount = section.showQty ? 7 : 5;
@@ -309,6 +374,11 @@ export function ProjectExpensePrintDialog({
             }
             .meta-right { text-align: right; }
             .meta-right .label { min-width: 0; margin-right: 6px; }
+            .period-banner {
+              background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 4px;
+              padding: 4px 8px; font-size: 10px; font-weight: 700; margin-bottom: 12px;
+              color: #1e293b;
+            }
             .purpose-block {
               margin-bottom: 16px; font-size: 12px; line-height: 1.45;
             }
@@ -348,38 +418,34 @@ export function ProjectExpensePrintDialog({
             .totals-box {
               border: 1.5px solid #222; min-width: 280px; font-size: 11.5px;
             }
-            .totals-box div {
-              display: flex; justify-content: space-between; gap: 24px;
-              padding: 6px 10px; border-bottom: 1px solid #ddd;
+            .totals-row {
+              display: flex; justify-content: space-between; padding: 4px 10px;
+              border-bottom: 1px solid #ddd;
             }
-            .totals-box div:last-child {
-              border-bottom: none; font-weight: 900; background: #f7f7f7;
+            .totals-row.net {
+              border-bottom: none; background: #f0f0f0; font-weight: 900;
+              font-size: 12.5px;
             }
-            .noted-by {
-              margin-top: 36px;
-              width: 46%;
-              margin-left: auto;
-              font-size: 11px;
-              text-align: center;
+            .totals-row .val { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; }
+            .signatories {
+              margin-top: 28px; display: grid; grid-template-columns: repeat(3, 1fr);
+              gap: 20px; page-break-inside: avoid;
             }
-            .noted-by .sig-label {
-              font-weight: 800; text-align: left; margin-bottom: 36px;
+            .sig-block { text-align: center; }
+            .sig-line {
+              border-bottom: 1px solid #222; margin-top: 36px; margin-bottom: 4px;
             }
-            .noted-by .sig-line {
-              border-top: 1.5px solid #222; padding-top: 4px; font-weight: 700;
-            }
-            .noted-by .sig-title {
-              font-size: 10px; color: #555; margin-top: 2px;
-            }
+            .sig-label { font-size: 9.5px; color: #444; text-transform: uppercase; font-weight: 700; letter-spacing: 0.3px; }
+            .sig-name { font-size: 11px; font-weight: 800; margin-top: 1px; }
           </style>
         </head>
         <body>
           <div class="doc">
             <div class="letterhead">
-              <img class="college-logo-img" src="${logoUrl}" alt="CRMC Logo" />
+              <img src="${logoUrl}" class="college-logo-img" alt="CRMC Logo" />
               <div class="college-titles">
                 <h1>Cebu Roosevelt Memorial Colleges, Inc.</h1>
-                <p>Upper Pandan, Bogo City, Cebu · Property Custodian Office</p>
+                <p>Upper Pandan, Bogo City, Cebu, Philippines · 6010<br/>Property Custodian Office · Project Spend Ledger</p>
               </div>
             </div>
 
@@ -389,34 +455,27 @@ export function ProjectExpensePrintDialog({
 
             <div class="meta-block">
               <div>
-                <div>
-                  <span class="label">Project</span>
-                  <span class="value">${escapeHtml(project.name)} <span class="code">(${escapeHtml(project.projectCode)})</span></span>
-                </div>
-                <div>
-                  <span class="label">Department</span>
-                  <span class="value">${escapeHtml(project.department || "—")}</span>
-                </div>
-                <div>
-                  <span class="label">Location</span>
-                  <span class="value">${escapeHtml(project.location || "—")}</span>
-                </div>
+                <div><span class="label">Project:</span> <span class="value"><strong>${escapeHtml(project.name)}</strong> (<span class="code">${escapeHtml(project.projectCode)}</span>)</span></div>
+                <div><span class="label">Department:</span> <span class="value">${escapeHtml(project.department || "—")}</span></div>
+                <div><span class="label">Location:</span> <span class="value">${escapeHtml(project.location || "—")}</span></div>
               </div>
               <div class="meta-right">
-                <div>
-                  <span class="label">Start</span>
-                  <span class="value">${escapeHtml(formatLongDate(project.startDate))}</span>
-                </div>
-                <div>
-                  <span class="label">End</span>
-                  <span class="value">${escapeHtml(formatLongDate(project.endDate))}</span>
-                </div>
+                <div><span class="label">Start:</span> <span class="value">${escapeHtml(formatLongDate(project.startDate))}</span></div>
+                <div><span class="label">Target End:</span> <span class="value">${escapeHtml(formatLongDate(project.endDate))}</span></div>
+                <div><span class="label">Lead:</span> <span class="value">${escapeHtml(project.createdByName)}</span></div>
               </div>
+            </div>
+
+            <div class="period-banner">
+              <strong>Expense Report Period:</strong> ${escapeHtml(periodLabel)}
             </div>
 
             ${
               project.description
-                ? `<div class="purpose-block"><div class="lbl">Project overview</div><div>${escapeHtml(project.description)}</div></div>`
+                ? `<div class="purpose-block">
+                    <div class="lbl">Project Overview</div>
+                    <div>${escapeHtml(project.description)}</div>
+                  </div>`
                 : ""
             }
 
@@ -424,16 +483,37 @@ export function ProjectExpensePrintDialog({
 
             <div class="totals">
               <div class="totals-box">
-                <div><span>Gross spend</span><span>${formatMoneyNum(totals.spend)}</span></div>
-                <div><span>Credits / adjustments</span><span>−${formatMoneyNum(totals.credits)}</span></div>
-                <div><span>Net charged to project</span><span>${formatMoneyNum(totals.net)}</span></div>
+                <div class="totals-row">
+                  <span>Gross spend:</span>
+                  <span class="val">${formatMoneyNum(totals.spend)}</span>
+                </div>
+                <div class="totals-row">
+                  <span>Credits / adjustments:</span>
+                  <span class="val">−${formatMoneyNum(totals.credits)}</span>
+                </div>
+                <div class="totals-row net">
+                  <span>Net charged (${escapeHtml(periodLabel)}):</span>
+                  <span class="val">${formatMoneyNum(totals.net)}</span>
+                </div>
               </div>
             </div>
 
-            <div class="noted-by">
-              <div class="sig-label">Noted by:</div>
-              <div class="sig-line">JACINTO ANTONIO R. LEPITEN JR.</div>
-              <div class="sig-title">Head Property Custodian</div>
+            <div class="signatories">
+              <div class="sig-block">
+                <div class="sig-line"></div>
+                <div class="sig-name">${escapeHtml(project.createdByName)}</div>
+                <div class="sig-label">Prepared by / Project Lead</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line"></div>
+                <div class="sig-name">Property Custodian</div>
+                <div class="sig-label">Verified by</div>
+              </div>
+              <div class="sig-block">
+                <div class="sig-line"></div>
+                <div class="sig-name">Administration</div>
+                <div class="sig-label">Approved by</div>
+              </div>
             </div>
           </div>
         </body>
@@ -482,10 +562,10 @@ export function ProjectExpensePrintDialog({
                 id="project-report-title"
                 className="text-sm font-bold text-text truncate"
               >
-                Project expense breakdown
+                Project Expense Report
               </h2>
               <p className="text-[11px] text-text-secondary truncate">
-                {project.projectCode} · print / save as PDF
+                {project.projectCode} · {periodLabel}
               </p>
             </div>
           </div>
@@ -509,8 +589,110 @@ export function ProjectExpensePrintDialog({
           </div>
         </div>
 
+        {/* Date Filter Bar */}
+        <div className="px-5 py-2.5 bg-bg-subtle/80 border-b border-border flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider flex items-center gap-1">
+              <Filter className="h-3 w-3" />
+              Period:
+            </span>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("all")}
+              className={cn(
+                "h-7 px-2.5 rounded-md font-bold text-[11px] transition-colors cursor-pointer",
+                dateFilterMode === "all"
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-bg border border-border text-text hover:bg-bg-subtle"
+              )}
+            >
+              All Time
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("this_month")}
+              className={cn(
+                "h-7 px-2.5 rounded-md font-bold text-[11px] transition-colors cursor-pointer",
+                dateFilterMode === "this_month"
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-bg border border-border text-text hover:bg-bg-subtle"
+              )}
+            >
+              This Month
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("last_month")}
+              className={cn(
+                "h-7 px-2.5 rounded-md font-bold text-[11px] transition-colors cursor-pointer",
+                dateFilterMode === "last_month"
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-bg border border-border text-text hover:bg-bg-subtle"
+              )}
+            >
+              Last Month
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("specific_month")}
+              className={cn(
+                "h-7 px-2.5 rounded-md font-bold text-[11px] transition-colors cursor-pointer",
+                dateFilterMode === "specific_month"
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-bg border border-border text-text hover:bg-bg-subtle"
+              )}
+            >
+              Specific Month
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("custom")}
+              className={cn(
+                "h-7 px-2.5 rounded-md font-bold text-[11px] transition-colors cursor-pointer",
+                dateFilterMode === "custom"
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-bg border border-border text-text hover:bg-bg-subtle"
+              )}
+            >
+              Custom Range
+            </button>
+          </div>
+
+          {dateFilterMode === "specific_month" && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-text-secondary font-bold">Month:</span>
+              <input
+                type="month"
+                value={specificMonth}
+                onChange={(e) => setSpecificMonth(e.target.value)}
+                className="h-7 px-2 text-xs bg-bg border border-border rounded-md text-text"
+              />
+            </div>
+          )}
+
+          {dateFilterMode === "custom" && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                placeholder="From"
+                className="h-7 px-2 text-xs bg-bg border border-border rounded-md text-text"
+              />
+              <span className="text-text-secondary font-bold">to</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                placeholder="To"
+                className="h-7 px-2 text-xs bg-bg border border-border rounded-md text-text"
+              />
+            </div>
+          )}
+        </div>
+
         <div className="flex-1 overflow-y-auto p-5 bg-bg-subtle/30">
-          <div className="mx-auto max-w-[860px] rounded-xl border border-border bg-bg p-5 shadow-xs space-y-5">
+          <div className="mx-auto max-w-215 rounded-xl border border-border bg-bg p-5 shadow-xs space-y-5">
             <div className="flex items-center gap-3 border-b border-border pb-3">
               <Image
                 src="/CRMC LOGO.png"
@@ -536,7 +718,7 @@ export function ProjectExpensePrintDialog({
             <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
               <div className="space-y-1.5">
                 <div>
-                  <span className="font-bold text-text-secondary inline-block w-[4.75rem]">
+                  <span className="font-bold text-text-secondary inline-block w-19">
                     Project
                   </span>
                   <span className="font-semibold text-text">
@@ -547,18 +729,19 @@ export function ProjectExpensePrintDialog({
                   </span>
                 </div>
                 <div>
-                  <span className="font-bold text-text-secondary inline-block w-[4.75rem]">
+                  <span className="font-bold text-text-secondary inline-block w-19">
                     Department
                   </span>
                   <span className="text-text">{project.department || "—"}</span>
                 </div>
                 <div>
-                  <span className="font-bold text-text-secondary inline-block w-[4.75rem]">
+                  <span className="font-bold text-text-secondary inline-block w-19">
                     Location
                   </span>
                   <span className="text-text">{project.location || "—"}</span>
                 </div>
               </div>
+
               <div className="space-y-1.5 text-right text-text-secondary">
                 <div>
                   <span className="font-bold">Start</span>{" "}
@@ -567,6 +750,9 @@ export function ProjectExpensePrintDialog({
                 <div>
                   <span className="font-bold">End</span>{" "}
                   {formatLongDate(project.endDate)}
+                </div>
+                <div className="text-[11px] font-bold text-accent">
+                  Period: {periodLabel}
                 </div>
               </div>
             </div>
@@ -584,7 +770,7 @@ export function ProjectExpensePrintDialog({
 
             {sections.length === 0 ? (
               <p className="text-xs text-text-secondary text-center py-8 border border-dashed border-border rounded-lg">
-                No expense lines recorded for this project.
+                No expense lines recorded for this project in the selected period ({periodLabel}).
               </p>
             ) : (
               sections.map((section) => (
@@ -666,7 +852,7 @@ export function ProjectExpensePrintDialog({
                 </span>
               </div>
               <div className="flex justify-between gap-4 border-t border-border pt-1.5">
-                <span className="font-bold text-text">Net charged</span>
+                <span className="font-bold text-text">Net charged ({periodLabel})</span>
                 <span className="font-mono font-bold text-accent">
                   {formatPhp(totals.net)}
                 </span>
