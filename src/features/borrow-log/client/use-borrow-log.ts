@@ -35,14 +35,17 @@ export function useBorrowLogQuery(filters?: {
   custodyKind?: "borrow" | "assignment" | "all";
   scope?: "department";
   enabled?: boolean;
+  refetchInterval?: number | false;
 }): UseQueryResult<BorrowLogRecord[], Error> {
   const { includeSandbox } = useSandboxVisibility();
-  const { enabled = true, ...rest } = filters ?? {};
+  const { enabled = true, refetchInterval, ...rest } = filters ?? {};
   const listFilters = { ...rest, includeSandbox };
   return useQuery({
     queryKey: borrowLogQueryKeys.list(listFilters),
     queryFn: () => borrowLogApi.list(listFilters),
     enabled,
+    refetchInterval,
+    refetchOnWindowFocus: true,
   });
 }
 

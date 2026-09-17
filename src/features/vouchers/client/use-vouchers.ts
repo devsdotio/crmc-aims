@@ -107,6 +107,8 @@ export function useNextVoucherCodeQuery(
   });
 }
 
+const VOUCHER_MUTATION_DOMAINS = ["purchaseLots", "auditLogs"] as const;
+
 export function useCreateVoucherMutation(): UseMutationResult<
   Voucher,
   Error,
@@ -117,7 +119,7 @@ export function useCreateVoucherMutation(): UseMutationResult<
     mutationFn: (payload) => vouchersApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
-      void invalidateDomains(queryClient, ["purchaseLots"]);
+      void invalidateDomains(queryClient, VOUCHER_MUTATION_DOMAINS);
     },
   });
 }
@@ -132,7 +134,7 @@ export function useUpdateVoucherMutation(): UseMutationResult<
     mutationFn: ({ id, payload }) => vouchersApi.update(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
-      void invalidateDomains(queryClient, ["purchaseLots"]);
+      void invalidateDomains(queryClient, VOUCHER_MUTATION_DOMAINS);
     },
   });
 }
@@ -147,7 +149,7 @@ export function useUpdateVoucherStatusMutation(): UseMutationResult<
     mutationFn: ({ id, payload }) => vouchersApi.updateStatus(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
-      void invalidateDomains(queryClient, ["purchaseLots"]);
+      void invalidateDomains(queryClient, VOUCHER_MUTATION_DOMAINS);
     },
   });
 }
@@ -162,7 +164,7 @@ export function useDeleteVoucherMutation(): UseMutationResult<
     mutationFn: (id) => vouchersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
-      void invalidateDomains(queryClient, ["purchaseLots"]);
+      void invalidateDomains(queryClient, VOUCHER_MUTATION_DOMAINS);
     },
   });
 }

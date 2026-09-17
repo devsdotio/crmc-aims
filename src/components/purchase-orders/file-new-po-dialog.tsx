@@ -26,6 +26,8 @@ import {
   School,
   Receipt,
   Lock,
+  FolderKanban,
+  HardHat,
 } from "lucide-react";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useSuppliersQuery } from "@/features/suppliers/client";
@@ -33,6 +35,7 @@ import { useDepartmentsQuery } from "@/features/departments/client";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import { useConsumablesQuery } from "@/features/consumables/client";
 import { useAssetsQuery } from "@/features/assets/client";
+import { useProjectsQuery } from "@/features/projects/client";
 import { useCreatePurchaseOrderMutation } from "@/features/purchase-lots/client";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
@@ -56,6 +59,7 @@ interface FileNewPODialogProps {
   onSuccess?: () => void;
   defaultPoType?: POType;
   defaultPurpose?: string;
+  defaultProjectId?: string;
 }
 
 export type POType = "consumable" | "asset";
@@ -95,13 +99,17 @@ function createPoLineRowId(): string {
   return `row-${poLineRowIdSeq}`;
 }
 
-function generateInitialRow(poType: POType = "consumable", isNew = false): POLineItemForm {
+function generateInitialRow(
+  poType: POType = "consumable",
+  isNew = false,
+  isProject = false
+): POLineItemForm {
   return {
     id: createPoLineRowId(),
     isNew,
     name: "",
     category: "",
-    classification: DEFAULT_CONSUMABLE_CLASSIFICATION,
+    classification: isProject ? "material" : DEFAULT_CONSUMABLE_CLASSIFICATION,
     unit: poType === "asset" ? "unit" : "pcs",
     minThreshold: 5,
     location: "Main Property Supply",
@@ -120,6 +128,7 @@ export function FileNewPODialog({
   onSuccess,
   defaultPoType,
   defaultPurpose,
+  defaultProjectId,
 }: FileNewPODialogProps) {
   const { data: me } = useMeQuery();
   // Prefetch while the PO page is mounted so the department select is warm
@@ -130,7 +139,10 @@ export function FileNewPODialog({
     isError: departmentsError,
     refetch: refetchDepartments,
   } = useDepartmentsQuery();
-  const departments = Array.isArray(departmentsData) ? departmentsData : [];
+  const departments = useMemo(
+    () => (Array.isArray(departmentsData) ? departmentsData : []),
+    [departmentsData]
+  );
   const { data: suppliers = [] } = useSuppliersQuery({
     activeOnly: true,
     enabled: isOpen,
@@ -142,6 +154,11 @@ export function FileNewPODialog({
     [consumablePage?.data]
   );
   const { data: assetsList = [] } = useAssetsQuery();
+  const { data: projects = [] } = useProjectsQuery();
+  const activeProjects = useMemo(
+    () => projects.filter((p) => p.status !== "completed"),
+    [projects]
+  );
 
   const createPOMutation = useCreatePurchaseOrderMutation();
   const toast = useToast();
@@ -163,6 +180,12 @@ export function FileNewPODialog({
 
   // Step 1 states
   const [poType, setPoType] = useState<POType>("consumable");
+  const [destinationKind, setDestinationKind] = useState<"department" | "project">("department");
+  const [targetProjectId, setTargetProjectId] = useState("");
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === targetProjectId),
+    [projects, targetProjectId]
+  );
   const [poNumberMode, setPoNumberMode] = useState<"auto" | "manual">("auto");
   const [customPoNumber, setCustomPoNumber] = useState("");
   const [poDate, setPoDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -172,7 +195,9 @@ export function FileNewPODialog({
   const [generalNotes, setGeneralNotes] = useState("");
 
   // Step 2 Line items & catalog quick-add states
-  const [items, setItems] = useState<POLineItemForm[]>([generateInitialRow("consumable", false)]);
+  const [items, setItems] = useState<POLineItemForm[]>([
+    generateInitialRow("consumable", false, Boolean(defaultProjectId)),
+  ]);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogCategoryFilter, setCatalogCategoryFilter] = useState("all");
 
@@ -182,20 +207,33 @@ export function FileNewPODialog({
   useEffect(() => {
     if (isOpen) {
       const initialType = defaultPoType || "consumable";
+      const isProj = Boolean(defaultProjectId);
       setCurrentStep("details");
       setPoType(initialType);
+      setDestinationKind(isProj ? "project" : "department");
+      setTargetProjectId(defaultProjectId || "");
       setPoNumberMode("auto");
       setCustomPoNumber("");
       setPoDate(new Date().toISOString().split("T")[0]);
-      setItems([generateInitialRow(initialType, false)]);
+      setItems([generateInitialRow(initialType, false, isProj)]);
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setErrorMessage(null);
-      setTargetDepartmentId(me?.departmentId || "");
+
+      const matchedProj = defaultProjectId ? projects.find((p) => p.id === defaultProjectId) : null;
+      const matchedDept = matchedProj?.department
+        ? departments.find(
+            (d) =>
+              d.id === matchedProj.department ||
+              d.name.toLowerCase() === matchedProj.department?.toLowerCase() ||
+              (d.code && d.code.toLowerCase() === matchedProj.department?.toLowerCase())
+          )
+        : null;
+      setTargetDepartmentId(matchedDept?.id || me?.departmentId || "");
       setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
     }
-  }, [isOpen, me?.departmentId, defaultPoType, defaultPurpose]);
+  }, [isOpen, me?.departmentId, defaultPoType, defaultPurpose, defaultProjectId, projects, departments]);
 
   // Safe Close Guard to prevent accidental data loss
   const handleSafeClose = () => {
@@ -221,11 +259,24 @@ export function FileNewPODialog({
     setPoType(newType);
     setCatalogSearch("");
     setCatalogCategoryFilter("all");
-    setItems([generateInitialRow(newType, false)]);
+    setItems([generateInitialRow(newType, false, destinationKind === "project")]);
+  };
+
+  const handleDestinationKindChange = (newKind: "department" | "project") => {
+    if (newKind === destinationKind) return;
+    setDestinationKind(newKind);
+    if (newKind === "project") {
+      setItems((prev) =>
+        prev.map((it) => ({
+          ...it,
+          classification: "material",
+        }))
+      );
+    }
   };
 
   const handleAddItem = (isNew = false) => {
-    const newRow = generateInitialRow(poType, isNew);
+    const newRow = generateInitialRow(poType, isNew, destinationKind === "project");
     if (isNew) {
       newRow.category = poType === "asset" ? defaultAssetCategory : defaultConsumableCategory;
     }
@@ -503,6 +554,10 @@ export function FileNewPODialog({
   // Step 1 Validation
   const validateStep1 = (): boolean => {
     setErrorMessage(null);
+    if (destinationKind === "project" && !targetProjectId.trim()) {
+      setErrorMessage("Please select a target project for this Project Purchase Order.");
+      return false;
+    }
     if (poNumberMode === "manual" && !customPoNumber.trim()) {
       setErrorMessage("Please enter a manual PO Number or switch to Auto-generate.");
       return false;
@@ -573,6 +628,11 @@ export function FileNewPODialog({
 
     setIsSubmitting(true);
     try {
+      const selectedProjectObj =
+        destinationKind === "project"
+          ? projects.find((p) => p.id === targetProjectId)
+          : null;
+
       const formattedItems = items.map((item) => {
         const isAsset = poType === "asset";
         const qty = parseUnsignedInt(item.quantity, 1);
@@ -586,7 +646,9 @@ export function FileNewPODialog({
           name: item.name.trim(),
           category: item.category.trim() || (isAsset ? defaultAssetCategory : defaultConsumableCategory),
           classification: !isAsset
-            ? item.classification || DEFAULT_CONSUMABLE_CLASSIFICATION
+            ? destinationKind === "project"
+              ? "material"
+              : item.classification || DEFAULT_CONSUMABLE_CLASSIFICATION
             : undefined,
           unit: item.unit || (isAsset ? "unit" : "pcs"),
           minThreshold: item.minThreshold || 5,
@@ -598,6 +660,8 @@ export function FileNewPODialog({
           purpose: item.purpose || generalPurpose || undefined,
           suggestedDealer: item.suggestedDealer || undefined,
           supplierId: item.supplierId || undefined,
+          projectId: destinationKind === "project" ? targetProjectId : undefined,
+          projectName: destinationKind === "project" ? selectedProjectObj?.name : undefined,
         };
       });
 
@@ -620,7 +684,10 @@ export function FileNewPODialog({
         return;
       }
 
-      const combinedPurpose = `[${departmentName}] ${generalPurpose.trim()}`;
+      const combinedPurpose =
+        destinationKind === "project" && selectedProjectObj
+          ? `[Project: ${selectedProjectObj.projectCode || selectedProjectObj.name}] [${departmentName}] ${generalPurpose.trim()}`
+          : `[${departmentName}] ${generalPurpose.trim()}`;
 
       await createPOMutation.mutateAsync({
         poNumber: poNumberMode === "manual" ? customPoNumber.trim() : undefined,
@@ -630,6 +697,8 @@ export function FileNewPODialog({
         supplierName: masterSupplierName,
         departmentId: targetDepartmentId,
         departmentName,
+        projectId: destinationKind === "project" ? targetProjectId : undefined,
+        projectName: destinationKind === "project" ? (selectedProjectObj?.name || undefined) : undefined,
         purpose: combinedPurpose,
         notes: generalNotes.trim() || undefined,
         status: "pending_approval",
@@ -637,7 +706,7 @@ export function FileNewPODialog({
       });
 
       toast.success(
-        `${poType === "asset" ? "Asset" : "Consumable"} Purchase Order filed successfully with ${items.length} item(s).`
+        `${destinationKind === "project" ? "Project " : ""}${poType === "asset" ? "Asset" : "Consumable"} Purchase Order filed successfully with ${items.length} item(s).`
       );
       onSuccess?.();
       onClose();
@@ -835,12 +904,128 @@ export function FileNewPODialog({
                 </div>
               </div>
 
-              {/* 2. Master Metadata Form */}
+              {/* Destination Selector (General Inventory vs Project Procurement) */}
+              <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2">
+                  <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                    <FolderKanban className="h-3.5 w-3.5 text-accent" />
+                    2. Procurement Destination & Allocation
+                  </span>
+                  <span className="text-[10px] text-text-secondary">
+                    Select where these items will be credited
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleDestinationKindChange("department")}
+                    className={cn(
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5",
+                      destinationKind === "department"
+                        ? "border-accent/60 bg-accent/10 shadow-xs ring-2 ring-accent/20"
+                        : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
+                    )}
+                  >
+                    <div className="p-2 rounded-lg bg-accent/15 text-accent mt-0.5 shrink-0">
+                      <Building2 className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs text-text">General Warehouse Inventory</span>
+                        {destinationKind === "department" && (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-accent" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
+                        Items enter warehouse inventory stock. Available for general department requisitions and withdrawals.
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDestinationKindChange("project")}
+                    className={cn(
+                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5",
+                      destinationKind === "project"
+                        ? "border-amber-500/60 bg-amber-500/10 shadow-xs ring-2 ring-amber-500/20"
+                        : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
+                    )}
+                  >
+                    <div className="p-2 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0">
+                      <HardHat className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-xs text-text">Direct Project Procurement</span>
+                        {destinationKind === "project" && (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
+                        Items are categorized as Project Materials and directly credited to the project spend ledger upon delivery.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                {destinationKind === "project" && (
+                  <div className="pt-2 border-t border-border space-y-1.5 animate-in fade-in duration-150">
+                    <label className="font-semibold text-text flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <FolderKanban className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>Select Target Project</span>
+                      </span>
+                      <span className="text-[10px] text-rose-500 font-bold">* Required for Project PO</span>
+                    </label>
+                    <select
+                      value={targetProjectId}
+                      onChange={(e) => {
+                        const projId = e.target.value;
+                        setTargetProjectId(projId);
+                        const matched = projects.find((p) => p.id === projId);
+                        const matchedDept = matched?.department
+                          ? departments.find(
+                              (d) =>
+                                d.id === matched.department ||
+                                d.name.toLowerCase() === matched.department?.toLowerCase() ||
+                                (d.code && d.code.toLowerCase() === matched.department?.toLowerCase())
+                            )
+                          : null;
+                        if (matchedDept?.id) {
+                          setTargetDepartmentId(matchedDept.id);
+                        }
+                      }}
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-hidden cursor-pointer font-medium"
+                    >
+                      <option value="">-- Choose Active Project --</option>
+                      {activeProjects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.projectCode ? `[${p.projectCode}] ` : ""}{p.name} {p.status ? `(${p.status})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {selectedProject && (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-center justify-between text-[11px]">
+                        <span>
+                          Direct allocation to <strong>{selectedProject.name}</strong> ({selectedProject.projectCode})
+                        </span>
+                        <span className="font-mono font-bold">
+                          Budget: {formatPhp(Number(selectedProject.budget) || 0)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. Master Metadata Form */}
               <div className="p-3.5 sm:p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                     <Building2 className="h-3.5 w-3.5 text-accent" />
-                    2. Order Metadata & Authorization
+                    3. Order Metadata & Authorization
                   </span>
                   <span className="text-[10px] text-text-secondary">
                     Cebu Roosevelt Memorial Colleges, Inc.
@@ -1243,6 +1428,20 @@ export function FileNewPODialog({
 
               {/* Bottom Section: Configured Line Items List */}
               <div className="space-y-3 pt-1">
+                {destinationKind === "project" && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-start gap-2.5 animate-in fade-in duration-150 shadow-2xs">
+                    <HardHat className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <span className="font-bold block">
+                        Project Direct Crediting: {selectedProject ? `${selectedProject.name} (${selectedProject.projectCode})` : "Active Project"}
+                      </span>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-300/90 mt-0.5 leading-relaxed">
+                        All line items will be classified as Project Materials and credited directly to project expenses upon delivery without entering general warehouse stock.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
@@ -1457,23 +1656,30 @@ export function FileNewPODialog({
                               <label className="font-semibold text-text">
                                 Classification
                               </label>
-                              <select
-                                value={item.classification}
-                                onChange={(e) =>
-                                  handleItemFieldChange(
-                                    item.id,
-                                    "classification",
-                                    e.target.value
-                                  )
-                                }
-                                className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden cursor-pointer"
-                              >
-                                {CONSUMABLE_CLASSIFICATIONS.map((id) => (
-                                  <option key={id} value={id}>
-                                    {CONSUMABLE_CLASSIFICATION_LABELS[id]}
-                                  </option>
-                                ))}
-                              </select>
+                              {destinationKind === "project" ? (
+                                <div className="h-8.5 px-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-semibold text-xs flex items-center gap-1.5 select-none">
+                                  <HardHat className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="truncate">Material (Project)</span>
+                                </div>
+                              ) : (
+                                <select
+                                  value={item.classification}
+                                  onChange={(e) =>
+                                    handleItemFieldChange(
+                                      item.id,
+                                      "classification",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden cursor-pointer"
+                                >
+                                  {CONSUMABLE_CLASSIFICATIONS.map((id) => (
+                                    <option key={id} value={id}>
+                                      {CONSUMABLE_CLASSIFICATION_LABELS[id]}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
                             </div>
                           )}
 
@@ -1616,11 +1822,24 @@ export function FileNewPODialog({
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-border/50 text-xs">
-                  <div>
-                    <span className="text-[10px] text-text-secondary font-medium block">Target Department</span>
-                    <span className="font-bold text-text">
-                      {departments.find((d) => d.id === targetDepartmentId)?.name || "—"}
-                    </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-[10px] text-text-secondary font-medium block">Target Department</span>
+                      <span className="font-bold text-text">
+                        {departments.find((d) => d.id === targetDepartmentId)?.name || "—"}
+                      </span>
+                    </div>
+
+                    {destinationKind === "project" && selectedProject && (
+                      <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300">
+                        <span className="text-[10px] text-amber-700 dark:text-amber-400 font-bold uppercase tracking-wider block">
+                          Direct Project Allocation
+                        </span>
+                        <span className="font-bold">
+                          {selectedProject.name} ({selectedProject.projectCode})
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div>

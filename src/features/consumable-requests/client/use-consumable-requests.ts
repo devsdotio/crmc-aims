@@ -41,13 +41,19 @@ export function useConsumableRequests(filters?: {
   search?: string;
   page?: number;
   limit?: number;
+  enabled?: boolean;
+  refetchInterval?: number | false;
 }): UseQueryResult<PaginatedResponse<ConsumableRequest[]>, Error> {
   const { includeSandbox } = useSandboxVisibility();
-  const listFilters = { ...filters, includeSandbox };
+  const { enabled = true, refetchInterval, ...rest } = filters ?? {};
+  const listFilters = { ...rest, includeSandbox };
   return useQuery({
     queryKey: consumableRequestQueryKeys.list(listFilters),
     queryFn: () => consumableRequestsApi.list(listFilters),
+    enabled,
     placeholderData: keepPreviousData,
+    refetchInterval,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -64,6 +70,26 @@ export function useCreateConsumableRequestMutation(): UseMutationResult<
       const itemDesc = firstLine
         ? `${firstLine.itemName}${newRequest.lines.length > 1 ? ` (+${newRequest.lines.length - 1} more)` : ""}`
         : "Supply Requisition";
+
+      qc.setQueriesData<PaginatedResponse<ConsumableRequest[]>>(
+        { queryKey: consumableRequestQueryKeys.lists() },
+        (old) => {
+          if (!old) {
+            return {
+              data: [newRequest],
+              meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
+            };
+          }
+          return {
+            ...old,
+            data: [newRequest, ...old.data],
+            meta: {
+              ...old.meta,
+              total: old.meta.total + 1,
+            },
+          };
+        }
+      );
 
       // Optimistically update dashboard snapshot
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -48,6 +48,8 @@ export const createPurchaseOrderItemSchema = z.object({
   purpose: z.string().trim().optional(),
   suggestedDealer: z.string().trim().optional(),
   supplierId: z.string().uuid().optional(),
+  projectId: z.string().uuid().optional(),
+  projectName: z.string().trim().max(255).optional(),
 });
 
 export const createPurchaseOrderSchema = z.object({
@@ -58,6 +60,8 @@ export const createPurchaseOrderSchema = z.object({
   supplierName: z.string().trim().optional(),
   departmentId: z.string().uuid().optional(),
   departmentName: z.string().trim().max(255).optional(),
+  projectId: z.string().uuid().optional(),
+  projectName: z.string().trim().max(255).optional(),
   purpose: z.string().trim().optional(),
   notes: z.string().trim().optional(),
   receiptUrl: z.string().trim().nullable().optional(),

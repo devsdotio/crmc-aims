@@ -16,6 +16,7 @@ import { tenants } from "./tenants";
 import { assets } from "./assets";
 import { consumables } from "./consumables";
 import { departments } from "./departments";
+import { projects } from "./projects";
 import { suppliers } from "./suppliers";
 
 /**
@@ -59,6 +60,12 @@ export const purchaseLots = pgTable(
     }),
     departmentName: text("department_name"),
 
+    /** Target project when procured for a project work unit */
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    projectName: text("project_name"),
+
     /** Original received quantity (assets = 1). */
     quantity: integer("quantity").notNull(),
     /** Remaining quantity for FIFO (assets typically 1 until written off). */
@@ -88,6 +95,7 @@ export const purchaseLots = pgTable(
     index("purchase_lots_asset_id_idx").on(table.assetId),
     index("purchase_lots_supplier_id_idx").on(table.supplierId),
     index("purchase_lots_department_id_idx").on(table.departmentId),
+    index("purchase_lots_project_id_idx").on(table.projectId),
     index("purchase_lots_purchased_on_idx").on(table.purchasedOn),
   ]
 );

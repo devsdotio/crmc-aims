@@ -22,6 +22,8 @@ import {
   PackageCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { groupByPurpose } from "@/lib/request-purpose";
+import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { ActionHistoryTimeline } from "@/components/audit-logs/audit-log-utils";
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
@@ -114,6 +116,11 @@ export function SupplyRequestDetailPanel({
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-0.5">{request.relativeTime}</p>
+            {request.relatedRequests && request.relatedRequests.length > 0 && (
+              <div className="mt-1.5">
+                <LinkedRequestsNote related={request.relatedRequests} />
+              </div>
+            )}
           </div>
           <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0" aria-label="Close panel">
             <X className="h-5 w-5" />
@@ -223,8 +230,14 @@ export function SupplyRequestDetailPanel({
             <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
               <Package className="h-3.5 w-3.5" /> Requested Items ({request.lines.length})
             </h3>
-            <div className="rounded-xl border border-border bg-bg overflow-hidden">
-              {request.lines.map((line, i) => {
+            <div className="space-y-3">
+              {groupByPurpose(request.lines, request.purpose).map((group) => (
+                <div key={group.purpose} className="rounded-xl border border-border bg-bg overflow-hidden">
+                  <div className="px-3 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Purpose</p>
+                    <p className="text-xs font-semibold text-text mt-0.5">{group.purpose}</p>
+                  </div>
+                  {group.lines.map((line, i) => {
                 const catMeta = resolveCategoryStyle(line.category);
                 return (
                   <div key={line.id} className={cn("flex items-start gap-3 p-3", i !== 0 && "border-t border-border")}>
@@ -245,8 +258,10 @@ export function SupplyRequestDetailPanel({
                       {line.notes && <p className="text-xs text-text-secondary mt-1 italic">{line.notes}</p>}
                     </div>
                   </div>
-                );
-              })}
+                  );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
 

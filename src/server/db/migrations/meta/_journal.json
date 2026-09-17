@@ -260,6 +260,27 @@
       "when": 1786371000000,
       "tag": "0036_purchase_lot_department",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786372000000,
+      "tag": "0037_purchase_lot_project",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1786373000000,
+      "tag": "0038_request_line_purpose",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1786374000000,
+      "tag": "0039_request_submission_group",
+      "breakpoints": true
     }
   ]
 }

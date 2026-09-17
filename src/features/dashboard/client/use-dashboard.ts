@@ -26,12 +26,13 @@ import { dashboardQueryKeys } from "./query-keys";
 export function useDashboardSnapshotQuery(options?: {
   enabled?: boolean;
   refetchInterval?: number | false;
+  staleTime?: number;
 }): UseQueryResult<DashboardSnapshot, Error> {
   return useQuery({
     queryKey: dashboardQueryKeys.snapshot(),
     queryFn: () => dashboardApi.getSnapshot(),
     enabled: options?.enabled ?? true,
-    staleTime: 60_000,
+    staleTime: options?.staleTime ?? 60_000,
     gcTime: 5 * 60_000,
     placeholderData: (prev) => prev,
     // Re-enable window-focus sync so returning to the tab picks up changes made

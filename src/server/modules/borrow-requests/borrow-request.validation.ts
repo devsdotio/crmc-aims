@@ -42,6 +42,7 @@ export const createBorrowRequestSchema = z.object({
   requesterEmail: z.string().trim().email().max(320),
   requesterPhone: z.string().trim().max(40).optional().default(""),
   departmentId: z.string().uuid().optional(),
+  department: z.string().trim().max(120).optional(),
   requestType: z.enum(["borrowable", "assignable"]).optional(),
   requestedByName: z.string().trim().max(255).optional(),
   items: z.array(
@@ -52,15 +53,18 @@ export const createBorrowRequestSchema = z.object({
       category: assetCategorySchema,
       quantity: z.number().int().min(1).max(999).optional().default(1),
       itemType: z.literal("asset"),
+      purpose: z.string().trim().min(1).max(1000),
     })
   ).min(1, "At least one item is required."),
-  purpose: z.string().trim().min(1).max(1000),
+  /** Optional header summary; derived from item purposes when omitted. */
+  purpose: z.string().trim().min(1).max(1000).optional(),
   expectedReturnDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "expectedReturnDate must be YYYY-MM-DD")
     .optional(),
   notes: z.string().trim().max(2000).optional(),
   requesterUserId: z.string().uuid().optional(),
+  submissionGroupId: z.string().uuid().optional(),
 }).superRefine((data, ctx) => {
   const requestType = data.requestType ?? "borrowable";
   if (requestType === "borrowable" && !data.expectedReturnDate) {
@@ -77,6 +81,7 @@ const borrowRequestAssetItemSchema = z.object({
   category: assetCategorySchema,
   quantity: z.number().int().min(1).max(999),
   itemType: z.literal("asset"),
+  purpose: z.string().trim().min(1).max(1000).optional(),
 });
 
 export const approveBorrowRequestSchema = z.object({
@@ -137,11 +142,13 @@ export const updateBorrowRequestSchema = z.object({
         category: assetCategorySchema,
         quantity: z.number().int().min(1).max(999).optional().default(1),
         itemType: z.literal("asset"),
+        purpose: z.string().trim().min(1).max(1000).optional(),
       })
     )
     .min(1, "At least one item is required.")
     .optional(),
   purpose: z.string().trim().min(1).max(1000).optional(),
+  department: z.string().trim().max(120).optional(),
   expectedReturnDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "expectedReturnDate must be YYYY-MM-DD")

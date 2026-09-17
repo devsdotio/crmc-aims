@@ -1,0 +1,36 @@
+---
+alwaysApply: true
+---
+# Obsidian vault (developer-io)
+
+Persistent project memory lives in the Obsidian vault folder in this workspace:
+
+`C:/Users/CLIET/.antigravity-ide/developer-io` (workspace root name: **developer-io (Obsidian)**)
+
+## Cold start (mandatory)
+
+1. Read **only** `Projects/CRMC-Aims/_Card.md` (or `Projects/CourtSync/_Card.md` for that project).
+2. Open `Meta/Context-Loading-Protocol.md` and name any **additional** notes for this task **before** reading them.
+3. Feature-scoped work → add **one** `Projects/<P>/Features/<slug>.md` — do **not** load full Architecture, Tasks, Sessions, or Components/Index unless the protocol says so.
+
+## Do not
+
+- Re-explore the repo when the card + feature note already name the hot paths
+- Follow the old five-file bootstrap (Overview + Architecture + Conventions + Tasks + Sessions)
+- Load `agents/*.examples.md` unless explicitly asked
+- Use bare wikilinks like `[[Architecture]]` — use full paths under `Projects/CRMC-Aims/…`
+
+## Session end
+
+From vault root:
+
+```bash
+node Meta/scripts/vault-track.mjs session --project crmc-aims --write
+node Meta/scripts/vault-track.mjs stale --project crmc-aims
+```
+
+Update `_Card.md` last-session / sprint line if it moved. Changelog only for pushed commits.
+
+## Project overrides
+
+When using specialized agents, also pass `Projects/CRMC-Aims/agent-overrides.md`.

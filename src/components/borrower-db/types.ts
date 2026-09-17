@@ -60,16 +60,35 @@ export type BrowseItem = BrowseAssetItem | BrowseConsumableItem;
 
 export type RequestWizardStep = "type" | "select" | "details" | "review";
 
-export interface WizardFormValues {
-  requestType: "borrowable" | "assignable" | "consumable" | null;
+export type WizardRequestType = "borrowable" | "assignable" | "consumable";
+
+export interface WizardPurposeGroup {
+  id: string;
+  purpose: string;
+  lines: Array<{ itemId: string; quantity: number }>;
+}
+
+/** One selected request type with its item pool and purpose sections. */
+export interface WizardTypeBundle {
+  requestType: WizardRequestType;
   selectedItems: BrowseItem[];
+  purposeGroups: WizardPurposeGroup[];
+}
+
+export interface WizardFormValues {
+  /** One or more request types; each has its own purposes and lines. */
+  typeBundles: WizardTypeBundle[];
   dateFrom: string;
   dateTo: string;
-  quantities: Record<string, number>;
-  purpose: string;
+  /** Catalog department id when selected; null for free-text-only. */
+  departmentId: string | null;
+  /** Display / free-text department name. */
+  department: string;
   notes: string;
   /** Person the request is for; defaults to department account name, overridable. */
   requestedByName: string;
+  /** Account = fill from signed-in profile; Manual = type name and department. */
+  requesterMode: "account" | "manual";
 }
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────

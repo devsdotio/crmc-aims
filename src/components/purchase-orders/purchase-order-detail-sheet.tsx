@@ -29,6 +29,7 @@ import {
   Boxes,
   ArrowUpRight,
   Receipt,
+  HardHat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
@@ -130,6 +131,7 @@ export function PurchaseOrderDetailSheet({
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: entityCode,
     entityType: "purchase_order",
+    enabled: Boolean(entityCode),
   });
   const { data: users = [] } = useUsersQuery();
 
@@ -256,7 +258,9 @@ export function PurchaseOrderDetailSheet({
       });
       toast.success(
         nextStatus === "delivered" && parsedReceived != null
-          ? `PO ${lot.poNumber || lot.lotCode} delivered · ${parsedReceived} unit(s) added to inventory.`
+          ? lot.projectId
+            ? `PO ${lot.poNumber || lot.lotCode} delivered · ${parsedReceived} material unit(s) credited directly to ${lot.projectName || "project"}.`
+            : `PO ${lot.poNumber || lot.lotCode} delivered · ${parsedReceived} unit(s) added to inventory.`
           : `PO ${lot.poNumber || lot.lotCode} updated to ${nextStatus.replace("_", " ")}.`
       );
       setShowStatusModal(null);
@@ -296,7 +300,8 @@ export function PurchaseOrderDetailSheet({
     Boolean(onReleaseStock);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
+    <>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
       <aside
@@ -555,7 +560,13 @@ export function PurchaseOrderDetailSheet({
                     {lot.status === "pending_approval" && "Pending Approval Review"}
                     {lot.status === "approved" && "Approved — Ready for Issuance"}
                     {lot.status === "ordered" && "In Transit / Awaiting Delivery"}
-                    {lot.status === "delivered" && (canRelease ? "Delivered & Stocked — Ready to Issue" : "Delivered & Stored in Inventory")}
+                    {lot.status === "delivered" && (
+                      lot.projectId
+                        ? `Delivered & Auto-Credited to ${lot.projectName || "Project"}`
+                        : canRelease
+                        ? "Delivered & Stocked — Ready to Issue"
+                        : "Delivered & Stored in Inventory"
+                    )}
                     {lot.status === "cancelled" && "Purchase Order Cancelled"}
                   </p>
                   <p
@@ -568,8 +579,18 @@ export function PurchaseOrderDetailSheet({
                   >
                     {lot.status === "pending_approval" && "Authorize this order for supplier fulfillment"}
                     {lot.status === "approved" && "Confirm order transmission to dealer"}
-                    {lot.status === "ordered" && "Receive items and register into active stock"}
-                    {lot.status === "delivered" && (canRelease ? "Issue units to requesting departments" : "All workflow stages completed")}
+                    {lot.status === "ordered" && (
+                      lot.projectId
+                        ? "Receive items and credit directly to project expense ledger"
+                        : "Receive items and register into active stock"
+                    )}
+                    {lot.status === "delivered" && (
+                      lot.projectId
+                        ? "Auto-issued to project; cataloged as Consumable Material"
+                        : canRelease
+                        ? "Issue units to requesting departments"
+                        : "All workflow stages completed"
+                    )}
                     {lot.status === "cancelled" && "This purchase order has been closed"}
                   </p>
                 </div>
@@ -603,7 +624,7 @@ export function PurchaseOrderDetailSheet({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
                   >
                     <PackageCheck className="h-3.5 w-3.5" />
-                    <span>Receive & Stock</span>
+                    <span>{lot.projectId ? "Receive & Credit to Project" : "Receive & Stock"}</span>
                   </button>
                 )}
                 {canRelease && (
@@ -1465,135 +1486,136 @@ export function PurchaseOrderDetailSheet({
             );
           })()}
         </div>
-
-        {/* Modal for Status Confirmation / Notes */}
-        {showStatusModal && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-            <div className="w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
-              <div className="flex items-center justify-between border-b border-border pb-2">
-                <h3 className="font-bold text-text text-sm capitalize flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-accent" />
-                  Confirm {showStatusModal.replace("_", " ")}
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setShowStatusModal(null)}
-                  className="p-1 rounded text-text-secondary hover:text-text"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <p className="text-xs text-text-secondary">
-                {showStatusModal === "delivered"
-                  ? lot.itemType === "consumable"
-                    ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
-                    : "Marking this PO as delivered will activate the asset in inventory."
-                  : showStatusModal === "approved"
-                  ? "Approve this purchase order to authorize supplier issuance and procurement."
-                  : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
-              </p>
-
-              {showStatusModal === "delivered" && lot.itemType === "consumable" && (
-                <div className="space-y-1">
-                  <label
-                    htmlFor="po-received-qty"
-                    className="text-[11px] font-semibold text-text"
-                  >
-                    Actual Quantity Received <span className="text-accent">*</span>
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="po-received-qty"
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={receivedQuantity || String(lot.quantity)}
-                      onChange={(e) => setReceivedQuantity(e.target.value)}
-                      className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
-                    />
-                    <span className="text-[11px] text-text-secondary shrink-0">
-                      of {lot.quantity} ordered
-                    </span>
-                  </div>
-                  {Number.parseInt(receivedQuantity || String(lot.quantity), 10) !==
-                    lot.quantity && (
-                    <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                      Inventory will be adjusted to the received quantity, not the ordered amount.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {showStatusModal === "delivered" && (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-text flex items-center justify-between">
-                    <span>Attach Receipt Picture (Optional)</span>
-                    {(deliveryReceiptUrl || lot.receiptUrl) && (
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                        Attached ✓
-                      </span>
-                    )}
-                  </label>
-                  <POReceiptUploader
-                    receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
-                    poNumber={lot.poNumber || lot.lotCode}
-                    lotId={lot.id}
-                    canOperate={canOperate}
-                    compact
-                    onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
-                    onRemove={() => setDeliveryReceiptUrl(null)}
-                  />
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-[11px] font-semibold text-text">Optional Audit Notes</label>
-                <textarea
-                  value={statusNote}
-                  onChange={(e) => setStatusNote(e.target.value)}
-                  placeholder="Enter remarks or approval references..."
-                  rows={2}
-                  className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text focus:ring-1 focus:ring-accent focus:outline-hidden resize-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowStatusModal(null);
-                    setStatusNote("");
-                    setReceivedQuantity("");
-                  }}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-bg-subtle text-text cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTransitionStatus(showStatusModal)}
-                  disabled={isUpdatingStatus}
-                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 cursor-pointer disabled:opacity-50"
-                >
-                  {isUpdatingStatus ? (
-                    <>
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      <span>Updating...</span>
-                    </>
-                  ) : (
-                    <span>
-                      {showStatusModal === "delivered"
-                        ? "Confirm Receive & Stock"
-                        : "Confirm"}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </aside>
     </div>
+
+    {/* Modal for Status Confirmation / Notes */}
+    {showStatusModal && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between border-b border-border pb-2">
+            <h3 className="font-bold text-text text-sm capitalize flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-accent" />
+              Confirm {showStatusModal.replace("_", " ")}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowStatusModal(null)}
+              className="p-1 rounded text-text-secondary hover:text-text"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <p className="text-xs text-text-secondary">
+            {showStatusModal === "delivered"
+              ? lot.itemType === "consumable"
+                ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
+                : "Marking this PO as delivered will activate the asset in inventory."
+              : showStatusModal === "approved"
+              ? "Approve this purchase order to authorize supplier issuance and procurement."
+              : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
+          </p>
+
+          {showStatusModal === "delivered" && lot.itemType === "consumable" && (
+            <div className="space-y-1">
+              <label
+                htmlFor="po-received-qty"
+                className="text-[11px] font-semibold text-text"
+              >
+                Actual Quantity Received <span className="text-accent">*</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  id="po-received-qty"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={receivedQuantity || String(lot.quantity)}
+                  onChange={(e) => setReceivedQuantity(e.target.value)}
+                  className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
+                />
+                <span className="text-[11px] text-text-secondary shrink-0">
+                  of {lot.quantity} ordered
+                </span>
+              </div>
+              {Number.parseInt(receivedQuantity || String(lot.quantity), 10) !==
+                lot.quantity && (
+                <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                  Inventory will be adjusted to the received quantity, not the ordered amount.
+                </p>
+              )}
+            </div>
+          )}
+
+          {showStatusModal === "delivered" && (
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-semibold text-text flex items-center justify-between">
+                <span>Attach Receipt Picture (Optional)</span>
+                {(deliveryReceiptUrl || lot.receiptUrl) && (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    Attached ✓
+                  </span>
+                )}
+              </label>
+              <POReceiptUploader
+                receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
+                poNumber={lot.poNumber || lot.lotCode}
+                lotId={lot.id}
+                canOperate={canOperate}
+                compact
+                onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
+                onRemove={() => setDeliveryReceiptUrl(null)}
+              />
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <label className="text-[11px] font-semibold text-text">Optional Audit Notes</label>
+            <textarea
+              value={statusNote}
+              onChange={(e) => setStatusNote(e.target.value)}
+              placeholder="Enter remarks or approval references..."
+              rows={2}
+              className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text focus:ring-1 focus:ring-accent focus:outline-hidden resize-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+            <button
+              type="button"
+              onClick={() => {
+                setShowStatusModal(null);
+                setStatusNote("");
+                setReceivedQuantity("");
+              }}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-bg-subtle text-text cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTransitionStatus(showStatusModal)}
+              disabled={isUpdatingStatus}
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 cursor-pointer disabled:opacity-50"
+            >
+              {isUpdatingStatus ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Updating...</span>
+                </>
+              ) : (
+                <span>
+                  {showStatusModal === "delivered"
+                    ? "Confirm Receive & Stock"
+                    : "Confirm"}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

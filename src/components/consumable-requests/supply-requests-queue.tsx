@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatItemDescription } from "@/lib/sanitize-display";
+import { purposePreviewLabel } from "@/lib/request-purpose";
+import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { ReleaseConsumableRequestDialog } from "@/components/consumable-requests/release-consumable-request-dialog";
@@ -460,12 +462,19 @@ export function SupplyRequestsQueue({
                         <Building2 className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
                         {row.department}
                       </span>
-                      {row.purpose && (
-                        <span className="flex items-center gap-1">
-                          <FileText className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
-                          <span className="truncate max-w-xs">{row.purpose}</span>
-                        </span>
-                      )}
+                      {(() => {
+                        const preview = purposePreviewLabel(
+                          row.purpose,
+                          row.lines.map((l) => l.purpose)
+                        );
+                        if (!preview) return null;
+                        return (
+                          <span className="flex items-center gap-1">
+                            <FileText className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
+                            <span className="truncate max-w-xs">{preview}</span>
+                          </span>
+                        );
+                      })()}
                       {row.lines.length > 1 && (
                         <span className="hidden sm:inline-flex items-center gap-1 text-text-secondary/80">
                           <Package className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
@@ -474,6 +483,7 @@ export function SupplyRequestsQueue({
                           </span>
                         </span>
                       )}
+                      <LinkedRequestsNote related={row.relatedRequests} />
                     </div>
                   </div>
 

@@ -46,26 +46,23 @@ export function useBorrowerRealtimeSync(
     };
 
     const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
+    const channelName = `borrower-realtime-sync-${tenantId ?? "all"}-${Math.random().toString(36).slice(2)}`;
+    const requestConfig = filter
+      ? { event: "*" as const, schema: "public", table: "requests", filter }
+      : { event: "*" as const, schema: "public", table: "requests" };
+    const supplyConfig = filter
+      ? { event: "*" as const, schema: "public", table: "consumable_requests", filter }
+      : { event: "*" as const, schema: "public", table: "consumable_requests" };
+    const custodyConfig = filter
+      ? { event: "*" as const, schema: "public", table: "borrow_transactions", filter }
+      : { event: "*" as const, schema: "public", table: "borrow_transactions" };
     const channel = supabase
-      .channel(`borrower-realtime-sync${tenantId ? `-${tenantId}` : ""}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "requests", filter },
-        () => triggerInvalidation()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "consumable_requests", filter },
-        () => triggerInvalidation()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "borrow_transactions", filter },
-        () => triggerInvalidation()
-      )
+      .channel(channelName)
+      .on("postgres_changes", requestConfig, () => triggerInvalidation())
+      .on("postgres_changes", supplyConfig, () => triggerInvalidation())
+      .on("postgres_changes", custodyConfig, () => triggerInvalidation())
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          // Sync on initial channel connect
           triggerInvalidation();
         }
       });

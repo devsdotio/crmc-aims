@@ -17,6 +17,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { groupByPurpose } from "@/lib/request-purpose";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import {
   getActionStyle,
@@ -124,8 +125,20 @@ export function RequisitionDetailPanel({
                 {request.lines.length} {request.lines.length === 1 ? "item" : "items"}
               </span>
             </div>
-            <div className="rounded-lg border border-border bg-bg overflow-hidden divide-y divide-border">
-              {request.lines.map((line, idx) => {
+            <div className="space-y-3">
+              {groupByPurpose(request.lines, request.purpose).map((group) => (
+                <div
+                  key={group.purpose}
+                  className="rounded-lg border border-border bg-bg overflow-hidden"
+                >
+                  <div className="px-3.5 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                      Purpose
+                    </p>
+                    <p className="text-xs font-semibold text-text mt-0.5">{group.purpose}</p>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {group.lines.map((line, idx) => {
                 const catStyle = getCategoryStyle(line.category);
                 return (
                   <div
@@ -159,8 +172,11 @@ export function RequisitionDetailPanel({
                       &times;{line.quantityRequested} {line.unit}
                     </span>
                   </div>
-                );
-              })}
+                    );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
             {Number(request.totalCost) > 0 && (
               <div className="flex justify-end pt-1 text-xs">

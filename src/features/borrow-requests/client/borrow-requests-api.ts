@@ -9,6 +9,8 @@ export type CreateBorrowRequestPayload = {
   requesterEmail: string;
   requesterPhone?: string;
   departmentId?: string;
+  /** Free-text department when not selecting from catalog. */
+  department?: string;
   requestType?: "borrowable" | "assignable";
   requestedByName?: string;
   items: {
@@ -18,11 +20,15 @@ export type CreateBorrowRequestPayload = {
     category: BorrowRequest["items"][number]["category"];
     quantity: number;
     itemType: "asset";
+    purpose: string;
   }[];
-  purpose: string;
+  /** Optional; derived from item purposes when omitted. */
+  purpose?: string;
   expectedReturnDate?: string;
   notes?: string;
   requesterUserId?: string;
+  /** Shared when the wizard submits more than one request type together. */
+  submissionGroupId?: string;
 };
 
 export type ApproveBorrowRequestPayload = {
@@ -49,6 +55,7 @@ export type UpdateBorrowRequestPayload = {
   requesterEmail?: string;
   requesterPhone?: string;
   departmentId?: string;
+  department?: string;
   requestType?: "borrowable" | "assignable";
   requestedByName?: string;
   items?: {
@@ -58,6 +65,7 @@ export type UpdateBorrowRequestPayload = {
     category: BorrowRequest["items"][number]["category"];
     quantity: number;
     itemType: "asset";
+    purpose?: string;
   }[];
   purpose?: string;
   expectedReturnDate?: string | null;

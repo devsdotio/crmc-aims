@@ -30,14 +30,18 @@ import {
   FlaskConical,
   Wrench,
   Zap,
+  Trash2,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCategoryStyle } from "@/constants/categories";
 import type {
   BrowseItem,
-  BrowseAssetItem,
   BrowseConsumableItem,
   WizardFormValues,
+  WizardPurposeGroup,
+  WizardRequestType,
+  WizardTypeBundle,
   RequestWizardStep,
   PortalBorrowRequest,
 } from "./types";
@@ -48,9 +52,15 @@ import { useConsumablesQuery } from "@/features/consumables/client/use-consumabl
 import { availableQty } from "@/components/consumables/utils";
 import { useMeQuery } from "@/features/users/client/use-users";
 import type { MeProfile } from "@/features/users/client/users-api";
+import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
+import {
+  mapBorrowRequestToPortal,
+  mapConsumableRequestToPortal,
+} from "./map-portal-request";
 import { LoadingState } from "@/components/providers/loading-context";
 import { useToast } from "@/components/providers/toast-context";
 import { formatQuantityWithUnit } from "@/lib/sanitize-display";
+import { summarizePurposes } from "@/lib/request-purpose";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,6 +72,39 @@ function nextWeek() {
   const d = new Date();
   d.setDate(d.getDate() + 7);
   return d.toISOString().split("T")[0];
+}
+
+function newPurposeGroup(): WizardPurposeGroup {
+  return { id: crypto.randomUUID(), purpose: "", lines: [] };
+}
+
+function newTypeBundle(requestType: WizardRequestType): WizardTypeBundle {
+  return {
+    requestType,
+    selectedItems: [],
+    purposeGroups: [newPurposeGroup()],
+  };
+}
+
+function emptyWizardValues(
+  initialTypes: WizardRequestType[] = []
+): WizardFormValues {
+  return {
+    typeBundles: initialTypes.map(newTypeBundle),
+    dateFrom: today(),
+    dateTo: nextWeek(),
+    departmentId: null,
+    department: "",
+    notes: "",
+    requestedByName: "",
+    requesterMode: "account",
+  };
+}
+
+function typeLabel(t: WizardRequestType): string {
+  if (t === "borrowable") return "Borrow Equipment";
+  if (t === "assignable") return "Assignment";
+  return "Supplies Requisition";
 }
 
 function formatFriendlyErrorMessage(rawMessage?: string): string {
@@ -98,14 +141,22 @@ const STEPS: { key: RequestWizardStep; label: string; stepNumber: number }[] = [
 
 function MilestoneStepIndicator({
   current,
-  requestType,
+  selectedTypes,
 }: {
   current: RequestWizardStep;
-  requestType?: WizardFormValues["requestType"];
+  selectedTypes: WizardRequestType[];
 }) {
   const currentIdx = STEPS.findIndex((s) => s.key === current);
+  const hasConsumable = selectedTypes.includes("consumable");
+  const hasAsset = selectedTypes.some(
+    (t) => t === "borrowable" || t === "assignable"
+  );
   const selectLabel =
-    requestType === "consumable" ? "Select Supplies" : "Select Category";
+    hasConsumable && hasAsset
+      ? "Select Items"
+      : hasConsumable
+        ? "Select Supplies"
+        : "Select Category";
 
   return (
     <nav aria-label="Request Progress" className="w-full">
@@ -185,10 +236,10 @@ function MilestoneStepIndicator({
 
 function StepType({
   value,
-  onChange,
+  onToggle,
 }: {
-  value: "borrowable" | "assignable" | "consumable" | null;
-  onChange: (type: "borrowable" | "assignable" | "consumable") => void;
+  value: WizardRequestType[];
+  onToggle: (type: WizardRequestType) => void;
 }) {
   const borrowGroup = [
     {
@@ -249,6 +300,9 @@ function StepType({
 
   return (
     <div className="space-y-6">
+      <p className="text-xs text-text-secondary px-1">
+        Select one or more request types. Each type will have its own purpose and items.
+      </p>
       {/* ── Group 1: Borrow Request ── */}
       <section aria-labelledby="group-borrow-title" className="space-y-2.5">
         <div className="flex items-center justify-between px-1">
@@ -267,13 +321,14 @@ function StepType({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {borrowGroup.map((opt) => {
-            const isSelected = value === opt.id;
+            const isSelected = value.includes(opt.id);
             const Icon = opt.icon;
             return (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => onChange(opt.id)}
+                onClick={() => onToggle(opt.id)}
+                aria-pressed={isSelected}
                 className={cn(
                   "flex flex-col justify-between p-4 rounded-xl border text-left transition-all duration-150 relative",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -338,13 +393,14 @@ function StepType({
 
         <div className="grid grid-cols-1 gap-3">
           {requisitionGroup.map((opt) => {
-            const isSelected = value === opt.id;
+            const isSelected = value.includes(opt.id);
             const Icon = opt.icon;
             return (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => onChange(opt.id)}
+                onClick={() => onToggle(opt.id)}
+                aria-pressed={isSelected}
                 className={cn(
                   "flex items-start gap-4 p-4 rounded-xl border text-left transition-all duration-150 relative",
                   "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -562,49 +618,68 @@ function StepSelect({
   };
 
   const isAssignable = requestType === "assignable";
+  const searchId = `search-categories-${requestType ?? "asset"}`;
 
   return (
-    <div className="space-y-3.5 h-full flex flex-col min-h-0">
-      {/* Search & Filter Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 pb-1">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-text">
-              {isAssignable ? "Choose Equipment Categories for Assignment" : "Choose Asset Categories to Borrow"}
-            </h3>
-            {value.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25">
-                <Check className="h-3 w-3 stroke-3" />
-                {value.length} selected
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-text-secondary mt-0.5">
-            Select one or more categories. You will configure item quantities in the next step.
-          </p>
-        </div>
-
-        <div className="relative w-full sm:w-60">
-          <label htmlFor="search-categories" className="sr-only">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-bold text-text truncate">
+          {isAssignable ? "Assignment categories" : "Borrow categories"}
+        </h3>
+        {value.length > 0 && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25 shrink-0">
+            <Check className="h-3 w-3 stroke-3" />
+            {value.length}
+          </span>
+        )}
+        {filteredCategories.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = [...value];
+              for (const cat of filteredCategories) {
+                const syntheticId = `cat-${cat.id}`;
+                if (next.some((v) => v.id === syntheticId)) continue;
+                next.push({
+                  id: syntheticId,
+                  name: `${cat.title} Equipment`,
+                  category: cat.title,
+                  type: "asset",
+                  status: "active",
+                  assignmentType:
+                    requestType === "assignable" ? "assignable" : "borrowable",
+                  assetCode: `CAT-${cat.id.toUpperCase()}`,
+                  location: "Central Storage",
+                });
+              }
+              onChange(next);
+            }}
+            className="text-[11px] font-semibold text-accent hover:underline shrink-0"
+          >
+            Select all
+          </button>
+        )}
+        <div className="relative ml-auto w-44 sm:w-56 shrink-0">
+          <label htmlFor={searchId} className="sr-only">
             Search asset categories
           </label>
           <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
             aria-hidden
           />
           <input
-            id="search-categories"
+            id={searchId}
             type="search"
-            placeholder="Search categories…"
+            placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-8.5 rounded-lg border border-border bg-white pl-8.5 pr-8 text-xs text-text placeholder:text-text-secondary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-2xs transition-all"
+            className="w-full h-8 rounded-lg border border-border bg-bg-subtle/50 pl-8 pr-7 text-xs text-text placeholder:text-text-secondary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
               title="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -613,35 +688,31 @@ function StepSelect({
         </div>
       </div>
 
-      {/* Category Cards Grid */}
-      <div className="flex-1 min-h-60 overflow-y-auto pr-1">
+      <div>
         {isLoading ? (
           <LoadingState
             variant="inline"
             icon="package"
             message="Loading asset categories..."
             subtitle="Fetching latest inventory data..."
-            className="py-12"
+            className="py-8"
           />
         ) : filteredCategories.length === 0 ? (
-          <div className="p-8 text-center my-auto rounded-lg border border-dashed border-border bg-white">
-            <Package className="h-8 w-8 text-text-secondary/40 mx-auto mb-2" />
+          <div className="p-6 text-center rounded-lg border border-dashed border-border">
+            <Package className="h-7 w-7 text-text-secondary/40 mx-auto mb-2" />
             <p className="text-sm font-semibold text-text">No matching category found</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              No categories match &quot;{search}&quot;. Try another search term.
-            </p>
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="mt-3 text-xs text-accent font-semibold hover:underline cursor-pointer"
+                className="mt-2 text-xs text-accent font-semibold hover:underline cursor-pointer"
               >
                 Reset search
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
             {filteredCategories.map((cat) => {
               const isSelected = value.some((v) => v.id === `cat-${cat.id}`);
               const style = cat.style;
@@ -652,54 +723,48 @@ function StepSelect({
                   type="button"
                   onClick={() => toggleCategory(cat)}
                   className={cn(
-                    "flex flex-col text-left p-3.5 rounded-lg border transition-all duration-200 relative cursor-pointer group select-none shadow-2xs",
+                    "flex flex-col text-left p-3 rounded-lg border transition-all duration-150 cursor-pointer group select-none",
                     "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                     isSelected
-                      ? "border-accent bg-accent/4 ring-2 ring-accent/25 shadow-xs"
-                      : "border-border bg-white hover:border-accent/40 hover:bg-bg-subtle/40 hover:shadow-xs"
+                      ? "border-accent bg-accent/5 ring-1 ring-accent/30"
+                      : "border-border bg-card hover:border-accent/40 hover:bg-bg-subtle/50"
                   )}
                   aria-pressed={isSelected}
                 >
-                  {/* Card Header: Category Title + Subtitle Tag + Checkbox */}
                   <div className="flex items-start justify-between gap-2 w-full mb-1.5">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className="text-sm font-bold text-text truncate group-hover:text-accent transition-colors">
-                          {cat.title}
-                        </h4>
-                        <span className={cn("px-1.5 py-0.5 rounded font-bold text-[9px] uppercase tracking-wider", style.bg, style.text)}>
-                          {cat.subtitle}
-                        </span>
-                      </div>
+                      <h4 className="text-sm font-bold text-text truncate group-hover:text-accent">
+                        {cat.title}
+                      </h4>
+                      <span
+                        className={cn(
+                          "inline-block mt-1 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase tracking-wider",
+                          style.bg,
+                          style.text
+                        )}
+                      >
+                        {cat.subtitle}
+                      </span>
                     </div>
-
                     <div
                       className={cn(
-                        "h-5 w-5 rounded-md flex items-center justify-center shrink-0 border transition-all duration-200 mt-0.5",
+                        "h-5 w-5 rounded-md flex items-center justify-center shrink-0 border",
                         isSelected
-                          ? "bg-accent border-accent text-accent-foreground shadow-2xs"
-                          : "border-border bg-bg-subtle/80 group-hover:border-accent/50"
+                          ? "bg-accent border-accent text-accent-foreground"
+                          : "border-border bg-bg-subtle group-hover:border-accent/50"
                       )}
                     >
-                      {isSelected ? (
-                        <Check className="h-3.5 w-3.5 stroke-3" />
-                      ) : (
-                        <span className="h-1.5 w-1.5 rounded-full bg-border group-hover:bg-text-secondary/40" />
-                      )}
+                      {isSelected ? <Check className="h-3.5 w-3.5 stroke-3" /> : null}
                     </div>
                   </div>
-
-                  {/* Description */}
-                  <p className="text-xs text-text-secondary leading-relaxed line-clamp-2 flex-1 mb-2.5">
+                  <p className="text-xs text-text-secondary leading-relaxed line-clamp-2 mb-2">
                     {cat.description}
                   </p>
-
-                  {/* Card Footer Tag */}
                   <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] w-full mt-auto">
-                    <span className="text-text-secondary font-medium text-[11px]">
+                    <span className="text-text-secondary font-medium truncate">
                       {cat.title}
                     </span>
-                    <span className="text-text-secondary font-medium flex items-center gap-1 text-[11px]">
+                    <span className="text-text-secondary font-medium flex items-center gap-1 shrink-0">
                       <span className="h-1.5 w-1.5 rounded-full bg-status-active-bg" />
                       {isAssignable ? "Assignable" : "Borrowable"}
                     </span>
@@ -779,45 +844,52 @@ function StepSelectConsumables({
   };
 
   return (
-    <div className="space-y-3.5 h-full flex flex-col min-h-0">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 pb-1">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="text-sm font-bold text-text">Select Supplies & Materials</h3>
-            {value.length > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25">
-                <Check className="h-3 w-3 stroke-3" />
-                {value.length} selected
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-text-secondary mt-0.5">
-            Select items from available consumable inventory for your department.
-          </p>
-        </div>
-
-        <div className="relative w-full sm:w-60">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-bold text-text truncate">Supplies</h3>
+        {value.length > 0 && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25 shrink-0">
+            <Check className="h-3 w-3 stroke-3" />
+            {value.length}
+          </span>
+        )}
+        {filtered.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = [...value];
+              for (const item of filtered) {
+                if (next.some((v) => v.id === item.id)) continue;
+                next.push(item);
+              }
+              onChange(next);
+            }}
+            className="text-[11px] font-semibold text-accent hover:underline shrink-0"
+          >
+            Select all
+          </button>
+        )}
+        <div className="relative ml-auto w-44 sm:w-56 shrink-0">
           <label htmlFor="search-supplies" className="sr-only">
             Search supplies
           </label>
           <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
             aria-hidden
           />
           <input
             id="search-supplies"
             type="search"
-            placeholder="Search supplies…"
+            placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-8.5 rounded-lg border border-border bg-white pl-8.5 pr-8 text-xs text-text placeholder:text-text-secondary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-2xs transition-all"
+            className="w-full h-8 rounded-lg border border-border bg-bg-subtle/50 pl-8 pr-7 text-xs text-text placeholder:text-text-secondary/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
               title="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -826,20 +898,19 @@ function StepSelectConsumables({
         </div>
       </div>
 
-      {/* Category Pills (Clean Light Theme with subtle active badge) */}
       {categories.length > 1 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           <button
             type="button"
             onClick={() => setSelectedCategory("all")}
             className={cn(
-              "px-3 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0",
+              "px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0",
               selectedCategory === "all"
-                ? "bg-accent/15 text-accent border-accent/40 font-bold shadow-2xs"
-                : "bg-white border-border text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle"
+                ? "bg-accent/15 text-accent border-accent/40 font-bold"
+                : "bg-card border-border text-text-secondary hover:border-accent/40 hover:text-text"
             )}
           >
-            All Categories ({supplyItems.length})
+            All ({supplyItems.length})
           </button>
           {categories.map((cat) => {
             const count = supplyItems.filter((i) => i.category === cat).length;
@@ -851,10 +922,10 @@ function StepSelectConsumables({
                 type="button"
                 onClick={() => setSelectedCategory(isCatActive ? "all" : cat)}
                 className={cn(
-                  "px-3 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
+                  "px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
                   isCatActive
-                    ? "bg-accent/15 text-accent border-accent/40 font-bold shadow-2xs"
-                    : "bg-white border-border text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle"
+                    ? "bg-accent/15 text-accent border-accent/40 font-bold"
+                    : "bg-card border-border text-text-secondary hover:border-accent/40 hover:text-text"
                 )}
               >
                 <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", catStyle.bg)} />
@@ -865,23 +936,19 @@ function StepSelectConsumables({
         </div>
       )}
 
-      {/* Supplies Grid */}
-      <div className="flex-1 min-h-60 overflow-y-auto pr-1">
+      <div>
         {isLoading ? (
           <LoadingState
             variant="inline"
             icon="package"
             message="Loading supplies..."
             subtitle="Fetching consumable inventory..."
-            className="py-12"
+            className="py-8"
           />
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center my-auto rounded-lg border border-dashed border-border bg-white">
-            <FlaskConical className="h-8 w-8 text-text-secondary/40 mx-auto mb-2" />
+          <div className="p-6 text-center rounded-lg border border-dashed border-border">
+            <FlaskConical className="h-7 w-7 text-text-secondary/40 mx-auto mb-2" />
             <p className="text-sm font-semibold text-text">No supplies found</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              No items match &quot;{search}&quot;. Try another filter.
-            </p>
             {(search || selectedCategory !== "all") && (
               <button
                 type="button"
@@ -889,14 +956,14 @@ function StepSelectConsumables({
                   setSearch("");
                   setSelectedCategory("all");
                 }}
-                className="mt-3 text-xs text-accent font-semibold hover:underline cursor-pointer"
+                className="mt-2 text-xs text-accent font-semibold hover:underline cursor-pointer"
               >
                 Reset filters
               </button>
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
             {filtered.map((item) => {
               const isSelected = value.some((v) => v.id === item.id);
               const style = getCategoryStyle(item.category);
@@ -907,51 +974,45 @@ function StepSelectConsumables({
                   type="button"
                   onClick={() => toggleItem(item)}
                   className={cn(
-                    "flex flex-col text-left p-3.5 rounded-lg border transition-all duration-200 relative cursor-pointer group select-none shadow-2xs",
+                    "flex flex-col text-left p-3 rounded-lg border transition-all duration-150 cursor-pointer group select-none",
                     "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                     isSelected
-                      ? "border-accent bg-accent/4 ring-2 ring-accent/25 shadow-xs"
-                      : "border-border bg-white hover:border-accent/40 hover:bg-bg-subtle/40 hover:shadow-xs"
+                      ? "border-accent bg-accent/5 ring-1 ring-accent/30"
+                      : "border-border bg-card hover:border-accent/40 hover:bg-bg-subtle/50"
                   )}
                   aria-pressed={isSelected}
                 >
                   <div className="flex items-start justify-between gap-2 w-full mb-1.5">
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-bold text-text truncate group-hover:text-accent transition-colors">
+                      <h4 className="text-sm font-bold text-text truncate group-hover:text-accent">
                         {item.name}
                       </h4>
                       <p className="text-[11px] font-mono text-text-secondary truncate mt-0.5">
                         {item.itemCode}
                       </p>
                     </div>
-
                     <div
                       className={cn(
-                        "h-5 w-5 rounded-md flex items-center justify-center shrink-0 border transition-all duration-200 mt-0.5",
+                        "h-5 w-5 rounded-md flex items-center justify-center shrink-0 border",
                         isSelected
-                          ? "bg-accent border-accent text-accent-foreground shadow-2xs"
-                          : "border-border bg-bg-subtle/80 group-hover:border-accent/50"
+                          ? "bg-accent border-accent text-accent-foreground"
+                          : "border-border bg-bg-subtle group-hover:border-accent/50"
                       )}
                     >
-                      {isSelected ? (
-                        <Check className="h-3.5 w-3.5 stroke-3" />
-                      ) : (
-                        <span className="h-1.5 w-1.5 rounded-full bg-border group-hover:bg-text-secondary/40" />
-                      )}
+                      {isSelected ? <Check className="h-3.5 w-3.5 stroke-3" /> : null}
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-between gap-2 text-[11px] pt-2 border-t border-border/50 mt-auto w-full">
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50 text-[11px] w-full mt-auto">
                     <span
                       className={cn(
-                        "rounded px-1.5 py-0.5 font-bold text-[9px] uppercase tracking-wider",
+                        "rounded px-1.5 py-0.5 font-bold text-[9px] uppercase tracking-wider truncate",
                         style.bg,
                         style.text
                       )}
                     >
                       {item.category || "Consumable"}
                     </span>
-                    <span className="text-text-secondary font-medium flex items-center gap-1 text-[11px]">
+                    <span className="text-text-secondary font-medium flex items-center gap-1 shrink-0">
                       <span className="h-1.5 w-1.5 rounded-full bg-status-active-bg" />
                       {item.unit ? `Per ${item.unit}` : "Available"}
                     </span>
@@ -966,342 +1027,637 @@ function StepSelectConsumables({
   );
 }
 
-// ─── Step 2: Request Details (1 Row for Dates & Quantity + Upgraded UI/UX) ──
+// ─── Step 2: Request Details (per-type purposes + manual department) ──────────
 
 function StepDetails({
-  items,
   values,
   onChange,
   errors,
-  registeredName,
+  me,
 }: {
-  items: BrowseItem[];
-  values: Omit<WizardFormValues, "selectedItems">;
-  onChange: (patch: Partial<Omit<WizardFormValues, "selectedItems">>) => void;
+  values: WizardFormValues;
+  onChange: (patch: Partial<WizardFormValues>) => void;
   errors: Record<string, string>;
-  /** Department account display name (`me.name`) for optional fill. */
-  registeredName?: string | null;
+  me?: MeProfile;
 }) {
-  const hasAsset = items.some(i => i.type === "asset");
-  const isTemporaryLoan = hasAsset && values.requestType !== "assignable";
+  const { data: departments = [] } = useDepartmentsQuery();
+  const isManual = values.requesterMode === "manual";
 
-  // Primary/single item quantity handler for unified 1-row control
-  const primaryItem = items[0];
-  const primaryQty = primaryItem ? values.quantities[primaryItem.id] || 1 : 1;
+  const updateBundle = useCallback(
+    (requestType: WizardRequestType, patch: Partial<WizardTypeBundle>) => {
+      onChange({
+        typeBundles: values.typeBundles.map((b) =>
+          b.requestType === requestType ? { ...b, ...patch } : b
+        ),
+      });
+    },
+    [onChange, values.typeBundles]
+  );
 
-  const setPrimaryQty = useCallback((qty: number) => {
-    if (!primaryItem) return;
-    const clamped = Math.max(1, qty);
-    onChange({ quantities: { ...values.quantities, [primaryItem.id]: clamped } });
-  }, [primaryItem, values.quantities, onChange]);
+  const updateGroup = useCallback(
+    (
+      requestType: WizardRequestType,
+      groupId: string,
+      patch: Partial<WizardPurposeGroup>
+    ) => {
+      const bundle = values.typeBundles.find((b) => b.requestType === requestType);
+      if (!bundle) return;
+      updateBundle(requestType, {
+        purposeGroups: bundle.purposeGroups.map((g) =>
+          g.id === groupId ? { ...g, ...patch } : g
+        ),
+      });
+    },
+    [updateBundle, values.typeBundles]
+  );
+
+  const setLineQty = useCallback(
+    (
+      requestType: WizardRequestType,
+      groupId: string,
+      itemId: string,
+      quantity: number
+    ) => {
+      const bundle = values.typeBundles.find((b) => b.requestType === requestType);
+      if (!bundle) return;
+      const clamped = Math.max(1, quantity);
+      updateBundle(requestType, {
+        purposeGroups: bundle.purposeGroups.map((g) =>
+          g.id !== groupId
+            ? g
+            : {
+                ...g,
+                lines: g.lines.map((l) =>
+                  l.itemId === itemId ? { ...l, quantity: clamped } : l
+                ),
+              }
+        ),
+      });
+    },
+    [updateBundle, values.typeBundles]
+  );
+
+  const addLineToGroup = useCallback(
+    (requestType: WizardRequestType, groupId: string, itemId: string) => {
+      if (!itemId) return;
+      const bundle = values.typeBundles.find((b) => b.requestType === requestType);
+      if (!bundle) return;
+      updateBundle(requestType, {
+        purposeGroups: bundle.purposeGroups.map((g) => {
+          if (g.id !== groupId) return g;
+          if (g.lines.some((l) => l.itemId === itemId)) return g;
+          return { ...g, lines: [...g.lines, { itemId, quantity: 1 }] };
+        }),
+      });
+    },
+    [updateBundle, values.typeBundles]
+  );
+
+  const removeLine = useCallback(
+    (requestType: WizardRequestType, groupId: string, itemId: string) => {
+      const bundle = values.typeBundles.find((b) => b.requestType === requestType);
+      if (!bundle) return;
+      updateBundle(requestType, {
+        purposeGroups: bundle.purposeGroups.map((g) =>
+          g.id !== groupId
+            ? g
+            : { ...g, lines: g.lines.filter((l) => l.itemId !== itemId) }
+        ),
+      });
+    },
+    [updateBundle, values.typeBundles]
+  );
+
+  const removeGroup = useCallback(
+    (requestType: WizardRequestType, groupId: string) => {
+      const bundle = values.typeBundles.find((b) => b.requestType === requestType);
+      if (!bundle || bundle.purposeGroups.length <= 1) return;
+      updateBundle(requestType, {
+        purposeGroups: bundle.purposeGroups.filter((g) => g.id !== groupId),
+      });
+    },
+    [updateBundle, values.typeBundles]
+  );
+
+  const setRequesterMode = useCallback(
+    (mode: "account" | "manual") => {
+      if (mode === "account") {
+        onChange({
+          requesterMode: "account",
+          requestedByName: me?.name ?? "",
+          department: me?.department ?? "",
+          departmentId: me?.departmentId ?? null,
+        });
+      } else {
+        onChange({ requesterMode: "manual" });
+      }
+    },
+    [me, onChange]
+  );
 
   return (
     <div className="space-y-4">
-      {/* ── Selected Items Summary Card ── */}
-      <section aria-label="Selected Items" className="rounded-xl border border-border bg-card overflow-hidden shadow-xs">
-        <div className="bg-bg-subtle/70 px-3.5 py-2 border-b border-border flex items-center justify-between">
+      {/* ── Requester ─────────────────────────────────────────────── */}
+      <section
+        aria-label="Requester"
+        className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-3"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <Package className="h-3.5 w-3.5 text-accent" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-text">
-              Selected Item{items.length > 1 ? `s (${items.length})` : ""}
-            </span>
+            <User className="h-3.5 w-3.5 text-accent" />
+            <p className="text-[11px] font-bold uppercase tracking-wider text-text">
+              Requester details
+            </p>
           </div>
-          <span className="text-[10px] font-semibold text-text-secondary">
-            {values.requestType === "consumable" ? "Supplies Requisition" : values.requestType === "assignable" ? "Assignment Request" : "Borrow Loan"}
-          </span>
-        </div>
-
-        <div className="divide-y divide-border max-h-36 overflow-y-auto">
-          {items.map((item) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const catMeta = getCategoryStyle(item.category as any);
-            const itemQty = values.quantities[item.id] || 1;
-
-            return (
-              <div key={item.id} className="p-3 flex items-center justify-between gap-3 hover:bg-bg-subtle/30 transition-colors">
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className={cn("h-8 w-8 shrink-0 rounded-lg flex items-center justify-center border", catMeta.bg, "border-transparent")}>
-                    <Tag className={cn("h-4 w-4", catMeta.text)} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-text truncate">{item.name}</p>
-                    <p className="text-[11px] text-text-secondary font-mono">
-                      {item.type === "asset" ? item.assetCode : item.itemCode} · <span className="capitalize">{catMeta.label}</span>
-                    </p>
-                  </div>
-                </div>
-
-                {/* Multi-item inline quantity control if more than 1 item */}
-                {items.length > 1 && (
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] text-text-secondary font-semibold">Qty:</span>
-                    <div className="flex items-center rounded-lg border border-border bg-bg-subtle p-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newQ = Math.max(1, itemQty - 1);
-                          onChange({ quantities: { ...values.quantities, [item.id]: newQ } });
-                        }}
-                        disabled={itemQty <= 1}
-                        className="h-6 w-6 rounded-md flex items-center justify-center text-text-secondary hover:text-text hover:bg-card transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                        aria-label="Decrease quantity"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </button>
-                      <span className="min-w-7 px-1 text-center text-xs font-bold text-text">
-                        {itemQty}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const newQ = itemQty + 1;
-                          onChange({ quantities: { ...values.quantities, [item.id]: newQ } });
-                        }}
-                        className="h-6 w-6 rounded-md flex items-center justify-center text-text-secondary hover:text-text hover:bg-card transition-colors"
-                        aria-label="Increase quantity"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </div>
-                    {item.type === "consumable" && (item as BrowseConsumableItem).unit && (
-                      <span className="text-xs font-semibold text-accent px-2 py-0.5 rounded-md bg-accent/10 border border-accent/20">
-                        {formatQuantityWithUnit(itemQty, (item as BrowseConsumableItem).unit, item.type).replace(/^\d+\s*/, "")}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── 1 ROW FOR DATE AND QUANTITY (Responsive Grid) ── */}
-      <section aria-label="Schedule and Quantity" className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2">
-        <div className="flex items-center gap-2 mb-1">
-          <Calendar className="h-3.5 w-3.5 text-accent" />
-          <p className="text-[11px] font-bold uppercase tracking-wider text-text">
-            Schedule & Quantity Parameters
-          </p>
-        </div>
-
-        <div
-          className={cn(
-            "grid gap-3",
-            isTemporaryLoan
-              ? "grid-cols-1 sm:grid-cols-3"
-              : "grid-cols-1 sm:grid-cols-2"
-          )}
-        >
-          {/* Column 1: Date From / Date Needed */}
-          <div className="space-y-1.5">
-            <label htmlFor="dateFrom" className="flex items-center justify-between text-xs font-bold text-text">
-              <span>{!hasAsset ? "Date Needed" : "Checkout Date"}</span>
-              <span className="text-status-outofservice-bg">*</span>
-            </label>
-            <div className="relative">
-              <input
-                id="dateFrom"
-                type="date"
-                value={values.dateFrom}
-                min={today()}
-                onChange={(e) => onChange({ dateFrom: e.target.value })}
+          <div
+            role="radiogroup"
+            aria-label="Requester entry mode"
+            className="inline-flex rounded-lg border border-border bg-bg-subtle p-0.5"
+          >
+            {(
+              [
+                { id: "account" as const, label: "Use my account" },
+                { id: "manual" as const, label: "Enter manually" },
+              ]
+            ).map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                role="radio"
+                aria-checked={values.requesterMode === opt.id}
+                onClick={() => setRequesterMode(opt.id)}
                 className={cn(
-                  "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text transition-all",
-                  "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
-                  errors.dateFrom ? "border-status-outofservice-bg bg-status-outofservice-bg/5" : "border-border"
+                  "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors",
+                  values.requesterMode === opt.id
+                    ? "bg-accent text-accent-foreground shadow-2xs"
+                    : "text-text-secondary hover:text-text"
                 )}
-                aria-describedby={errors.dateFrom ? "date-from-err" : undefined}
-              />
-            </div>
-            {errors.dateFrom && (
-              <p id="date-from-err" className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
-                <AlertCircle className="h-3 w-3 shrink-0" />
-                {errors.dateFrom}
-              </p>
-            )}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
+        </div>
 
-          {/* Column 2: Expected Return Date (Only for temporary asset loans) */}
-          {isTemporaryLoan && (
+        {isManual ? (
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label htmlFor="dateTo" className="flex items-center justify-between text-xs font-bold text-text">
-                <span>Expected Return</span>
-                <span className="text-status-outofservice-bg">*</span>
+              <label htmlFor="requestedByName" className="text-xs font-bold text-text">
+                Requested by <span className="text-status-outofservice-bg">*</span>
               </label>
-              <div className="relative">
-                <input
-                  id="dateTo"
-                  type="date"
-                  value={values.dateTo}
-                  min={values.dateFrom || today()}
-                  onChange={(e) => onChange({ dateTo: e.target.value })}
-                  className={cn(
-                    "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text transition-all",
-                    "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
-                    errors.dateTo ? "border-status-outofservice-bg bg-status-outofservice-bg/5" : "border-border"
-                  )}
-                  aria-describedby={errors.dateTo ? "date-to-err" : undefined}
-                />
-              </div>
-              {errors.dateTo && (
-                <p id="date-to-err" className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+              <input
+                id="requestedByName"
+                type="text"
+                value={values.requestedByName}
+                onChange={(e) => onChange({ requestedByName: e.target.value })}
+                placeholder="Full name of the person requesting…"
+                className={cn(
+                  "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
+                  "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
+                  errors.requestedByName
+                    ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                    : "border-border"
+                )}
+              />
+              {errors.requestedByName && (
+                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
                   <AlertCircle className="h-3 w-3 shrink-0" />
-                  {errors.dateTo}
+                  {errors.requestedByName}
                 </p>
               )}
             </div>
-          )}
+            <div className="space-y-1.5">
+              <label htmlFor="department" className="text-xs font-bold text-text">
+                Department <span className="text-status-outofservice-bg">*</span>
+              </label>
+              <input
+                id="department"
+                type="text"
+                list="department-options"
+                value={values.department}
+                onChange={(e) => {
+                  const text = e.target.value;
+                  const match = departments.find(
+                    (d) => d.name.toLowerCase() === text.trim().toLowerCase()
+                  );
+                  onChange({
+                    department: text,
+                    departmentId: match?.id ?? null,
+                  });
+                }}
+                placeholder="Select or type a department…"
+                className={cn(
+                  "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
+                  "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
+                  errors.department
+                    ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                    : "border-border"
+                )}
+              />
+              <datalist id="department-options">
+                {departments.map((d) => (
+                  <option key={d.id} value={d.name} />
+                ))}
+              </datalist>
+              {errors.department ? (
+                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  {errors.department}
+                </p>
+              ) : (
+                <p className="text-[11px] text-text-secondary">
+                  Pick from the list or type a department not in the catalog.
+                </p>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-3 rounded-lg border border-border bg-bg-subtle/40 p-3">
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                Requested by
+              </p>
+              <p className="text-sm font-semibold text-text mt-0.5 truncate">
+                {values.requestedByName || me?.name || "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                Department
+              </p>
+              <p className="text-sm font-semibold text-text mt-0.5 truncate">
+                {values.department || me?.department || "Not linked"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                Email
+              </p>
+              <p className="text-sm font-semibold text-text mt-0.5 truncate">
+                {me?.email || "—"}
+              </p>
+            </div>
+            {(errors.department || errors.requestedByName) && (
+              <p className="sm:col-span-3 text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                {errors.department || errors.requestedByName} Switch to{" "}
+                <span className="font-bold">Enter manually</span> to fix.
+              </p>
+            )}
+          </div>
+        )}
 
-          {/* Column 3: Quantity Input / Stepper */}
-          <div className="space-y-1.5">
-            <label htmlFor="primary-qty" className="flex items-center justify-between text-xs font-bold text-text">
-              <span>
-                Quantity{" "}
-                {primaryItem?.type === "consumable" && (primaryItem as BrowseConsumableItem).unit ? (
-                  <span className="text-accent font-semibold">
-                    ({formatQuantityWithUnit(primaryQty, (primaryItem as BrowseConsumableItem).unit, primaryItem.type)})
-                  </span>
-                ) : null}
-              </span>
-              <span className="text-status-outofservice-bg">*</span>
-            </label>
+      </section>
 
-            {items.length <= 1 ? (
-              <div className="flex items-center h-10 rounded-xl border border-border bg-bg-subtle/50 p-1 transition-all focus-within:bg-card focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
-                <button
-                  type="button"
-                  onClick={() => setPrimaryQty(primaryQty - 1)}
-                  disabled={primaryQty <= 1}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  aria-label="Decrease quantity"
-                >
-                  <Minus className="h-3.5 w-3.5" />
-                </button>
-                <div className="flex-1 flex items-center justify-center gap-1.5 px-2">
-                  <input
-                    id="primary-qty"
-                    type="number"
-                    min={1}
-                    value={primaryQty}
-                    onChange={(e) => setPrimaryQty(Number(e.target.value))}
-                    className="w-12 text-center bg-transparent text-sm font-bold text-text focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  {primaryItem?.type === "consumable" && (primaryItem as BrowseConsumableItem).unit && (
-                    <span className="text-xs font-semibold text-text-secondary select-none">
-                      {formatQuantityWithUnit(primaryQty, (primaryItem as BrowseConsumableItem).unit, primaryItem.type).replace(/^\d+\s*/, "")}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPrimaryQty(primaryQty + 1)}
-                  className="h-8 w-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors"
-                  aria-label="Increase quantity"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="h-10 rounded-xl border border-border bg-bg-subtle/30 px-3 flex items-center justify-between text-xs text-text-secondary">
-                <span>Total Lines</span>
-                <span className="font-bold text-text bg-card px-2 py-0.5 rounded-md border border-border">
-                  {items.length} item{items.length > 1 ? "s" : ""}
+      {values.typeBundles.map((bundle) => {
+        const itemsById = new Map(
+          bundle.selectedItems.map((item) => [item.id, item])
+        );
+        const assignedAnywhere = new Set(
+          bundle.purposeGroups.flatMap((g) => g.lines.map((l) => l.itemId))
+        );
+        const unassigned = bundle.selectedItems.filter(
+          (i) => !assignedAnywhere.has(i.id)
+        );
+        return (
+          <section
+            key={bundle.requestType}
+            aria-label={`${typeLabel(bundle.requestType)} purposes`}
+            className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="h-3.5 w-3.5 text-accent shrink-0" />
+                <p className="text-[11px] font-bold uppercase tracking-wider text-text truncate">
+                  {typeLabel(bundle.requestType)}
+                  <span className="text-status-outofservice-bg"> *</span>
+                </p>
+                <span className="text-[10px] font-semibold text-text-secondary rounded-md border border-border px-1.5 py-0.5 shrink-0">
+                  {bundle.selectedItems.length} item
+                  {bundle.selectedItems.length === 1 ? "" : "s"} ·{" "}
+                  {bundle.purposeGroups.length} purpose
+                  {bundle.purposeGroups.length === 1 ? "" : "s"}
                 </span>
               </div>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Requested By ── */}
-      <section aria-label="Requested By" className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <User className="h-3.5 w-3.5 text-accent" />
-            <label htmlFor="requestedByName" className="text-[11px] font-bold uppercase tracking-wider text-text">
-              Requested By <span className="text-status-outofservice-bg">*</span>
-            </label>
-          </div>
-          {registeredName &&
-            values.requestedByName.trim() !== registeredName.trim() && (
               <button
                 type="button"
-                onClick={() => onChange({ requestedByName: registeredName })}
-                className="text-[11px] font-semibold text-accent hover:underline cursor-pointer shrink-0"
+                onClick={() =>
+                  updateBundle(bundle.requestType, {
+                    purposeGroups: [
+                      ...bundle.purposeGroups,
+                      newPurposeGroup(),
+                    ],
+                  })
+                }
+                className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] font-semibold text-accent hover:bg-accent/10 shrink-0"
               >
-                Use registered name ({registeredName})
+                <Plus className="h-3 w-3" />
+                Add purpose
               </button>
+            </div>
+
+            {errors[`bundle_${bundle.requestType}`] && (
+              <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                {errors[`bundle_${bundle.requestType}`]}
+              </p>
             )}
-        </div>
 
-        <input
-          id="requestedByName"
-          type="text"
-          value={values.requestedByName}
-          onChange={(e) => onChange({ requestedByName: e.target.value })}
-          placeholder="Name of the person this request is for…"
-          className={cn(
-            "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
-            "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
-            errors.requestedByName ? "border-status-outofservice-bg bg-status-outofservice-bg/5" : "border-border"
-          )}
-          aria-describedby={errors.requestedByName ? "requested-by-err" : "requested-by-hint"}
-        />
-        {errors.requestedByName ? (
-          <p id="requested-by-err" className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
-            <AlertCircle className="h-3 w-3 shrink-0" />
-            {errors.requestedByName}
-          </p>
-        ) : (
-          <p id="requested-by-hint" className="text-[11px] text-text-secondary">
-            Enter who this request is for. Use registered name to fill your department account display name.
-          </p>
-        )}
-      </section>
+            {bundle.requestType === "borrowable" && (
+              <div className="rounded-lg border border-border bg-bg-subtle/30 p-3 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-accent" />
+                  <p className="text-xs font-bold text-text">
+                    Borrow schedule
+                  </p>
+                  <span className="text-[10px] text-text-secondary">
+                    Applies to borrowed equipment only
+                  </span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="dateFrom"
+                      className="text-xs font-semibold text-text"
+                    >
+                      Checkout date{" "}
+                      <span className="text-status-outofservice-bg">*</span>
+                    </label>
+                    <input
+                      id="dateFrom"
+                      type="date"
+                      value={values.dateFrom}
+                      min={today()}
+                      onChange={(e) => onChange({ dateFrom: e.target.value })}
+                      className={cn(
+                        "w-full h-9 rounded-lg border bg-card px-3 text-sm font-medium text-text transition-all",
+                        "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20",
+                        errors.dateFrom
+                          ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                          : "border-border"
+                      )}
+                    />
+                    {errors.dateFrom && (
+                      <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        {errors.dateFrom}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="dateTo"
+                      className="text-xs font-semibold text-text"
+                    >
+                      Expected return{" "}
+                      <span className="text-status-outofservice-bg">*</span>
+                    </label>
+                    <input
+                      id="dateTo"
+                      type="date"
+                      value={values.dateTo}
+                      min={values.dateFrom || today()}
+                      onChange={(e) => onChange({ dateTo: e.target.value })}
+                      className={cn(
+                        "w-full h-9 rounded-lg border bg-card px-3 text-sm font-medium text-text transition-all",
+                        "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20",
+                        errors.dateTo
+                          ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                          : "border-border"
+                      )}
+                    />
+                    {errors.dateTo && (
+                      <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        {errors.dateTo}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
-      {/* ── Purpose Input Card ── */}
-      <section aria-label="Purpose" className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FileText className="h-3.5 w-3.5 text-accent" />
-            <label htmlFor="purpose" className="text-[11px] font-bold uppercase tracking-wider text-text">
-              Purpose / Justification <span className="text-status-outofservice-bg">*</span>
-            </label>
-          </div>
-          <span className="text-[10px] text-text-secondary font-medium">Required for approval</span>
-        </div>
+            {unassigned.length > 0 && (
+              <div className="rounded-lg border border-status-repair-bg/40 bg-status-repair-bg/10 px-3 py-2 flex flex-wrap items-center gap-2">
+                <AlertCircle className="h-3.5 w-3.5 text-status-repair-bg shrink-0" />
+                <p className="text-[11px] font-semibold text-text">
+                  Not assigned to a purpose yet:
+                </p>
+                {unassigned.map((item) => {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const catMeta = getCategoryStyle(item.category as any);
+                  return (
+                    <span
+                      key={item.id}
+                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-text"
+                    >
+                      <Tag className={cn("h-3 w-3", catMeta.text)} />
+                      {item.name}
+                    </span>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const first = bundle.purposeGroups[0];
+                    if (!first) return;
+                    unassigned.forEach((item) =>
+                      addLineToGroup(bundle.requestType, first.id, item.id)
+                    );
+                  }}
+                  className="ml-auto text-[11px] font-semibold text-accent hover:underline"
+                >
+                  Add all to Purpose 1
+                </button>
+              </div>
+            )}
 
-        <textarea
-          id="purpose"
-          value={values.purpose}
-          onChange={(e) => onChange({ purpose: e.target.value })}
-          rows={3}
-          placeholder="Briefly state the reason, project name, or clinical task for this request…"
-          className={cn(
-            "w-full rounded-xl border bg-bg-subtle/50 p-3 text-sm text-text placeholder:text-text-secondary transition-all resize-none",
-            "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
-            errors.purpose ? "border-status-outofservice-bg bg-status-outofservice-bg/5" : "border-border"
-          )}
-          aria-describedby={errors.purpose ? "purpose-err" : undefined}
-        />
-        {errors.purpose && (
-          <p id="purpose-err" className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
-            <AlertCircle className="h-3 w-3 shrink-0" />
-            {errors.purpose}
-          </p>
-        )}
-      </section>
+            <div className="space-y-2.5">
+              {bundle.purposeGroups.map((group, idx) => {
+                const assignedIds = new Set(group.lines.map((l) => l.itemId));
+                const availableToAdd = bundle.selectedItems.filter(
+                  (i) => !assignedIds.has(i.id)
+                );
+                const errKey = `${bundle.requestType}_${group.id}`;
+                return (
+                  <div
+                    key={group.id}
+                    className="rounded-lg border border-border bg-bg-subtle/30 p-3 space-y-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="h-5 w-5 shrink-0 rounded-md bg-accent/15 text-accent text-[11px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <input
+                        id={`purpose-${group.id}`}
+                        type="text"
+                        value={group.purpose}
+                        onChange={(e) =>
+                          updateGroup(bundle.requestType, group.id, {
+                            purpose: e.target.value,
+                          })
+                        }
+                        placeholder="Purpose — reason, project, or clinical task…"
+                        aria-label={`Purpose ${idx + 1}`}
+                        className={cn(
+                          "flex-1 min-w-0 h-9 rounded-lg border bg-card px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
+                          "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20",
+                          errors[`purpose_${errKey}`]
+                            ? "border-status-outofservice-bg"
+                            : "border-border"
+                        )}
+                      />
+                      {bundle.purposeGroups.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeGroup(bundle.requestType, group.id)
+                          }
+                          className="p-1.5 rounded-md text-text-secondary hover:text-status-outofservice-bg hover:bg-status-outofservice-bg/10 shrink-0"
+                          aria-label={`Remove purpose ${idx + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {errors[`purpose_${errKey}`] && (
+                      <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1 pl-7">
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                        {errors[`purpose_${errKey}`]}
+                      </p>
+                    )}
 
-      {/* ── Additional Notes Input Card ── */}
-      <section aria-label="Additional Notes" className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2">
+                    <div className="grid gap-1.5 sm:grid-cols-2 pl-7">
+                      {group.lines.map((line) => {
+                        const item = itemsById.get(line.itemId);
+                        if (!item) return null;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const catMeta = getCategoryStyle(item.category as any);
+                        return (
+                          <div
+                            key={line.itemId}
+                            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5"
+                          >
+                            <Tag
+                              className={cn("h-3 w-3 shrink-0", catMeta.text)}
+                            />
+                            <p className="text-xs font-semibold text-text truncate flex-1 min-w-0">
+                              {item.name}
+                            </p>
+                            <div className="flex items-center rounded-md border border-border bg-bg-subtle p-0.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLineQty(
+                                    bundle.requestType,
+                                    group.id,
+                                    line.itemId,
+                                    line.quantity - 1
+                                  )
+                                }
+                                disabled={line.quantity <= 1}
+                                className="h-5 w-5 rounded flex items-center justify-center text-text-secondary disabled:opacity-30"
+                                aria-label={`Decrease quantity for ${item.name}`}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </button>
+                              <span className="min-w-6 px-0.5 text-center text-xs font-bold">
+                                {line.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setLineQty(
+                                    bundle.requestType,
+                                    group.id,
+                                    line.itemId,
+                                    line.quantity + 1
+                                  )
+                                }
+                                className="h-5 w-5 rounded flex items-center justify-center text-text-secondary"
+                                aria-label={`Increase quantity for ${item.name}`}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeLine(
+                                  bundle.requestType,
+                                  group.id,
+                                  line.itemId
+                                )
+                              }
+                              className="p-0.5 rounded text-text-secondary hover:text-status-outofservice-bg shrink-0"
+                              aria-label={`Remove ${item.name} from this purpose`}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      {group.lines.length === 0 && (
+                        <p className="text-[11px] text-text-secondary sm:col-span-2">
+                          No items yet — add at least one below.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="pl-7 space-y-1.5">
+                      {availableToAdd.length > 0 && (
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            addLineToGroup(
+                              bundle.requestType,
+                              group.id,
+                              e.target.value
+                            );
+                            e.target.value = "";
+                          }}
+                          aria-label={`Add item to purpose ${idx + 1}`}
+                          className="w-full h-8 rounded-lg border border-dashed border-border bg-card px-2 text-xs font-medium text-text-secondary focus:outline-none focus:border-accent"
+                        >
+                          <option value="">+ Add item to this purpose…</option>
+                          {availableToAdd.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {errors[`lines_${errKey}`] && (
+                        <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3 shrink-0" />
+                          {errors[`lines_${errKey}`]}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })}
+
+      <section
+        aria-label="Additional Notes"
+        className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2"
+      >
         <div className="flex items-center gap-2">
           <StickyNote className="h-3.5 w-3.5 text-text-secondary" />
-          <label htmlFor="notes" className="text-[11px] font-bold uppercase tracking-wider text-text">
-            Additional Notes <span className="text-text-secondary font-normal normal-case">(optional)</span>
+          <label
+            htmlFor="notes"
+            className="text-[11px] font-bold uppercase tracking-wider text-text"
+          >
+            Additional Notes{" "}
+            <span className="text-text-secondary font-normal normal-case">
+              (optional)
+            </span>
           </label>
         </div>
-
         <textarea
           id="notes"
           value={values.notes}
@@ -1317,150 +1673,187 @@ function StepDetails({
 
 // ─── Step 3: Review ───────────────────────────────────────────────────────────
 
-function StepReview({ values, me }: { values: WizardFormValues, me?: MeProfile }) {
-  const { selectedItems } = values;
-  if (!selectedItems || selectedItems.length === 0) return null;
+function StepReview({
+  values,
+  me,
+}: {
+  values: WizardFormValues;
+  me?: MeProfile;
+}) {
+  if (values.typeBundles.length === 0) return null;
 
-  // Use the actual logged-in user or fallback to mock
   const requester = {
     name: me?.name || "Your name",
     email: me?.email || "Your email",
-    department: me?.department || "Unspecified",
   };
-  
-  const hasAsset = selectedItems.some(i => i.type === "asset");
-
-  const requestTypeLabel =
-    values.requestType === "borrowable"
-      ? "Borrow Request (Short-Term Loan)"
-      : values.requestType === "assignable"
-      ? "Assignment Request (Long-Term Custody)"
-      : "Supplies Requisition";
-
-  const classificationColor =
-    values.requestType === "borrowable"
-      ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
-      : values.requestType === "assignable"
-      ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
-      : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
 
   return (
     <div className="space-y-5">
-      {/* ── Request Type Header Badge ── */}
       <div className="flex items-center justify-between p-3.5 rounded-lg border border-border bg-bg-subtle">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">Request Classification</p>
-          <p className="text-sm font-bold text-text mt-0.5">{requestTypeLabel}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+            Request types
+          </p>
+          <p className="text-sm font-bold text-text mt-0.5">
+            {values.typeBundles.map((b) => typeLabel(b.requestType)).join(" · ")}
+          </p>
         </div>
-        <span className={cn("text-xs font-semibold px-2.5 py-1 rounded-md border", classificationColor)}>
-          {values.requestType === "consumable" ? "Requisition" : "Borrow Request"}
+        <span className="text-xs font-semibold px-2.5 py-1 rounded-md border border-border bg-card">
+          {values.typeBundles.length} type
+          {values.typeBundles.length > 1 ? "s" : ""}
         </span>
       </div>
 
-      {/* ── Requester Details ────────────────────────────────────────────── */}
-      <section aria-labelledby="requester-details-heading" className="space-y-2">
-        <h3 id="requester-details-heading" className="text-[10px] font-bold uppercase tracking-widest text-text-secondary px-1">
+      <section className="space-y-2">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-text-secondary px-1">
           Requesting department
         </h3>
         <div className="rounded-lg border border-border bg-card p-3 grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Requested By</p>
+            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+              Requested By
+            </p>
             <p className="font-medium text-text mt-0.5">
               {values.requestedByName.trim() || requester.name}
             </p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Department account</p>
+            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+              Department account
+            </p>
             <p className="font-medium text-text mt-0.5">{requester.name}</p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Department</p>
-            <p className="font-medium text-text mt-0.5">{requester.department}</p>
+            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+              Department
+            </p>
+            <p className="font-medium text-text mt-0.5">
+              {values.department.trim() || "Unspecified"}
+            </p>
           </div>
           <div>
-            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Email Address</p>
+            <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+              Email Address
+            </p>
             <p className="font-medium text-text mt-0.5">{requester.email}</p>
           </div>
         </div>
       </section>
 
-      {/* ── Request Details ──────────────────────────────────────────────── */}
-      <section aria-labelledby="request-details-heading" className="space-y-2">
-        <h3 id="request-details-heading" className="text-[10px] font-bold uppercase tracking-widest text-text-secondary px-1">
-          Requested Items
-        </h3>
-        <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
-          {selectedItems.map((item) => {
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             const categoryMeta = getCategoryStyle(item.category as any);
-             return (
-               <div key={item.id} className="px-3 py-2.5 flex items-center gap-3 bg-bg-subtle/30">
-                 <div className={cn("h-8 w-8 shrink-0 rounded-md flex items-center justify-center border", categoryMeta.bg, "border-transparent")}>
-                   <Tag className={cn("h-4 w-4", categoryMeta.text)} />
-                 </div>
-                 <div className="flex-1">
-                   <p className="text-sm font-medium text-text">{item.name}</p>
-                   <p className="text-[10px] text-text-secondary font-mono mt-0.5 uppercase tracking-wide">
-                     {item.type === "asset" ? item.assetCode : item.itemCode}
-                     {" · "}
-                     {categoryMeta.label}
-                   </p>
-                 </div>
-                 <div className="text-right px-2">
-                   <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Qty</p>
-                   <p className="font-bold text-xs text-text">
-                     {formatQuantityWithUnit(
-                       values.quantities[item.id] || 1,
-                       item.type === "consumable" ? (item as BrowseConsumableItem).unit : null,
-                       item.type
-                     )}
-                   </p>
-                 </div>
-               </div>
-             )
-          })}
-
-          {/* Dates & Qty */}
-          <div className="px-3 py-3 grid grid-cols-2 gap-y-3 gap-x-4 text-sm bg-card">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">{!hasAsset ? "Date Needed" : "Checkout Date"}</p>
-              <p className="font-medium text-text mt-0.5">{values.dateFrom}</p>
-            </div>
-            {hasAsset && values.requestType !== "assignable" && (
-              <div>
-                <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Expected Return</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <Calendar className="h-3.5 w-3.5 text-status-outofservice-bg" />
-                  <p className="font-medium text-status-outofservice-bg">{values.dateTo}</p>
+      {values.typeBundles.map((bundle) => {
+        const itemsById = new Map(
+          bundle.selectedItems.map((item) => [item.id, item])
+        );
+        return (
+          <section key={bundle.requestType} className="space-y-2">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-text-secondary px-1">
+              {typeLabel(bundle.requestType)}
+            </h3>
+            {bundle.requestType === "borrowable" && (
+              <div className="rounded-lg border border-border bg-card px-3 py-2.5 grid grid-cols-2 gap-x-4 text-sm">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                    Checkout Date
+                  </p>
+                  <p className="font-medium text-text mt-0.5">
+                    {values.dateFrom}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                    Expected Return
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <Calendar className="h-3.5 w-3.5 text-status-outofservice-bg" />
+                    <p className="font-medium text-status-outofservice-bg">
+                      {values.dateTo}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
-        </div>
-      </section>
+            {bundle.purposeGroups.map((group, idx) => (
+              <div
+                key={group.id}
+                className="rounded-lg border border-border bg-card overflow-hidden"
+              >
+                <div className="px-3 py-2 bg-accent/5 border-b border-accent/20">
+                  <p className="text-[10px] uppercase tracking-wider text-accent font-semibold">
+                    Purpose {idx + 1}
+                  </p>
+                  <p className="text-sm font-medium text-text mt-0.5">
+                    {group.purpose.trim() || "—"}
+                  </p>
+                </div>
+                <div className="divide-y divide-border">
+                  {group.lines.map((line) => {
+                    const item = itemsById.get(line.itemId);
+                    if (!item) return null;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const categoryMeta = getCategoryStyle(item.category as any);
+                    return (
+                      <div
+                        key={`${group.id}-${line.itemId}`}
+                        className="px-3 py-2.5 flex items-center gap-3 bg-bg-subtle/30"
+                      >
+                        <div
+                          className={cn(
+                            "h-8 w-8 shrink-0 rounded-md flex items-center justify-center border border-transparent",
+                            categoryMeta.bg
+                          )}
+                        >
+                          <Tag className={cn("h-4 w-4", categoryMeta.text)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-text truncate">
+                            {item.name}
+                          </p>
+                          <p className="text-[10px] text-text-secondary font-mono mt-0.5 uppercase tracking-wide">
+                            {item.type === "asset"
+                              ? item.assetCode
+                              : item.itemCode}
+                            {" · "}
+                            {categoryMeta.label}
+                          </p>
+                        </div>
+                        <div className="text-right px-2">
+                          <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                            Qty
+                          </p>
+                          <p className="font-bold text-xs text-text">
+                            {formatQuantityWithUnit(
+                              line.quantity,
+                              item.type === "consumable"
+                                ? (item as BrowseConsumableItem).unit
+                                : null,
+                              item.type
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </section>
+        );
+      })}
 
-      {/* ── Additional Details ─────────────────────────────────────────── */}
-      <section aria-label="Request purpose">
-        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3">
-          <p className="text-[10px] uppercase tracking-wider text-accent font-semibold mb-1">Purpose</p>
-          <p className="text-sm font-medium text-text mt-0.5">
-            {values.purpose}
-          </p>
-        </div>
-      </section>
-
-      {/* ── Notes ──────────────────────────────────────────────────────── */}
       {values.notes && (
         <section aria-label="Additional notes">
           <div className="rounded-lg border border-border bg-card p-3">
-            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-secondary mb-1">Notes</p>
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-text-secondary mb-1">
+              Notes
+            </p>
             <p className="text-sm text-text">{values.notes}</p>
           </div>
         </section>
       )}
 
       <p className="text-xs text-text-secondary text-center max-w-sm mx-auto">
-        By submitting, your request will be sent to the Property Custodian / Department Head for review.
+        Each request type is submitted as its own request code for custodian
+        review.
       </p>
     </div>
   );
@@ -1483,24 +1876,41 @@ export function NewBorrowRequestWizard({
   initialType,
   onSuccess,
 }: NewBorrowRequestWizardProps) {
+  const initialTypes: WizardRequestType[] =
+    initialType === "requisition"
+      ? ["consumable"]
+      : initialType === "borrow"
+        ? ["borrowable"]
+        : [];
+
   const [step, setStep] = useState<RequestWizardStep>(
     prefilledItems && prefilledItems.length > 0 ? "details" : "type"
   );
-  const [values, setValues] = useState<WizardFormValues>({
-    requestType: initialType === "requisition" ? "consumable" : initialType === "borrow" ? "borrowable" : null,
-    selectedItems: prefilledItems ?? [],
-    dateFrom: today(),
-    dateTo: nextWeek(),
-    quantities: {},
-    purpose: "",
-    notes: "",
-    requestedByName: "",
+  const [values, setValues] = useState<WizardFormValues>(() => {
+    const base = emptyWizardValues(initialTypes);
+    if (prefilledItems && prefilledItems.length > 0 && base.typeBundles[0]) {
+      base.typeBundles[0] = {
+        ...base.typeBundles[0],
+        selectedItems: prefilledItems,
+      };
+    }
+    return base;
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState("");
 
-  const { mutateAsync: createRequest, isPending: isSubmittingAsset, isSuccess: isSubmittedAsset, reset: resetAsset } = useCreateBorrowRequestMutation();
-  const { mutateAsync: createConsumableRequest, isPending: isSubmittingSupply, isSuccess: isSubmittedSupply, reset: resetSupply } = useCreateConsumableRequestMutation();
+  const {
+    mutateAsync: createRequest,
+    isPending: isSubmittingAsset,
+    isSuccess: isSubmittedAsset,
+    reset: resetAsset,
+  } = useCreateBorrowRequestMutation();
+  const {
+    mutateAsync: createConsumableRequest,
+    isPending: isSubmittingSupply,
+    isSuccess: isSubmittedSupply,
+    reset: resetSupply,
+  } = useCreateConsumableRequestMutation();
   const isSubmitting = isSubmittingAsset || isSubmittingSupply;
   const isSubmitted = isSubmittedAsset || isSubmittedSupply;
   const resetMutation = useCallback(() => {
@@ -1511,43 +1921,127 @@ export function NewBorrowRequestWizard({
 
   useEffect(() => {
     if (!open) return;
+    const types: WizardRequestType[] =
+      initialType === "requisition"
+        ? ["consumable"]
+        : initialType === "borrow"
+          ? ["borrowable"]
+          : [];
+    const base = emptyWizardValues(types);
+    if (prefilledItems && prefilledItems.length > 0 && base.typeBundles[0]) {
+      base.typeBundles[0] = {
+        ...base.typeBundles[0],
+        selectedItems: prefilledItems,
+      };
+    }
     setStep(prefilledItems && prefilledItems.length > 0 ? "details" : "type");
-    setValues({
-      requestType: initialType === "requisition" ? "consumable" : initialType === "borrow" ? "borrowable" : null,
-      selectedItems: prefilledItems ?? [],
-      dateFrom: today(),
-      dateTo: nextWeek(),
-      quantities: {},
-      purpose: "",
-      notes: "",
-      requestedByName: "",
-    });
+    setValues(base);
     setFieldErrors({});
     setErrorMessage("");
     resetMutation();
   }, [open, prefilledItems, resetMutation, initialType]);
 
+  useEffect(() => {
+    if (!open || !me) return;
+    setValues((prev) => {
+      if (prev.requesterMode === "manual" && prev.requestedByName.trim()) {
+        return prev;
+      }
+      return {
+        ...prev,
+        requesterMode: prev.requesterMode || "account",
+        departmentId: me.departmentId ?? prev.departmentId,
+        department: me.department || prev.department,
+        requestedByName: me.name || prev.requestedByName,
+      };
+    });
+  }, [open, me]);
+
   const patchValues = useCallback(
-    (patch: Partial<WizardFormValues>) => setValues((p) => ({ ...p, ...patch })),
+    (patch: Partial<WizardFormValues>) =>
+      setValues((p) => ({ ...p, ...patch })),
     []
   );
 
-  const canAdvanceSelect = values.selectedItems.length > 0;
-  const canAdvanceType = values.requestType !== null;
+  const selectedTypes = values.typeBundles.map((b) => b.requestType);
+
+  const toggleType = useCallback((type: WizardRequestType) => {
+    setValues((prev) => {
+      const exists = prev.typeBundles.some((b) => b.requestType === type);
+      if (exists) {
+        return {
+          ...prev,
+          typeBundles: prev.typeBundles.filter((b) => b.requestType !== type),
+        };
+      }
+      return {
+        ...prev,
+        typeBundles: [...prev.typeBundles, newTypeBundle(type)],
+      };
+    });
+  }, []);
+
+  const updateBundleItems = useCallback(
+    (requestType: WizardRequestType, items: BrowseItem[]) => {
+      setValues((prev) => ({
+        ...prev,
+        typeBundles: prev.typeBundles.map((b) =>
+          b.requestType === requestType
+            ? {
+                ...b,
+                selectedItems: items,
+                // Drop lines that reference removed items.
+                purposeGroups: b.purposeGroups.map((g) => ({
+                  ...g,
+                  lines: g.lines.filter((l) =>
+                    items.some((i) => i.id === l.itemId)
+                  ),
+                })),
+              }
+            : b
+        ),
+      }));
+    },
+    []
+  );
+
+  const canAdvanceType = values.typeBundles.length > 0;
+  const canAdvanceSelect = values.typeBundles.every(
+    (b) => b.selectedItems.length > 0
+  );
 
   function validateDetails(): Record<string, string> {
     const errs: Record<string, string> = {};
-    if (!values.dateFrom) errs.dateFrom = "Start date is required.";
-    const hasAsset = values.selectedItems.some(i => i.type === "asset");
-    if (hasAsset && values.requestType !== "assignable") {
+    const hasBorrowable = values.typeBundles.some(
+      (b) => b.requestType === "borrowable"
+    );
+    if (hasBorrowable) {
+      if (!values.dateFrom) errs.dateFrom = "Start date is required.";
       if (!values.dateTo) errs.dateTo = "End date is required.";
-      else if (values.dateTo < values.dateFrom) errs.dateTo = "End date must be on or after start date.";
+      else if (values.dateTo < values.dateFrom)
+        errs.dateTo = "End date must be on or after start date.";
     }
-    if (!values.purpose.trim()) errs.purpose = "Purpose is required.";
-    if (!values.requestedByName.trim()) errs.requestedByName = "Requested by is required.";
-    values.selectedItems.forEach((item) => {
-      const q = values.quantities[item.id] || 1;
-      if (q < 1) errs[`qty_${item.id}`] = "Quantity must be at least 1.";
+    if (!values.departmentId && !values.department.trim()) {
+      errs.department = "Select or enter a requesting department.";
+    }
+    if (!values.requestedByName.trim())
+      errs.requestedByName = "Requested by is required.";
+
+    values.typeBundles.forEach((bundle) => {
+      if (bundle.purposeGroups.length < 1) {
+        errs[`bundle_${bundle.requestType}`] =
+          "Add at least one purpose for this request type.";
+      }
+      bundle.purposeGroups.forEach((g) => {
+        const errKey = `${bundle.requestType}_${g.id}`;
+        if (!g.purpose.trim()) {
+          errs[`purpose_${errKey}`] = "Purpose is required.";
+        }
+        if (g.lines.length < 1) {
+          errs[`lines_${errKey}`] =
+            "Add at least one item under this purpose.";
+        }
+      });
     });
     return errs;
   }
@@ -1558,6 +2052,23 @@ export function NewBorrowRequestWizard({
       setStep("select");
     } else if (step === "select") {
       if (!canAdvanceSelect) return;
+      setValues((prev) => ({
+        ...prev,
+        typeBundles: prev.typeBundles.map((b) => ({
+          ...b,
+          purposeGroups: b.purposeGroups.map((g, i) =>
+            i === 0 && g.lines.length === 0
+              ? {
+                  ...g,
+                  lines: b.selectedItems.map((item) => ({
+                    itemId: item.id,
+                    quantity: 1,
+                  })),
+                }
+              : g
+          ),
+        })),
+      }));
       setStep("details");
     } else if (step === "details") {
       const errs = validateDetails();
@@ -1568,7 +2079,8 @@ export function NewBorrowRequestWizard({
 
   function handleBack() {
     if (step === "select") setStep("type");
-    if (step === "details") setStep(prefilledItems && prefilledItems.length > 0 ? "type" : "select");
+    if (step === "details")
+      setStep(prefilledItems && prefilledItems.length > 0 ? "type" : "select");
     if (step === "review") setStep("details");
     setErrorMessage("");
   }
@@ -1580,123 +2092,129 @@ export function NewBorrowRequestWizard({
 
     try {
       const isValidUuid = (str?: string | null) =>
-        Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
-
-      const items = values.selectedItems.map((item) => {
-        const isRealAssetUuid = item.type === "asset" && isValidUuid(item.id);
-        const isRealConsumableUuid = item.type === "consumable" && isValidUuid(item.id);
-        return {
-          itemDescription: item.name,
-          assetId: isRealAssetUuid ? item.id : undefined,
-          assetCode: isRealAssetUuid ? item.assetCode : undefined,
-          consumableId: isRealConsumableUuid ? item.id : undefined,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          category: item.category as any,
-          quantity: values.quantities[item.id] || 1,
-          itemType: item.type,
-        };
-      });
+        Boolean(
+          str &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+              str
+            )
+        );
 
       if (!me?.id || !me.email) {
-        setErrorMessage("Your profile could not be loaded. Sign in again and retry.");
-        return;
-      }
-      if (!me.departmentId) {
         setErrorMessage(
-          "This login is not linked to a department. Ask an administrator to assign one."
+          "Your profile could not be loaded. Sign in again and retry."
         );
         return;
       }
-
-      const hasAsset = items.some((item) => item.itemType === "asset");
-
-      if (values.requestType === "consumable") {
-        const supplyLines = items.filter((item) => item.consumableId);
-        if (supplyLines.length === 0) {
-          setErrorMessage("Select at least one supply item before submitting.");
-          return;
-        }
-        const created = await createConsumableRequest({
-          requesterUserId: isValidUuid(me.id) ? me.id : undefined,
-          requesterName: me.name,
-          requesterEmail: me.email,
-          departmentId: me.departmentId,
-          requestedByName: values.requestedByName.trim() || me.name,
-          purpose: values.purpose,
-          notes: values.notes || undefined,
-          lines: supplyLines.map((item) => ({
-              consumableId: item.consumableId!,
-              quantity: item.quantity,
-            })),
-        });
-        toast.success(`Requisition request ${created.requestCode} submitted successfully.`);
-        onSuccess({
-          id: created.id,
-          requestCode: created.requestCode,
-          requesterName: created.requesterName,
-          requesterEmail: created.requesterEmail,
-          requesterPhone: created.requesterPhone,
-          department: created.department,
-          requestedByName: created.requestedByName,
-          items: created.lines.map((line) => ({
-            itemDescription: line.itemName,
-            consumableId: line.consumableId,
-            category: line.category,
-            quantity: line.quantityRequested,
-            itemType: "consumable" as const,
-          })),
-          purpose: created.purpose,
-          requestedAt: created.requestedAt,
-          expectedReturnDate: null,
-          status: created.status,
-          notes: created.notes,
-          history: created.history.map((h) => ({
-            id: h.id,
-            action: h.action === "submitted" ? "submitted" : h.action,
-            actor: h.actor,
-            timestamp: h.timestamp,
-            note: h.note,
-          })),
-          requestedDateFrom: created.requestedAt.slice(0, 10),
-          requestedDateTo: created.requestedAt.slice(0, 10),
-        });
-        onOpenChange(false);
+      if (!values.departmentId && !values.department.trim()) {
+        setErrorMessage("Select or enter a requesting department.");
         return;
       }
 
-      const createdRequest = await createRequest({
-        requesterUserId: isValidUuid(me.id) ? me.id : undefined,
-        requesterName: me.name,
-        requesterEmail: me.email,
-        departmentId: isValidUuid(me.departmentId) ? me.departmentId : undefined,
-        requestType:
-          values.requestType === "assignable"
-            ? "assignable"
-            : "borrowable",
-        items: items
-          .filter((item) => item.itemType === "asset")
-          .map((item) => ({
-            itemDescription: item.itemDescription,
-            assetId: item.assetId,
-            assetCode: item.assetCode,
-            category: item.category,
-            quantity: item.quantity,
-            itemType: "asset" as const,
-          })),
-        purpose: values.purpose,
-        expectedReturnDate:
-          hasAsset && values.requestType !== "assignable"
-            ? values.dateTo
-            : undefined,
-        notes: values.notes || undefined,
-        requestedByName: values.requestedByName.trim() || me.name,
-      });
+      const departmentPayload = {
+        departmentId: isValidUuid(values.departmentId)
+          ? values.departmentId!
+          : undefined,
+        department: values.department.trim() || undefined,
+      };
+      const submissionGroupId =
+        values.typeBundles.length > 1 ? crypto.randomUUID() : undefined;
 
-      toast.success(
-        `Borrow request ${createdRequest.requestCode} submitted successfully.`
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onSuccess(createdRequest as any);
+      let lastPortal: PortalBorrowRequest | null = null;
+      const codes: string[] = [];
+
+      for (const bundle of values.typeBundles) {
+        const itemsById = new Map(
+          bundle.selectedItems.map((item) => [item.id, item])
+        );
+        const flatLines = bundle.purposeGroups.flatMap((group) =>
+          group.lines.map((line) => {
+            const item = itemsById.get(line.itemId);
+            if (!item) return null;
+            const isRealAssetUuid =
+              item.type === "asset" && isValidUuid(item.id);
+            const isRealConsumableUuid =
+              item.type === "consumable" && isValidUuid(item.id);
+            return {
+              itemDescription: item.name,
+              assetId: isRealAssetUuid ? item.id : undefined,
+              assetCode: isRealAssetUuid ? item.assetCode : undefined,
+              consumableId: isRealConsumableUuid ? item.id : undefined,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              category: item.category as any,
+              quantity: line.quantity,
+              itemType: item.type,
+              purpose: group.purpose.trim(),
+            };
+          })
+        );
+        const items = flatLines.filter(
+          (row): row is NonNullable<typeof row> => row != null
+        );
+        const headerPurpose = summarizePurposes(items.map((i) => i.purpose));
+
+        if (bundle.requestType === "consumable") {
+          const supplyLines = items.filter((item) => item.consumableId);
+          if (supplyLines.length === 0) {
+            setErrorMessage(
+              "Select at least one supply item before submitting."
+            );
+            return;
+          }
+          const created = await createConsumableRequest({
+            requesterUserId: isValidUuid(me.id) ? me.id : undefined,
+            requesterName: me.name,
+            requesterEmail: me.email,
+            ...departmentPayload,
+            requestedByName: values.requestedByName.trim() || me.name,
+            purpose: headerPurpose,
+            notes: values.notes || undefined,
+            submissionGroupId,
+            lines: supplyLines.map((item) => ({
+              consumableId: item.consumableId!,
+              quantity: item.quantity,
+              purpose: item.purpose,
+            })),
+          });
+          codes.push(created.requestCode);
+          lastPortal = mapConsumableRequestToPortal(created);
+          continue;
+        }
+
+        const createdRequest = await createRequest({
+          requesterUserId: isValidUuid(me.id) ? me.id : undefined,
+          requesterName: me.name,
+          requesterEmail: me.email,
+          ...departmentPayload,
+          requestType:
+            bundle.requestType === "assignable" ? "assignable" : "borrowable",
+          items: items
+            .filter((item) => item.itemType === "asset")
+            .map((item) => ({
+              itemDescription: item.itemDescription,
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              category: item.category,
+              quantity: item.quantity,
+              itemType: "asset" as const,
+              purpose: item.purpose,
+            })),
+          purpose: headerPurpose,
+          expectedReturnDate:
+            bundle.requestType === "borrowable" ? values.dateTo : undefined,
+          notes: values.notes || undefined,
+          requestedByName: values.requestedByName.trim() || me.name,
+          submissionGroupId,
+        });
+        codes.push(createdRequest.requestCode);
+        lastPortal = mapBorrowRequestToPortal(createdRequest);
+      }
+
+      if (codes.length > 1) {
+        toast.success(`Submitted ${codes.length} requests: ${codes.join(", ")}.`);
+      } else if (codes.length === 1) {
+        toast.success(`Request ${codes[0]} submitted successfully.`);
+      }
+      if (lastPortal) onSuccess(lastPortal);
       onOpenChange(false);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
@@ -1707,18 +2225,25 @@ export function NewBorrowRequestWizard({
   if (!open) return null;
 
   const headerTitle =
-    values.requestType === "consumable" || initialType === "requisition"
-      ? "New Requisition Request"
-      : values.requestType === "borrowable" || values.requestType === "assignable" || initialType === "borrow"
-      ? "New Borrow Request"
-      : "New Requests";
+    values.typeBundles.length > 1
+      ? "New Multi-Type Request"
+      : values.typeBundles[0]?.requestType === "consumable" ||
+          initialType === "requisition"
+        ? "New Requisition Request"
+        : values.typeBundles[0]?.requestType === "borrowable" ||
+            values.typeBundles[0]?.requestType === "assignable" ||
+            initialType === "borrow"
+          ? "New Borrow Request"
+          : "New Requests";
 
   const categoryBadgeLabel =
-    values.requestType === "consumable"
-      ? "Requisition"
-      : values.requestType === "borrowable" || values.requestType === "assignable"
-      ? "Borrow Request"
-      : "Portal";
+    values.typeBundles.length > 1
+      ? "Multi"
+      : values.typeBundles[0]?.requestType === "consumable"
+        ? "Requisition"
+        : values.typeBundles[0]
+          ? "Borrow Request"
+          : "Portal";
 
   return (
     <div
@@ -1727,16 +2252,13 @@ export function NewBorrowRequestWizard({
       aria-modal="true"
       aria-labelledby="wizard-title"
     >
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={() => !isSubmitting && onOpenChange(false)}
         aria-hidden="true"
       />
 
-      {/* Panel */}
-      <div className="relative z-10 w-full max-w-3xl h-170 max-h-[92vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
-        {/* Header with Milestone Stepper */}
+      <div className="relative z-10 w-full max-w-6xl h-[90vh] max-h-[96vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
         <div className="px-6 py-4.5 border-b border-border bg-card shrink-0 space-y-3.5">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -1749,7 +2271,8 @@ export function NewBorrowRequestWizard({
                 </span>
               </div>
               <p className="text-xs text-text-secondary mt-0.5">
-                Complete the milestones below to submit your request for custodian review.
+                Complete the milestones below to submit your request for
+                custodian review.
               </p>
             </div>
             <button
@@ -1763,51 +2286,101 @@ export function NewBorrowRequestWizard({
             </button>
           </div>
 
-          {/* Milestone Stepper */}
           <div className="pt-1">
-            <MilestoneStepIndicator current={step} requestType={values.requestType} />
+            <MilestoneStepIndicator
+              current={step}
+              selectedTypes={selectedTypes}
+            />
           </div>
         </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-h-0 p-6 overflow-y-auto">
           {step === "type" && (
-            <StepType
-              value={values.requestType}
-              onChange={(type) => {
-                patchValues({ requestType: type, selectedItems: [] }); // Reset items if type changes
-              }}
-            />
+            <StepType value={selectedTypes} onToggle={toggleType} />
           )}
-          {step === "select" &&
-            (values.requestType === "consumable" ? (
-              <StepSelectConsumables
-                value={values.selectedItems}
-                onChange={(items) => patchValues({ selectedItems: items })}
-              />
-            ) : (
-              <StepSelect
-                value={values.selectedItems}
-                onChange={(items) => patchValues({ selectedItems: items })}
-                initialType={initialType}
-                requestType={values.requestType}
-              />
-            ))}
-          {step === "details" && values.selectedItems.length > 0 && (
+          {step === "select" && (
+            <div className="space-y-4">
+              {values.typeBundles.map((bundle, idx) => (
+                <section
+                  key={bundle.requestType}
+                  aria-label={`${typeLabel(bundle.requestType)} items`}
+                  className={cn(
+                    "space-y-2",
+                    idx > 0 && "border-t border-border pt-4"
+                  )}
+                >
+                  {selectedTypes.length > 1 && (
+                    <div className="flex items-center gap-2">
+                      <span className="h-5 w-5 shrink-0 rounded-md bg-accent/15 text-accent text-[11px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-text">
+                        {typeLabel(bundle.requestType)}
+                      </p>
+                    </div>
+                  )}
+
+                  {bundle.selectedItems.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {bundle.selectedItems.map((item) => (
+                        <span
+                          key={item.id}
+                          className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-text"
+                        >
+                          {item.name}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateBundleItems(
+                                bundle.requestType,
+                                bundle.selectedItems.filter(
+                                  (i) => i.id !== item.id
+                                )
+                              )
+                            }
+                            className="rounded-full p-0.5 text-text-secondary hover:text-status-outofservice-bg"
+                            aria-label={`Remove ${item.name}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {bundle.requestType === "consumable" ? (
+                    <StepSelectConsumables
+                      value={bundle.selectedItems}
+                      onChange={(items) =>
+                        updateBundleItems("consumable", items)
+                      }
+                    />
+                  ) : (
+                    <StepSelect
+                      value={bundle.selectedItems}
+                      onChange={(items) =>
+                        updateBundleItems(bundle.requestType, items)
+                      }
+                      initialType={initialType}
+                      requestType={bundle.requestType}
+                    />
+                  )}
+                </section>
+              ))}
+              {selectedTypes.length > 1 && !canAdvanceSelect && (
+                <p className="text-[11px] text-text-secondary">
+                  Select at least one item for each request type before
+                  continuing.
+                </p>
+              )}
+            </div>
+          )}
+          {step === "details" && values.typeBundles.length > 0 && (
             <StepDetails
-              items={values.selectedItems}
-              values={{
-                requestType: values.requestType,
-                dateFrom: values.dateFrom,
-                dateTo: values.dateTo,
-                quantities: values.quantities,
-                purpose: values.purpose,
-                notes: values.notes,
-                requestedByName: values.requestedByName,
-              }}
+              values={values}
               onChange={patchValues}
               errors={fieldErrors}
-              registeredName={me?.name}
+              me={me}
             />
           )}
           {step === "review" && (
@@ -1816,19 +2389,26 @@ export function NewBorrowRequestWizard({
               {errorMessage && (
                 <div className="mt-4 flex items-start gap-2 rounded-lg bg-status-outofservice-bg/10 border border-status-outofservice-bg/30 p-3">
                   <AlertCircle className="h-4 w-4 shrink-0 text-status-outofservice-bg mt-0.5" />
-                  <p className="text-xs text-status-outofservice-bg dark:text-status-outofservice-text">{errorMessage}</p>
+                  <p className="text-xs text-status-outofservice-bg dark:text-status-outofservice-text">
+                    {errorMessage}
+                  </p>
                 </div>
               )}
             </>
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border bg-card shrink-0">
           <button
             type="button"
             onClick={handleBack}
-            disabled={step === "type" || isSubmitting || isSubmitted || (step === "details" && prefilledItems && prefilledItems.length > 0)}
+            disabled={
+              step === "type" ||
+              isSubmitting ||
+              isSubmitted ||
+              (step === "details" &&
+                Boolean(prefilledItems && prefilledItems.length > 0))
+            }
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -1839,7 +2419,10 @@ export function NewBorrowRequestWizard({
             <button
               type="button"
               onClick={handleNext}
-              disabled={(step === "type" && !canAdvanceType) || (step === "select" && !canAdvanceSelect)}
+              disabled={
+                (step === "type" && !canAdvanceType) ||
+                (step === "select" && !canAdvanceSelect)
+              }
               className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
             >
               Next
@@ -1854,16 +2437,21 @@ export function NewBorrowRequestWizard({
             >
               {isSubmitting ? (
                 <>
-                  <div className="h-4 w-4 rounded-full border-2 border-accent-foreground/30 border-t-accent-foreground animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Submitting…
                 </>
               ) : isSubmitted ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4" />
-                  Submitted!
+                  <Check className="h-4 w-4" />
+                  Submitted
                 </>
               ) : (
-                "Submit Request"
+                <>
+                  Submit
+                  {values.typeBundles.length > 1
+                    ? ` ${values.typeBundles.length} requests`
+                    : " request"}
+                </>
               )}
             </button>
           )}

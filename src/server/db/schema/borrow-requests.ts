@@ -75,6 +75,12 @@ export const borrowRequests = pgTable(
     /** borrowable = due-dated loan; assignable = open-ended department assignment. */
     requestType: assetRequestTypeEnum("request_type"),
     requestedByName: text("requested_by_name"),
+    /**
+     * Shared id when the portal wizard submits more than one request type
+     * together. Each type stays on its own row (and supplies stay on
+     * consumable_requests) because release workflows cannot mix.
+     */
+    submissionGroupId: uuid("submission_group_id"),
 
     items: jsonb("items")
       .$type<{
@@ -86,6 +92,8 @@ export const borrowRequests = pgTable(
         quantity: number;
         itemType: "asset" | "consumable";
         unit?: string;
+        /** Per-line purpose for multi-purpose requests; falls back to header purpose. */
+        purpose?: string;
       }[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
@@ -119,6 +127,7 @@ export const borrowRequests = pgTable(
     index("requests_department_idx").on(table.department),
     index("requests_department_id_idx").on(table.departmentId),
     index("requests_request_type_idx").on(table.requestType),
+    index("requests_submission_group_id_idx").on(table.submissionGroupId),
     index("requests_requested_at_idx").on(table.requestedAt),
     index("requests_status_user_idx").on(table.status, table.requesterUserId),
   ]

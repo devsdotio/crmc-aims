@@ -3,6 +3,7 @@ import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
   consumables,
+  projectExpenseLines,
   purchaseLots,
   stockMovements,
 } from "@/server/db/schema";
@@ -212,6 +213,8 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     purpose: meta.purpose,
     departmentId: row.departmentId ?? null,
     departmentName: row.departmentName ?? null,
+    projectId: row.projectId ?? null,
+    projectName: row.projectName ?? null,
     notes: meta.cleanNotes,
     receiptUrl: row.receiptUrl || meta.receiptUrl || null,
     recordedByUserId: row.recordedByUserId,
@@ -338,6 +341,9 @@ export class PurchaseLotService {
         let itemCode = "";
         let itemName = item.name.trim();
 
+        const targetProjectId = item.projectId || body.projectId || null;
+        const targetProjectName = item.projectName || body.projectName || null;
+
         // 1. Handle Consumable
         if (item.itemType === "consumable") {
           if (consumableId) {
@@ -352,66 +358,150 @@ export class PurchaseLotService {
             itemCode = existing.itemCode;
             itemName = existing.name;
 
-            // If created directly in "delivered" state, restock stock immediately
-            if (initialStatus === "delivered") {
+            // Auto-classify as material if destined for a project
+            if (targetProjectId && existing.classification !== "material") {
               await db
                 .update(consumables)
-                .set({
-                  currentQty: existing.currentQty + item.quantity,
-                  lastRestocked: new Date(),
-                  updatedAt: new Date(),
-                })
+                .set({ classification: "material", updatedAt: new Date() })
                 .where(eq(consumables.id, consumableId));
+            }
 
-              // Record stock movement
-              await db.insert(stockMovements).values({
-                movementCode: generateOperationalCode("MOV"),
-                consumableId,
-                qty: item.quantity,
-                direction: "in",
-                reason: "restock",
-                unitCost: formatMoney(item.unitCost),
-                lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
-                notes: `PO Received: ${poNumber}`,
-                actorUserId: actor.userId,
-                actorName: actor.displayName,
-              });
+            // If created directly in "delivered" state
+            if (initialStatus === "delivered") {
+              if (targetProjectId) {
+                // Auto-issue movement for direct project material delivery (currentQty unchanged)
+                await db.insert(stockMovements).values({
+                  movementCode: generateOperationalCode("MOV"),
+                  consumableId,
+                  projectId: targetProjectId,
+                  qty: item.quantity,
+                  direction: "out",
+                  reason: "issue",
+                  unitCost: formatMoney(item.unitCost),
+                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                  notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
+                  actorUserId: actor.userId,
+                  actorName: actor.displayName,
+                });
+                await db.insert(projectExpenseLines).values({
+                  tenantId: actor.tenantId,
+                  projectId: targetProjectId,
+                  lineType: "material",
+                  category: "miscellaneous",
+                  description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
+                  amount: formatMoney(Number(item.unitCost) * item.quantity),
+                  quantity: String(item.quantity),
+                  unitCost: String(Number(item.unitCost).toFixed(2)),
+                  consumableId,
+                  incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
+                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${resolvedSupplierName || item.suggestedDealer || "—"}`,
+                  recordedByUserId: actor.userId,
+                  recordedByName: actor.displayName,
+                  metadata: {
+                    poNumber,
+                    supplierName: resolvedSupplierName || item.suggestedDealer || null,
+                    directProjectDelivery: true,
+                  },
+                });
+              } else {
+                await db
+                  .update(consumables)
+                  .set({
+                    currentQty: existing.currentQty + item.quantity,
+                    lastRestocked: new Date(),
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(consumables.id, consumableId));
+
+                // Record stock movement
+                await db.insert(stockMovements).values({
+                  movementCode: generateOperationalCode("MOV"),
+                  consumableId,
+                  qty: item.quantity,
+                  direction: "in",
+                  reason: "restock",
+                  unitCost: formatMoney(item.unitCost),
+                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                  notes: `PO Received: ${poNumber}`,
+                  actorUserId: actor.userId,
+                  actorName: actor.displayName,
+                });
+              }
             }
           } else {
             // New consumable registration
             itemCode = generateOperationalCode("ITM");
-            const initialQty = initialStatus === "delivered" ? item.quantity : 0;
+            const itemClassification = item.classification || (targetProjectId ? "material" : "supply");
+            const initialQty = initialStatus === "delivered" && !targetProjectId ? item.quantity : 0;
+
             const [newConsumable] = await db
               .insert(consumables)
               .values({
                 itemCode,
                 name: itemName,
                 category: item.category || "General Supply",
-                classification: item.classification || "supply",
+                classification: itemClassification,
                 unit: item.unit || "pcs",
                 currentQty: initialQty,
                 minThreshold: item.minThreshold ?? 5,
                 location: item.location || "Main Property Storage",
                 supplier: resolvedSupplierName || item.suggestedDealer || undefined,
-                lastRestocked: initialStatus === "delivered" ? new Date() : undefined,
+                lastRestocked: initialStatus === "delivered" && !targetProjectId ? new Date() : undefined,
                 notes: body.notes,
               })
               .returning();
             consumableId = newConsumable.id;
 
             if (initialStatus === "delivered") {
-              await db.insert(stockMovements).values({
-                movementCode: generateOperationalCode("MOV"),
-                consumableId,
-                qty: item.quantity,
-                direction: "in",
-                reason: "restock",
-                unitCost: formatMoney(item.unitCost),
-                lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
-                notes: `PO Initial Intake: ${poNumber}`,
-                actorUserId: actor.userId,
-                actorName: actor.displayName,
-              });
+              if (targetProjectId) {
+                // Auto-issue movement for direct project material delivery
+                await db.insert(stockMovements).values({
+                  movementCode: generateOperationalCode("MOV"),
+                  consumableId,
+                  projectId: targetProjectId,
+                  qty: item.quantity,
+                  direction: "out",
+                  reason: "issue",
+                  unitCost: formatMoney(item.unitCost),
+                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                  notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
+                  actorUserId: actor.userId,
+                  actorName: actor.displayName,
+                });
+                await db.insert(projectExpenseLines).values({
+                  tenantId: actor.tenantId,
+                  projectId: targetProjectId,
+                  lineType: "material",
+                  category: "miscellaneous",
+                  description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
+                  amount: formatMoney(Number(item.unitCost) * item.quantity),
+                  quantity: String(item.quantity),
+                  unitCost: String(Number(item.unitCost).toFixed(2)),
+                  consumableId,
+                  incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
+                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${resolvedSupplierName || item.suggestedDealer || "—"}`,
+                  recordedByUserId: actor.userId,
+                  recordedByName: actor.displayName,
+                  metadata: {
+                    poNumber,
+                    supplierName: resolvedSupplierName || item.suggestedDealer || null,
+                    directProjectDelivery: true,
+                  },
+                });
+              } else {
+                await db.insert(stockMovements).values({
+                  movementCode: generateOperationalCode("MOV"),
+                  consumableId,
+                  qty: item.quantity,
+                  direction: "in",
+                  reason: "restock",
+                  unitCost: formatMoney(item.unitCost),
+                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                  notes: `PO Initial Intake: ${poNumber}`,
+                  actorUserId: actor.userId,
+                  actorName: actor.displayName,
+                });
+              }
             }
           }
         }
@@ -489,8 +579,10 @@ export class PurchaseLotService {
             supplierName: resolvedSupplierName || item.suggestedDealer || null,
             departmentId,
             departmentName,
+            projectId: targetProjectId,
+            projectName: targetProjectName,
             quantity: item.quantity,
-            quantityRemaining: initialStatus === "delivered" ? item.quantity : 0,
+            quantityRemaining: initialStatus === "delivered" ? (targetProjectId ? 0 : item.quantity) : 0,
             unitCost,
             totalCost,
             purchasedOn: body.poDate,
@@ -508,6 +600,7 @@ export class PurchaseLotService {
 
       // Write Audit Log for PO Creation
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poNumber,
         action: "purchase_order_created",
@@ -592,44 +685,120 @@ export class PurchaseLotService {
         orderedQtyForMeta = orderedQty;
         receivedQtyForMeta = receivedQty;
 
-        if (lot.itemType === "consumable" && lot.consumableId) {
-          const [consumable] = await db
-            .select()
-            .from(consumables)
-            .where(eq(consumables.id, lot.consumableId))
-            .limit(1);
+        if (lot.projectId) {
+          // ─── Dual Crediting: Record in Consumable Materials AND auto-issue to Project ───
+          nextRemaining = 0; // Auto-issued upon delivery to project site
 
-          if (consumable) {
-            const unit = Number(lot.unitCost) || 0;
-            const lineTotal = formatMoney(unit * receivedQty);
+          if (lot.itemType === "consumable" && lot.consumableId) {
+            const [consumable] = await db
+              .select()
+              .from(consumables)
+              .where(eq(consumables.id, lot.consumableId))
+              .limit(1);
 
-            await db
-              .update(consumables)
-              .set({
-                currentQty: consumable.currentQty + receivedQty,
-                lastRestocked: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(eq(consumables.id, lot.consumableId));
+            if (consumable) {
+              const unit = Number(lot.unitCost) || 0;
+              const lineTotal = formatMoney(unit * receivedQty);
+              const poNumber = derivePONumber(lot.lotCode, lot.reference);
 
-            // Record stock movement for actual received qty
-            await db.insert(stockMovements).values({
-              movementCode: generateOperationalCode("MOV"),
-              consumableId: lot.consumableId,
+              // Ensure classification is "material"
+              if (consumable.classification !== "material") {
+                await db
+                  .update(consumables)
+                  .set({
+                    classification: "material",
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(consumables.id, lot.consumableId));
+              }
+
+              // Auto-issue movement for direct project material delivery
+              await db.insert(stockMovements).values({
+                movementCode: generateOperationalCode("MOV"),
+                consumableId: lot.consumableId,
+                projectId: lot.projectId,
+                purchaseLotId: lot.id,
+                lotCode: lot.lotCode,
+                qty: receivedQty,
+                direction: "out",
+                reason: "issue",
+                unitCost: lot.unitCost,
+                lineTotal,
+                notes: `Direct project delivery to ${lot.projectName || "Project"} via PO ${poNumber}`,
+                actorUserId: actor.userId,
+                actorName: actor.displayName,
+              });
+            }
+          }
+
+          // Directly credit to project expenses
+          const unit = Number(lot.unitCost) || 0;
+          const lineTotal = formatMoney(unit * receivedQty);
+          const poNumber = derivePONumber(lot.lotCode, lot.reference);
+
+          await db.insert(projectExpenseLines).values({
+            tenantId: lot.tenantId,
+            projectId: lot.projectId,
+            lineType: "material",
+            category: "miscellaneous",
+            description: `${lot.itemName} (${receivedQty} × ₱${unit.toFixed(2)}) [PO: ${poNumber}]`,
+            amount: lineTotal,
+            quantity: String(receivedQty),
+            unitCost: String(unit.toFixed(2)),
+            consumableId: lot.consumableId || null,
+            incurredOn: nowIso.slice(0, 10),
+            notes: `Auto-credited upon PO ${poNumber} delivery. Supplier: ${lot.supplierName || "—"}`,
+            recordedByUserId: actor.userId,
+            recordedByName: actor.displayName,
+            metadata: {
               purchaseLotId: lot.id,
+              poNumber,
+              supplierName: lot.supplierName,
               lotCode: lot.lotCode,
-              qty: receivedQty,
-              direction: "in",
-              reason: "restock",
-              unitCost: lot.unitCost,
-              lineTotal,
-              notes:
-                receivedQty === orderedQty
-                  ? `Delivered via PO ${lot.reference || lot.lotCode}`
-                  : `Delivered via PO ${lot.reference || lot.lotCode} — received ${receivedQty} of ${orderedQty} ordered`,
-              actorUserId: actor.userId,
-              actorName: actor.displayName,
-            });
+              directProjectDelivery: true,
+            },
+          });
+        } else {
+          // Standard warehouse intake for general inventory
+          if (lot.itemType === "consumable" && lot.consumableId) {
+            const [consumable] = await db
+              .select()
+              .from(consumables)
+              .where(eq(consumables.id, lot.consumableId))
+              .limit(1);
+
+            if (consumable) {
+              const unit = Number(lot.unitCost) || 0;
+              const lineTotal = formatMoney(unit * receivedQty);
+
+              await db
+                .update(consumables)
+                .set({
+                  currentQty: consumable.currentQty + receivedQty,
+                  lastRestocked: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(eq(consumables.id, lot.consumableId));
+
+              // Record stock movement for actual received qty
+              await db.insert(stockMovements).values({
+                movementCode: generateOperationalCode("MOV"),
+                consumableId: lot.consumableId,
+                purchaseLotId: lot.id,
+                lotCode: lot.lotCode,
+                qty: receivedQty,
+                direction: "in",
+                reason: "restock",
+                unitCost: lot.unitCost,
+                lineTotal,
+                notes:
+                  receivedQty === orderedQty
+                    ? `Delivered via PO ${lot.reference || lot.lotCode}`
+                    : `Delivered via PO ${lot.reference || lot.lotCode} — received ${receivedQty} of ${orderedQty} ordered`,
+                actorUserId: actor.userId,
+                actorName: actor.displayName,
+              });
+            }
           }
         }
 
@@ -694,9 +863,10 @@ export class PurchaseLotService {
           ? "purchase_order_cancelled"
           : "purchase_order_updated";
 
-      const poCode = lot.reference || lot.lotCode;
+      const poCode = derivePONumber(lot.lotCode, lot.reference);
 
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poCode,
         action: actionKey,
@@ -834,7 +1004,10 @@ export class PurchaseLotService {
         }
       }
 
-      const poCode = resolvedReference || lot.reference || lot.lotCode;
+      const poCode = derivePONumber(
+        lot.lotCode,
+        resolvedReference ?? lot.reference
+      );
       const updates = [];
       if (body.recordedByName !== undefined && body.recordedByName !== lot.recordedByName) {
         updates.push(`Requester changed from '${lot.recordedByName || "None"}' to '${body.recordedByName}'`);
@@ -851,6 +1024,7 @@ export class PurchaseLotService {
         : `Updated details for Purchase Order ${poCode}.`;
 
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poCode,
         action: "purchase_order_updated",
@@ -879,8 +1053,7 @@ export class PurchaseLotService {
         throw new NotFoundError("Purchase Order lot", id);
       }
 
-      const poCode = lot.reference || lot.lotCode;
-      const meta = parseNotesMetadata(lot.notes);
+      const poCode = derivePONumber(lot.lotCode, lot.reference);
 
       // If delivered and already drawn down, prevent hard delete
       if (meta.status === "delivered" && lot.quantityRemaining < lot.quantity) {
@@ -892,6 +1065,7 @@ export class PurchaseLotService {
       const ok = await this.repo.delete(id, session);
 
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poCode,
         action: "purchase_order_cancelled",

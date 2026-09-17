@@ -107,6 +107,8 @@ export function PettyCashDetailSheet({
   // Fetch live audit logs for this petty cash record
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: voucher?.id,
+    entityType: "petty_cash",
+    enabled: Boolean(voucher?.id),
   });
 
   // Edit Mode state
@@ -899,8 +901,7 @@ export function PettyCashDetailSheet({
                   </div>
 
                   {/* Detailed System Activity & Audit Trail */}
-                  {auditLogs.length > 0 && (
-                    <div className="pt-4 border-t border-border/80 space-y-3">
+                  <div className="pt-4 border-t border-border/80 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
                           <FileText className="w-3 h-3 text-primary" />
@@ -908,6 +909,7 @@ export function PettyCashDetailSheet({
                         </span>
                       </div>
 
+                      {auditLogs.length > 0 ? (
                       <div className="divide-y divide-border/50 border border-border/60 rounded-xl overflow-hidden bg-bg">
                         {auditLogs.map((log) => (
                           <div key={log.id} className="p-3 space-y-1 hover:bg-bg-subtle/30 transition-colors">
@@ -953,8 +955,12 @@ export function PettyCashDetailSheet({
                           </div>
                         ))}
                       </div>
+                      ) : (
+                        <p className="text-xs text-text-secondary py-1">
+                          No system mutation events recorded yet. Status and field edits will appear here after each save.
+                        </p>
+                      )}
                     </div>
-                  )}
                 </div>
               )}
             </div>

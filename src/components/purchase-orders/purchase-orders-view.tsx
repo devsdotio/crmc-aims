@@ -135,6 +135,13 @@ export function PurchaseOrdersView({
     }
     if (categoryScope === "projects") {
       return groupedPOs.filter((g) => {
+        if (
+          Boolean(g.representative.projectId) ||
+          g.lineItems.some((li) => Boolean(li.projectId))
+        ) {
+          return true;
+        }
+
         const text = [
           g.poNumber,
           g.representative.purpose || "",

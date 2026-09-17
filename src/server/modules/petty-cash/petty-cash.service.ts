@@ -145,7 +145,7 @@ export class PettyCashService {
       createdByName: actor.displayName,
     });
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "petty_cash",
       entityId: row.id,
       action: "created",
@@ -219,7 +219,7 @@ export class PettyCashService {
       throw new NotFoundError("Petty cash voucher not found");
     }
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "petty_cash",
       entityId: id,
       action: "updated",
@@ -271,7 +271,7 @@ export class PettyCashService {
       throw new NotFoundError("Petty cash voucher not found");
     }
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "petty_cash",
       entityId: id,
       action: status,
@@ -300,7 +300,7 @@ export class PettyCashService {
 
     const deleted = await this.repo.delete(id, undefined, actor?.tenantId);
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "petty_cash",
       entityId: id,
       action: "deleted",

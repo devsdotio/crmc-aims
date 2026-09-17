@@ -16,12 +16,14 @@ export interface ConsumableFiltersProps {
   onResetFilters: () => void;
   totalCount: number;
   filteredCount: number;
+  hideClassificationFilter?: boolean;
 }
 
 export function ConsumableFilters({
   filters,
   onFilterChange,
   onResetFilters,
+  hideClassificationFilter,
 }: ConsumableFiltersProps) {
   const { data: allCategories = [] } = useCategoriesQuery();
   const categoryOptions = useMemo(() => {
@@ -34,7 +36,7 @@ export function ConsumableFilters({
   const isFiltered =
     Boolean(filters.searchQuery) ||
     (Boolean(filters.category) && filters.category !== "all") ||
-    filters.classification !== "all" ||
+    (!hideClassificationFilter && filters.classification !== "all") ||
     filters.stockLevel !== "all";
 
   return (
@@ -57,29 +59,31 @@ export function ConsumableFilters({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-1.5">
-            <label htmlFor="consumable-classification-filter" className="sr-only">
-              Filter by classification
-            </label>
-            <select
-              id="consumable-classification-filter"
-              value={filters.classification}
-              onChange={(e) =>
-                onFilterChange({
-                  classification: e.target
-                    .value as ConsumableFilterState["classification"],
-                })
-              }
-              className="h-9 px-3 text-xs bg-bg-subtle border border-border rounded-lg text-text font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
-            >
-              <option value="all">All Classifications</option>
-              {CONSUMABLE_CLASSIFICATIONS.map((id) => (
-                <option key={id} value={id}>
-                  {CONSUMABLE_CLASSIFICATION_LABELS[id]}
-                </option>
-              ))}
-            </select>
-          </div>
+          {!hideClassificationFilter && (
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="consumable-classification-filter" className="sr-only">
+                Filter by classification
+              </label>
+              <select
+                id="consumable-classification-filter"
+                value={filters.classification}
+                onChange={(e) =>
+                  onFilterChange({
+                    classification: e.target
+                      .value as ConsumableFilterState["classification"],
+                  })
+                }
+                className="h-9 px-3 text-xs bg-bg-subtle border border-border rounded-lg text-text font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
+              >
+                <option value="all">All Classifications</option>
+                {CONSUMABLE_CLASSIFICATIONS.map((id) => (
+                  <option key={id} value={id}>
+                    {CONSUMABLE_CLASSIFICATION_LABELS[id]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5">
             <label htmlFor="consumable-category-filter" className="sr-only">

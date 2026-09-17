@@ -4,10 +4,10 @@ import { createContext, useContext, useState, ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { BrowseItem } from "./types";
 import { NewBorrowRequestWizard } from "./new-borrow-request-wizard";
-import { useToast } from "@/components/providers/toast-context";
 import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-keys";
 import { consumableRequestQueryKeys } from "@/features/consumable-requests/client/query-keys";
+import { borrowLogQueryKeys } from "@/features/borrow-log/client/query-keys";
 
 interface BorrowerPortalContextValue {
   cart: BrowseItem[];
@@ -24,7 +24,6 @@ export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
   const [wizardItems, setWizardItems] = useState<BrowseItem[]>([]);
   const [wizardType, setWizardType] = useState<"borrow" | "requisition" | null>(null);
   const [cart, setCart] = useState<BrowseItem[]>([]);
-  const toast = useToast();
 
   const toggleCartItem = (item: BrowseItem) => {
     setCart((prev) => {
@@ -66,12 +65,12 @@ export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
         onOpenChange={setWizardOpen}
         prefilledItems={wizardItems}
         initialType={wizardType}
-        onSuccess={(req) => {
+        onSuccess={() => {
           clearCart();
           void qc.invalidateQueries({ queryKey: dashboardQueryKeys.all });
           void qc.invalidateQueries({ queryKey: borrowRequestQueryKeys.all });
           void qc.invalidateQueries({ queryKey: consumableRequestQueryKeys.all });
-          toast.success(`${req.requestCode} submitted.`);
+          void qc.invalidateQueries({ queryKey: borrowLogQueryKeys.all });
         }}
       />
     </BorrowerPortalContext.Provider>

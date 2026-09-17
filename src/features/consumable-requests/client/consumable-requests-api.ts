@@ -9,14 +9,20 @@ export type CreateConsumableRequestPayload = {
   requesterEmail: string;
   requesterPhone?: string;
   departmentId?: string;
+  /** Free-text department when not selecting from catalog. */
+  department?: string;
   projectId?: string;
   requestedByName?: string;
-  purpose: string;
+  /** Optional; derived from line purposes when omitted. */
+  purpose?: string;
   notes?: string;
   requesterUserId?: string;
+  /** Shared when the wizard submits more than one request type together. */
+  submissionGroupId?: string;
   lines: Array<{
     consumableId: string;
     quantity: number;
+    purpose: string;
     notes?: string;
   }>;
 };
@@ -39,6 +45,7 @@ export type UpdateConsumableRequestPayload = {
   requesterEmail?: string;
   requesterPhone?: string;
   departmentId?: string | null;
+  department?: string;
   projectId?: string | null;
   requestedByName?: string | null;
   purpose?: string;
@@ -46,6 +53,7 @@ export type UpdateConsumableRequestPayload = {
   lines?: Array<{
     consumableId: string;
     quantity: number;
+    purpose: string;
     notes?: string;
   }>;
   editReason: string;

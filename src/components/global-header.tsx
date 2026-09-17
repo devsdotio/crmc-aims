@@ -105,7 +105,22 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   },
   "/borrower-db/requests": {
     title: "My Requests",
-    subtitle: "Track status of borrow and supply requisition requests",
+    subtitle: "Track status of borrow, assignment, and supply requests",
+    category: "Operations",
+  },
+  "/borrower-db/requests/borrow": {
+    title: "Borrow Requests",
+    subtitle: "Temporary equipment loans with a return due date",
+    category: "Operations",
+  },
+  "/borrower-db/requests/assignment": {
+    title: "Assignment Requests",
+    subtitle: "Long-term department equipment with open custody",
+    category: "Operations",
+  },
+  "/borrower-db/requests/supplies": {
+    title: "Supply Requests",
+    subtitle: "Consumable requisitions issued from stock",
     category: "Operations",
   },
   "/borrower-db/history": {

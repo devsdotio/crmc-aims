@@ -1,0 +1,29 @@
+{
+  "folders": [
+    {
+      "name": "crmc-aims",
+      "path": "C:/Users/CLIET/crmc-aims"
+    },
+    {
+      "name": "developer-io (Obsidian)",
+      "path": "C:/Users/CLIET/.antigravity-ide/developer-io"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.obsidian/workspace.json": true,
+      "**/.obsidian/workspace-mobile.json": true,
+      "**/.obsidian/cache": true,
+      "**/.trash": true
+    },
+    "search.exclude": {
+      "**/.obsidian/**": true,
+      "**/.trash/**": true,
+      "**/agents/*.examples.md": true
+    },
+    "files.watcherExclude": {
+      "**/.obsidian/cache/**": true,
+      "**/.trash/**": true
+    }
+  }
+}

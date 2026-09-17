@@ -9,10 +9,13 @@ export function useAuditLogsQuery(filters?: {
   entityId?: string;
   actorUserId?: string;
   action?: string;
+  enabled?: boolean;
 }): UseQueryResult<AuditLogRecord[], Error> {
+  const { enabled = true, ...listFilters } = filters ?? {};
   return useQuery({
-    queryKey: auditLogQueryKeys.list(filters),
-    queryFn: () => auditLogsApi.list(filters),
+    queryKey: auditLogQueryKeys.list(listFilters),
+    queryFn: () => auditLogsApi.list(listFilters),
+    enabled,
   });
 }
 

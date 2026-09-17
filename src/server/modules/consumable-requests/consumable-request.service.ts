@@ -46,6 +46,13 @@ import {
   undoConsumableRequestApprovalSchema,
   updateConsumableRequestSchema,
 } from "./consumable-request.validation";
+import { summarizePurposes } from "@/lib/request-purpose";
+import {
+  loadLinkedRequestSummaries,
+  relatedForRow,
+  type LinkedRequestSummary,
+} from "@/server/shared/linked-requests";
+import { invalidateDashboardCache } from "@/server/modules/dashboard/dashboard.service";
 
 function money(value: string | number): string {
   const n = typeof value === "number" ? value : Number(value);
@@ -63,6 +70,7 @@ function toLineDTO(row: ConsumableRequestLineRow): ConsumableRequestLineDTO {
     category: row.category,
     unit: row.unit,
     quantityRequested: row.quantityRequested,
+    purpose: row.purpose || "General",
     notes: row.notes ?? undefined,
   };
 }
@@ -92,7 +100,8 @@ function toAllocationDTO(
 function toDTO(
   row: ConsumableRequestRow,
   lines: ConsumableRequestLineRow[],
-  allocations: ConsumableRequestReleaseAllocationRow[] = []
+  allocations: ConsumableRequestReleaseAllocationRow[] = [],
+  relatedRequests: LinkedRequestSummary[] = []
 ): ConsumableRequestDTO {
   const history = Array.isArray(row.history) ? row.history : [];
   const allocDtos = allocations.map(toAllocationDTO);
@@ -109,6 +118,8 @@ function toDTO(
     projectId: row.projectId,
     source: row.source ?? "portal",
     requestedByName: row.requestedByName ?? undefined,
+    submissionGroupId: row.submissionGroupId ?? undefined,
+    relatedRequests,
     purpose: row.purpose,
     status: row.status,
     notes: row.notes ?? undefined,
@@ -170,15 +181,22 @@ export class ConsumableRequestService {
   ) {}
 
   private async hydrate(
-    row: ConsumableRequestRow
+    row: ConsumableRequestRow,
+    tenantId?: string
   ): Promise<ConsumableRequestDTO> {
-    const [lines, allocations] = await Promise.all([
+    const [lines, allocations, linked] = await Promise.all([
       this.repo.listLinesByRequestId(row.id),
       row.status === "released"
         ? this.repo.listAllocationsByRequestId(row.id)
         : Promise.resolve([]),
+      loadLinkedRequestSummaries([row.submissionGroupId], tenantId),
     ]);
-    return toDTO(row, lines, allocations);
+    return toDTO(
+      row,
+      lines,
+      allocations,
+      relatedForRow(row.id, row.submissionGroupId, linked)
+    );
   }
 
   async list(
@@ -204,10 +222,19 @@ export class ConsumableRequestService {
       list.push(line);
       linesByRequest.set(line.requestId, list);
     }
+    const linked = await loadLinkedRequestSummaries(
+      rows.map((row) => row.submissionGroupId),
+      actor?.tenantId
+    );
 
     return {
       data: rows.map((row) =>
-        toDTO(row, linesByRequest.get(row.id) ?? [], [])
+        toDTO(
+          row,
+          linesByRequest.get(row.id) ?? [],
+          [],
+          relatedForRow(row.id, row.submissionGroupId, linked)
+        )
       ),
       meta: {
         total,
@@ -233,7 +260,7 @@ export class ConsumableRequestService {
     ) {
       throw new ForbiddenError("You are not allowed to view this request.");
     }
-    return this.hydrate(row);
+    return this.hydrate(row, actor?.tenantId);
   }
 
   async create(
@@ -242,11 +269,13 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const input = createConsumableRequestSchema.parse(rawInput);
 
-    const consumableIds = input.lines.map((l) => l.consumableId);
-    const uniqueIds = new Set(consumableIds);
-    if (uniqueIds.size !== consumableIds.length) {
+    // Same SKU may appear under different purposes; block only exact duplicates.
+    const lineKeys = input.lines.map(
+      (l) => `${l.consumableId}::${l.purpose.trim().toLowerCase()}`
+    );
+    if (new Set(lineKeys).size !== lineKeys.length) {
       throw new BadRequestError(
-        "Duplicate products in one request are not allowed. Combine quantities into a single line."
+        "Duplicate product under the same purpose is not allowed. Combine quantities into a single line."
       );
     }
 
@@ -280,6 +309,7 @@ export class ConsumableRequestService {
     if (
       isAssetOperatorRole(actor.role) &&
       !input.departmentId &&
+      !input.department?.trim() &&
       !input.projectId
     ) {
       throw new BadRequestError(
@@ -290,8 +320,15 @@ export class ConsumableRequestService {
     const dest = await resolveDepartmentSnapshot({
       actor,
       submittedDepartmentId: input.projectId ? null : input.departmentId,
+      submittedDepartmentName: input.projectId
+        ? null
+        : (input.department ?? null),
       requireDepartment: !input.projectId,
     });
+
+    const headerPurpose =
+      input.purpose?.trim() ||
+      summarizePurposes(input.lines.map((l) => l.purpose));
 
     const dto = await withTransaction(async (tx) => {
       const created = await this.repo.create(
@@ -308,7 +345,8 @@ export class ConsumableRequestService {
             : null,
           source: isAssetOperatorRole(actor.role) ? "admin_manual" : "portal",
           requestedByName: input.requestedByName ?? null,
-          purpose: input.purpose,
+          submissionGroupId: input.submissionGroupId ?? null,
+          purpose: headerPurpose,
           status: "pending",
           notes: input.notes ?? null,
           rejectionReason: null,
@@ -328,6 +366,7 @@ export class ConsumableRequestService {
           category: item.category,
           unit: item.unit,
           quantityRequested: line.quantity,
+          purpose: line.purpose.trim(),
           notes: line.notes ?? null,
         })),
         tx
@@ -336,6 +375,7 @@ export class ConsumableRequestService {
       return toDTO(created, lines, []);
     });
 
+    invalidateDashboardCache(actor.tenantId);
     return dto;
   }
 
@@ -813,29 +853,40 @@ export class ConsumableRequestService {
     let departmentId = existing.departmentId;
     let projectId = existing.projectId;
 
-    if (input.departmentId !== undefined || input.projectId !== undefined) {
-      if (input.departmentId) {
+    if (
+      input.departmentId !== undefined ||
+      input.projectId !== undefined ||
+      input.department !== undefined
+    ) {
+      if (input.projectId) {
+        departmentId = null;
+        projectId = input.projectId;
+      } else if (input.departmentId || input.department?.trim()) {
         const dest = await resolveDepartmentSnapshot({
           actor,
-          submittedDepartmentId: input.departmentId,
+          submittedDepartmentId: input.departmentId ?? null,
+          submittedDepartmentName: input.department ?? null,
           requireDepartment: true,
         });
         departmentName = dest.departmentName ?? existing.department;
         departmentId = dest.departmentId;
         projectId = null;
-      } else if (input.projectId) {
-        departmentId = null;
-        projectId = input.projectId;
+      } else if (input.departmentId === null && !input.department) {
+        // explicit clear only when operators allow — keep existing for safety
       }
     }
 
-    let lineRowsToInsert: Array<Omit<ConsumableRequestLineRow, "id" | "createdAt" | "updatedAt">> | null = null;
+    let lineRowsToInsert: Array<
+      Omit<ConsumableRequestLineRow, "id" | "createdAt" | "updatedAt">
+    > | null = null;
+    let derivedPurpose: string | undefined;
     if (input.lines && input.lines.length > 0) {
-      const consumableIds = input.lines.map((l) => l.consumableId);
-      const uniqueIds = new Set(consumableIds);
-      if (uniqueIds.size !== consumableIds.length) {
+      const lineKeys = input.lines.map(
+        (l) => `${l.consumableId}::${l.purpose.trim().toLowerCase()}`
+      );
+      if (new Set(lineKeys).size !== lineKeys.length) {
         throw new BadRequestError(
-          "Duplicate products in one request are not allowed. Combine quantities into a single line."
+          "Duplicate product under the same purpose is not allowed. Combine quantities into a single line."
         );
       }
 
@@ -854,10 +905,12 @@ export class ConsumableRequestService {
             category: item.category,
             unit: item.unit,
             quantityRequested: line.quantity,
+            purpose: line.purpose.trim(),
             notes: line.notes ?? null,
           };
         })
       );
+      derivedPurpose = summarizePurposes(input.lines.map((l) => l.purpose));
     }
 
     const history = [
@@ -881,7 +934,10 @@ export class ConsumableRequestService {
           department: departmentName,
           departmentId,
           projectId,
-          ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+          purpose:
+            input.purpose !== undefined
+              ? input.purpose
+              : (derivedPurpose ?? existing.purpose),
           ...(input.notes !== undefined ? { notes: input.notes } : {}),
           history,
         },

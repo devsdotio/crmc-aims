@@ -72,6 +72,8 @@ export const consumableRequests = pgTable(
     }),
     source: consumableRequestSourceEnum("source").notNull().default("portal"),
     requestedByName: text("requested_by_name"),
+    /** Shared with `requests.submission_group_id` for multi-type wizard submits. */
+    submissionGroupId: uuid("submission_group_id"),
 
     purpose: text("purpose").notNull(),
     status: consumableRequestStatusEnum("status").notNull().default("pending"),
@@ -110,6 +112,7 @@ export const consumableRequests = pgTable(
     index("consumable_requests_department_idx").on(table.department),
     index("consumable_requests_department_id_idx").on(table.departmentId),
     index("consumable_requests_project_id_idx").on(table.projectId),
+    index("consumable_requests_submission_group_id_idx").on(table.submissionGroupId),
     index("consumable_requests_requested_at_idx").on(table.requestedAt),
     index("consumable_requests_requester_user_id_idx").on(table.requesterUserId),
     index("consumable_requests_status_user_idx").on(table.status, table.requesterUserId),
@@ -138,6 +141,8 @@ export const consumableRequestLines = pgTable(
     unit: text("unit").notNull(),
 
     quantityRequested: integer("quantity_requested").notNull(),
+    /** Purpose / justification for this line (supports multi-purpose requests). */
+    purpose: text("purpose").notNull().default("General"),
     notes: text("notes"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -150,6 +155,7 @@ export const consumableRequestLines = pgTable(
   (table) => [
     index("consumable_request_lines_request_id_idx").on(table.requestId),
     index("consumable_request_lines_consumable_id_idx").on(table.consumableId),
+    index("consumable_request_lines_purpose_idx").on(table.purpose),
   ]
 );
 

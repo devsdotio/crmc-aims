@@ -84,15 +84,18 @@ export function useBorrowRequests(filters?: {
   assetId?: string;
   requestType?: "borrowable" | "assignable";
   enabled?: boolean;
+  refetchInterval?: number | false;
 }): UseQueryResult<PaginatedResponse<BorrowRequest[]>, Error> {
   const { includeSandbox } = useSandboxVisibility();
-  const { enabled = true, ...listFilters } = filters ?? {};
+  const { enabled = true, refetchInterval, ...listFilters } = filters ?? {};
   const withSandbox = { ...listFilters, includeSandbox };
   return useQuery({
     queryKey: borrowRequestQueryKeys.list(withSandbox),
     queryFn: () => borrowRequestsApi.list(withSandbox),
     enabled,
     placeholderData: keepPreviousData,
+    refetchInterval,
+    refetchOnWindowFocus: true,
   });
 }
 

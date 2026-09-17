@@ -27,6 +27,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { formatItemDescription, formatAssetCodeDisplay, formatQuantityWithUnit } from "@/lib/sanitize-display";
+import { groupByPurpose } from "@/lib/request-purpose";
+import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import {
   getActionStyle,
   getActionIcon,
@@ -311,7 +313,7 @@ export function RequestDetailSheet({
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-xs text-text-secondary pt-0.5">
+          <div className="flex items-center justify-between text-xs text-text-secondary pt-0.5 gap-2 flex-wrap">
             <span className="font-bold text-text">
               {isConsumable ? "Supplies Requisition" : isAssignRequest ? "Assignment Request" : "Borrow Request"}
             </span>
@@ -319,6 +321,11 @@ export function RequestDetailSheet({
               Submitted {new Date(request.requestedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
             </span>
           </div>
+          {request.relatedRequests && request.relatedRequests.length > 0 && (
+            <div className="pt-1">
+              <LinkedRequestsNote related={request.relatedRequests} />
+            </div>
+          )}
         </div>
 
         {/* Scrollable Sheet Body - All Sections Visible at a Glance */}
@@ -410,7 +417,7 @@ export function RequestDetailSheet({
             </div>
           </section>
 
-          {/* Requested Items */}
+          {/* Requested Items (grouped by purpose) */}
           <section aria-labelledby="items-heading" className="space-y-2">
             <div className="flex items-center justify-between px-1">
               <h3 id="items-heading" className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
@@ -420,33 +427,46 @@ export function RequestDetailSheet({
                 {request.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 1} Total Units
               </span>
             </div>
-            <div className="rounded-xl border border-border bg-card divide-y divide-border overflow-hidden shadow-xs">
-              {request.items?.map((item, idx) => {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const catMeta = getCategoryStyle(item.category as any);
-                const desc = formatItemDescription(item.itemDescription, catMeta.label, item.itemType);
-                const displayCode = formatAssetCodeDisplay(item.assetCode);
-                return (
-                  <div key={idx} className="p-3.5 flex items-center gap-3.5 bg-card hover:bg-bg-subtle/40 transition-colors">
-                    <div className={cn("h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border", catMeta.bg, "border-transparent")}>
-                      <Tag className={cn("h-4 w-4", catMeta.text)} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-text truncate">{desc}</p>
-                      <p className="text-xs text-text-secondary font-mono mt-0.5">
-                        {displayCode ? `${displayCode} · ` : ""}<span className="capitalize">{catMeta.label}</span>
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0 bg-bg-subtle px-2.5 py-1 rounded-md border border-border">
-                      <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Qty</p>
-                      <p className="font-bold text-xs text-text">
-                        {formatQuantityWithUnit(item.quantity, item.unit, item.itemType)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {groupByPurpose(request.items ?? [], request.purpose).map((group) => (
+              <div
+                key={group.purpose}
+                className="rounded-xl border border-border bg-card overflow-hidden shadow-xs"
+              >
+                <div className="px-3.5 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                    Purpose
+                  </p>
+                  <p className="text-xs font-semibold text-text mt-0.5">{group.purpose}</p>
+                </div>
+                <div className="divide-y divide-border">
+                  {group.lines.map((item, idx) => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const catMeta = getCategoryStyle(item.category as any);
+                    const desc = formatItemDescription(item.itemDescription, catMeta.label, item.itemType);
+                    const displayCode = formatAssetCodeDisplay(item.assetCode);
+                    return (
+                      <div key={idx} className="p-3.5 flex items-center gap-3.5 bg-card hover:bg-bg-subtle/40 transition-colors">
+                        <div className={cn("h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border", catMeta.bg, "border-transparent")}>
+                          <Tag className={cn("h-4 w-4", catMeta.text)} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-text truncate">{desc}</p>
+                          <p className="text-xs text-text-secondary font-mono mt-0.5">
+                            {displayCode ? `${displayCode} · ` : ""}<span className="capitalize">{catMeta.label}</span>
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0 bg-bg-subtle px-2.5 py-1 rounded-md border border-border">
+                          <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Qty</p>
+                          <p className="font-bold text-xs text-text">
+                            {formatQuantityWithUnit(item.quantity, item.unit, item.itemType)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </section>
 
           {/* Schedule & Timing */}
@@ -571,21 +591,13 @@ export function RequestDetailSheet({
             </div>
           </section>
 
-          {/* Purpose */}
+          {/* Purpose summary */}
           <section aria-labelledby="purpose-heading" className="space-y-2">
             <h3 id="purpose-heading" className="text-[11px] font-bold uppercase tracking-wider text-text-secondary px-1 flex items-center gap-1.5">
               <FileText className="h-3.5 w-3.5 text-indigo-500" />
-              Purpose / Justification
+              Purpose summary
             </h3>
             <div className="rounded-xl border border-indigo-500/25 bg-indigo-500/5 dark:bg-indigo-950/20 p-4 space-y-2 text-xs shadow-xs">
-              <div className="flex items-center gap-2">
-                <span className="p-1 rounded-md bg-indigo-500/15 text-indigo-600 dark:text-indigo-400">
-                  <FileText className="h-3.5 w-3.5" />
-                </span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
-                  Purpose of Request
-                </span>
-              </div>
               <p className="text-sm font-semibold text-text leading-relaxed pl-0.5">
                 {request.purpose}
               </p>

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { X, Check, Mail, Phone, Building2, Tag, History, FileText, User, Loader2, Send, CheckCircle, XCircle, PackageCheck, PackageMinus, RotateCcw, Edit3, Calendar, Clock, AlertCircle, StickyNote, Briefcase, Package, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatItemDescription, isUuid } from "@/lib/sanitize-display";
+import { groupByPurpose } from "@/lib/request-purpose";
+import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import type { BorrowRequest,  RequestStatus } from "@/types/borrow-requests";
 import { ActionHistoryTimeline } from "@/components/audit-logs/audit-log-utils";
@@ -253,6 +255,11 @@ export function RequestDetailPanel({
                 </span>
               </span>
             </div>
+            {request.relatedRequests && request.relatedRequests.length > 0 && (
+              <div className="mt-1">
+                <LinkedRequestsNote related={request.relatedRequests} />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-center gap-2 shrink-0">
@@ -326,8 +333,20 @@ export function RequestDetailPanel({
                 </span>
               </div>
             </div>
-            <div className="rounded-xl border border-border bg-bg overflow-hidden divide-y divide-border shadow-xs">
-              {request.items.map((item, idx) => {
+            <div className="space-y-3">
+              {groupByPurpose(request.items, request.purpose).map((group) => (
+                <div
+                  key={group.purpose}
+                  className="rounded-xl border border-border bg-bg overflow-hidden shadow-xs"
+                >
+                  <div className="px-3 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                      Purpose
+                    </p>
+                    <p className="text-xs font-semibold text-text mt-0.5">{group.purpose}</p>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {group.lines.map((item, idx) => {
                 const itemCategoryMeta = resolveCategoryStyle(item.category);
                 const displayDesc = formatItemDescription(
                   item.itemDescription,
@@ -418,8 +437,11 @@ export function RequestDetailPanel({
                       </div>
                     </div>
                   </div>
-                );
-              })}
+                    );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
