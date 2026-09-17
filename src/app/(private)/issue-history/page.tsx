@@ -12,6 +12,7 @@ import {
   Building2,
   User,
   ArrowUpRight,
+  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
@@ -85,6 +86,8 @@ function IssueHistoryContent() {
   const [search, setSearch] = useState(itemParam);
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  /** Default on: only show successful (non-voided) issues. */
+  const [hideVoided, setHideVoided] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<IssueDetailRecord | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -115,8 +118,17 @@ function IssueHistoryContent() {
     [movements]
   );
 
+  const voidedCount = useMemo(
+    () => allRecords.filter((r) => r.voided).length,
+    [allRecords]
+  );
+
   const filteredRecords = useMemo(() => {
     let result = allRecords;
+
+    if (hideVoided) {
+      result = result.filter((r) => !r.voided);
+    }
 
     if (departmentFilter !== "all") {
       result = result.filter(
@@ -156,7 +168,7 @@ function IssueHistoryContent() {
     }
 
     return result;
-  }, [allRecords, departmentFilter, dateFilter, search]);
+  }, [allRecords, hideVoided, departmentFilter, dateFilter, search]);
 
   const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1;
   const paginatedRecords = useMemo(() => {
@@ -283,8 +295,8 @@ function IssueHistoryContent() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 flex-1 min-w-72 justify-end">
-            <div className="relative flex-1 max-w-sm">
+            <div className="flex items-center gap-2 flex-1 min-w-72 justify-end flex-wrap">
+            <div className="relative flex-1 max-w-sm min-w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
               <input
                 value={search}
@@ -305,6 +317,40 @@ function IssueHistoryContent() {
                 </button>
               )}
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setHideVoided((prev) => !prev);
+                setPage(1);
+              }}
+              title={
+                hideVoided
+                  ? "Voided issues are hidden. Click to show them."
+                  : "Showing voided issues. Click to hide them."
+              }
+              className={cn(
+                "inline-flex items-center gap-1.5 h-9 px-3 text-xs font-semibold rounded-lg border transition-colors cursor-pointer shrink-0",
+                hideVoided
+                  ? "border-accent/50 bg-accent/5 text-text"
+                  : "border-border bg-bg text-text-secondary hover:bg-bg-subtle hover:text-text"
+              )}
+            >
+              <EyeOff className="h-3.5 w-3.5 shrink-0" />
+              Hide voided
+              {voidedCount > 0 && (
+                <span
+                  className={cn(
+                    "tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+                    hideVoided
+                      ? "bg-accent/10 text-accent"
+                      : "bg-border/60 text-text-secondary"
+                  )}
+                >
+                  {voidedCount}
+                </span>
+              )}
+            </button>
 
             {departments.length > 0 && (
               <div className="flex items-center gap-1.5 shrink-0">
@@ -387,22 +433,40 @@ function IssueHistoryContent() {
             </span>
             <p className="text-base font-bold text-text">No Supply Issues Found</p>
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
-              {search || departmentFilter !== "all" || dateFilter !== "all"
-                ? "No consumable issues match your filters. Try resetting search or date range."
-                : "Consumable dispatches will appear here when supplies are issued from inventory."}
+              {allRecords.length === 0
+                ? "Consumable dispatches will appear here when supplies are issued from inventory."
+                : hideVoided && voidedCount > 0 && filteredRecords.length === 0
+                  ? "Successful issues are hidden or none match. Turn off “Hide voided” to review undone transactions, or reset other filters."
+                  : "No consumable issues match your filters. Try resetting search or date range."}
             </p>
-            {(search || departmentFilter !== "all" || dateFilter !== "all") && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setDepartmentFilter("all");
-                  setDateFilter("all");
-                }}
-                className="mt-4 px-3.5 py-1.5 text-xs font-bold rounded-lg border border-border bg-bg hover:bg-bg-subtle transition-colors cursor-pointer text-text"
-              >
-                Reset Filters
-              </button>
+            {allRecords.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                {hideVoided && voidedCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHideVoided(false);
+                      setPage(1);
+                    }}
+                    className="px-3.5 py-1.5 text-xs font-bold rounded-lg border border-accent/40 bg-accent/5 text-accent hover:bg-accent/10 transition-colors cursor-pointer"
+                  >
+                    Show voided issues
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setDepartmentFilter("all");
+                    setDateFilter("all");
+                    setHideVoided(true);
+                    setPage(1);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold rounded-lg border border-border bg-bg hover:bg-bg-subtle transition-colors cursor-pointer text-text"
+                >
+                  Reset Filters
+                </button>
+              </div>
             )}
           </div>
         ) : (
