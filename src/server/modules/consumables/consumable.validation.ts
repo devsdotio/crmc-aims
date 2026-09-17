@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  CONSUMABLE_CLASSIFICATIONS,
+  DEFAULT_CONSUMABLE_CLASSIFICATION,
+} from "@/lib/consumable-classification";
 
 /** Free-text category name (must match Settings → Consumable categories). */
 export const consumableCategorySchema = z
@@ -7,10 +11,15 @@ export const consumableCategorySchema = z
   .min(1, "Category is required.")
   .max(120);
 
+export const consumableClassificationSchema = z
+  .enum(CONSUMABLE_CLASSIFICATIONS)
+  .default(DEFAULT_CONSUMABLE_CLASSIFICATION);
+
 export const stockLevelSchema = z.enum(["all", "healthy", "low", "critical"]);
 
 export const listConsumablesQuerySchema = z.object({
   category: consumableCategorySchema.optional(),
+  classification: z.enum(CONSUMABLE_CLASSIFICATIONS).optional(),
   stockLevel: stockLevelSchema.optional(),
   search: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).optional(),
@@ -30,6 +39,7 @@ export const createConsumableSchema = z
     itemCode: z.string().trim().min(1).max(64).optional(),
     name: z.string().trim().min(1).max(255),
     category: consumableCategorySchema,
+    classification: consumableClassificationSchema,
     unit: z.string().trim().min(1).max(40),
     currentQty: z.number().int().min(0).optional().default(0),
     minThreshold: z.number().int().min(0).optional().default(0),
@@ -75,6 +85,7 @@ export const updateConsumableSchema = z
   .object({
     name: z.string().trim().min(1).max(255).optional(),
     category: consumableCategorySchema.optional(),
+    classification: z.enum(CONSUMABLE_CLASSIFICATIONS).optional(),
     unit: z.string().trim().min(1).max(40).optional(),
     minThreshold: z.number().int().min(0).optional(),
     location: z.string().trim().min(1).max(120).optional(),

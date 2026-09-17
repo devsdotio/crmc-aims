@@ -51,6 +51,7 @@ export default function ConsumablesPage() {
   const [filters, setFilters] = useState<ConsumableFilterState>({
     searchQuery: "",
     category: "all",
+    classification: "all",
     stockLevel: "all",
     sortBy: "qty",
   });
@@ -89,6 +90,14 @@ export default function ConsumablesPage() {
         const matchName = item.name.toLowerCase().includes(query);
         const matchCode = item.itemCode.toLowerCase().includes(query);
         if (!matchName && !matchCode) return false;
+      }
+
+      if (
+        filters.classification &&
+        filters.classification !== "all" &&
+        item.classification !== filters.classification
+      ) {
+        return false;
       }
 
       if (
@@ -142,6 +151,7 @@ export default function ConsumablesPage() {
     setFilters({
       searchQuery: "",
       category: "all",
+      classification: "all",
       stockLevel: "all",
       sortBy: "qty",
     });
@@ -152,6 +162,7 @@ export default function ConsumablesPage() {
     itemCode?: string;
     name?: string;
     category?: ConsumableItem["category"];
+    classification?: ConsumableItem["classification"];
     unit?: string;
     currentQty?: number;
     minThreshold?: number;
@@ -169,6 +180,7 @@ export default function ConsumablesPage() {
           payload: {
             name: itemData.name,
             category: itemData.category,
+            classification: itemData.classification,
             unit: itemData.unit,
             minThreshold: itemData.minThreshold,
             location: itemData.location,
@@ -186,6 +198,7 @@ export default function ConsumablesPage() {
           itemCode: itemData.itemCode,
           name: itemData.name || "New Supply Item",
           category: itemData.category || "",
+          classification: itemData.classification || "supply",
           unit: itemData.unit || "reams",
           currentQty: itemData.currentQty ?? 0,
           minThreshold: itemData.minThreshold ?? 15,

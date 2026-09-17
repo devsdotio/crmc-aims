@@ -6,6 +6,7 @@ import type { ConsumableItem } from "@/types/inventory";
 import { StockLevelBar } from "./stock-level-bar";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { SandboxBadge } from "@/components/shared/sandbox-badge";
+import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableTableRowProps {
   item: ConsumableItem;
@@ -54,16 +55,21 @@ export function ConsumableTableRow({
 
       {/* Category Tag */}
       <td className="px-3 py-3.5 whitespace-nowrap">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-2xs",
-            categoryMeta.bg,
-            categoryMeta.text
-          )}
-        >
-          <Tag className="h-2.5 w-2.5 shrink-0" />
-          {categoryMeta.label}
-        </span>
+        <div className="flex flex-col gap-1 items-start">
+          <span className="text-[10px] font-semibold text-text-secondary">
+            {consumableClassificationLabel(item.classification)}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-2xs",
+              categoryMeta.bg,
+              categoryMeta.text
+            )}
+          >
+            <Tag className="h-2.5 w-2.5 shrink-0" />
+            {categoryMeta.label}
+          </span>
+        </div>
       </td>
 
       {/* Stock Level Bar Column */}

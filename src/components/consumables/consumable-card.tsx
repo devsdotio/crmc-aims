@@ -6,6 +6,7 @@ import type { ConsumableItem } from "@/types/inventory";
 import { StockLevelBar } from "./stock-level-bar";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { SandboxBadge } from "@/components/shared/sandbox-badge";
+import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableCardProps {
   item: ConsumableItem;
@@ -39,21 +40,25 @@ export function ConsumableCard({
         "hover:shadow-md hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       )}
     >
-      {/* Top Banner: Item Code & Category Tag */}
-      <div className="flex items-center justify-between p-3.5 border-b border-border bg-bg-subtle/50">
-        <span className="font-mono text-xs font-bold text-text bg-bg px-2 py-0.5 rounded border border-border">
+      <div className="flex items-center justify-between p-3.5 border-b border-border bg-bg-subtle/50 gap-2">
+        <span className="font-mono text-xs font-bold text-text bg-bg px-2 py-0.5 rounded border border-border shrink-0">
           {item.itemCode}
         </span>
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-2xs",
-            categoryMeta.bg,
-            categoryMeta.text
-          )}
-        >
-          <Tag className="h-2.5 w-2.5 shrink-0" />
-          {categoryMeta.label}
-        </span>
+        <div className="flex flex-col items-end gap-0.5 min-w-0">
+          <span className="text-[10px] font-semibold text-text-secondary truncate max-w-36">
+            {consumableClassificationLabel(item.classification)}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-2xs",
+              categoryMeta.bg,
+              categoryMeta.text
+            )}
+          >
+            <Tag className="h-2.5 w-2.5 shrink-0" />
+            {categoryMeta.label}
+          </span>
+        </div>
       </div>
 
       {/* Card Body */}

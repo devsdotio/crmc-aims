@@ -37,6 +37,7 @@ function invalidate(qc: ReturnType<typeof useQueryClient>, id?: string) {
 
 export function useConsumablesQuery(filters?: {
   category?: ConsumableItem["category"];
+  classification?: ConsumableItem["classification"];
   stockLevel?: "all" | "healthy" | "low" | "critical";
   search?: string;
   page?: number;
@@ -87,6 +88,7 @@ export function useCreateConsumableMutation(): UseMutationResult<
         itemCode: newConsumable.itemCode || `TEMP-${Date.now()}`,
         name: newConsumable.name,
         category: newConsumable.category,
+        classification: newConsumable.classification ?? "supply",
         unit: newConsumable.unit || "pcs",
         currentQty: initialQty,
         reservedQty: 0,
@@ -155,6 +157,9 @@ export function useUpdateConsumableMutation(): UseMutationResult<
       const sanitizedUpdates: Partial<ConsumableItem> = {
         ...(payload.name !== undefined && { name: payload.name }),
         ...(payload.category !== undefined && { category: payload.category }),
+        ...(payload.classification !== undefined && {
+          classification: payload.classification,
+        }),
         ...(payload.unit !== undefined && { unit: payload.unit }),
         ...(payload.minThreshold !== undefined && { minThreshold: payload.minThreshold }),
         ...(payload.location !== undefined && { location: payload.location }),

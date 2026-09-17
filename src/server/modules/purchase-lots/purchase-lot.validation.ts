@@ -36,6 +36,8 @@ export const createPurchaseOrderItemSchema = z.object({
   isNewItem: z.boolean().optional(),
   name: z.string().trim().min(1, "Item name is required."),
   category: z.string().trim().min(1, "Category is required."),
+  /** Required when creating a new consumable from a PO line. */
+  classification: z.enum(["supply", "material"]).optional(),
   unit: z.string().trim().optional(),
   minThreshold: z.number().int().min(0).optional(),
   location: z.string().trim().optional(),

@@ -353,6 +353,7 @@ export class PurchaseLotService {
                 itemCode,
                 name: itemName,
                 category: item.category || "General Supply",
+                classification: item.classification || "supply",
                 unit: item.unit || "pcs",
                 currentQty: initialQty,
                 minThreshold: item.minThreshold ?? 5,

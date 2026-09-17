@@ -460,6 +460,8 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
           event.payload.requestCode ||
           event.payload.source ||
           event.payload.repairCost != null ||
+          (Array.isArray(event.payload.repairParts) &&
+            event.payload.repairParts.length > 0) ||
           event.payload.resolutionNotes ||
           event.payload.technician ||
           event.payload.via ||
@@ -525,6 +527,46 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
               })}
             </p>
           )}
+          {Array.isArray(event.payload.repairParts) &&
+            event.payload.repairParts.length > 0 && (
+              <div className="pt-1 space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                  Parts &amp; materials
+                </p>
+                <ul className="space-y-1">
+                  {(
+                    event.payload.repairParts as Array<{
+                      name?: unknown;
+                      cost?: unknown;
+                    }>
+                  ).map((part, idx) => {
+                    const name =
+                      typeof part?.name === "string" && part.name.trim()
+                        ? part.name.trim()
+                        : `Part ${idx + 1}`;
+                    const costRaw = part?.cost;
+                    const costLabel =
+                      costRaw != null && costRaw !== ""
+                        ? `₱${Number(costRaw).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}`
+                        : "—";
+                    return (
+                      <li
+                        key={`${name}-${idx}`}
+                        className="flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <span className="text-text truncate">{name}</span>
+                        <span className="font-mono font-bold text-text shrink-0">
+                          {costLabel}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           {event.payload.description && (
             <p className="text-text leading-relaxed">
               <strong className="text-text-secondary">Description:</strong> {String(event.payload.description)}
