@@ -131,6 +131,7 @@ export function PurchaseOrderDetailSheet({
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: entityCode,
     entityType: "purchase_order",
+    enabled: Boolean(entityCode),
   });
   const { data: users = [] } = useUsersQuery();
 

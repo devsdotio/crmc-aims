@@ -75,6 +75,8 @@ export function CreateVoucherDialog({
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
+  /** True only when PO was picked from the catalog explorer (locks amount / line items). */
+  const [poFromCatalog, setPoFromCatalog] = useState(false);
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [purpose, setPurpose] = useState("");
   const [listItems, setListItems] = useState<ParticularLineItem[]>([
@@ -127,6 +129,7 @@ export function CreateVoucherDialog({
       setSupplierId(null);
       setSupplierName("");
       setPurchaseOrderNumber("");
+      setPoFromCatalog(false);
       setDepartmentId(null);
       setPurpose("");
       setListItems([{ description: "", amount: "" }]);
@@ -165,6 +168,7 @@ export function CreateVoucherDialog({
   // Handle PO selection and auto-fill purpose + line items + department
   const applyPoSelection = (po: GroupedPurchaseOrder) => {
     setPurchaseOrderNumber(po.poNumber);
+    setPoFromCatalog(true);
     const suppName = po.representative.supplierName || "";
     setSupplierName(suppName);
     setPayeeName(suppName);
@@ -209,9 +213,9 @@ export function CreateVoucherDialog({
     applyPoSelection(po);
   };
 
-  // Re-resolve department once catalogs finish loading after a PO was already selected
+  // Re-resolve department once catalogs finish loading after a PO was already selected from explorer
   useEffect(() => {
-    if (!isOpen || !purchaseOrderNumber || isLegacy) return;
+    if (!isOpen || !purchaseOrderNumber || isLegacy || !poFromCatalog) return;
     if (departments.length === 0) return;
     const po = groupedPOs.find((p) => p.poNumber === purchaseOrderNumber);
     if (!po) return;
@@ -231,10 +235,12 @@ export function CreateVoucherDialog({
     users,
     groupedPOs,
     departmentId,
+    poFromCatalog,
   ]);
 
   const handleClearPO = () => {
     setPurchaseOrderNumber("");
+    setPoFromCatalog(false);
     setPayeeName("");
     setAmount("");
     setPurpose("");
@@ -244,7 +250,8 @@ export function CreateVoucherDialog({
     setDepartmentId(null);
   };
 
-  const isPoLinked = Boolean(purchaseOrderNumber) && !isLegacy;
+  /** Catalog pick locks amount / particulars; manual PO # stays fully editable. */
+  const isPoLinked = poFromCatalog && Boolean(purchaseOrderNumber) && !isLegacy;
 
   const syncAmountFromLines = (items: ParticularLineItem[]) => {
     if (isPoLinked) return;
@@ -522,8 +529,61 @@ export function CreateVoucherDialog({
                     </div>
                   </div>
 
-                  {/* Linked PO Badge (If selected) */}
-                  {purchaseOrderNumber && (
+                  {/* Manual PO # (optional) + linked badge */}
+                  {!isLegacy && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label
+                          htmlFor="manual-po-number"
+                          className="text-xs font-semibold uppercase tracking-wider text-text"
+                        >
+                          Purchase Order #
+                        </label>
+                        <span className="text-[10px] font-medium text-text-secondary">
+                          Optional — type manually or pick from explorer
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          id="manual-po-number"
+                          type="text"
+                          value={purchaseOrderNumber}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setPurchaseOrderNumber(next);
+                            // Typing breaks catalog lock so amount / particulars stay editable
+                            if (poFromCatalog) {
+                              const stillMatchesCatalog = groupedPOs.some(
+                                (po) => po.poNumber === next.trim()
+                              );
+                              if (!stillMatchesCatalog) setPoFromCatalog(false);
+                            }
+                          }}
+                          placeholder="e.g. PO-2026-0001 or external PO reference"
+                          className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 font-mono text-sm text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        />
+                        {purchaseOrderNumber.trim() && (
+                          <button
+                            type="button"
+                            onClick={handleClearPO}
+                            className="shrink-0 rounded-lg border border-border bg-bg px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      {purchaseOrderNumber.trim() && (
+                        <p className="text-[11px] text-text-secondary">
+                          {poFromCatalog
+                            ? "Linked from catalog — amount and line items are locked to the PO."
+                            : "Manual PO reference — fill amount and particulars yourself."}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Linked PO Badge (catalog pick) */}
+                  {purchaseOrderNumber && poFromCatalog && (
                     <motion.div
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -531,7 +591,7 @@ export function CreateVoucherDialog({
                     >
                       <div className="flex items-center gap-2 text-primary font-semibold">
                         <Boxes className="h-4 w-4" />
-                        <span>Linked to PO #{purchaseOrderNumber}</span>
+                        <span>Catalog PO #{purchaseOrderNumber}</span>
                         <span className="text-[10px] font-normal text-text-secondary bg-bg px-1.5 py-0.5 rounded border border-border/60">
                           Line items auto-filled
                         </span>
@@ -903,7 +963,8 @@ export function CreateVoucherDialog({
                   >
                     {filteredPOs.length > 0 ? (
                       filteredPOs.map((po) => {
-                        const isSelected = purchaseOrderNumber === po.poNumber;
+                        const isSelected =
+                          poFromCatalog && purchaseOrderNumber === po.poNumber;
                         return (
                           <div
                             key={po.poNumber}
@@ -979,7 +1040,7 @@ export function CreateVoucherDialog({
                   </span>
                 ) : (
                   <span>
-                    Tip: Selecting a PO auto-fills the payee, amount, and purchase particulars.
+                    Tip: Type a PO # manually, or select one from the explorer to auto-fill payee, amount, and particulars.
                   </span>
                 )}
               </div>

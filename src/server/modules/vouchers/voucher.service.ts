@@ -172,7 +172,7 @@ export class VoucherService {
       completedAt: null,
     });
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "voucher",
       entityId: row.id,
       action: "created",
@@ -249,7 +249,7 @@ export class VoucherService {
 
     if (!updated) throw new NotFoundError("Voucher", id);
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "voucher",
       entityId: id,
       action: "updated",
@@ -297,7 +297,7 @@ export class VoucherService {
     const updated = await this.repo.update(id, updatePayload, undefined, actor.tenantId);
     if (!updated) throw new NotFoundError("Voucher", id);
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "voucher",
       entityId: id,
       action: input.status,
@@ -324,7 +324,7 @@ export class VoucherService {
 
     const success = await this.repo.delete(id, undefined, actor?.tenantId);
 
-    void this.auditLogs.log({
+    await this.auditLogs.log({
       entityType: "voucher",
       entityId: id,
       action: "deleted",

@@ -600,6 +600,7 @@ export class PurchaseLotService {
 
       // Write Audit Log for PO Creation
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poNumber,
         action: "purchase_order_created",
@@ -862,9 +863,10 @@ export class PurchaseLotService {
           ? "purchase_order_cancelled"
           : "purchase_order_updated";
 
-      const poCode = lot.reference || lot.lotCode;
+      const poCode = derivePONumber(lot.lotCode, lot.reference);
 
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poCode,
         action: actionKey,
@@ -1002,7 +1004,10 @@ export class PurchaseLotService {
         }
       }
 
-      const poCode = resolvedReference || lot.reference || lot.lotCode;
+      const poCode = derivePONumber(
+        lot.lotCode,
+        resolvedReference ?? lot.reference
+      );
       const updates = [];
       if (body.recordedByName !== undefined && body.recordedByName !== lot.recordedByName) {
         updates.push(`Requester changed from '${lot.recordedByName || "None"}' to '${body.recordedByName}'`);
@@ -1019,6 +1024,7 @@ export class PurchaseLotService {
         : `Updated details for Purchase Order ${poCode}.`;
 
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poCode,
         action: "purchase_order_updated",
@@ -1047,8 +1053,7 @@ export class PurchaseLotService {
         throw new NotFoundError("Purchase Order lot", id);
       }
 
-      const poCode = lot.reference || lot.lotCode;
-      const meta = parseNotesMetadata(lot.notes);
+      const poCode = derivePONumber(lot.lotCode, lot.reference);
 
       // If delivered and already drawn down, prevent hard delete
       if (meta.status === "delivered" && lot.quantityRemaining < lot.quantity) {
@@ -1060,6 +1065,7 @@ export class PurchaseLotService {
       const ok = await this.repo.delete(id, session);
 
       await db.insert(auditLogs).values({
+        tenantId: actor.tenantId,
         entityType: "purchase_order",
         entityId: poCode,
         action: "purchase_order_cancelled",

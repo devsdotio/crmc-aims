@@ -27,31 +27,23 @@ import {
   Sparkles,
   Copy,
   Edit3,
-  Save,
-  Undo2,
-  ListOrdered,
-  Plus,
 } from "lucide-react";
 import type { Voucher, VoucherStatus, VoucherType } from "@/types/vouchers";
 import { formatPhp } from "@/components/projects/format-money";
 import {
   useUpdateVoucherStatusMutation,
-  useUpdateVoucherMutation,
   useDeleteVoucherMutation,
 } from "@/features/vouchers/client";
 import { useUsersQuery } from "@/features/users/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
-import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
-import { filterMoneyInput } from "@/lib/numeric-input";
 import {
   parseParticulars,
-  serializeParticulars,
   sumParticularAmounts,
-  type ParticularLineItem,
 } from "@/lib/voucher-particulars";
+import { EditVoucherDialog } from "@/components/vouchers/edit-voucher-dialog";
 
 interface VoucherDetailSheetProps {
   voucher: Voucher | null;
@@ -165,42 +157,25 @@ export function VoucherDetailSheet({
   >("details");
   const [actionLoading, setActionLoading] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-
-  // Edit Form State
-  const [editForm, setEditForm] = useState({
-    voucherCode: "",
-    payeeName: "",
-    amount: "",
-    voucherDate: "",
-    checkNumber: "",
-    supplierName: "",
-    purchaseOrderNumber: "",
-    assetCode: "",
-    purpose: "",
-    departmentId: "" as string,
-  });
-  const [editListItems, setEditListItems] = useState<ParticularLineItem[]>([
-    { description: "", amount: "" },
-  ]);
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
   const updateStatusMutation = useUpdateVoucherStatusMutation();
-  const updateVoucherMutation = useUpdateVoucherMutation();
   const deleteMutation = useDeleteVoucherMutation();
 
   const { data: users = [] } = useUsersQuery();
   const { data: purchaseLots = [] } = usePurchaseLotsQuery();
-  const { data: departments = [] } = useDepartmentsQuery();
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: voucher?.id,
+    entityType: "voucher",
+    enabled: Boolean(voucher?.id),
   });
 
   // Handle escape key listener
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && isOpen) {
-        if (isEditing) {
-          setIsEditing(false);
+        if (isEditOpen) {
+          setIsEditOpen(false);
         } else {
           onClose();
         }
@@ -208,31 +183,14 @@ export function VoucherDetailSheet({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isEditing, onClose]);
+  }, [isOpen, isEditOpen, onClose]);
 
-  // Sync edit form on voucher change
   useEffect(() => {
     if (voucher) {
-      setEditForm({
-        voucherCode: voucher.voucherCode,
-        payeeName: voucher.payeeName,
-        amount: voucher.amount,
-        voucherDate: voucher.voucherDate,
-        checkNumber: voucher.checkNumber || "",
-        supplierName: voucher.supplierName || "",
-        purchaseOrderNumber: voucher.purchaseOrderNumber || "",
-        assetCode: voucher.assetCode || "",
-        purpose: voucher.purpose || "",
-        departmentId: voucher.departmentId || "",
-      });
-      const parsed = parseParticulars(voucher.particulars);
-      setEditListItems(
-        parsed.length > 0 ? parsed : [{ description: "", amount: "" }]
-      );
-      setIsEditing(false);
+      setIsEditOpen(false);
       setActiveTab("details");
     }
-  }, [voucher]);
+  }, [voucher?.id]);
 
   const matchedUser = useMemo(() => {
     if (!voucher) return null;
@@ -306,6 +264,12 @@ export function VoucherDetailSheet({
   const typeInfo = getTypeBadge(voucher.type);
   const StatusIcon = statusInfo.icon;
 
+  const canDelete =
+    voucher.status === "draft" ||
+    voucher.status === "pending_approval" ||
+    voucher.status === "cancelled";
+  const canEdit = voucher.status !== "completed";
+
   const handleCopyCode = () => {
     navigator.clipboard.writeText(voucher.voucherCode);
     setCopiedCode(true);
@@ -331,84 +295,11 @@ export function VoucherDetailSheet({
     }
   };
 
-  const handleEditItemChange = (
-    index: number,
-    field: keyof ParticularLineItem,
-    val: string
-  ) => {
-    setEditListItems((prev) => {
-      const updated = [...prev];
-      const nextVal =
-        field === "amount" ? (filterMoneyInput(val) ?? prev[index].amount) : val;
-      updated[index] = { ...updated[index], [field]: nextVal };
-      if (field === "amount") {
-        const total = sumParticularAmounts(updated);
-        if (total > 0) {
-          setEditForm((f) => ({ ...f, amount: total.toFixed(2) }));
-        }
-      }
-      return updated;
-    });
-  };
-
-  const handleAddEditItem = () => {
-    setEditListItems((prev) => [...prev, { description: "", amount: "" }]);
-  };
-
-  const handleRemoveEditItem = (index: number) => {
-    setEditListItems((prev) => {
-      if (prev.length <= 1) return [{ description: "", amount: "" }];
-      const next = prev.filter((_, i) => i !== index);
-      const total = sumParticularAmounts(next);
-      if (total > 0) {
-        setEditForm((f) => ({ ...f, amount: total.toFixed(2) }));
-      }
-      return next;
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editForm.payeeName.trim()) {
-      toast.error("Payee name is required.");
-      return;
-    }
-
-    const selectedDept = departments.find((d) => d.id === editForm.departmentId);
-
-    setActionLoading(true);
-    try {
-      await updateVoucherMutation.mutateAsync({
-        id: voucher.id,
-        payload: {
-          voucherCode: editForm.voucherCode.trim() || undefined,
-          payeeName: editForm.payeeName.trim(),
-          amount: editForm.amount.trim() || "0",
-          voucherDate: editForm.voucherDate,
-          checkNumber: editForm.checkNumber.trim() || null,
-          supplierName: editForm.supplierName.trim() || null,
-          purchaseOrderNumber: editForm.purchaseOrderNumber.trim() || null,
-          assetCode: editForm.assetCode.trim() || null,
-          purpose: editForm.purpose.trim(),
-          particulars: serializeParticulars(editListItems),
-          departmentId: editForm.departmentId || null,
-          departmentName: selectedDept?.name || null,
-        },
-      });
-      toast.success("Voucher updated successfully.");
-      setIsEditing(false);
-      onRefresh?.();
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to update voucher.";
-      toast.error(msg);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const handleDelete = async () => {
     if (
-      !window.confirm("Are you sure you want to delete this draft voucher?")
+      !window.confirm(
+        `Delete voucher ${voucher.voucherCode}? This cannot be undone.`
+      )
     ) {
       return;
     }
@@ -416,7 +307,7 @@ export function VoucherDetailSheet({
     setActionLoading(true);
     try {
       await deleteMutation.mutateAsync(voucher.id);
-      toast.success("The draft voucher was removed.");
+      toast.success(`Voucher ${voucher.voucherCode} was removed.`);
       onRefresh?.();
       onClose();
     } catch (err: unknown) {
@@ -429,6 +320,7 @@ export function VoucherDetailSheet({
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
       <aside
@@ -475,28 +367,25 @@ export function VoucherDetailSheet({
 
             {/* Header Right Controls */}
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsEditing(!isEditing)}
-                title={isEditing ? "Cancel edit mode" : "Edit voucher details"}
-                className={cn(
-                  "inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors cursor-pointer shadow-2xs",
-                  isEditing
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-bg text-text hover:bg-bg-subtle hover:border-primary/40",
-                )}
-              >
-                <Edit3 className="h-3.5 w-3.5" />
-                <span>{isEditing ? "Cancel Edit" : "Edit"}</span>
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditOpen(true)}
+                  title="Edit voucher details"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-border bg-bg text-text hover:bg-bg-subtle hover:border-primary/40 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  <span>Edit</span>
+                </button>
+              )}
 
-              {voucher.status === "draft" && (
+              {canDelete && (
                 <button
                   type="button"
                   onClick={handleDelete}
                   disabled={actionLoading}
-                  title="Delete Draft Voucher"
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer shadow-xs"
+                  title="Delete voucher"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Delete</span>
@@ -755,7 +644,7 @@ export function VoucherDetailSheet({
             )}
           >
             <FileText className="h-4 w-4" />
-            <span>{isEditing ? "Edit Form" : "Details"}</span>
+            <span>Details</span>
           </button>
 
           <button
@@ -799,320 +688,9 @@ export function VoucherDetailSheet({
 
         {/* Tab Body Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* TAB 1: DETAILS & EDIT FORM */}
-          {activeTab === "details" &&
-            (isEditing ? (
-              /* EDIT MODE FORM */
-              <div className="rounded-2xl border border-primary/30 bg-card p-5 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between border-b border-border pb-3">
-                  <div className="flex items-center gap-2">
-                    <Edit3 className="h-4 w-4 text-primary" />
-                    <h3 className="text-sm font-bold text-text uppercase tracking-wider">
-                      Edit Voucher Information
-                    </h3>
-                  </div>
-                  <span className="text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                    Modifying {voucher.voucherCode}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  {/* Voucher Number */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Voucher Code / Number
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.voucherCode}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          voucherCode: e.target.value,
-                        }))
-                      }
-                      className="w-full font-mono rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Voucher Date */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Voucher Date
-                    </label>
-                    <input
-                      type="date"
-                      value={editForm.voucherDate}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          voucherDate: e.target.value,
-                        }))
-                      }
-                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Payee Name */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Payee / Disbursed To{" "}
-                      <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.payeeName}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          payeeName: e.target.value,
-                        }))
-                      }
-                      placeholder="Individual or entity name"
-                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Amount */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Amount (₱) <span className="text-rose-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={editForm.amount}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          amount: e.target.value,
-                        }))
-                      }
-                      className="w-full font-mono font-semibold rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Check / Reference Number */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Check / Reference Number
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.checkNumber}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          checkNumber: e.target.value,
-                        }))
-                      }
-                      placeholder="Check or deposit transaction ref"
-                      className="w-full font-mono rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Supplier Name */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Supplier / Dealer Name
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.supplierName}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          supplierName: e.target.value,
-                        }))
-                      }
-                      placeholder="Associated supplier firm"
-                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Linked Purchase Order Number */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Linked Purchase Order #
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.purchaseOrderNumber}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          purchaseOrderNumber: e.target.value,
-                        }))
-                      }
-                      placeholder="PO-YYYY-XXXX"
-                      className="w-full font-mono rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-
-                  {/* Linked Asset Code */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Linked Asset Code
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.assetCode}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          assetCode: e.target.value,
-                        }))
-                      }
-                      placeholder="AST-YYYY-XXXX"
-                      className="w-full font-mono rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
-                </div>
-
-                {/* Requesting Department */}
-                <div className="space-y-1.5 text-xs">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                    Requesting Department
-                  </label>
-                  <select
-                    value={editForm.departmentId}
-                    onChange={(e) =>
-                      setEditForm((prev) => ({
-                        ...prev,
-                        departmentId: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
-                  >
-                    <option value="">None / General Custodian Fund</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Purpose + Particulars */}
-                <div className="space-y-3">
-                  <div className="space-y-1.5 text-xs">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      Purpose
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={editForm.purpose}
-                      onChange={(e) =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          purpose: e.target.value,
-                        }))
-                      }
-                      placeholder="Brief purpose / justification for this disbursement..."
-                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs leading-relaxed focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5 text-xs">
-                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-                      <ListOrdered className="h-3.5 w-3.5" />
-                      Particulars
-                    </label>
-                    <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
-                      <div className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-                        <span className="w-7 text-center">#</span>
-                        <span>Description</span>
-                        <span className="text-right pr-1">Cost</span>
-                        <span className="w-8" />
-                      </div>
-                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                        {editListItems.map((item, idx) => (
-                          <div
-                            key={idx}
-                            className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 items-center"
-                          >
-                            <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
-                              {idx + 1}
-                            </span>
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) =>
-                                handleEditItemChange(
-                                  idx,
-                                  "description",
-                                  e.target.value
-                                )
-                              }
-                              placeholder={`Item #${idx + 1}...`}
-                              className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            />
-                            <input
-                              type="text"
-                              inputMode="decimal"
-                              value={item.amount}
-                              onChange={(e) =>
-                                handleEditItemChange(idx, "amount", e.target.value)
-                              }
-                              placeholder="0.00"
-                              className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveEditItem(idx)}
-                              className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-bg transition-colors cursor-pointer"
-                              title="Remove item"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex justify-end pt-1 border-t border-border/50">
-                        <button
-                          type="button"
-                          onClick={handleAddEditItem}
-                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer"
-                        >
-                          <Plus className="h-3 w-3" />
-                          Add Item
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Save / Cancel Edit Actions */}
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-border">
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(false)}
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-border bg-bg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
-                  >
-                    <Undo2 className="h-3.5 w-3.5" />
-                    <span>Cancel</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveEdit}
-                    disabled={actionLoading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Save className="h-3.5 w-3.5" />
-                    )}
-                    <span>Save Changes</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* STANDARD DETAILS VIEW */
-              <div className="space-y-6">
+          {/* TAB 1: DETAILS */}
+          {activeTab === "details" && (
+            <div className="space-y-6">
                 {/* Payee & Disbursement Beneficiary Card */}
                 <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3">
                   <div className="flex items-center justify-between border-b border-border/60 pb-2">
@@ -1285,7 +863,7 @@ export function VoucherDetailSheet({
                   ) : null}
                 </div>
               </div>
-            ))}
+            )}
 
           {/* TAB 2: REFERENCES & PO LINE ITEMS */}
           {activeTab === "references" && (
@@ -1589,8 +1167,7 @@ export function VoucherDetailSheet({
                 </div>
 
                 {/* Detailed System Activity & Audit Trail */}
-                {auditLogs.length > 0 && (
-                  <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3">
+                <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3">
                     <div className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center justify-between border-b border-border/60 pb-2">
                       <div className="flex items-center gap-1.5">
                         <FileText className="h-3.5 w-3.5 text-primary" />
@@ -1598,6 +1175,7 @@ export function VoucherDetailSheet({
                       </div>
                     </div>
 
+                    {auditLogs.length > 0 ? (
                     <div className="divide-y divide-border/50 border border-border/60 rounded-xl overflow-hidden bg-bg text-xs">
                       {auditLogs.map((log) => (
                         <div key={log.id} className="p-3 space-y-1 hover:bg-bg-subtle/30 transition-colors">
@@ -1643,8 +1221,12 @@ export function VoucherDetailSheet({
                         </div>
                       ))}
                     </div>
+                    ) : (
+                      <p className="text-xs text-text-secondary py-2">
+                        No system mutation events recorded for this voucher yet. Status and field edits will appear here after each save.
+                      </p>
+                    )}
                   </div>
-                )}
               </div>
             </div>
           )}
@@ -1653,12 +1235,12 @@ export function VoucherDetailSheet({
         {/* Panel Footer Action Bar */}
         <div className="p-4 border-t border-border bg-bg-subtle/60 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            {voucher.status === "draft" && (
+            {canDelete && (
               <button
                 type="button"
                 disabled={actionLoading}
                 onClick={handleDelete}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 <span>Delete</span>
@@ -1741,5 +1323,13 @@ export function VoucherDetailSheet({
         </div>
       </aside>
     </div>
+
+    <EditVoucherDialog
+      voucher={voucher}
+      isOpen={isEditOpen}
+      onClose={() => setIsEditOpen(false)}
+      onSuccess={() => onRefresh?.()}
+    />
+    </>
   );
 }
