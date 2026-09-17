@@ -22,9 +22,11 @@ export function ok<T>(data: T, status = 200, headers?: HeadersInit) {
 }
 
 /**
- * Conditional response with ETag and Cache-Control.
- * If the client provides a matching `If-None-Match`, returns 304 Not Modified
- * with zero payload transfer across the wire.
+ * JSON success envelope with ETag + Cache-Control validators.
+ *
+ * Always returns the full body. A bare 304 (empty body) breaks `fetchJson`
+ * consumers — browsers still send `If-None-Match` for these private API GETs,
+ * and an empty 304 was surfacing as empty department / supplier dropdowns.
  */
 export function okWithEtag<T>(
   request: Request,
@@ -34,11 +36,11 @@ export function okWithEtag<T>(
     cacheControl?: CacheControlOptions;
   }
 ) {
+  void request;
   const bodyString = JSON.stringify({ data });
   const hash = createHash("sha1").update(bodyString).digest("hex");
   const etag = `W/"${hash}"`;
 
-  const ifNoneMatch = request.headers.get("if-none-match");
   const cacheControlDirectives = [
     options?.cacheControl?.private !== false ? "private" : "public",
     options?.cacheControl?.maxAge !== undefined
@@ -54,13 +56,6 @@ export function okWithEtag<T>(
     ETag: etag,
     "Cache-Control": cacheControlDirectives,
   });
-
-  if (
-    ifNoneMatch &&
-    (ifNoneMatch === etag || ifNoneMatch === "*" || ifNoneMatch.includes(hash))
-  ) {
-    return new NextResponse(null, { status: 304, headers });
-  }
 
   return new NextResponse(bodyString, {
     status: options?.status ?? 200,

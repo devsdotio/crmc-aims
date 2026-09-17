@@ -122,9 +122,20 @@ export function FileNewPODialog({
   defaultPurpose,
 }: FileNewPODialogProps) {
   const { data: me } = useMeQuery();
-  const { data: departments = [] } = useDepartmentsQuery();
-  const { data: suppliers = [] } = useSuppliersQuery({ activeOnly: true });
-  const { data: allCategories = [] } = useCategoriesQuery();
+  // Prefetch while the PO page is mounted so the department select is warm
+  // when the dialog opens (avoids racing the slow first DB connection).
+  const {
+    data: departmentsData,
+    isLoading: departmentsLoading,
+    isError: departmentsError,
+    refetch: refetchDepartments,
+  } = useDepartmentsQuery();
+  const departments = Array.isArray(departmentsData) ? departmentsData : [];
+  const { data: suppliers = [] } = useSuppliersQuery({
+    activeOnly: true,
+    enabled: isOpen,
+  });
+  const { data: allCategories = [] } = useCategoriesQuery({ enabled: isOpen });
   const { data: consumablePage } = useConsumablesQuery({ limit: 100 });
   const consumables = useMemo(
     () => consumablePage?.data ?? [],
@@ -936,15 +947,38 @@ export function FileNewPODialog({
                       value={targetDepartment}
                       onChange={(e) => setTargetDepartment(e.target.value)}
                       required
-                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer font-medium"
+                      disabled={departmentsLoading}
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer font-medium disabled:opacity-60"
                     >
-                      <option value="">-- Choose Department --</option>
+                      <option value="">
+                        {departmentsLoading
+                          ? "Loading departments…"
+                          : departmentsError
+                            ? "Failed to load departments"
+                            : "-- Choose Department --"}
+                      </option>
                       {departments.map((dept) => (
                         <option key={dept.id} value={dept.name}>
                           {dept.name} {dept.code ? `(${dept.code})` : ""}
                         </option>
                       ))}
                     </select>
+                    {departmentsError && (
+                      <button
+                        type="button"
+                        onClick={() => void refetchDepartments()}
+                        className="text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                      >
+                        Retry loading departments
+                      </button>
+                    )}
+                    {!departmentsLoading &&
+                      !departmentsError &&
+                      departments.length === 0 && (
+                        <p className="text-[11px] text-text-secondary">
+                          No departments found. Add one under Settings first.
+                        </p>
+                      )}
                   </div>
                 </div>
 

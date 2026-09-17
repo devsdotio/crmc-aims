@@ -321,6 +321,9 @@ export class ConsumableService {
     const updated = await this.repo.update(id, {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(categoryName !== undefined ? { category: categoryName } : {}),
+      ...(input.classification !== undefined
+        ? { classification: input.classification }
+        : {}),
       ...(input.unit !== undefined ? { unit: input.unit } : {}),
       ...(input.minThreshold !== undefined
         ? { minThreshold: input.minThreshold }
