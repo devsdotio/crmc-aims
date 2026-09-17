@@ -11,6 +11,9 @@ import {
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { cn } from "@/lib/utils";
 import { formatItemDescription } from "@/lib/sanitize-display";
+import { purposePreviewLabel } from "@/lib/request-purpose";
+import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
+import { portalRequestKindLabel } from "./map-portal-request";
 import type { PortalBorrowRequest } from "./types";
 
 interface MyRequestItemProps {
@@ -103,7 +106,7 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
   const totalUnits =
     request.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 1;
 
-  const isSupply = request.items?.every((i) => i.itemType === "consumable");
+  const kindLabel = portalRequestKindLabel(request);
 
   return (
     <div
@@ -142,7 +145,7 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
           </span>
           <span className="text-text-secondary/40">·</span>
           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-secondary bg-bg-subtle border border-border px-2 py-0.5 rounded-full uppercase tracking-wider">
-            {isSupply ? "Supplies" : "Asset Borrow"}
+            {kindLabel}
           </span>
         </div>
 
@@ -165,12 +168,19 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
                 ` → ${request.requestedDateTo}`}
             </span>
           </span>
-          {request.purpose && (
-            <span className="flex items-center gap-1">
-              <FileText className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
-              <span className="truncate max-w-xs">{request.purpose}</span>
-            </span>
-          )}
+          {(() => {
+            const preview = purposePreviewLabel(
+              request.purpose,
+              (request.items ?? []).map((it) => it.purpose)
+            );
+            if (!preview) return null;
+            return (
+              <span className="flex items-center gap-1">
+                <FileText className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
+                <span className="truncate max-w-xs">{preview}</span>
+              </span>
+            );
+          })()}
           {moreCount > 0 && (
             <span className="hidden sm:inline-flex items-center gap-1 text-text-secondary/80">
               <Package className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
@@ -179,6 +189,7 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
               </span>
             </span>
           )}
+          <LinkedRequestsNote related={request.relatedRequests} />
         </div>
       </div>
 

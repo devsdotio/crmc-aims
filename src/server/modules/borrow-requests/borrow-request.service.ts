@@ -26,6 +26,7 @@ import { AssetRepository } from "../assets/asset.repository";
 import { BorrowLogService } from "../borrow-log/borrow-log.service";
 import { BorrowLogRepository } from "../borrow-log/borrow-log.repository";
 import { DepartmentRepository } from "../departments/department.repository";
+import { invalidateDashboardCache } from "../dashboard/dashboard.service";
 import { ProjectAssetAssignmentRepository } from "../projects/project-asset.repository";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
 import type { AssetRow } from "@/server/db/schema";
@@ -42,9 +43,23 @@ import {
   undoBorrowRequestApprovalSchema,
   updateBorrowRequestSchema,
 } from "./borrow-request.validation";
+import { summarizePurposes } from "@/lib/request-purpose";
+import {
+  loadLinkedRequestSummaries,
+  relatedForRow,
+  type LinkedRequestSummary,
+} from "@/server/shared/linked-requests";
 
-function toDTO(row: BorrowRequestRow): BorrowRequestDTO {
+function toDTO(
+  row: BorrowRequestRow,
+  relatedRequests: LinkedRequestSummary[] = []
+): BorrowRequestDTO {
   const history = Array.isArray(row.history) ? row.history : [];
+  const headerPurpose = row.purpose;
+  const items = (Array.isArray(row.items) ? row.items : []).map((item) => ({
+    ...item,
+    purpose: item.purpose?.trim() || headerPurpose,
+  }));
   return {
     id: row.id,
     requestCode: row.requestCode,
@@ -55,8 +70,10 @@ function toDTO(row: BorrowRequestRow): BorrowRequestDTO {
     departmentId: row.departmentId,
     requestType: row.requestType ?? undefined,
     requestedByName: row.requestedByName ?? undefined,
-    items: row.items,
-    purpose: row.purpose,
+    submissionGroupId: row.submissionGroupId ?? undefined,
+    relatedRequests,
+    items,
+    purpose: headerPurpose,
     requestedAt:
       row.requestedAt instanceof Date
         ? row.requestedAt.toISOString()
@@ -96,6 +113,7 @@ function normalizeCategoryOnlyItems(
     category: item.category,
     quantity: item.quantity,
     itemType: "asset" as const,
+    ...(item.purpose?.trim() ? { purpose: item.purpose.trim() } : {}),
   }));
 }
 
@@ -124,6 +142,7 @@ function expandItemsWithIssuedAssets(
         category: item.category,
         quantity: 1,
         itemType: "asset",
+        ...(item.purpose?.trim() ? { purpose: item.purpose.trim() } : {}),
       });
     }
   }
@@ -148,6 +167,17 @@ export class BorrowRequestService {
     private readonly departments = new DepartmentRepository(),
     private readonly projectAssignments = new ProjectAssetAssignmentRepository()
   ) {}
+
+  private async toDTOWithLinked(
+    row: BorrowRequestRow,
+    tenantId?: string
+  ): Promise<BorrowRequestDTO> {
+    const linked = await loadLinkedRequestSummaries(
+      [row.submissionGroupId],
+      tenantId
+    );
+    return toDTO(row, relatedForRow(row.id, row.submissionGroupId, linked));
+  }
 
   /** Shared gate: unit must be free of holder and open project custody. */
   private async assertAssetFreeForRequest(asset: AssetRow): Promise<void> {
@@ -190,9 +220,15 @@ export class BorrowRequestService {
       this.repo.count(filters, undefined, actor?.tenantId),
       this.repo.countByStatus(countFilters, undefined, actor?.tenantId),
     ]);
-    
+    const linked = await loadLinkedRequestSummaries(
+      rows.map((row) => row.submissionGroupId),
+      actor?.tenantId
+    );
+
     return {
-      data: rows.map(toDTO),
+      data: rows.map((row) =>
+        toDTO(row, relatedForRow(row.id, row.submissionGroupId, linked))
+      ),
       meta: {
         total,
         page: filters.page || 1,
@@ -210,7 +246,7 @@ export class BorrowRequestService {
     if (actor && !isAssetOperatorRole(actor.role) && row.requesterUserId !== actor.userId) {
       throw new ForbiddenError("You are not allowed to view this request.");
     }
-    return toDTO(row);
+    return this.toDTOWithLinked(row, actor?.tenantId);
   }
 
   async create(rawInput: unknown, actor: ActorContext): Promise<BorrowRequestDTO> {
@@ -224,6 +260,7 @@ export class BorrowRequestService {
     const dest = await resolveDepartmentSnapshot({
       actor,
       submittedDepartmentId: input.departmentId,
+      submittedDepartmentName: input.department ?? null,
       requireDepartment: true,
     });
 
@@ -231,6 +268,9 @@ export class BorrowRequestService {
 
     const requestType = input.requestType ?? "borrowable";
     const items = normalizeCategoryOnlyItems(input.items);
+    const headerPurpose =
+      input.purpose?.trim() ||
+      summarizePurposes(items.map((i) => i.purpose));
 
     const row = await withTransaction(async (tx) => {
       const created = await this.repo.create({
@@ -244,8 +284,9 @@ export class BorrowRequestService {
         departmentId: dest.departmentId,
         requestType,
         requestedByName: input.requestedByName ?? null,
+        submissionGroupId: input.submissionGroupId ?? null,
         items,
-        purpose: input.purpose,
+        purpose: headerPurpose,
         expectedReturnDate:
           requestType === "borrowable"
             ? (input.expectedReturnDate ?? new Date().toISOString().slice(0, 10))
@@ -260,6 +301,7 @@ export class BorrowRequestService {
       return created;
     });
 
+    invalidateDashboardCache(actor.tenantId);
     return toDTO(row);
   }
 
@@ -734,14 +776,18 @@ export class BorrowRequestService {
 
     let departmentName = existing.department;
     let departmentId = existing.departmentId;
-    if (input.departmentId !== undefined) {
-      if (input.departmentId) {
-        const d = await this.departments.findById(input.departmentId, undefined, actor.tenantId);
-        if (!d) throw new NotFoundError("Department", input.departmentId);
-        departmentName = d.name;
-        departmentId = d.id;
-      } else {
-        departmentId = null;
+    if (input.departmentId !== undefined || input.department !== undefined) {
+      if (input.departmentId || input.department?.trim()) {
+        const dest = await resolveDepartmentSnapshot({
+          actor,
+          submittedDepartmentId: input.departmentId ?? null,
+          submittedDepartmentName: input.department ?? null,
+          requireDepartment: true,
+        });
+        departmentName = dest.departmentName ?? existing.department;
+        departmentId = dest.departmentId;
+      } else if (input.departmentId === null || input.departmentId === undefined) {
+        if (input.departmentId === null) departmentId = null;
       }
     }
 
@@ -749,6 +795,9 @@ export class BorrowRequestService {
     const nextItems = input.items
       ? normalizeCategoryOnlyItems(input.items)
       : existing.items;
+    const derivedPurpose = input.items
+      ? summarizePurposes(nextItems.map((i) => i.purpose ?? existing.purpose))
+      : undefined;
 
     const history = [
       ...(Array.isArray(existing.history) ? existing.history : []),
@@ -768,7 +817,10 @@ export class BorrowRequestService {
           departmentId,
           requestType: nextRequestType,
           items: nextItems,
-          ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
+          purpose:
+            input.purpose !== undefined
+              ? input.purpose
+              : (derivedPurpose ?? existing.purpose),
           expectedReturnDate:
             nextRequestType === "borrowable"
               ? (input.expectedReturnDate !== undefined ? input.expectedReturnDate : existing.expectedReturnDate)

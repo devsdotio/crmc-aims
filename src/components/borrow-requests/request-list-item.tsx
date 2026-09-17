@@ -1,9 +1,11 @@
 "use client";
  
 import { useEffect, useRef, useState } from "react";
-import { Check, X, Calendar, User, Building2, Tag, Loader2, RotateCcw } from "lucide-react";
+import { Check, X, Calendar, User, Building2, Tag, Loader2, RotateCcw, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatItemDescription } from "@/lib/sanitize-display";
+import { purposePreviewLabel } from "@/lib/request-purpose";
+import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { useQueryClient } from "@tanstack/react-query";
 import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-keys";
@@ -156,6 +158,20 @@ export function RequestListItem({
             <Calendar className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
             Return by: <span className="font-semibold text-text">{request.expectedReturnDate}</span>
           </span>
+          {(() => {
+            const preview = purposePreviewLabel(
+              request.purpose,
+              (request.items ?? []).map((item) => item.purpose)
+            );
+            if (!preview) return null;
+            return (
+              <span className="flex items-center gap-1">
+                <FileText className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
+                <span className="truncate max-w-xs">{preview}</span>
+              </span>
+            );
+          })()}
+          <LinkedRequestsNote related={request.relatedRequests} />
         </div>
       </div>
 

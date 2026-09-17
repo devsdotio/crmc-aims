@@ -95,13 +95,20 @@ export default function Sidebar({
   const { canToggle, preference, setShowSandbox } = useSandboxVisibility();
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = { "/purchase-orders": true, "/consumables": true };
+    const initial: Record<string, boolean> = {
+      "/purchase-orders": true,
+      "/consumables": true,
+      "/borrower-db/requests": true,
+    };
     if (typeof window !== "undefined") {
       if (window.location.pathname.startsWith("/purchase-orders")) {
         initial["/purchase-orders"] = true;
       }
       if (window.location.pathname.startsWith("/consumables")) {
         initial["/consumables"] = true;
+      }
+      if (window.location.pathname.startsWith("/borrower-db/requests")) {
+        initial["/borrower-db/requests"] = true;
       }
     }
     return initial;
@@ -113,6 +120,9 @@ export default function Sidebar({
     }
     if (pathname.startsWith("/consumables")) {
       setOpenSubmenus((prev) => ({ ...prev, "/consumables": true }));
+    }
+    if (pathname.startsWith("/borrower-db/requests")) {
+      setOpenSubmenus((prev) => ({ ...prev, "/borrower-db/requests": true }));
     }
   }, [pathname]);
 
@@ -199,7 +209,7 @@ export default function Sidebar({
           roles: ["admin", "staff"],
         },
         {
-          name: "Requester Dashboard",
+          name: "Dashboard",
           href: "/borrower-db/dashboard",
           icon: LayoutDashboard,
           roles: ["borrower"],
@@ -291,15 +301,29 @@ export default function Sidebar({
         },
 
         {
-          name: "My Requests",
+          name: "Requests",
           href: "/borrower-db/requests",
           icon: ClipboardList,
           badge: pendingCount,
           badgeTone: "accent",
           roles: ["borrower"],
+          children: [
+            {
+              name: "Borrow",
+              href: "/borrower-db/requests/borrow",
+            },
+            {
+              name: "Assignment",
+              href: "/borrower-db/requests/assignment",
+            },
+            {
+              name: "Supplies",
+              href: "/borrower-db/requests/supplies",
+            },
+          ],
         },
         {
-          name: "My Inventory",
+          name: "Inventory",
           href: "/borrower-db/inventory",
           icon: Package,
           roles: ["borrower"],

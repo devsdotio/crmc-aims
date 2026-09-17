@@ -9,6 +9,11 @@ import { CancelRequestDialog } from "./cancel-request-dialog";
 import { RequestDetailSheet } from "./request-detail-sheet";
 import { EditRequestDialog } from "./edit-request-dialog";
 import type { PortalBorrowRequest, RequestStatusFilter } from "./types";
+import {
+  mapBorrowRequestToPortal,
+  mapConsumableRequestToPortal,
+  portalRequestKindLabel,
+} from "./map-portal-request";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 
 import { useBorrowRequests, useCancelBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
@@ -68,7 +73,17 @@ const STATUS_FILTERS: {
 
 const REQUESTS_PAGE_SIZE = 10;
 
-export function MyRequestsTab() {
+export type RequestKindFilter = "all" | "borrow" | "assign" | "supply";
+
+function matchesKind(request: PortalBorrowRequest, kind: RequestKindFilter) {
+  if (kind === "all") return true;
+  const label = portalRequestKindLabel(request);
+  if (kind === "supply") return label === "Supplies";
+  if (kind === "assign") return label === "Assignment";
+  return label === "Borrow";
+}
+
+export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   const [statusFilter, setStatusFilter] = useState<RequestStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<PortalBorrowRequest | null>(null);
@@ -77,70 +92,49 @@ export function MyRequestsTab() {
   const [page, setPage] = useState(1);
   const { canOperate } = useAssetOperator();
 
-  const { data: response, isLoading: loadingAssets } = useBorrowRequests();
-  const { data: supplyResponse, isLoading: loadingSupplies } = useConsumableRequests();
+  const fetchAssets = kind !== "supply";
+  const fetchSupplies = kind !== "borrow" && kind !== "assign";
+
+  const { data: response, isLoading: loadingAssets } = useBorrowRequests({
+    limit: 100,
+    requestType: kind === "borrow" ? "borrowable" : kind === "assign" ? "assignable" : undefined,
+    enabled: fetchAssets,
+    refetchInterval: 15_000,
+  });
+  const { data: supplyResponse, isLoading: loadingSupplies } = useConsumableRequests({
+    limit: 100,
+    enabled: fetchSupplies,
+    refetchInterval: 15_000,
+  });
   const assetRequests = useMemo(() => response?.data ?? [], [response?.data]);
   const supplyRequests = useMemo(
     () => supplyResponse?.data ?? [],
     [supplyResponse?.data]
   );
-  const loading = loadingAssets || loadingSupplies;
+  const loading =
+    (fetchAssets && loadingAssets) || (fetchSupplies && loadingSupplies);
   const { mutateAsync: cancelRequest } = useCancelBorrowRequestMutation();
   const { mutateAsync: cancelSupply } = useCancelConsumableRequestMutation();
   const toast = useToast();
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search]);
+  }, [statusFilter, search, kind]);
 
   const requests = useMemo<PortalBorrowRequest[]>(() => {
-    const mappedAssets: PortalBorrowRequest[] = assetRequests.map((row) => ({
-      ...row,
-      cancellationReason: row.cancellationReason,
-      requestedDateFrom: row.requestedAt.slice(0, 10),
-      requestedDateTo: (row.expectedReturnDate ?? row.requestedAt).slice(0, 10),
-    }));
-    const mappedSupplies: PortalBorrowRequest[] = supplyRequests.map((row) => ({
-      id: row.id,
-      requestCode: row.requestCode,
-      requesterName: row.requesterName,
-      requesterEmail: row.requesterEmail,
-      requesterPhone: row.requesterPhone,
-      department: row.department,
-      requestedByName: row.requestedByName,
-      items: row.lines.map((line) => ({
-        itemDescription: line.itemName,
-        consumableId: line.consumableId,
-        category: line.category,
-        quantity: line.quantityRequested,
-        itemType: "consumable" as const,
-      })),
-      purpose: row.purpose,
-      requestedAt: row.requestedAt,
-      expectedReturnDate: null,
-      status:
-        row.status === "released"
-          ? "released"
-          : row.status === "cancelled"
-            ? "cancelled"
-            : row.status,
-      notes: row.notes,
-      rejectionReason: row.rejectionReason,
-      cancellationReason: row.cancellationReason,
-      history: row.history.map((h) => ({
-        id: h.id,
-        action: h.action as PortalBorrowRequest["history"][number]["action"],
-        actor: h.actor,
-        timestamp: h.timestamp,
-        note: h.note,
-      })),
-      requestedDateFrom: row.requestedAt.slice(0, 10),
-      requestedDateTo: row.requestedAt.slice(0, 10),
-    }));
-    return [...mappedSupplies, ...mappedAssets].sort((a, b) =>
-      b.requestedAt.localeCompare(a.requestedAt)
-    );
-  }, [assetRequests, supplyRequests]);
+    const mappedAssets = assetRequests.map(mapBorrowRequestToPortal);
+    const mappedSupplies = supplyRequests.map(mapConsumableRequestToPortal);
+    return [...mappedSupplies, ...mappedAssets]
+      .filter((row) => matchesKind(row, kind))
+      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  }, [assetRequests, supplyRequests, kind]);
+
+  useEffect(() => {
+    setSelectedRequest((prev) => {
+      if (!prev) return prev;
+      return requests.find((row) => row.id === prev.id) ?? prev;
+    });
+  }, [requests]);
 
   const handleCancelConfirmed = async (requestId: string, reason: string) => {
     const target = requests.find((r) => r.id === requestId);
@@ -220,7 +214,7 @@ export function MyRequestsTab() {
                 >
                   {isSelected && (
                     <motion.span
-                      layoutId="borrower-my-requests-active-tab"
+                      layoutId={`borrower-my-requests-active-tab-${kind}`}
                       className="absolute inset-0 rounded-lg bg-bg shadow-xs border border-border/80"
                       transition={{ type: "spring", stiffness: 500, damping: 38 }}
                     />
@@ -295,7 +289,13 @@ export function MyRequestsTab() {
             </h3>
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
               {statusFilter === "all"
-                ? "You haven't submitted any borrow or consumable requisition requests yet."
+                ? kind === "supply"
+                  ? "You haven't submitted any supply requisitions yet."
+                  : kind === "assign"
+                    ? "You haven't submitted any assignment requests yet."
+                    : kind === "borrow"
+                      ? "You haven't submitted any borrow requests yet."
+                      : "You haven't submitted any borrow, assignment, or supply requests yet."
                 : "No requests match the selected status filter."}
             </p>
           </div>

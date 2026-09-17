@@ -1,5 +1,5 @@
 import type { JwtPayload, User } from "@supabase/supabase-js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
@@ -109,18 +109,39 @@ export function toActorContext(
 export async function resolveDepartmentSnapshot(opts: {
   actor: ActorContext;
   submittedDepartmentId?: string | null;
+  /** Free-text department when no catalog id is selected (portal override). */
+  submittedDepartmentName?: string | null;
   requireDepartment?: boolean;
 }): Promise<{ departmentId: string | null; departmentName: string | null }> {
-  const departmentId =
-    opts.actor.role === "borrower"
+  const submittedId = opts.submittedDepartmentId?.trim() || null;
+  const submittedName = opts.submittedDepartmentName?.trim() || null;
+
+  // Operators always use submitted id when provided. Borrowers may override their
+  // linked department via submitted id or free-text name.
+  let departmentId: string | null =
+    opts.actor.role === "borrower" && !submittedId && !submittedName
       ? opts.actor.departmentId
-      : (opts.submittedDepartmentId ?? null);
+      : submittedId;
+
+  if (!departmentId && submittedName) {
+    const db = getDb();
+    const [dept] = await db
+      .select({ id: departments.id, name: departments.name })
+      .from(departments)
+      .where(sql`lower(trim(${departments.name})) = ${submittedName.toLowerCase()}`)
+      .limit(1);
+    if (dept) {
+      return { departmentId: dept.id, departmentName: dept.name };
+    }
+    // Unmatched free text — store denormalized name only.
+    return { departmentId: null, departmentName: submittedName };
+  }
 
   if (!departmentId) {
-    if (opts.requireDepartment || opts.actor.role === "borrower") {
+    if (opts.requireDepartment || (opts.actor.role === "borrower" && !submittedName)) {
       throw new BadRequestError(
         opts.actor.role === "borrower"
-          ? "This department account is not linked to a department. Ask an administrator to assign one."
+          ? "Select or enter a requesting department."
           : "A department is required."
       );
     }
@@ -135,7 +156,7 @@ export async function resolveDepartmentSnapshot(opts: {
       const [dept] = await db
         .select({ id: departments.id, name: departments.name })
         .from(departments)
-        .where(eq(departments.id, departmentId))
+        .where(eq(departments.id, departmentId!))
         .limit(1);
       return dept ?? null;
     },

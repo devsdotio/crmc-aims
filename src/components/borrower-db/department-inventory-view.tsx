@@ -21,6 +21,8 @@ import type { BorrowLogRecord } from "@/features/borrow-log/client/borrow-log-ap
 import { useMeQuery } from "@/features/users/client";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { calendarDaysUntil } from "@/lib/format-relative-time";
+import { AssetViewToggle } from "@/components/assets/asset-view-toggle";
+import type { ViewMode } from "@/types/assets";
 
 type CustodyTab = "borrowed" | "assigned";
 
@@ -62,16 +64,19 @@ function dueHint(dueDate?: string | null): string | null {
   return null;
 }
 
-function InventoryRowSkeleton() {
+function holderLabel(record: BorrowLogRecord) {
+  return record.requestedByName || record.borrowerName || "—";
+}
+
+function InventoryCardSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-bg p-4 flex gap-3 animate-pulse">
+    <div className="rounded-xl border border-border bg-bg p-4 flex gap-3 animate-pulse h-full">
       <div className="h-10 w-10 rounded-lg bg-border shrink-0" />
       <div className="flex-1 space-y-2 min-w-0">
         <div className="h-3.5 w-28 rounded bg-border" />
         <div className="h-3 w-48 rounded bg-border" />
         <div className="h-3 w-40 rounded bg-border" />
       </div>
-      <div className="h-6 w-16 rounded-full bg-border shrink-0" />
     </div>
   );
 }
@@ -90,7 +95,7 @@ function InventoryAssetCard({
   return (
     <article
       className={cn(
-        "rounded-xl border bg-bg p-4 transition-colors",
+        "rounded-xl border bg-bg p-4 h-full flex flex-col gap-3 transition-colors",
         isOverdue
           ? "border-status-outofservice-bg/40 bg-status-outofservice-bg/5"
           : isAssignment
@@ -117,86 +122,213 @@ function InventoryAssetCard({
             <Clock className="h-4 w-4" strokeWidth={2.2} />
           )}
         </span>
-
-        <div className="min-w-0 flex-1 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-mono text-sm font-bold text-text tracking-tight">
-              {record.assetCode}
-            </h3>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                categoryMeta.bg,
-                categoryMeta.text
-              )}
-            >
-              <Tag className="h-2.5 w-2.5" />
-              {categoryMeta.label}
-            </span>
-            <span
-              className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border",
-                isAssignment
-                  ? "bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
-                  : "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/25"
-              )}
-            >
-              {isAssignment ? "Assigned" : "Borrowed"}
-            </span>
-            {isOverdue && record.daysOverdue != null && (
-              <OverdueBadge daysOverdue={record.daysOverdue} />
-            )}
-          </div>
-
-          <p className="text-sm font-semibold text-text truncate">
+        <div className="min-w-0 flex-1">
+          <p className="font-mono text-xs font-bold text-text tracking-tight">
+            {record.assetCode}
+          </p>
+          <p className="text-sm font-semibold text-text truncate mt-0.5">
             {record.assetName}
           </p>
-
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-text-secondary">
-            <span className="inline-flex items-center gap-1">
-              <Calendar className="h-3 w-3 shrink-0" />
-              Issued {formatDisplayDate(record.releasedAt)}
-            </span>
-            {isAssignment ? (
-              <span className="inline-flex items-center gap-1 font-medium text-amber-700/90 dark:text-amber-400/90">
-                <Layers className="h-3 w-3 shrink-0" />
-                Long-term · no due date
-              </span>
-            ) : (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1",
-                  isOverdue && "font-semibold text-status-outofservice-text"
-                )}
-              >
-                <Clock className="h-3 w-3 shrink-0" />
-                Due {formatDisplayDate(record.dueDate)}
-                {hint && !isOverdue ? ` · ${hint}` : null}
-              </span>
-            )}
-            {(record.requestedByName || record.borrowerName) && (
-              <span className="inline-flex items-center gap-1 truncate max-w-50">
-                <User className="h-3 w-3 shrink-0" />
-                {record.requestedByName
-                  ? `Requested by ${record.requestedByName}`
-                  : record.borrowerName}
-              </span>
-            )}
-          </div>
-
-          {isOverdue && (
-            <p className="text-[11px] text-status-outofservice-text flex items-start gap-1.5 pt-0.5">
-              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              Coordinate return with Property Custodian — this loan is past due.
-            </p>
-          )}
         </div>
+      </div>
 
-        <span className="hidden sm:inline font-mono text-[10px] text-text-secondary/70 shrink-0 pt-0.5">
-          {record.logCode}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+            categoryMeta.bg,
+            categoryMeta.text
+          )}
+        >
+          <Tag className="h-2.5 w-2.5" />
+          {categoryMeta.label}
         </span>
+        <span
+          className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border",
+            isAssignment
+              ? "bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
+              : "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/25"
+          )}
+        >
+          {isAssignment ? "Assigned" : "Borrowed"}
+        </span>
+        {isOverdue && record.daysOverdue != null && (
+          <OverdueBadge daysOverdue={record.daysOverdue} />
+        )}
+      </div>
+
+      <div className="mt-auto space-y-1 text-[11px] text-text-secondary">
+        <p className="inline-flex items-center gap-1">
+          <Calendar className="h-3 w-3 shrink-0" />
+          Issued {formatDisplayDate(record.releasedAt)}
+        </p>
+        {isAssignment ? (
+          <p className="inline-flex items-center gap-1 font-medium text-amber-700/90 dark:text-amber-400/90">
+            <Layers className="h-3 w-3 shrink-0" />
+            Long-term · no due date
+          </p>
+        ) : (
+          <p
+            className={cn(
+              "inline-flex items-center gap-1",
+              isOverdue && "font-semibold text-status-outofservice-text"
+            )}
+          >
+            <Clock className="h-3 w-3 shrink-0" />
+            Due {formatDisplayDate(record.dueDate)}
+            {hint && !isOverdue ? ` · ${hint}` : null}
+          </p>
+        )}
+        <p className="inline-flex items-center gap-1 truncate">
+          <User className="h-3 w-3 shrink-0" />
+          {holderLabel(record)}
+        </p>
       </div>
     </article>
+  );
+}
+
+function InventoryTableRow({
+  record,
+  categoryMeta,
+}: {
+  record: BorrowLogRecord;
+  categoryMeta: { bg: string; text: string; label: string };
+}) {
+  const isAssignment = record.custodyKind === "assignment";
+  const isOverdue = record.status === "overdue";
+  const hint = !isAssignment ? dueHint(record.dueDate) : null;
+
+  return (
+    <tr
+      className={cn(
+        "border-b border-border bg-bg",
+        isOverdue && "bg-status-outofservice-bg/5"
+      )}
+    >
+      <td className="px-5 py-3.5 whitespace-nowrap">
+        <span className="font-mono text-xs font-bold text-text">{record.assetCode}</span>
+      </td>
+      <td className="px-3 py-3.5 min-w-40">
+        <p className="text-sm font-semibold text-text truncate">{record.assetName}</p>
+        <p className="font-mono text-[10px] text-text-secondary mt-0.5">{record.logCode}</p>
+      </td>
+      <td className="px-3 py-3.5 hidden md:table-cell">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+            categoryMeta.bg,
+            categoryMeta.text
+          )}
+        >
+          <Tag className="h-2.5 w-2.5" />
+          {categoryMeta.label}
+        </span>
+      </td>
+      <td className="px-3 py-3.5">
+        <span
+          className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border",
+            isAssignment
+              ? "bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-500/30"
+              : "bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/25"
+          )}
+        >
+          {isAssignment ? "Assigned" : "Borrowed"}
+        </span>
+      </td>
+      <td className="px-3 py-3.5">
+        {isAssignment ? (
+          <span className="text-xs text-text-secondary">Open assignment</span>
+        ) : isOverdue && record.daysOverdue != null ? (
+          <OverdueBadge daysOverdue={record.daysOverdue} />
+        ) : (
+          <div className="text-xs">
+            <p className="font-semibold text-text">{formatDisplayDate(record.dueDate)}</p>
+            {hint ? (
+              <p className="text-[11px] text-status-repair-text mt-0.5">{hint}</p>
+            ) : (
+              <p className="text-[11px] text-text-secondary mt-0.5">On time</p>
+            )}
+          </div>
+        )}
+      </td>
+      <td className="px-3 py-3.5 hidden lg:table-cell whitespace-nowrap text-xs text-text-secondary">
+        {formatDisplayDate(record.releasedAt)}
+      </td>
+      <td className="px-5 py-3.5 hidden sm:table-cell">
+        <p className="text-xs text-text truncate max-w-40">{holderLabel(record)}</p>
+      </td>
+    </tr>
+  );
+}
+
+function SkeletonTableRow() {
+  return (
+    <tr className="border-b border-border bg-bg animate-pulse">
+      <td className="px-5 py-4">
+        <div className="h-4 w-16 bg-border rounded" />
+      </td>
+      <td className="px-3 py-4">
+        <div className="h-4 w-40 bg-border rounded mb-1" />
+        <div className="h-3 w-24 bg-border rounded" />
+      </td>
+      <td className="px-3 py-4 hidden md:table-cell">
+        <div className="h-5 w-20 bg-border rounded-full" />
+      </td>
+      <td className="px-3 py-4">
+        <div className="h-5 w-20 bg-border rounded-full" />
+      </td>
+      <td className="px-3 py-4">
+        <div className="h-4 w-24 bg-border rounded" />
+      </td>
+      <td className="px-3 py-4 hidden lg:table-cell">
+        <div className="h-4 w-20 bg-border rounded" />
+      </td>
+      <td className="px-5 py-4 hidden sm:table-cell">
+        <div className="h-4 w-28 bg-border rounded" />
+      </td>
+    </tr>
+  );
+}
+
+function InventoryTable({
+  records,
+  loading,
+  getCategoryStyle,
+}: {
+  records: BorrowLogRecord[];
+  loading: boolean;
+  getCategoryStyle: (category: string) => { bg: string; text: string; label: string };
+}) {
+  return (
+    <div className="overflow-auto min-h-0 flex-1">
+      <table className="w-full text-left text-sm" aria-label="Department inventory">
+        <thead className="sticky top-0 z-10">
+          <tr className="border-b border-border bg-bg-subtle text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+            <th scope="col" className="px-5 py-3">Code</th>
+            <th scope="col" className="px-3 py-3">Item</th>
+            <th scope="col" className="px-3 py-3 hidden md:table-cell">Category</th>
+            <th scope="col" className="px-3 py-3">Type</th>
+            <th scope="col" className="px-3 py-3">Due / Status</th>
+            <th scope="col" className="px-3 py-3 hidden lg:table-cell">Issued</th>
+            <th scope="col" className="px-5 py-3 hidden sm:table-cell">Holder</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading
+            ? Array.from({ length: 7 }).map((_, i) => <SkeletonTableRow key={i} />)
+            : records.map((record) => (
+                <InventoryTableRow
+                  key={record.id}
+                  record={record}
+                  categoryMeta={getCategoryStyle(record.category)}
+                />
+              ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -250,6 +382,7 @@ export function DepartmentInventoryView() {
   });
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<CustodyTab>("borrowed");
+  const [viewMode, setViewMode] = useState<ViewMode>("table");
 
   const filtered = useMemo(() => {
     let list = records;
@@ -300,9 +433,7 @@ export function DepartmentInventoryView() {
     return (
       <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle gap-3">
         <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs">
-          <h1 className="text-xl font-bold tracking-tight text-text">
-            My Inventory
-          </h1>
+          <h1 className="text-xl font-bold tracking-tight text-text">Inventory</h1>
           <p className="text-xs text-text-secondary mt-0.5">
             Assets currently held by your department (view only).
           </p>
@@ -317,13 +448,10 @@ export function DepartmentInventoryView() {
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle gap-3">
-      {/* Header */}
       <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-text">
-              My Inventory
-            </h1>
+            <h1 className="text-xl font-bold tracking-tight text-text">Inventory</h1>
             <p className="text-xs text-text-secondary mt-0.5 max-w-xl leading-relaxed">
               Equipment currently held by{" "}
               <span className="font-semibold text-text">{deptLabel}</span>.
@@ -333,7 +461,6 @@ export function DepartmentInventoryView() {
           </div>
         </div>
 
-        {/* Summary tiles */}
         <div className="grid grid-cols-3 gap-2.5">
           <button
             type="button"
@@ -398,7 +525,6 @@ export function DepartmentInventoryView() {
         />
       )}
 
-      {/* List shell */}
       <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col min-h-0 flex-1">
         <div className="px-4 md:px-6 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-3 shrink-0 bg-bg">
           <div className="flex gap-1 rounded-xl border border-border p-1 bg-bg-subtle overflow-x-auto scrollbar-none relative">
@@ -437,7 +563,7 @@ export function DepartmentInventoryView() {
             })}
           </div>
 
-          <div className="relative flex-1 sm:max-w-xs sm:ml-auto">
+          <div className="relative flex-1 sm:max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
             <input
               type="search"
@@ -447,33 +573,47 @@ export function DepartmentInventoryView() {
               className="w-full h-9 pl-8 pr-3 text-xs bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
+
+          <div className="sm:ml-auto">
+            <AssetViewToggle viewMode={viewMode} onViewChange={setViewMode} />
+          </div>
         </div>
 
         <p className="px-4 md:px-6 py-2 text-[11px] text-text-secondary border-b border-border bg-bg-subtle/40 shrink-0">
           {TABS.find((t) => t.key === tab)?.description}
         </p>
 
-        <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-5">
-          {loading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <InventoryRowSkeleton key={i} />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <SectionEmpty kind={tab} searching={Boolean(search.trim())} />
+        {loading || filtered.length > 0 ? (
+          viewMode === "table" ? (
+            <InventoryTable
+              records={filtered}
+              loading={loading}
+              getCategoryStyle={getCategoryStyle}
+            />
           ) : (
-            <div className="space-y-2.5">
-              {filtered.map((record) => (
-                <InventoryAssetCard
-                  key={record.id}
-                  record={record}
-                  categoryMeta={getCategoryStyle(record.category)}
-                />
-              ))}
+            <div className="flex-1 overflow-y-auto min-h-0 p-4 md:p-5">
+              {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <InventoryCardSkeleton key={i} />
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {filtered.map((record) => (
+                    <InventoryAssetCard
+                      key={record.id}
+                      record={record}
+                      categoryMeta={getCategoryStyle(record.category)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          )
+        ) : (
+          <SectionEmpty kind={tab} searching={Boolean(search.trim())} />
+        )}
       </div>
     </div>
   );

@@ -35,6 +35,13 @@ export interface BorrowRequest {
   departmentId?: string | null;
   requestType?: "borrowable" | "assignable" | null;
   requestedByName?: string | null;
+  submissionGroupId?: string | null;
+  relatedRequests?: Array<{
+    id: string;
+    requestCode: string;
+    kind: "borrow" | "assign" | "supply";
+    status: string;
+  }>;
   items: {
     itemDescription: string;
     assetId?: string;
@@ -44,6 +51,7 @@ export interface BorrowRequest {
     quantity: number;
     itemType: "asset" | "consumable";
     unit?: string;
+    purpose?: string;
   }[];
   purpose: string;
   requestedAt: string;

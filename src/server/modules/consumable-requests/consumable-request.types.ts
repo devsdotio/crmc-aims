@@ -8,6 +8,7 @@ import type {
   NewConsumableRequestRow,
 } from "@/server/db/schema";
 import type { PaginationParams } from "@/types/filters";
+import type { LinkedRequestSummary } from "@/server/shared/linked-requests";
 
 export type ConsumableRequestLineDTO = {
   id: string;
@@ -18,6 +19,7 @@ export type ConsumableRequestLineDTO = {
   category: string;
   unit: string;
   quantityRequested: number;
+  purpose: string;
   notes?: string;
 };
 
@@ -48,6 +50,9 @@ export type ConsumableRequestDTO = {
   projectId?: string | null;
   source?: "portal" | "admin_manual";
   requestedByName?: string;
+  /** Present when this row was submitted with other request types. */
+  submissionGroupId?: string | null;
+  relatedRequests?: LinkedRequestSummary[];
   purpose: string;
   status: ConsumableRequestRow["status"];
   notes?: string;

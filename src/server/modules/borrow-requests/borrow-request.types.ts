@@ -2,6 +2,7 @@ import type {
   BorrowRequestRow,
   BorrowRequestHistoryEntry,
 } from "@/server/db/schema";
+import type { LinkedRequestSummary } from "@/server/shared/linked-requests";
 
 export type BorrowRequestDTO = {
   id: string;
@@ -13,6 +14,9 @@ export type BorrowRequestDTO = {
   departmentId?: string | null;
   requestType?: "borrowable" | "assignable" | null;
   requestedByName?: string;
+  /** Present when this row was submitted with other request types. */
+  submissionGroupId?: string | null;
+  relatedRequests?: LinkedRequestSummary[];
   items: {
     itemDescription: string;
     assetId?: string;
@@ -21,6 +25,8 @@ export type BorrowRequestDTO = {
     category: string;
     quantity: number;
     itemType: "asset" | "consumable";
+    /** Per-line purpose; falls back to header purpose for legacy rows. */
+    purpose?: string;
   }[];
   purpose: string;
   requestedAt: string;

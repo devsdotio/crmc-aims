@@ -91,6 +91,7 @@ export function EditRequestDialog({
           itemName: it.itemDescription,
           category: it.category || "office",
           quantity: it.quantity || 1,
+          purpose: it.purpose || request.purpose || "General",
           notes: "",
         }))
       );
@@ -104,6 +105,7 @@ export function EditRequestDialog({
           category: it.category || "computing",
           quantity: it.quantity || 1,
           itemType: "asset",
+          purpose: it.purpose || request.purpose || "General",
         }))
       );
     }
@@ -183,6 +185,7 @@ export function EditRequestDialog({
             lines: supplyLines.map((l) => ({
               consumableId: l.consumableId,
               quantity: Number(l.quantity),
+              purpose: (l.purpose || request.purpose || "General").trim(),
               notes: l.notes?.trim() || undefined,
             })),
             editReason: editReason.trim(),
@@ -208,6 +211,7 @@ export function EditRequestDialog({
               category: it.category,
               quantity: Number(it.quantity || 1),
               itemType: "asset" as const,
+              purpose: (it.purpose || request.purpose || "General").trim(),
             })),
             editReason: editReason.trim(),
           },
@@ -233,6 +237,7 @@ export function EditRequestDialog({
         category: firstConsumable?.category || "office",
         quantity: 1,
         notes: "",
+        purpose: request.purpose || "General",
       },
     ]);
   };
@@ -250,6 +255,7 @@ export function EditRequestDialog({
         category: "computing",
         quantity: 1,
         itemType: "asset",
+        purpose: request.purpose || "General",
       },
     ]);
   };

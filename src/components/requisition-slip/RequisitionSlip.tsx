@@ -10,6 +10,7 @@ import { useCreateConsumableRequestMutation } from "@/features/consumable-reques
 import { useConsumablesQuery } from "@/features/consumables/client/use-consumables";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useToast } from "@/components/providers/toast-context";
+import { summarizePurposes } from "@/lib/request-purpose";
 
 function generateEmptyRow(): RequisitionItem {
   return {
@@ -110,7 +111,10 @@ export function RequisitionSlip({
       (item) => item.qty && item.qty > 0 && item.description.trim()
     );
     const unmatched: string[] = [];
-    const linesByConsumableId = new Map<string, { quantity: number; notes?: string }>();
+    const linesByKey = new Map<
+      string,
+      { consumableId: string; quantity: number; purpose: string; notes?: string }
+    >();
 
     for (const item of validItems) {
       const needle = item.description.trim().toLowerCase();
@@ -123,6 +127,9 @@ export function RequisitionSlip({
         unmatched.push(item.description.trim());
         continue;
       }
+      const purpose =
+        item.purpose.trim() || "Supplies requisition";
+      const key = `${match.id}::${purpose.toLowerCase()}`;
       const extra = [
         item.costCenterCode.trim()
           ? `cost center ${item.costCenterCode.trim()}`
@@ -132,13 +139,16 @@ export function RequisitionSlip({
           : null,
         item.estimatedCost != null ? `est. ${item.estimatedCost}` : null,
       ].filter(Boolean);
-      const existing = linesByConsumableId.get(match.id);
+      const existing = linesByKey.get(key);
       const quantity = (existing?.quantity ?? 0) + (item.qty ?? 1);
-      const notes = [...(existing?.notes ? [existing.notes] : []), ...extra].join(
-        "; "
-      );
-      linesByConsumableId.set(match.id, {
+      const notes = [
+        ...(existing?.notes ? [existing.notes] : []),
+        ...extra,
+      ].join("; ");
+      linesByKey.set(key, {
+        consumableId: match.id,
         quantity,
+        purpose,
         notes: notes || undefined,
       });
     }
@@ -150,8 +160,8 @@ export function RequisitionSlip({
       return;
     }
 
-    const purpose =
-      validItems.find((item) => item.purpose.trim())?.purpose.trim() ||
+    const purposeSummary =
+      summarizePurposes([...linesByKey.values()].map((l) => l.purpose)) ||
       "Supplies requisition";
     const notesParts = [
       `Slip date: ${date}`,
@@ -167,11 +177,12 @@ export function RequisitionSlip({
         requesterName: requisitionedBy.trim(),
         requesterEmail: me.email,
         departmentId: me.departmentId,
-        purpose,
+        purpose: purposeSummary,
         notes: notesParts.join(" · ") || undefined,
-        lines: [...linesByConsumableId.entries()].map(([consumableId, line]) => ({
-          consumableId,
+        lines: [...linesByKey.values()].map((line) => ({
+          consumableId: line.consumableId,
           quantity: line.quantity,
+          purpose: line.purpose,
           notes: line.notes,
         })),
       });

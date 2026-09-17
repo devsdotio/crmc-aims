@@ -57,6 +57,7 @@ export type DashboardSummaryDTO = {
 
 export type DashboardPendingRequest = {
   id: string;
+  requestCode?: string;
   requesterName: string;
   department: string;
   itemDescription: string;
@@ -208,6 +209,7 @@ export class DashboardService {
   private mergePendingRequests(
     borrowRows: Array<{
       id: string;
+      requestCode?: string;
       requesterName: string;
       department: string;
       requestType?: "borrowable" | "assignable" | null;
@@ -222,13 +224,23 @@ export class DashboardService {
       requestCode: string;
       requestedAt: Date | string;
     }>,
-    limit: number
+    limit: number,
+    supplyLinesByRequestId?: Map<string, Array<{ itemName: string }>>
   ): DashboardPendingRequest[] {
+    const describeItems = (names: string[], fallback: string) => {
+      const first = names[0];
+      if (!first) return fallback;
+      return names.length > 1 ? `${first} (+${names.length - 1} more)` : first;
+    };
     const fromBorrow: DashboardPendingRequest[] = borrowRows.map((r) => ({
       id: r.id,
+      requestCode: r.requestCode,
       requesterName: r.requesterName,
       department: r.department,
-      itemDescription: r.items[0]?.itemDescription || "Multiple items",
+      itemDescription: describeItems(
+        r.items.map((item) => item.itemDescription),
+        "Multiple items"
+      ),
       requestedAt:
         r.requestedAt instanceof Date
           ? r.requestedAt.toISOString()
@@ -238,9 +250,13 @@ export class DashboardService {
     }));
     const fromSupply: DashboardPendingRequest[] = supplyRows.map((r) => ({
       id: r.id,
+      requestCode: r.requestCode,
       requesterName: r.requesterName,
       department: r.department,
-      itemDescription: r.purpose || r.requestCode,
+      itemDescription: describeItems(
+        (supplyLinesByRequestId?.get(r.id) ?? []).map((line) => line.itemName),
+        r.purpose || r.requestCode
+      ),
       requestedAt:
         r.requestedAt instanceof Date
           ? r.requestedAt.toISOString()
@@ -377,7 +393,7 @@ export class DashboardService {
 
     return serverCache.wrap(
       cacheKey,
-      30_000,
+      5_000,
       async () => {
         const { departmentId, includeSandbox } = targetUserId
           ? await this.resolveBorrowerDeptContext(targetUserId, tenantId)
@@ -469,6 +485,18 @@ export class DashboardService {
             : Promise.resolve([]),
         ]);
 
+        const supplyLines = pendingSupplyRows.length
+          ? await this.consumableRequests
+              .listLinesByRequestIds(pendingSupplyRows.map((row) => row.id))
+              .catch(() => [])
+          : [];
+        const supplyLinesByRequestId = new Map<string, Array<{ itemName: string }>>();
+        for (const line of supplyLines) {
+          const list = supplyLinesByRequestId.get(line.requestId) ?? [];
+          list.push(line);
+          supplyLinesByRequestId.set(line.requestId, list);
+        }
+
         return {
           summary: {
             activeBorrows,
@@ -481,7 +509,8 @@ export class DashboardService {
           pendingRequests: this.mergePendingRequests(
             pendingRows,
             pendingSupplyRows,
-            limit
+            limit,
+            supplyLinesByRequestId
           ),
           overdueAssets: overdueRows.slice(0, limit).map((row) => {
             const dto = toBorrowLogDTO(row);

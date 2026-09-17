@@ -36,6 +36,7 @@ export const listConsumableRequestsQuerySchema = z.object({
 const requestLineInputSchema = z.object({
   consumableId: z.string().uuid("Invalid consumable id."),
   quantity: z.number().int().min(1).max(999_999),
+  purpose: z.string().trim().min(1).max(1000),
   notes: z.string().trim().max(1000).optional(),
 });
 
@@ -45,11 +46,15 @@ export const createConsumableRequestSchema = z
     requesterEmail: z.string().trim().email().max(320),
     requesterPhone: z.string().trim().max(40).optional().default(""),
     departmentId: z.string().uuid().optional(),
+    /** Free-text department when not selecting from catalog. */
+    department: z.string().trim().max(120).optional(),
     projectId: z.string().uuid().optional(),
     requestedByName: z.string().trim().max(255).optional(),
-    purpose: z.string().trim().min(1).max(1000),
+    /** Optional header summary; derived from line purposes when omitted. */
+    purpose: z.string().trim().min(1).max(1000).optional(),
     notes: z.string().trim().max(2000).optional(),
     requesterUserId: z.string().uuid().optional(),
+    submissionGroupId: z.string().uuid().optional(),
     lines: z
       .array(requestLineInputSchema)
       .min(1, "At least one product line is required.")
@@ -122,6 +127,7 @@ export const updateConsumableRequestSchema = z
     requesterPhone: z.string().trim().max(40).optional(),
     departmentId: z.string().uuid().nullable().optional(),
     projectId: z.string().uuid().nullable().optional(),
+    department: z.string().trim().max(120).nullable().optional(),
     requestedByName: z.string().trim().max(255).nullable().optional(),
     purpose: z.string().trim().min(1).max(1000).optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
