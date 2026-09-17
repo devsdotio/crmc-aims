@@ -22,19 +22,22 @@ export class AssetController {
       const session = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
-      const data = await this.assetService.listAssets({
-        status: url.searchParams.get("status") ?? undefined,
-        modelId: url.searchParams.get("modelId") ?? undefined,
-        category: url.searchParams.get("category") ?? undefined,
-        search: url.searchParams.get("search") ?? undefined,
-        assignmentType: url.searchParams.get("assignmentType") ?? undefined,
-        availableOnly:
-          url.searchParams.get("availableOnly") ?? undefined,
-        includeSandbox: parseIncludeSandbox(
-          url.searchParams.get("includeSandbox"),
-          session.role
-        ),
-      });
+      const data = await this.assetService.listAssets(
+        {
+          status: url.searchParams.get("status") ?? undefined,
+          modelId: url.searchParams.get("modelId") ?? undefined,
+          category: url.searchParams.get("category") ?? undefined,
+          search: url.searchParams.get("search") ?? undefined,
+          assignmentType: url.searchParams.get("assignmentType") ?? undefined,
+          availableOnly:
+            url.searchParams.get("availableOnly") ?? undefined,
+          includeSandbox: parseIncludeSandbox(
+            url.searchParams.get("includeSandbox"),
+            session.role
+          ),
+        },
+        session.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -54,14 +57,14 @@ export class AssetController {
 
   async peekNextAssetCode(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const session = await requireActor();
       const url = new URL(request.url);
       const category = url.searchParams.get("category")?.trim();
       if (!category) {
         const { BadRequestError } = await import("@/server/shared/errors");
         throw new BadRequestError("category query parameter is required.");
       }
-      return ok(await this.assetService.peekNextAssetCode(category));
+      return ok(await this.assetService.peekNextAssetCode(category, session.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -80,8 +83,8 @@ export class AssetController {
 
   async getAsset(id: string) {
     try {
-      await requireActor();
-      const data = await this.assetService.getAssetById(id);
+      const session = await requireActor();
+      const data = await this.assetService.getAssetById(id, session.tenantId);
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -90,10 +93,10 @@ export class AssetController {
 
   async getByCode(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const session = await requireActor();
       const url = new URL(request.url);
       const code = url.searchParams.get("code") ?? "";
-      const data = await this.assetService.getAssetByCode(code);
+      const data = await this.assetService.getAssetByCode(code, session.tenantId);
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -245,14 +248,17 @@ export class AssetController {
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
-        await this.modelService.list({
-          category: url.searchParams.get("category") ?? undefined,
-          search: url.searchParams.get("search") ?? undefined,
-          includeSandbox: parseIncludeSandbox(
-            url.searchParams.get("includeSandbox"),
-            session.role
-          ),
-        })
+        await this.modelService.list(
+          {
+            category: url.searchParams.get("category") ?? undefined,
+            search: url.searchParams.get("search") ?? undefined,
+            includeSandbox: parseIncludeSandbox(
+              url.searchParams.get("includeSandbox"),
+              session.role
+            ),
+          },
+          session.tenantId
+        )
       );
     } catch (error) {
       return handleError(error);
@@ -271,8 +277,8 @@ export class AssetController {
 
   async getModel(id: string) {
     try {
-      await requireActor();
-      return ok(await this.modelService.getById(id));
+      const session = await requireActor();
+      return ok(await this.modelService.getById(id, session.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -280,9 +286,9 @@ export class AssetController {
 
   async updateModel(request: NextRequest | Request, id: string) {
     try {
-      await requireAssetOperator();
+      const session = await requireAssetOperator();
       const body = await request.json();
-      return ok(await this.modelService.update(id, body));
+      return ok(await this.modelService.update(id, body, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -290,8 +296,8 @@ export class AssetController {
 
   async deleteModel(id: string) {
     try {
-      await requireAssetOperator();
-      await this.modelService.delete(id);
+      const session = await requireAssetOperator();
+      await this.modelService.delete(id, session.actor.tenantId);
       return noContent();
     } catch (error) {
       return handleError(error);
@@ -300,8 +306,8 @@ export class AssetController {
 
   async listModelUnits(id: string) {
     try {
-      await requireActor();
-      return ok(await this.assetService.listUnitsForModel(id));
+      const session = await requireActor();
+      return ok(await this.assetService.listUnitsForModel(id, session.tenantId));
     } catch (error) {
       return handleError(error);
     }

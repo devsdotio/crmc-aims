@@ -23,6 +23,7 @@ import {
   stockMovements,
   suppliers,
 } from "@/server/db/schema";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import type {
   AssignedAssetItem,
   ConsumedSupplyItem,
@@ -38,10 +39,15 @@ export class ReportRepository {
     return getDb();
   }
 
+  private tenantId(): string | undefined {
+    return getTenantContext()?.tenantId;
+  }
+
   // ─── 1. Executive Rollup ──────────────────────────────────────────────────
 
-  async getExecutiveData() {
+  async getExecutiveData(explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const thirtyDaysAgoIso = thirtyDaysAgo.toISOString();
@@ -56,7 +62,7 @@ export class ReportRepository {
         totalValue: sql<number>`coalesce(sum(${assets.value}::numeric), 0)::float`,
       })
       .from(assets)
-      .where(eq(assets.isSandbox, false));
+      .where(and(eq(assets.isSandbox, false), ...(tenantId ? [eq(assets.tenantId, tenantId)] : [])));
 
     // Consumables rollups
     const [consumableStats] = await db
@@ -65,7 +71,7 @@ export class ReportRepository {
         lowStockCount: sql<number>`count(case when ${consumables.currentQty} <= ${consumables.minThreshold} then 1 end)::int`,
       })
       .from(consumables)
-      .where(eq(consumables.isSandbox, false));
+      .where(and(eq(consumables.isSandbox, false), ...(tenantId ? [eq(consumables.tenantId, tenantId)] : [])));
 
     // Consumable inventory valuation & 30d usage from purchase lots & movements
     const [consumableValuation] = await db
@@ -73,7 +79,13 @@ export class ReportRepository {
         totalValuation: sql<number>`coalesce(sum(${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric), 0)::float`,
       })
       .from(purchaseLots)
-      .where(and(eq(purchaseLots.itemType, "consumable"), gte(purchaseLots.quantityRemaining, 0)));
+      .where(
+        and(
+          eq(purchaseLots.itemType, "consumable"),
+          gte(purchaseLots.quantityRemaining, 0),
+          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+        )
+      );
 
     const [monthBurn] = await db
       .select({
@@ -83,7 +95,8 @@ export class ReportRepository {
       .where(
         and(
           eq(stockMovements.direction, "out"),
-          gte(stockMovements.createdAt, thirtyDaysAgo)
+          gte(stockMovements.createdAt, thirtyDaysAgo),
+          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
         )
       );
 
@@ -93,21 +106,24 @@ export class ReportRepository {
         openOrdersCount: sql<number>`count(case when ${purchaseLots.quantityRemaining} > 0 then 1 end)::int`,
         totalSpend30d: sql<number>`coalesce(sum(case when ${purchaseLots.purchasedOn} >= ${thirtyDaysAgoStr} then ${purchaseLots.totalCost}::numeric else 0 end), 0)::float`,
       })
-      .from(purchaseLots);
+      .from(purchaseLots)
+      .where(tenantId ? eq(purchaseLots.tenantId, tenantId) : undefined);
 
     // Requests metrics
     const [borrowReqStats] = await db
       .select({
         pendingCount: sql<number>`count(case when ${borrowRequests.status} = 'pending' then 1 end)::int`,
       })
-      .from(borrowRequests);
+      .from(borrowRequests)
+      .where(tenantId ? eq(borrowRequests.tenantId, tenantId) : undefined);
 
     const [consumableReqStats] = await db
       .select({
         pendingCount: sql<number>`count(case when ${consumableRequests.status} = 'pending' then 1 end)::int`,
         fulfilledMonth: sql<number>`count(case when ${consumableRequests.status} = 'released' and ${consumableRequests.releasedAt} >= ${thirtyDaysAgoIso}::timestamptz then 1 end)::int`,
       })
-      .from(consumableRequests);
+      .from(consumableRequests)
+      .where(tenantId ? eq(consumableRequests.tenantId, tenantId) : undefined);
 
     // Maintenance metrics
     const [maintStats] = await db
@@ -117,7 +133,8 @@ export class ReportRepository {
         totalRepairSpend30d: sql<number>`coalesce(sum(case when ${maintenanceLogs.dateLogged} >= ${thirtyDaysAgoStr} then ${maintenanceLogs.repairCost}::numeric else 0 end), 0)::float`,
         avgMttrDays: sql<number>`coalesce(avg(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} is not null then (${maintenanceLogs.resolutionDate}::date - ${maintenanceLogs.dateLogged}::date) end), 0)::float`,
       })
-      .from(maintenanceLogs);
+      .from(maintenanceLogs)
+      .where(tenantId ? eq(maintenanceLogs.tenantId, tenantId) : undefined);
 
     // Category distribution for chart
     const categoryRows = await db
@@ -127,7 +144,7 @@ export class ReportRepository {
         value: sql<number>`coalesce(sum(${assets.value}::numeric), 0)::float`,
       })
       .from(assets)
-      .where(eq(assets.isSandbox, false))
+      .where(and(eq(assets.isSandbox, false), ...(tenantId ? [eq(assets.tenantId, tenantId)] : [])))
       .groupBy(assets.category);
 
     return {
@@ -184,10 +201,14 @@ export class ReportRepository {
 
   // ─── 2. Asset Register Report ─────────────────────────────────────────────
 
-  async getAssetRegisterReport(filters: BaseReportQuery) {
+  async getAssetRegisterReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(assets.tenantId, tenantId));
+    }
     if (!filters.includeSandbox) {
       conditions.push(eq(assets.isSandbox, false));
     }
@@ -295,8 +316,9 @@ export class ReportRepository {
 
   // ─── 3. Asset Drill-down Report ───────────────────────────────────────────
 
-  async getAssetDrilldownReport(assetId: string) {
+  async getAssetDrilldownReport(assetId: string, explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
 
     // Base asset
     const [assetRow] = await db
@@ -321,7 +343,12 @@ export class ReportRepository {
       })
       .from(assets)
       .leftJoin(suppliers, eq(assets.supplierId, suppliers.id))
-      .where(or(eq(assets.id, assetId), eq(assets.assetCode, assetId)))
+      .where(
+        and(
+          or(eq(assets.id, assetId), eq(assets.assetCode, assetId)),
+          ...(tenantId ? [eq(assets.tenantId, tenantId)] : [])
+        )
+      )
       .limit(1);
 
     if (!assetRow) return null;
@@ -338,7 +365,12 @@ export class ReportRepository {
         receiptUrl: purchaseLots.receiptUrl,
       })
       .from(purchaseLots)
-      .where(eq(purchaseLots.assetId, assetRow.id))
+      .where(
+        and(
+          eq(purchaseLots.assetId, assetRow.id),
+          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+        )
+      )
       .limit(1);
 
     // Maintenance history
@@ -357,7 +389,12 @@ export class ReportRepository {
         notes: maintenanceLogs.notes,
       })
       .from(maintenanceLogs)
-      .where(eq(maintenanceLogs.assetId, assetRow.id))
+      .where(
+        and(
+          eq(maintenanceLogs.assetId, assetRow.id),
+          ...(tenantId ? [eq(maintenanceLogs.tenantId, tenantId)] : [])
+        )
+      )
       .orderBy(desc(maintenanceLogs.dateLogged));
 
     // Custody & borrow transactions
@@ -374,7 +411,12 @@ export class ReportRepository {
         returnedAt: borrowTransactions.returnedAt,
       })
       .from(borrowTransactions)
-      .where(eq(borrowTransactions.assetId, assetRow.id))
+      .where(
+        and(
+          eq(borrowTransactions.assetId, assetRow.id),
+          ...(tenantId ? [eq(borrowTransactions.tenantId, tenantId)] : [])
+        )
+      )
       .orderBy(desc(borrowTransactions.releasedAt));
 
     // Calculate TCO
@@ -410,10 +452,14 @@ export class ReportRepository {
 
   // ─── 4. Consumables Stock & Usage Report ──────────────────────────────────
 
-  async getConsumablesReport(filters: BaseReportQuery) {
+  async getConsumablesReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(consumables.tenantId, tenantId));
+    }
     if (!filters.includeSandbox) {
       conditions.push(eq(consumables.isSandbox, false));
     }
@@ -457,7 +503,8 @@ export class ReportRepository {
       .where(
         and(
           eq(stockMovements.direction, "out"),
-          gte(stockMovements.createdAt, thirtyDaysAgo)
+          gte(stockMovements.createdAt, thirtyDaysAgo),
+          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
         )
       );
 
@@ -467,7 +514,13 @@ export class ReportRepository {
         totalValuation: sql<number>`coalesce(sum(${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric), 0)::float`,
       })
       .from(purchaseLots)
-      .where(and(eq(purchaseLots.itemType, "consumable"), gte(purchaseLots.quantityRemaining, 0)));
+      .where(
+        and(
+          eq(purchaseLots.itemType, "consumable"),
+          gte(purchaseLots.quantityRemaining, 0),
+          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+        )
+      );
 
     // Lot cost aggregations per consumable
     const lotAggregates = await db
@@ -477,7 +530,13 @@ export class ReportRepository {
         lotValuation: sql<number>`coalesce(sum(${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric), 0)::float`,
       })
       .from(purchaseLots)
-      .where(and(eq(purchaseLots.itemType, "consumable"), sql`${purchaseLots.consumableId} is not null`))
+      .where(
+        and(
+          eq(purchaseLots.itemType, "consumable"),
+          sql`${purchaseLots.consumableId} is not null`,
+          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+        )
+      )
       .groupBy(purchaseLots.consumableId);
 
     const lotMap = new Map<string, { latestUnitCost: number; valuation: number }>();
@@ -522,7 +581,13 @@ export class ReportRepository {
       })
       .from(stockMovements)
       .leftJoin(departments, eq(stockMovements.departmentId, departments.id))
-      .where(and(eq(stockMovements.direction, "out"), gte(stockMovements.createdAt, thirtyDaysAgo)))
+      .where(
+        and(
+          eq(stockMovements.direction, "out"),
+          gte(stockMovements.createdAt, thirtyDaysAgo),
+          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
+        )
+      )
       .groupBy(departments.name)
       .orderBy(sql`sum(${stockMovements.qty}) desc`)
       .limit(5);
@@ -583,10 +648,14 @@ export class ReportRepository {
 
   // ─── 5. Purchase Orders Report ────────────────────────────────────────────
 
-  async getPurchaseOrdersReport(filters: BaseReportQuery) {
+  async getPurchaseOrdersReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(purchaseLots.tenantId, tenantId));
+    }
     if (filters.category && filters.category !== "all") {
       conditions.push(
         eq(
@@ -679,10 +748,14 @@ export class ReportRepository {
 
   // ─── 6. Requests Report ───────────────────────────────────────────────────
 
-  async getRequestsReport(filters: BaseReportQuery) {
+  async getRequestsReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(borrowRequests.tenantId, tenantId));
+    }
     if (filters.status && filters.status !== "all") {
       conditions.push(
         eq(
@@ -788,10 +861,14 @@ export class ReportRepository {
 
   // ─── 7. Maintenance & Repairs Report ──────────────────────────────────────
 
-  async getMaintenanceReport(filters: BaseReportQuery) {
+  async getMaintenanceReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(maintenanceLogs.tenantId, tenantId));
+    }
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(maintenanceLogs.category, filters.category));
     }
@@ -867,6 +944,7 @@ export class ReportRepository {
         totalCost: sql<number>`coalesce(sum(${maintenanceLogs.repairCost}::numeric), 0)::float`,
       })
       .from(maintenanceLogs)
+      .where(tenantId ? eq(maintenanceLogs.tenantId, tenantId) : undefined)
       .groupBy(maintenanceLogs.assetCode, maintenanceLogs.assetName)
       .orderBy(desc(sql`count(*)`))
       .limit(5);
@@ -905,7 +983,7 @@ export class ReportRepository {
 
   // ─── 8. Projects Report ───────────────────────────────────────────────────
 
-  async getProjectsReport(filters: BaseReportQuery): Promise<{
+  async getProjectsReport(filters: BaseReportQuery, explicitTenantId?: string): Promise<{
     data: ProjectReportRow[];
     total: number;
     page: number;
@@ -914,8 +992,12 @@ export class ReportRepository {
     summary: ProjectReportSummary;
   }> {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(projects.tenantId, tenantId));
+    }
     if (filters.status && filters.status !== "all") {
       conditions.push(
         eq(
@@ -961,6 +1043,7 @@ export class ReportRepository {
         count: sql<number>`count(*)::int`,
       })
       .from(projectAssetAssignments)
+      .where(tenantId ? eq(projectAssetAssignments.tenantId, tenantId) : undefined)
       .groupBy(projectAssetAssignments.projectId);
 
     const assetCountMap = new Map(assetCounts.map((a) => [a.projectId, a.count]));
@@ -974,6 +1057,7 @@ export class ReportRepository {
         totalCost: sql<number>`coalesce(sum(${projectExpenseLines.amount}::numeric), 0)::float`,
       })
       .from(projectExpenseLines)
+      .where(tenantId ? eq(projectExpenseLines.tenantId, tenantId) : undefined)
       .groupBy(projectExpenseLines.projectId);
 
     const expenseMap = new Map(expenseStats.map((e) => [e.projectId, e]));
@@ -993,7 +1077,8 @@ export class ReportRepository {
       .where(
         and(
           eq(consumableRequests.status, "released"),
-          sql`${consumableRequests.projectId} is not null`
+          sql`${consumableRequests.projectId} is not null`,
+          ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : [])
         )
       )
       .groupBy(consumableRequests.projectId);
@@ -1082,7 +1167,8 @@ export class ReportRepository {
         .where(
           and(
             inArray(projectAssetAssignments.projectId, rowIds),
-            eq(projectAssetAssignments.status, "assigned")
+            eq(projectAssetAssignments.status, "assigned"),
+            ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : [])
           )
         );
 
@@ -1127,7 +1213,8 @@ export class ReportRepository {
         .where(
           and(
             inArray(projectExpenseLines.projectId, rowIds),
-            inArray(projectExpenseLines.lineType, ["consumable", "material", "miscellaneous"])
+            inArray(projectExpenseLines.lineType, ["consumable", "material", "miscellaneous"]),
+            ...(tenantId ? [eq(projectExpenseLines.tenantId, tenantId)] : [])
           )
         );
 
@@ -1178,7 +1265,8 @@ export class ReportRepository {
         .where(
           and(
             eq(consumableRequests.status, "released"),
-            inArray(consumableRequests.projectId, rowIds)
+            inArray(consumableRequests.projectId, rowIds),
+            ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : [])
           )
         );
 
@@ -1251,7 +1339,7 @@ export class ReportRepository {
 
   // ─── 9. Departments Report ────────────────────────────────────────────────
 
-  async getDepartmentsReport(filters: BaseReportQuery): Promise<{
+  async getDepartmentsReport(filters: BaseReportQuery, explicitTenantId?: string): Promise<{
     data: DepartmentReportRow[];
     total: number;
     page: number;
@@ -1260,8 +1348,12 @@ export class ReportRepository {
     summary: DepartmentReportSummary;
   }> {
     const db = this.db();
+    const tenantId = explicitTenantId || this.tenantId();
     const conditions: SQL[] = [];
 
+    if (tenantId) {
+      conditions.push(eq(departments.tenantId, tenantId));
+    }
     if (!filters.includeSandbox) {
       conditions.push(eq(departments.isSandbox, false));
     }
@@ -1286,6 +1378,9 @@ export class ReportRepository {
 
     // 2. Assets deployed/assigned across departments
     const assetConditions: SQL[] = [];
+    if (tenantId) {
+      assetConditions.push(eq(assets.tenantId, tenantId));
+    }
     if (!filters.includeSandbox) {
       assetConditions.push(eq(assets.isSandbox, false));
     }
@@ -1349,14 +1444,22 @@ export class ReportRepository {
         assetId: maintenanceLogs.assetId,
       })
       .from(maintenanceLogs)
-      .where(eq(maintenanceLogs.isResolved, false));
+      .where(
+        and(
+          eq(maintenanceLogs.isResolved, false),
+          ...(tenantId ? [eq(maintenanceLogs.tenantId, tenantId)] : [])
+        )
+      );
 
     const openLogAssetIdSet = new Set(
       openLogs.map((l) => l.assetId).filter(Boolean) as string[]
     );
 
     // 4. Consumables released per department
-    const crConditions: SQL[] = [eq(consumableRequests.status, "released")];
+    const crConditions: SQL[] = [
+      eq(consumableRequests.status, "released"),
+      ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
+    ];
     if (filters.startDate) {
       crConditions.push(gte(sql`${consumableRequests.requestedAt}::date`, filters.startDate));
     }
@@ -1386,7 +1489,12 @@ export class ReportRepository {
         count: sql<number>`count(*)::int`,
       })
       .from(projects)
-      .where(eq(projects.status, "active"))
+      .where(
+        and(
+          eq(projects.status, "active"),
+          ...(tenantId ? [eq(projects.tenantId, tenantId)] : [])
+        )
+      )
       .groupBy(projects.department);
 
     // Build row for every department
@@ -1504,6 +1612,7 @@ export class ReportRepository {
       .where(
         and(
           eq(consumableRequests.status, "released"),
+          ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
           or(
             inArray(consumableRequests.departmentId, pagedDeptIds),
             inArray(sql`lower(${consumableRequests.department})`, pagedDeptNames)

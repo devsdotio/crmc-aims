@@ -23,18 +23,21 @@ export class StockMovementController {
 
   async list(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
-        await this.service.list({
-          reason: url.searchParams.get("reason") ?? undefined,
-          limit: url.searchParams.get("limit") ?? undefined,
-          includeSandbox: parseIncludeSandbox(
-            url.searchParams.get("includeSandbox"),
-            session.role
-          ),
-        })
+        await this.service.list(
+          {
+            reason: url.searchParams.get("reason") ?? undefined,
+            limit: url.searchParams.get("limit") ?? undefined,
+            includeSandbox: parseIncludeSandbox(
+              url.searchParams.get("includeSandbox"),
+              actor.role
+            ),
+          },
+          actor.tenantId
+        )
       );
     } catch (error) {
       return handleError(error);
@@ -43,8 +46,8 @@ export class StockMovementController {
 
   async listByConsumable(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.listByConsumable(id));
+      const actor = await requireActor();
+      return ok(await this.service.listByConsumable(id, actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

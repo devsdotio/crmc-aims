@@ -120,11 +120,18 @@ export class DepartmentRepository implements IDepartmentRepository {
   }
 
   async create(
-    data: Omit<Department, "id" | "createdAt" | "updatedAt" | "tenantId">,
+    data: Omit<Department, "id" | "createdAt" | "updatedAt" | "tenantId"> & { tenantId?: string },
     session?: DbSession
   ): Promise<Department> {
     const db = this.db(session);
-    const [row] = await db.insert(departments).values(data).returning();
+    const resolvedTenantId = data.tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(departments)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create department.");
     return row;
   }

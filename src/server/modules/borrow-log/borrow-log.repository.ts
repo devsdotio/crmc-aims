@@ -321,7 +321,15 @@ export class BorrowLogRepository implements IBorrowLogRepository {
     session?: DbSession
   ): Promise<BorrowTransactionRow> {
     const db = this.db(session);
-    const [row] = await db.insert(borrowTransactions).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(borrowTransactions)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create borrow log.");
     return row;
   }

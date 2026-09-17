@@ -22,9 +22,9 @@ export class ReportService {
 
   // ─── 1. Executive Summary ─────────────────────────────────────────────────
 
-  async getExecutiveSummary(actorRole: AppRole) {
+  async getExecutiveSummary(actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const data = await this.repo.getExecutiveData();
+    const data = await this.repo.getExecutiveData(tenantId);
 
     if (!canViewCosts) {
       data.assets.totalValue = 0;
@@ -52,9 +52,9 @@ export class ReportService {
 
   // ─── 2. Asset Register Report ─────────────────────────────────────────────
 
-  async getAssetRegisterReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getAssetRegisterReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getAssetRegisterReport(filters);
+    const result = await this.repo.getAssetRegisterReport(filters, tenantId);
 
     if (!canViewCosts) {
       result.summary.totalValuation = 0;
@@ -73,9 +73,9 @@ export class ReportService {
 
   // ─── 3. Asset Drill-down Report ───────────────────────────────────────────
 
-  async getAssetDrilldownReport(assetId: string, actorRole: AppRole) {
+  async getAssetDrilldownReport(assetId: string, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getAssetDrilldownReport(assetId);
+    const result = await this.repo.getAssetDrilldownReport(assetId, tenantId);
     if (!result) return null;
 
     if (!canViewCosts) {
@@ -103,9 +103,9 @@ export class ReportService {
 
   // ─── 4. Consumables Report ────────────────────────────────────────────────
 
-  async getConsumablesReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getConsumablesReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getConsumablesReport(filters);
+    const result = await this.repo.getConsumablesReport(filters, tenantId);
 
     if (!canViewCosts) {
       result.summary.totalInventoryValuation = 0;
@@ -125,9 +125,9 @@ export class ReportService {
 
   // ─── 5. Purchase Orders Report ────────────────────────────────────────────
 
-  async getPurchaseOrdersReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getPurchaseOrdersReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getPurchaseOrdersReport(filters);
+    const result = await this.repo.getPurchaseOrdersReport(filters, tenantId);
 
     if (!canViewCosts) {
       result.summary.totalSpend = 0;
@@ -145,9 +145,9 @@ export class ReportService {
 
   // ─── 6. Requests Report ───────────────────────────────────────────────────
 
-  async getRequestsReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getRequestsReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getRequestsReport(filters);
+    const result = await this.repo.getRequestsReport(filters, tenantId);
 
     return {
       ...result,
@@ -157,9 +157,9 @@ export class ReportService {
 
   // ─── 7. Maintenance Report ────────────────────────────────────────────────
 
-  async getMaintenanceReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getMaintenanceReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getMaintenanceReport(filters);
+    const result = await this.repo.getMaintenanceReport(filters, tenantId);
 
     if (!canViewCosts) {
       result.summary.totalRepairSpend = 0;
@@ -181,9 +181,9 @@ export class ReportService {
 
   // ─── 8. Projects Report ───────────────────────────────────────────────────
 
-  async getProjectsReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getProjectsReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getProjectsReport(filters);
+    const result = await this.repo.getProjectsReport(filters, tenantId);
 
     if (!canViewCosts) {
       result.summary.totalProjectSpend = 0;
@@ -202,9 +202,9 @@ export class ReportService {
 
   // ─── 9. Departments Report ────────────────────────────────────────────────
 
-  async getDepartmentsReport(filters: BaseReportQuery, actorRole: AppRole) {
+  async getDepartmentsReport(filters: BaseReportQuery, actorRole: AppRole, tenantId?: string) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const result = await this.repo.getDepartmentsReport(filters);
+    const result = await this.repo.getDepartmentsReport(filters, tenantId);
 
     if (!canViewCosts) {
       result.summary.totalAssetsValue = 0;
@@ -224,7 +224,7 @@ export class ReportService {
 
   // ─── 10. CSV Export Generation ────────────────────────────────────────────
 
-  async exportReportCsv(query: ExportReportQuery, actorRole: AppRole): Promise<{ filename: string; csv: string }> {
+  async exportReportCsv(query: ExportReportQuery, actorRole: AppRole, tenantId?: string): Promise<{ filename: string; csv: string }> {
     const canViewCosts = isAssetOperatorRole(actorRole);
     const dateStamp = new Date().toISOString().split("T")[0];
 
@@ -237,7 +237,7 @@ export class ReportService {
 
     switch (query.reportType) {
       case "assets": {
-        const res = await this.getAssetRegisterReport(exportFilters, actorRole);
+        const res = await this.getAssetRegisterReport(exportFilters, actorRole, tenantId);
         const headers = [
           "Asset Code",
           "Name",
@@ -271,7 +271,7 @@ export class ReportService {
       }
 
       case "consumables": {
-        const res = await this.getConsumablesReport(exportFilters, actorRole);
+        const res = await this.getConsumablesReport(exportFilters, actorRole, tenantId);
         const headers = [
           "Item Code",
           "Name",
@@ -316,7 +316,7 @@ export class ReportService {
       }
 
       case "purchase-orders": {
-        const res = await this.getPurchaseOrdersReport(exportFilters, actorRole);
+        const res = await this.getPurchaseOrdersReport(exportFilters, actorRole, tenantId);
         const headers = [
           "PO Number",
           "Supplier",
@@ -344,7 +344,7 @@ export class ReportService {
       }
 
       case "requests": {
-        const res = await this.getRequestsReport(exportFilters, actorRole);
+        const res = await this.getRequestsReport(exportFilters, actorRole, tenantId);
         const headers = [
           "Request Code",
           "Type",
@@ -372,7 +372,7 @@ export class ReportService {
       }
 
       case "maintenance": {
-        const res = await this.getMaintenanceReport(exportFilters, actorRole);
+        const res = await this.getMaintenanceReport(exportFilters, actorRole, tenantId);
         const headers = [
           "Log Code",
           "Asset Code",
@@ -408,7 +408,7 @@ export class ReportService {
       }
 
       case "projects": {
-        const res = await this.getProjectsReport(exportFilters, actorRole);
+        const res = await this.getProjectsReport(exportFilters, actorRole, tenantId);
         const headers = [
           "Project Code",
           "Project Name",
@@ -447,7 +447,7 @@ export class ReportService {
       }
 
       case "departments": {
-        const res = await this.getDepartmentsReport(exportFilters, actorRole);
+        const res = await this.getDepartmentsReport(exportFilters, actorRole, tenantId);
         const headers = [
           "Department Name",
           "Assets Assigned",
@@ -475,7 +475,7 @@ export class ReportService {
       }
 
       case "executive": {
-        const summary = await this.getExecutiveSummary(actorRole);
+        const summary = await this.getExecutiveSummary(actorRole, tenantId);
         const headers = [
           "Operational Domain",
           "Primary Metric / Valuation",

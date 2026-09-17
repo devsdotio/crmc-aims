@@ -12,7 +12,7 @@ export class BorrowRequestController {
 
   async list(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       const data = await this.service.list({
@@ -27,9 +27,9 @@ export class BorrowRequestController {
         limit: url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : undefined,
         includeSandbox: parseIncludeSandbox(
           url.searchParams.get("includeSandbox"),
-          session.role
+          actor.role
         ),
-      }, session);
+      }, actor);
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -38,8 +38,8 @@ export class BorrowRequestController {
 
   async get(id: string) {
     try {
-      const session = await requireActor();
-      return ok(await this.service.getById(id, session));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor));
     } catch (error) {
       return handleError(error);
     }
@@ -47,9 +47,9 @@ export class BorrowRequestController {
 
   async create(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       const body = await request.json();
-      return created(await this.service.create(body, session));
+      return created(await this.service.create(body, actor));
     } catch (error) {
       return handleError(error);
     }
@@ -82,14 +82,14 @@ export class BorrowRequestController {
 
   async cancel(request: NextRequest | Request, id: string) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       let body: unknown = {};
       try {
         body = await request.json();
       } catch {
         body = {};
       }
-      return ok(await this.service.cancel(id, body, session));
+      return ok(await this.service.cancel(id, body, actor));
     } catch (error) {
       return handleError(error);
     }

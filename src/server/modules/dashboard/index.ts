@@ -10,9 +10,10 @@ export class DashboardController {
   async snapshot(request?: Request) {
     try {
       const session = await requireActor();
+      const tenantId = session.tenantId;
       const data = isAssetOperatorRole(session.role)
-        ? await this.service.getSnapshot()
-        : await this.service.getBorrowerSnapshot(session.userId);
+        ? await this.service.getSnapshot(5, tenantId)
+        : await this.service.getBorrowerSnapshot(session.userId, 5, tenantId);
       if (request) {
         return okWithEtag(request, data, {
           cacheControl: { maxAge: 15, staleWhileRevalidate: 60 },
@@ -28,9 +29,10 @@ export class DashboardController {
   async sidebarSummary(request?: Request) {
     try {
       const session = await requireActor();
+      const tenantId = session.tenantId;
       const data = isAssetOperatorRole(session.role)
-        ? await this.service.getSidebarSummary()
-        : await this.service.getSidebarSummary(session.userId);
+        ? await this.service.getSidebarSummary(undefined, tenantId)
+        : await this.service.getSidebarSummary(session.userId, tenantId);
       if (request) {
         return okWithEtag(request, data, {
           cacheControl: { maxAge: 15, staleWhileRevalidate: 60 },
@@ -46,9 +48,10 @@ export class DashboardController {
   async notifications(request?: Request) {
     try {
       const session = await requireActor();
+      const tenantId = session.tenantId;
       const data = isAssetOperatorRole(session.role)
-        ? await this.service.getNotifications()
-        : await this.service.getNotifications(session.userId);
+        ? await this.service.getNotifications(undefined, 8, tenantId)
+        : await this.service.getNotifications(session.userId, 8, tenantId);
       if (request) {
         return okWithEtag(request, data, {
           cacheControl: { maxAge: 15, staleWhileRevalidate: 60 },
@@ -63,7 +66,8 @@ export class DashboardController {
   /** Stock volume inflow vs outflow time-series bucketed by timeframe and category. */
   async stockVolume(request: Request) {
     try {
-      await requireActor();
+      const session = await requireActor();
+      const tenantId = session.tenantId;
       const url = new URL(request.url);
       const timeframe = (url.searchParams.get("timeframe") ?? "monthly") as
         | "weekly"
@@ -76,7 +80,7 @@ export class DashboardController {
           ? timeframe
           : "monthly",
         category,
-      });
+      }, "all", tenantId);
 
       return okWithEtag(request, data, {
         cacheControl: { maxAge: 30, staleWhileRevalidate: 60 },
@@ -89,7 +93,8 @@ export class DashboardController {
   /** Dashboard asset rows with custody precedence, condition status, and valuation. */
   async assets(request: Request) {
     try {
-      await requireActor();
+      const session = await requireActor();
+      const tenantId = session.tenantId;
       const url = new URL(request.url);
       const limit = Math.min(
         50,
@@ -102,7 +107,8 @@ export class DashboardController {
         limit,
         search,
         tag,
-      });
+        tenantId,
+      }, tenantId);
 
       if (request) {
         return okWithEtag(request, data, {
@@ -119,7 +125,8 @@ export class DashboardController {
   /** Combined asset and consumable category distribution. */
   async topCategories(request: Request) {
     try {
-      await requireActor();
+      const session = await requireActor();
+      const tenantId = session.tenantId;
       const url = new URL(request.url);
       const limit = Math.min(
         20,
@@ -132,7 +139,8 @@ export class DashboardController {
 
       const data = await this.service.getCombinedCategoryDistribution(
         limit,
-        ["all", "assets", "consumables"].includes(source) ? source : "all"
+        ["all", "assets", "consumables"].includes(source) ? source : "all",
+        tenantId
       );
 
       return okWithEtag(request, data, {

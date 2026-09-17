@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
 import { requireActor } from "@/server/shared/auth";
@@ -14,7 +14,7 @@ export async function PUT(
     const { id } = await params;
     const actor = await requireActor();
     const categoryRepo = new CategoryRepository();
-    const existing = await categoryRepo.findById(id);
+    const existing = await categoryRepo.findById(id, undefined, actor.tenantId);
 
     if (!existing) {
       return NextResponse.json({ error: "Category not found" }, { status: 404 });
@@ -47,7 +47,12 @@ export async function PUT(
     const newName = String(body.name).trim();
 
     // Check if renaming conflicts with another category of same type
-    const conflict = await categoryRepo.findByTypeAndName(body.type as CategoryType, newName);
+    const conflict = await categoryRepo.findByTypeAndName(
+      body.type as CategoryType,
+      newName,
+      undefined,
+      actor.tenantId
+    );
     if (conflict && conflict.id !== id) {
       return NextResponse.json(
         { error: `Category “${newName}” already exists for this type.` },
@@ -59,13 +64,14 @@ export async function PUT(
       name: newName,
       type: body.type as CategoryType,
       colorToken: body.colorToken !== undefined ? body.colorToken || null : undefined,
-    });
+    }, undefined, actor.tenantId);
 
     if (!updated) {
       return NextResponse.json({ error: "Category not found" }, { status: 404 });
     }
 
     serverCache.invalidateTag("categories");
+    serverCache.invalidateTag(`tenant:${actor.tenantId}:categories`);
 
     return NextResponse.json({ data: updated });
   } catch (error) {
@@ -82,7 +88,7 @@ export async function DELETE(
     const { id } = await params;
     const actor = await requireActor();
     const categoryRepo = new CategoryRepository();
-    const existing = await categoryRepo.findById(id);
+    const existing = await categoryRepo.findById(id, undefined, actor.tenantId);
 
     if (!existing) {
       return NextResponse.json({ error: "Category not found" }, { status: 404 });
@@ -102,7 +108,9 @@ export async function DELETE(
 
     const usageCount = await categoryRepo.countUsages(
       existing.name,
-      existing.type as CategoryType
+      existing.type as CategoryType,
+      undefined,
+      actor.tenantId
     );
 
     if (usageCount > 0) {
@@ -117,9 +125,10 @@ export async function DELETE(
     }
 
     const db = getDb();
-    await db.delete(categories).where(eq(categories.id, id));
+    await db.delete(categories).where(and(eq(categories.id, id), eq(categories.tenantId, actor.tenantId)));
 
     serverCache.invalidateTag("categories");
+    serverCache.invalidateTag(`tenant:${actor.tenantId}:categories`);
 
     return NextResponse.json({ data: { success: true } });
   } catch (error) {

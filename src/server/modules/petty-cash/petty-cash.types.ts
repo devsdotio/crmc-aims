@@ -41,14 +41,39 @@ export type ListPettyCashFilters = {
 };
 
 export interface IPettyCashRepository {
-  findById(id: string): Promise<PettyCashRow | null>;
-  findByCode(code: string): Promise<PettyCashRow | null>;
-  list(filters?: ListPettyCashFilters): Promise<{ vouchers: PettyCashRow[]; total: number }>;
-  create(data: Omit<NewPettyCashRow, "id" | "createdAt" | "updatedAt">): Promise<PettyCashRow>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<PettyCashRow | null>;
+  findByCode(
+    code: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<PettyCashRow | null>;
+  list(
+    filters?: ListPettyCashFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<{ vouchers: PettyCashRow[]; total: number }>;
+  create(
+    data: Omit<NewPettyCashRow, "id" | "createdAt" | "updatedAt">,
+    session?: import("@/server/db/transaction").DbSession
+  ): Promise<PettyCashRow>;
   update(
     id: string,
-    data: Partial<Omit<PettyCashRow, "id" | "createdAt">>
+    data: Partial<Omit<PettyCashRow, "id" | "createdAt">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<PettyCashRow | null>;
-  delete(id: string): Promise<boolean>;
-  findLatestPcvCode(prefix: string): Promise<string | null>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
+  findLatestPcvCode(
+    prefix: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<string | null>;
 }

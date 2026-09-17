@@ -162,7 +162,7 @@ export class ConsumableService {
     return found.name;
   }
 
-  async list(rawQuery: unknown): Promise<import("@/types/filters").PaginatedResponse<ConsumableDTO>> {
+  async list(rawQuery: unknown, tenantId?: string): Promise<import("@/types/filters").PaginatedResponse<ConsumableDTO>> {
     const filters = listConsumablesQuerySchema.parse(rawQuery ?? {});
     const result = await this.repo.list({
       category: filters.category,
@@ -171,7 +171,7 @@ export class ConsumableService {
       page: filters.page,
       limit: filters.limit,
       includeSandbox: filters.includeSandbox === true,
-    });
+    }, undefined, tenantId);
 
     let dtos = result.data.map(toDTO);
 
@@ -191,9 +191,9 @@ export class ConsumableService {
     };
   }
 
-  async getById(rawId: string): Promise<ConsumableDTO> {
+  async getById(rawId: string, tenantId?: string): Promise<ConsumableDTO> {
     const id = consumableIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, tenantId);
     if (!row) throw new NotFoundError("Consumable", id);
     return toDTO(row);
   }
@@ -203,12 +203,13 @@ export class ConsumableService {
     const itemCode = input.itemCode?.trim() || generateOperationalCode("CON");
     const categoryName = await this.resolveConsumableCategoryName(input.category);
 
-    const exists = await this.repo.findByCode(itemCode);
+    const exists = await this.repo.findByCode(itemCode, undefined, actor.tenantId);
     if (exists) {
       throw new ConflictError(`Item code ${itemCode} already exists.`);
     }
 
     const baseRow = {
+      tenantId: actor.tenantId,
       itemCode,
       name: input.name,
       category: categoryName,
@@ -298,10 +299,10 @@ export class ConsumableService {
     });
   }
 
-  async update(rawId: string, rawInput: unknown): Promise<ConsumableDTO> {
+  async update(rawId: string, rawInput: unknown, actorTenantId?: string): Promise<ConsumableDTO> {
     const id = consumableIdSchema.parse(rawId);
     const input = updateConsumableSchema.parse(rawInput);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actorTenantId);
     if (!existing) throw new NotFoundError("Consumable", id);
 
     let categoryName: string | undefined;
@@ -320,7 +321,7 @@ export class ConsumableService {
       ...(input.supplier !== undefined ? { supplier: input.supplier } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       ...(input.isSandbox !== undefined ? { isSandbox: input.isSandbox } : {}),
-    });
+    }, undefined, actorTenantId);
     if (!updated) throw new NotFoundError("Consumable", id);
     return toDTO(updated);
   }

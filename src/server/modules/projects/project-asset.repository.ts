@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   projectAssetAssignments,
   projects,
@@ -24,13 +25,18 @@ export class ProjectAssetAssignmentRepository
 
   async findById(
     id: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(projectAssetAssignments.id, id)];
+    if (resolvedTenantId) conditions.push(eq(projectAssetAssignments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(projectAssetAssignments)
-      .where(eq(projectAssetAssignments.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
@@ -38,10 +44,13 @@ export class ProjectAssetAssignmentRepository
   async listByProject(
     projectId: string,
     status?: ProjectAssetAssignmentStatus,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [eq(projectAssetAssignments.projectId, projectId)];
+    if (resolvedTenantId) conditions.push(eq(projectAssetAssignments.tenantId, resolvedTenantId));
     if (status) {
       conditions.push(eq(projectAssetAssignments.status, status));
     }
@@ -54,18 +63,21 @@ export class ProjectAssetAssignmentRepository
 
   async findOpenByAssetId(
     assetId: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(projectAssetAssignments.assetId, assetId),
+      eq(projectAssetAssignments.status, "assigned")
+    ];
+    if (resolvedTenantId) conditions.push(eq(projectAssetAssignments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(projectAssetAssignments)
-      .where(
-        and(
-          eq(projectAssetAssignments.assetId, assetId),
-          eq(projectAssetAssignments.status, "assigned")
-        )
-      )
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
@@ -77,12 +89,20 @@ export class ProjectAssetAssignmentRepository
    */
   async findOpenHolderLabelsByAssetIds(
     assetIds: string[],
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     if (assetIds.length === 0) return out;
 
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      inArray(projectAssetAssignments.assetId, assetIds),
+      eq(projectAssetAssignments.status, "assigned")
+    ];
+    if (resolvedTenantId) conditions.push(eq(projectAssetAssignments.tenantId, resolvedTenantId));
+
     const rows = await db
       .select({
         assetId: projectAssetAssignments.assetId,
@@ -91,12 +111,7 @@ export class ProjectAssetAssignmentRepository
       })
       .from(projectAssetAssignments)
       .innerJoin(projects, eq(projects.id, projectAssetAssignments.projectId))
-      .where(
-        and(
-          inArray(projectAssetAssignments.assetId, assetIds),
-          eq(projectAssetAssignments.status, "assigned")
-        )
-      );
+      .where(and(...conditions));
 
     for (const row of rows) {
       out.set(
@@ -112,9 +127,14 @@ export class ProjectAssetAssignmentRepository
     session?: DbSession
   ): Promise<ProjectAssetAssignmentRow> {
     const db = this.db(session);
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
     const [row] = await db
       .insert(projectAssetAssignments)
-      .values(data)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
       .returning();
     if (!row) throw new Error("Failed to create project asset assignment.");
     return row;
@@ -125,13 +145,18 @@ export class ProjectAssetAssignmentRepository
     data: Partial<
       Omit<ProjectAssetAssignmentRow, "id" | "createdAt" | "projectId">
     >,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(projectAssetAssignments.id, id)];
+    if (resolvedTenantId) conditions.push(eq(projectAssetAssignments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(projectAssetAssignments)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(projectAssetAssignments.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }

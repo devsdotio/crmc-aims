@@ -29,18 +29,35 @@ export type ListMaintenanceFilters = {
 };
 
 export interface IMaintenanceRepository {
-  findById(id: string): Promise<MaintenanceLogRow | null>;
-  list(filters?: ListMaintenanceFilters): Promise<MaintenanceLogRow[]>;
-  countOpen(): Promise<number>;
-  countYear(): Promise<number>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow | null>;
+  list(
+    filters?: ListMaintenanceFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow[]>;
+  countOpen(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  countYear(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
   create(
     data: Omit<
       import("@/server/db/schema").NewMaintenanceLogRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<MaintenanceLogRow>;
   update(
     id: string,
-    data: Partial<Omit<MaintenanceLogRow, "id" | "createdAt" | "logCode">>
+    data: Partial<Omit<MaintenanceLogRow, "id" | "createdAt" | "logCode">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<MaintenanceLogRow | null>;
 }

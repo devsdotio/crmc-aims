@@ -55,11 +55,11 @@ export class PettyCashService {
     private readonly auditLogs: AuditLogService = new AuditLogService()
   ) {}
 
-  async generateNextPcvCode(now = new Date()): Promise<string> {
+  async generateNextPcvCode(now = new Date(), actorTenantId?: string): Promise<string> {
     const year = now.getFullYear();
     const prefix = `PCV${year}-`;
 
-    const latestCode = await this.repo.findLatestPcvCode(prefix);
+    const latestCode = await this.repo.findLatestPcvCode(prefix, undefined, actorTenantId);
     if (!latestCode) {
       return `${prefix}000001`;
     }
@@ -73,27 +73,31 @@ export class PettyCashService {
     return `${prefix}${String(parsed + 1).padStart(6, "0")}`;
   }
 
-  async list(rawFilters: unknown): Promise<{ vouchers: PettyCashDTO[]; total: number }> {
+  async list(rawFilters: unknown, actorTenantId?: string): Promise<{ vouchers: PettyCashDTO[]; total: number }> {
     const filters = listPettyCashQuerySchema.parse(rawFilters);
-    const cacheKey = `petty-cash:list:${JSON.stringify(filters)}`;
+    const tenantId =
+      actorTenantId ??
+      (await import("@/server/shared/tenant-context")).getTenantContext()?.tenantId ??
+      "global";
+    const cacheKey = `tenant:${tenantId}:petty-cash:list:${JSON.stringify(filters)}`;
 
     return serverCache.wrap(
       cacheKey,
       30 * 1000,
       async () => {
-        const { vouchers, total } = await this.repo.list(filters as ListPettyCashFilters);
+        const { vouchers, total } = await this.repo.list(filters as ListPettyCashFilters, undefined, tenantId);
         return {
           vouchers: vouchers.map(toDTO),
           total,
         };
       },
-      ["petty-cash"]
+      ["petty-cash", `tenant:${tenantId}:petty-cash`]
     );
   }
 
-  async getById(rawId: unknown): Promise<PettyCashDTO> {
+  async getById(rawId: unknown, actorTenantId?: string): Promise<PettyCashDTO> {
     const id = pettyCashIdSchema.parse(rawId);
-    const voucher = await this.repo.findById(id);
+    const voucher = await this.repo.findById(id, undefined, actorTenantId);
     if (!voucher) {
       throw new NotFoundError("Petty cash voucher not found");
     }
@@ -105,15 +109,16 @@ export class PettyCashService {
 
     let pcvNumber = input.pcvNumber;
     if (!pcvNumber) {
-      pcvNumber = await this.generateNextPcvCode();
+      pcvNumber = await this.generateNextPcvCode(undefined, actor.tenantId);
     } else {
-      const existing = await this.repo.findByCode(pcvNumber);
+      const existing = await this.repo.findByCode(pcvNumber, undefined, actor.tenantId);
       if (existing) {
         throw new ConflictError(`Petty cash voucher with code "${pcvNumber}" already exists.`);
       }
     }
 
     const row = await this.repo.create({
+      tenantId: actor.tenantId,
       pcvNumber,
       status: input.status ?? "draft",
       voucherDate: input.voucherDate,
@@ -151,6 +156,9 @@ export class PettyCashService {
     });
 
     await serverCache.invalidateTag("petty-cash");
+    if (actor.tenantId) {
+      await serverCache.invalidateTag(`tenant:${actor.tenantId}:petty-cash`);
+    }
     return toDTO(row);
   }
 
@@ -162,13 +170,13 @@ export class PettyCashService {
     const id = pettyCashIdSchema.parse(rawId);
     const input = updatePettyCashSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!existing) {
       throw new NotFoundError("Petty cash voucher not found");
     }
 
     if (input.pcvNumber && input.pcvNumber !== existing.pcvNumber) {
-      const conflict = await this.repo.findByCode(input.pcvNumber);
+      const conflict = await this.repo.findByCode(input.pcvNumber, undefined, actor?.tenantId);
       if (conflict) {
         throw new ConflictError(`Petty cash voucher with code "${input.pcvNumber}" already exists.`);
       }
@@ -188,7 +196,7 @@ export class PettyCashService {
       ...(input.departmentId !== undefined && { departmentId: input.departmentId }),
       ...(input.departmentName !== undefined && { departmentName: emptyToNull(input.departmentName) }),
       ...(input.isLegacy !== undefined && { isLegacy: input.isLegacy }),
-    });
+    }, undefined, actor?.tenantId);
 
     if (!updated) {
       throw new NotFoundError("Petty cash voucher not found");
@@ -208,6 +216,9 @@ export class PettyCashService {
     });
 
     await serverCache.invalidateTag("petty-cash");
+    if (actor?.tenantId) {
+      await serverCache.invalidateTag(`tenant:${actor.tenantId}:petty-cash`);
+    }
     return toDTO(updated);
   }
 
@@ -219,7 +230,7 @@ export class PettyCashService {
     const id = pettyCashIdSchema.parse(rawId);
     const { status } = updatePettyCashStatusSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) {
       throw new NotFoundError("Petty cash voucher not found");
     }
@@ -238,7 +249,7 @@ export class PettyCashService {
       updates.completedAt = new Date();
     }
 
-    const updated = await this.repo.update(id, updates);
+    const updated = await this.repo.update(id, updates, undefined, actor.tenantId);
     if (!updated) {
       throw new NotFoundError("Petty cash voucher not found");
     }
@@ -257,17 +268,20 @@ export class PettyCashService {
     });
 
     await serverCache.invalidateTag("petty-cash");
+    if (actor.tenantId) {
+      await serverCache.invalidateTag(`tenant:${actor.tenantId}:petty-cash`);
+    }
     return toDTO(updated);
   }
 
   async delete(rawId: unknown, actor?: ActorContext): Promise<{ success: boolean }> {
     const id = pettyCashIdSchema.parse(rawId);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!existing) {
       throw new NotFoundError("Petty cash voucher not found");
     }
 
-    const deleted = await this.repo.delete(id);
+    const deleted = await this.repo.delete(id, undefined, actor?.tenantId);
 
     void this.auditLogs.log({
       entityType: "petty_cash",
@@ -279,6 +293,9 @@ export class PettyCashService {
     });
 
     await serverCache.invalidateTag("petty-cash");
+    if (actor?.tenantId) {
+      await serverCache.invalidateTag(`tenant:${actor.tenantId}:petty-cash`);
+    }
     return { success: deleted };
   }
 }

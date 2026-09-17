@@ -12,17 +12,20 @@ export class VoucherController {
 
   async list(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
-      const data = await this.service.list({
-        search: url.searchParams.get("search") ?? undefined,
-        type: url.searchParams.get("type") ?? undefined,
-        status: url.searchParams.get("status") ?? undefined,
-        startDate: url.searchParams.get("startDate") ?? undefined,
-        endDate: url.searchParams.get("endDate") ?? undefined,
-        limit: url.searchParams.get("limit") ?? undefined,
-        offset: url.searchParams.get("offset") ?? undefined,
-      });
+      const data = await this.service.list(
+        {
+          search: url.searchParams.get("search") ?? undefined,
+          type: url.searchParams.get("type") ?? undefined,
+          status: url.searchParams.get("status") ?? undefined,
+          startDate: url.searchParams.get("startDate") ?? undefined,
+          endDate: url.searchParams.get("endDate") ?? undefined,
+          limit: url.searchParams.get("limit") ?? undefined,
+          offset: url.searchParams.get("offset") ?? undefined,
+        },
+        actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -31,10 +34,10 @@ export class VoucherController {
 
   async nextCode(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const type = (url.searchParams.get("type") as "disbursement" | "property_transfer" | "liquidation") ?? "disbursement";
-      const voucherCode = await this.service.generateNextVoucherCode(type);
+      const voucherCode = await this.service.generateNextVoucherCode(type, undefined, actor.tenantId);
       return ok({ voucherCode });
     } catch (error) {
       return handleError(error);
@@ -43,8 +46,8 @@ export class VoucherController {
 
   async get(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.getById(id));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

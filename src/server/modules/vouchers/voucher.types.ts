@@ -49,14 +49,39 @@ export type ListVoucherFilters = {
 };
 
 export interface IVoucherRepository {
-  findById(id: string): Promise<VoucherRow | null>;
-  findByCode(code: string): Promise<VoucherRow | null>;
-  list(filters?: ListVoucherFilters): Promise<{ vouchers: VoucherRow[]; total: number }>;
-  create(data: Omit<NewVoucherRow, "id" | "createdAt" | "updatedAt">): Promise<VoucherRow>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<VoucherRow | null>;
+  findByCode(
+    code: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<VoucherRow | null>;
+  list(
+    filters?: ListVoucherFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<{ vouchers: VoucherRow[]; total: number }>;
+  create(
+    data: Omit<NewVoucherRow, "id" | "createdAt" | "updatedAt">,
+    session?: import("@/server/db/transaction").DbSession
+  ): Promise<VoucherRow>;
   update(
     id: string,
-    data: Partial<Omit<VoucherRow, "id" | "createdAt">>
+    data: Partial<Omit<VoucherRow, "id" | "createdAt">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<VoucherRow | null>;
-  findLatestVoucherCode(prefix: string): Promise<string | null>;
-  delete(id: string): Promise<boolean>;
+  findLatestVoucherCode(
+    prefix: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<string | null>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
 }

@@ -59,7 +59,8 @@ export class VoucherService {
 
   async generateNextVoucherCode(
     type: VoucherType = "disbursement",
-    now = new Date()
+    now = new Date(),
+    actorTenantId?: string
   ): Promise<string> {
     const year = now.getFullYear();
     const prefix =
@@ -69,7 +70,7 @@ export class VoucherService {
           ? `PTR${year}-`
           : `LQD${year}-`;
 
-    const latestCode = await this.repo.findLatestVoucherCode(prefix);
+    const latestCode = await this.repo.findLatestVoucherCode(prefix, undefined, actorTenantId);
     if (!latestCode) {
       return `${prefix}000001`;
     }
@@ -83,27 +84,31 @@ export class VoucherService {
     return `${prefix}${String(parsed + 1).padStart(6, "0")}`;
   }
 
-  async list(rawFilters: unknown): Promise<{ vouchers: VoucherDTO[]; total: number }> {
+  async list(rawFilters: unknown, actorTenantId?: string): Promise<{ vouchers: VoucherDTO[]; total: number }> {
     const filters = listVouchersQuerySchema.parse(rawFilters);
-    const cacheKey = `vouchers:list:${JSON.stringify(filters)}`;
+    const tenantId =
+      actorTenantId ??
+      (await import("@/server/shared/tenant-context")).getTenantContext()?.tenantId ??
+      "global";
+    const cacheKey = `tenant:${tenantId}:vouchers:list:${JSON.stringify(filters)}`;
 
     return serverCache.wrap(
       cacheKey,
       30 * 1000,
       async () => {
-        const { vouchers, total } = await this.repo.list(filters as ListVoucherFilters);
+        const { vouchers, total } = await this.repo.list(filters as ListVoucherFilters, undefined, tenantId);
         return {
           vouchers: vouchers.map(toDTO),
           total,
         };
       },
-      ["vouchers"]
+      ["vouchers", `tenant:${tenantId}:vouchers`]
     );
   }
 
-  async getById(rawId: string): Promise<VoucherDTO> {
+  async getById(rawId: string, actorTenantId?: string): Promise<VoucherDTO> {
     const id = voucherIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Voucher", id);
     return toDTO(row);
   }
@@ -113,10 +118,10 @@ export class VoucherService {
 
     let voucherCode = input.voucherCode?.trim();
     if (!voucherCode) {
-      voucherCode = await this.generateNextVoucherCode(input.type);
+      voucherCode = await this.generateNextVoucherCode(input.type, undefined, actor.tenantId);
     }
 
-    const existing = await this.repo.findByCode(voucherCode);
+    const existing = await this.repo.findByCode(voucherCode, undefined, actor.tenantId);
     if (existing) {
       if (!input.voucherCode?.trim()) {
         const token = crypto.randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
@@ -129,6 +134,7 @@ export class VoucherService {
     }
 
     const row = await this.repo.create({
+      tenantId: actor.tenantId,
       voucherCode,
       type: input.type,
       status: input.status,
@@ -171,6 +177,9 @@ export class VoucherService {
     });
 
     serverCache.invalidateTag("vouchers");
+    if (actor.tenantId) {
+      serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
+    }
     return toDTO(row);
   }
 
@@ -182,11 +191,11 @@ export class VoucherService {
     const id = voucherIdSchema.parse(rawId);
     const input = updateVoucherSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!existing) throw new NotFoundError("Voucher", id);
 
     if (input.voucherCode && input.voucherCode !== existing.voucherCode) {
-      const codeConflict = await this.repo.findByCode(input.voucherCode);
+      const codeConflict = await this.repo.findByCode(input.voucherCode, undefined, actor?.tenantId);
       if (codeConflict) {
         throw new ConflictError(
           `Voucher with code "${input.voucherCode}" already exists.`
@@ -209,7 +218,7 @@ export class VoucherService {
       ...(input.assetName !== undefined ? { assetName: emptyToNull(input.assetName) } : {}),
       ...(input.particulars !== undefined ? { particulars: input.particulars } : {}),
       ...(input.checkNumber !== undefined ? { checkNumber: emptyToNull(input.checkNumber) } : {}),
-    });
+    }, undefined, actor?.tenantId);
 
     if (!updated) throw new NotFoundError("Voucher", id);
 
@@ -227,6 +236,9 @@ export class VoucherService {
     });
 
     serverCache.invalidateTag("vouchers");
+    if (actor?.tenantId) {
+      serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
+    }
     return toDTO(updated);
   }
 
@@ -238,7 +250,7 @@ export class VoucherService {
     const id = voucherIdSchema.parse(rawId);
     const input = updateVoucherStatusSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Voucher", id);
 
     const updatePayload: Partial<VoucherRow> = {
@@ -255,7 +267,7 @@ export class VoucherService {
       updatePayload.completedAt = new Date();
     }
 
-    const updated = await this.repo.update(id, updatePayload);
+    const updated = await this.repo.update(id, updatePayload, undefined, actor.tenantId);
     if (!updated) throw new NotFoundError("Voucher", id);
 
     void this.auditLogs.log({
@@ -272,15 +284,18 @@ export class VoucherService {
     });
 
     serverCache.invalidateTag("vouchers");
+    if (actor.tenantId) {
+      serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
+    }
     return toDTO(updated);
   }
 
   async delete(rawId: string, actor?: ActorContext): Promise<{ success: boolean }> {
     const id = voucherIdSchema.parse(rawId);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!existing) throw new NotFoundError("Voucher", id);
 
-    const success = await this.repo.delete(id);
+    const success = await this.repo.delete(id, undefined, actor?.tenantId);
 
     void this.auditLogs.log({
       entityType: "voucher",
@@ -292,6 +307,9 @@ export class VoucherService {
     });
 
     serverCache.invalidateTag("vouchers");
+    if (actor?.tenantId) {
+      serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
+    }
     return { success };
   }
 }

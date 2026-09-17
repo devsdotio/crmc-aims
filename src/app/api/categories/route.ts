@@ -13,19 +13,21 @@ import { serverCache } from "@/server/shared/cache";
  */
 export async function GET(request: Request) {
   try {
-    await requireActor();
+    const actor = await requireActor();
     const url = new URL(request.url);
     const type = url.searchParams.get("type");
 
     const categoryRepo = new CategoryRepository();
     const rows = await serverCache.wrap(
-      `categories:type:${type ?? "all"}`,
+      `tenant:${actor.tenantId}:categories:type:${type ?? "all"}`,
       10 * 60 * 1000,
       () =>
         categoryRepo.listWithCounts(
-          type === "asset" || type === "consumable" ? type : undefined
+          type === "asset" || type === "consumable" ? type : undefined,
+          undefined,
+          actor.tenantId
         ),
-      ["categories"]
+      ["categories", `tenant:${actor.tenantId}:categories`]
     );
 
     return okWithEtag(request, rows, {
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
       .from(categories)
       .where(
         and(
+          eq(categories.tenantId, actor.tenantId),
           eq(categories.type, body.type),
           sql`lower(${categories.name}) = lower(${name})`
         )
@@ -83,6 +86,7 @@ export async function POST(request: Request) {
     const [newCategory] = await db
       .insert(categories)
       .values({
+        tenantId: actor.tenantId,
         name,
         description: body.description || null,
         type: body.type,
@@ -91,6 +95,7 @@ export async function POST(request: Request) {
       })
       .returning();
 
+    serverCache.invalidateTag(`tenant:${actor.tenantId}:categories`);
     serverCache.invalidateTag("categories");
 
     return NextResponse.json(

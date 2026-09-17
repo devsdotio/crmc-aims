@@ -62,13 +62,18 @@ export default async function PrivateLayout({
     pathname === "/borrower-db" || pathname.startsWith("/borrower-db/");
 
   if (role === "borrower") {
-    // Keep borrowers inside borrower portal or profile; redirect if accessing staff routes
+    // Keep borrowers inside borrower portal or profile; redirect if accessing staff/platform routes
     if (pathname && !onBorrowerPortal && !isProfileRoute) {
       redirect("/borrower-db/dashboard");
     }
+  } else if (role === "superadmin") {
+    // Superadmins manage institutions and platform governance; redirect tenant ops / borrower dashboard to platform
+    if (pathname === "/dashboard" || onBorrowerPortal) {
+      redirect("/platform/tenants");
+    }
   } else if (isStaffShellRole(role)) {
-    // Keep staff inside staff routes; redirect if accessing borrower routes
-    if (pathname && onBorrowerPortal) {
+    // Keep staff inside staff routes; redirect if accessing borrower or platform superadmin routes
+    if (pathname && (onBorrowerPortal || pathname.startsWith("/platform"))) {
       redirect("/dashboard");
     }
   } else {

@@ -39,23 +39,27 @@ function toDTO(row: SupplierRow): SupplierDTO {
 export class SupplierService {
   constructor(private readonly repo = new SupplierRepository()) {}
 
-  async list(rawQuery: unknown): Promise<SupplierDTO[]> {
+  async list(rawQuery: unknown, actorTenantId?: string): Promise<SupplierDTO[]> {
     const filters = listSuppliersQuerySchema.parse(rawQuery ?? {});
-    const cacheKey = `suppliers:list:${JSON.stringify(filters)}`;
+    const tenantId =
+      actorTenantId ??
+      (await import("@/server/shared/tenant-context")).getTenantContext()?.tenantId ??
+      "global";
+    const cacheKey = `tenant:${tenantId}:suppliers:list:${JSON.stringify(filters)}`;
     return serverCache.wrap(
       cacheKey,
       10 * 60 * 1000,
       async () => {
-        const rows = await this.repo.list(filters);
+        const rows = await this.repo.list(filters, undefined, tenantId);
         return rows.map(toDTO);
       },
-      ["suppliers"]
+      ["suppliers", `tenant:${tenantId}:suppliers`]
     );
   }
 
-  async getById(rawId: string): Promise<SupplierDTO> {
+  async getById(rawId: string, actorTenantId?: string): Promise<SupplierDTO> {
     const id = supplierIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Supplier", id);
     return toDTO(row);
   }
@@ -63,6 +67,7 @@ export class SupplierService {
   async create(rawInput: unknown, actor: ActorContext): Promise<SupplierDTO> {
     const input = createSupplierSchema.parse(rawInput);
     const row = await this.repo.create({
+      tenantId: actor.tenantId,
       supplierCode: generateOperationalCode("SUP"),
       name: input.name,
       contactName: emptyToNull(input.contactName),
@@ -75,41 +80,56 @@ export class SupplierService {
       createdByName: actor.displayName,
     });
     serverCache.invalidateTag("suppliers");
+    if (actor.tenantId) {
+      serverCache.invalidateTag(`tenant:${actor.tenantId}:suppliers`);
+    }
     return toDTO(row);
   }
 
-  async update(rawId: string, rawInput: unknown): Promise<SupplierDTO> {
+  async update(
+    rawId: string,
+    rawInput: unknown,
+    actorTenantId?: string
+  ): Promise<SupplierDTO> {
     const id = supplierIdSchema.parse(rawId);
     const input = updateSupplierSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actorTenantId);
     if (!existing) throw new NotFoundError("Supplier", id);
 
-    const updated = await this.repo.update(id, {
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.contactName !== undefined
-        ? { contactName: emptyToNull(input.contactName) }
-        : {}),
-      ...(input.contactEmail !== undefined
-        ? { contactEmail: emptyToNull(input.contactEmail) }
-        : {}),
-      ...(input.contactPhone !== undefined
-        ? { contactPhone: emptyToNull(input.contactPhone) }
-        : {}),
-      ...(input.address !== undefined
-        ? { address: emptyToNull(input.address) }
-        : {}),
-      ...(input.notes !== undefined ? { notes: emptyToNull(input.notes) } : {}),
-      ...(input.status !== undefined ? { status: input.status } : {}),
-    });
+    const updated = await this.repo.update(
+      id,
+      {
+        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.contactName !== undefined
+          ? { contactName: emptyToNull(input.contactName) }
+          : {}),
+        ...(input.contactEmail !== undefined
+          ? { contactEmail: emptyToNull(input.contactEmail) }
+          : {}),
+        ...(input.contactPhone !== undefined
+          ? { contactPhone: emptyToNull(input.contactPhone) }
+          : {}),
+        ...(input.address !== undefined
+          ? { address: emptyToNull(input.address) }
+          : {}),
+        ...(input.notes !== undefined ? { notes: emptyToNull(input.notes) } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+      },
+      undefined,
+      actorTenantId
+    );
 
     if (!updated) throw new NotFoundError("Supplier", id);
     serverCache.invalidateTag("suppliers");
+    if (actorTenantId) {
+      serverCache.invalidateTag(`tenant:${actorTenantId}:suppliers`);
+    }
     return toDTO(updated);
   }
 
   /** Soft-deactivate — keep purchase history linked. */
-  async deactivate(rawId: string): Promise<SupplierDTO> {
-    return this.update(rawId, { status: "inactive" });
+  async deactivate(rawId: string, actorTenantId?: string): Promise<SupplierDTO> {
+    return this.update(rawId, { status: "inactive" }, actorTenantId);
   }
 }

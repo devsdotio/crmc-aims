@@ -207,7 +207,15 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
     session?: DbSession
   ): Promise<BorrowRequestRow> {
     const db = this.db(session);
-    const [row] = await db.insert(borrowRequests).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(borrowRequests)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create borrow request.");
     return row;
   }

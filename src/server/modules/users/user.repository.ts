@@ -59,18 +59,21 @@ export class ProfileRepository implements IProfileRepository {
   }
 
   async findBorrowerByDepartmentId(
-    departmentId: string
+    departmentId: string,
+    tenantId?: string
   ): Promise<ProfileRow | null> {
     const db = getDb();
+    const conditions = [
+      eq(profiles.departmentId, departmentId),
+      eq(profiles.role, "borrower"),
+    ];
+    if (tenantId) {
+      conditions.push(eq(profiles.tenantId, tenantId));
+    }
     const [row] = await db
       .select()
       .from(profiles)
-      .where(
-        and(
-          eq(profiles.departmentId, departmentId),
-          eq(profiles.role, "borrower")
-        )
-      )
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
@@ -83,6 +86,9 @@ export class ProfileRepository implements IProfileRepository {
     }
     if (filters.status) {
       conditions.push(eq(profiles.status, filters.status));
+    }
+    if (filters.tenantId && filters.tenantId !== "all") {
+      conditions.push(eq(profiles.tenantId, filters.tenantId));
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;

@@ -14,33 +14,36 @@ export class PurchaseLotController {
 
   async list(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
-        await this.service.list({
-          consumableId: url.searchParams.get("consumableId") ?? undefined,
-          assetId: url.searchParams.get("assetId") ?? undefined,
-          supplierId: url.searchParams.get("supplierId") ?? undefined,
-          itemType:
-            (url.searchParams.get("itemType") as
-              | "consumable"
-              | "asset"
-              | null) ?? undefined,
-          status:
-            (url.searchParams.get("status") as
-              | "pending_approval"
-              | "approved"
-              | "ordered"
-              | "delivered"
-              | "cancelled"
-              | null) ?? undefined,
-          search: url.searchParams.get("search") ?? undefined,
-          includeSandbox: parseIncludeSandbox(
-            url.searchParams.get("includeSandbox"),
-            session.role
-          ),
-        })
+        await this.service.list(
+          {
+            consumableId: url.searchParams.get("consumableId") ?? undefined,
+            assetId: url.searchParams.get("assetId") ?? undefined,
+            supplierId: url.searchParams.get("supplierId") ?? undefined,
+            itemType:
+              (url.searchParams.get("itemType") as
+                | "consumable"
+                | "asset"
+                | null) ?? undefined,
+            status:
+              (url.searchParams.get("status") as
+                | "pending_approval"
+                | "approved"
+                | "ordered"
+                | "delivered"
+                | "cancelled"
+                | null) ?? undefined,
+            search: url.searchParams.get("search") ?? undefined,
+            includeSandbox: parseIncludeSandbox(
+              url.searchParams.get("includeSandbox"),
+              actor.role
+            ),
+          },
+          actor.tenantId
+        )
       );
     } catch (error) {
       return handleError(error);
@@ -49,8 +52,8 @@ export class PurchaseLotController {
 
   async get(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.getById(id));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -58,10 +61,10 @@ export class PurchaseLotController {
 
   async getByCode(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const code = url.searchParams.get("code") ?? "";
-      return ok(await this.service.getByCode(code));
+      return ok(await this.service.getByCode(code, actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

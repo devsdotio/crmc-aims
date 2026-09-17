@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, ilike, inArray, or, sql } from "drizzle-orm"
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   consumableRequestLines,
   consumableRequestReleaseAllocations,
@@ -30,19 +31,30 @@ export class ConsumableRequestRepository
 
   async findById(
     id: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ConsumableRequestRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumableRequests.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select()
       .from(consumableRequests)
-      .where(eq(consumableRequests.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
-  private buildConditions(filters: ListConsumableRequestFilters) {
+  private buildConditions(filters: ListConsumableRequestFilters, tenantId?: string) {
     const conditions = [];
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    if (resolvedTenantId) {
+      conditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+    }
     if (filters.status) {
       conditions.push(eq(consumableRequests.status, filters.status));
     }
@@ -101,10 +113,11 @@ export class ConsumableRequestRepository
 
   async list(
     filters: ListConsumableRequestFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ConsumableRequestRow[]> {
     const db = this.db(session);
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, tenantId);
 
     let base = db
       .select()
@@ -128,10 +141,11 @@ export class ConsumableRequestRepository
 
   async count(
     filters: Omit<ListConsumableRequestFilters, "page" | "limit"> = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
     const db = this.db(session);
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, tenantId);
     let base = db
       .select({ value: count() })
       .from(consumableRequests)
@@ -148,10 +162,11 @@ export class ConsumableRequestRepository
       ListConsumableRequestFilters,
       "status" | "page" | "limit"
     > = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Record<string, number>> {
     const db = this.db(session);
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, tenantId);
     let base = db
       .select({ status: consumableRequests.status, count: count() })
       .from(consumableRequests)
@@ -167,9 +182,13 @@ export class ConsumableRequestRepository
     return result;
   }
 
-  async countPending(session?: DbSession, userId?: string): Promise<number> {
+  async countPending(session?: DbSession, userId?: string, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [eq(consumableRequests.status, "pending")];
+    if (resolvedTenantId) {
+      conditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+    }
     if (userId) {
       conditions.push(eq(consumableRequests.requesterUserId, userId));
     }
@@ -185,7 +204,13 @@ export class ConsumableRequestRepository
     session?: DbSession
   ): Promise<ConsumableRequestRow> {
     const db = this.db(session);
-    const [row] = await db.insert(consumableRequests).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const insertPayload = resolvedTenantId
+      ? { ...data, tenantId: resolvedTenantId }
+      : data;
+
+    const [row] = await db.insert(consumableRequests).values(insertPayload).returning();
     if (!row) throw new Error("Failed to create consumable request.");
     return row;
   }
@@ -195,13 +220,20 @@ export class ConsumableRequestRepository
     data: Partial<
       Omit<ConsumableRequestRow, "id" | "createdAt" | "requestCode">
     >,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ConsumableRequestRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumableRequests.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .update(consumableRequests)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(consumableRequests.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }

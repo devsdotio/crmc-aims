@@ -12,18 +12,21 @@ export class PettyCashController {
 
   async list(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
-      const data = await this.service.list({
-        search: url.searchParams.get("search") ?? undefined,
-        status: url.searchParams.get("status") ?? undefined,
-        category: url.searchParams.get("category") ?? undefined,
-        departmentId: url.searchParams.get("departmentId") ?? undefined,
-        startDate: url.searchParams.get("startDate") ?? undefined,
-        endDate: url.searchParams.get("endDate") ?? undefined,
-        limit: url.searchParams.get("limit") ?? undefined,
-        offset: url.searchParams.get("offset") ?? undefined,
-      });
+      const data = await this.service.list(
+        {
+          search: url.searchParams.get("search") ?? undefined,
+          status: url.searchParams.get("status") ?? undefined,
+          category: url.searchParams.get("category") ?? undefined,
+          departmentId: url.searchParams.get("departmentId") ?? undefined,
+          startDate: url.searchParams.get("startDate") ?? undefined,
+          endDate: url.searchParams.get("endDate") ?? undefined,
+          limit: url.searchParams.get("limit") ?? undefined,
+          offset: url.searchParams.get("offset") ?? undefined,
+        },
+        actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -32,8 +35,8 @@ export class PettyCashController {
 
   async nextCode() {
     try {
-      await requireActor();
-      const pcvNumber = await this.service.generateNextPcvCode();
+      const actor = await requireActor();
+      const pcvNumber = await this.service.generateNextPcvCode(undefined, actor.tenantId);
       return ok({ pcvNumber });
     } catch (error) {
       return handleError(error);
@@ -42,8 +45,8 @@ export class PettyCashController {
 
   async get(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.getById(id));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

@@ -10,7 +10,7 @@ export class BorrowLogController {
 
   async list(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
@@ -30,10 +30,10 @@ export class BorrowLogController {
                 : undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
-              session.role
+              actor.role
             ),
           },
-          session
+          actor
         )
       );
     } catch (error) {
@@ -43,8 +43,8 @@ export class BorrowLogController {
 
   async get(id: string) {
     try {
-      const session = await requireActor();
-      return ok(await this.service.getById(id, session));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor));
     } catch (error) {
       return handleError(error);
     }

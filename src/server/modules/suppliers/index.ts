@@ -12,13 +12,16 @@ export class SupplierController {
 
   async list(request: NextRequest | Request) {
     try {
-      await requireActor();
+      const actor = await requireActor();
       const url = new URL(request.url);
-      const data = await this.service.list({
-        search: url.searchParams.get("search") ?? undefined,
-        status: url.searchParams.get("status") ?? undefined,
-        activeOnly: url.searchParams.get("activeOnly") ?? undefined,
-      });
+      const data = await this.service.list(
+        {
+          search: url.searchParams.get("search") ?? undefined,
+          status: url.searchParams.get("status") ?? undefined,
+          activeOnly: url.searchParams.get("activeOnly") ?? undefined,
+        },
+        actor.tenantId
+      );
       return okWithEtag(request, data, {
         cacheControl: { maxAge: 60, staleWhileRevalidate: 300 },
       });
@@ -29,8 +32,8 @@ export class SupplierController {
 
   async get(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.getById(id));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -48,9 +51,9 @@ export class SupplierController {
 
   async update(request: NextRequest | Request, id: string) {
     try {
-      await requireAssetOperator();
+      const session = await requireAssetOperator();
       const body = await request.json();
-      return ok(await this.service.update(id, body));
+      return ok(await this.service.update(id, body, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -58,8 +61,8 @@ export class SupplierController {
 
   async deactivate(id: string) {
     try {
-      await requireAssetOperator();
-      return ok(await this.service.deactivate(id));
+      const session = await requireAssetOperator();
+      return ok(await this.service.deactivate(id, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

@@ -229,9 +229,9 @@ export class PurchaseLotService {
     private readonly suppliers = new SupplierRepository()
   ) {}
 
-  async list(rawQuery: unknown): Promise<PurchaseLotDTO[]> {
+  async list(rawQuery: unknown, actorTenantId?: string): Promise<PurchaseLotDTO[]> {
     const filters = listPurchaseLotsQuerySchema.parse(rawQuery ?? {});
-    const rows = await this.repo.list(filters);
+    const rows = await this.repo.list(filters, undefined, actorTenantId);
     const dtos = rows.map(toPurchaseLotDTO);
 
     if (filters.status) {
@@ -240,19 +240,19 @@ export class PurchaseLotService {
     return dtos;
   }
 
-  async getById(rawId: string): Promise<PurchaseLotDTO> {
+  async getById(rawId: string, actorTenantId?: string): Promise<PurchaseLotDTO> {
     const id = purchaseLotIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", id);
     return toPurchaseLotDTO(row);
   }
 
-  async getByCode(rawCode: string): Promise<PurchaseLotDTO> {
+  async getByCode(rawCode: string, actorTenantId?: string): Promise<PurchaseLotDTO> {
     const parsed = parseScanPayload(rawCode);
     if (!parsed.code) {
       throw new BadRequestError("Lot / PO code is required.");
     }
-    const row = await this.repo.findByLotCode(parsed.code);
+    const row = await this.repo.findByLotCode(parsed.code, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", parsed.code);
     return toPurchaseLotDTO(row);
   }
@@ -433,6 +433,7 @@ export class PurchaseLotService {
 
         const row = await this.repo.create(
           {
+            tenantId: actor.tenantId,
             lotCode,
             itemType: item.itemType,
             consumableId,

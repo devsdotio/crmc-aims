@@ -53,7 +53,8 @@ export interface IProfileRepository {
   findByUserId(userId: string): Promise<ProfileWithDepartment | null>;
   findByEmail(email: string): Promise<ProfileWithDepartment | null>;
   findBorrowerByDepartmentId(
-    departmentId: string
+    departmentId: string,
+    tenantId?: string
   ): Promise<ProfileRow | null>;
   list(filters?: ListUsersFilters): Promise<ProfileWithDepartment[]>;
   create(data: NewProfileRow): Promise<ProfileRow>;

@@ -30,6 +30,10 @@ export default async function Home() {
     redirect("/borrower-db/dashboard");
   }
 
+  if (profileRole === "superadmin") {
+    redirect("/platform/tenants");
+  }
+
   redirect("/dashboard");
 }
 

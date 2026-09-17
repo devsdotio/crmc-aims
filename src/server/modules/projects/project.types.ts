@@ -40,17 +40,32 @@ export type ListProjectFilters = {
 };
 
 export interface IProjectRepository {
-  findById(id: string): Promise<ProjectRow | null>;
-  list(filters?: ListProjectFilters): Promise<ProjectRow[]>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<ProjectRow | null>;
+  list(
+    filters?: ListProjectFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<ProjectRow[]>;
   create(
     data: Omit<
       import("@/server/db/schema").NewProjectRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<ProjectRow>;
   update(
     id: string,
-    data: Partial<Omit<ProjectRow, "id" | "createdAt" | "projectCode">>
+    data: Partial<Omit<ProjectRow, "id" | "createdAt" | "projectCode">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<ProjectRow | null>;
-  delete(id: string): Promise<boolean>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
 }

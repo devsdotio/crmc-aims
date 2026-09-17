@@ -20,7 +20,10 @@ export class ReportController {
   async getSummary(_request: NextRequest | Request) {
     try {
       const session = await requireStaffShell();
-      const data = await this.service.getExecutiveSummary(session.profile.role);
+      const data = await this.service.getExecutiveSummary(
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -31,7 +34,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getAssetRegisterReport(params, session.profile.role);
+      const data = await this.service.getAssetRegisterReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -41,7 +48,11 @@ export class ReportController {
   async getAssetDrilldown(_request: NextRequest | Request, assetId: string) {
     try {
       const session = await requireStaffShell();
-      const data = await this.service.getAssetDrilldownReport(assetId, session.profile.role);
+      const data = await this.service.getAssetDrilldownReport(
+        assetId,
+        session.profile.role,
+        session.actor.tenantId
+      );
       if (!data) {
         return NextResponse.json({ error: "Asset not found" }, { status: 404 });
       }
@@ -55,7 +66,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getConsumablesReport(params, session.profile.role);
+      const data = await this.service.getConsumablesReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -66,7 +81,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getPurchaseOrdersReport(params, session.profile.role);
+      const data = await this.service.getPurchaseOrdersReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -77,7 +96,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getRequestsReport(params, session.profile.role);
+      const data = await this.service.getRequestsReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -88,7 +111,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getMaintenanceReport(params, session.profile.role);
+      const data = await this.service.getMaintenanceReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -99,7 +126,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getProjectsReport(params, session.profile.role);
+      const data = await this.service.getProjectsReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -110,7 +141,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = baseReportQuerySchema.parse(this.extractParams(request));
-      const data = await this.service.getDepartmentsReport(params, session.profile.role);
+      const data = await this.service.getDepartmentsReport(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -121,7 +156,11 @@ export class ReportController {
     try {
       const session = await requireStaffShell();
       const params = exportReportQuerySchema.parse(this.extractParams(request));
-      const result = await this.service.exportReportCsv(params, session.profile.role);
+      const result = await this.service.exportReportCsv(
+        params,
+        session.profile.role,
+        session.actor.tenantId
+      );
 
       return new NextResponse(result.csv, {
         status: 200,

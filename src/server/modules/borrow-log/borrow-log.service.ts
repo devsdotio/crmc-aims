@@ -198,13 +198,13 @@ export class BorrowLogService {
       }
     }
 
-    const rows = await this.repo.list(filters);
+    const rows = await this.repo.list(filters, undefined, actor?.tenantId);
     return rows.map((row) => toBorrowLogDTO(row));
   }
 
   async getById(rawId: string, actor?: ActorContext): Promise<BorrowLogDTO> {
     const id = borrowLogIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!row) throw new NotFoundError("Borrow log", id);
     if (actor && !isAssetOperatorRole(actor.role)) {
       const isOwn = row.borrowerUserId === actor.userId;
@@ -416,6 +416,7 @@ export class BorrowLogService {
 
     const row = await this.repo.create(
       {
+        tenantId: actor.tenantId,
         logCode,
         requestId,
         requestCode,

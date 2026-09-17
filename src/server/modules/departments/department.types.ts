@@ -26,17 +26,45 @@ export type DepartmentListRow = Department & {
 };
 
 export interface IDepartmentRepository {
-  findById(id: string): Promise<Department | null>;
-  findByCode(code: string): Promise<Department | null>;
-  findByNameLower(name: string): Promise<Department | null>;
-  list(filters?: ListDepartmentFilters): Promise<DepartmentListRow[]>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<Department | null>;
+  findByCode(
+    code: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<Department | null>;
+  findByNameLower(
+    name: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<Department | null>;
+  list(
+    filters?: ListDepartmentFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<DepartmentListRow[]>;
   create(
-    data: Omit<Department, "id" | "createdAt" | "updatedAt" | "tenantId">
+    data: Omit<Department, "id" | "createdAt" | "updatedAt" | "tenantId"> & {
+      tenantId?: string;
+    },
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<Department>;
   update(
     id: string,
-    data: Partial<Pick<Department, "code" | "name" | "isSandbox">>
+    data: Partial<Pick<Department, "code" | "name" | "isSandbox">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<Department | null>;
-  delete(id: string): Promise<boolean>;
-  countLinkedProfiles(id: string): Promise<number>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
+  countLinkedProfiles(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession
+  ): Promise<number>;
 }

@@ -125,12 +125,21 @@ export type UpdatePurchaseOrderStatusInput = {
 };
 
 export interface IPurchaseLotRepository {
-  findById(id: string): Promise<PurchaseLotRow | null>;
-  list(filters?: ListPurchaseLotFilters): Promise<PurchaseLotRow[]>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<PurchaseLotRow | null>;
+  list(
+    filters?: ListPurchaseLotFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<PurchaseLotRow[]>;
   create(
     data: Omit<
       import("@/server/db/schema").NewPurchaseLotRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<PurchaseLotRow>;
 }

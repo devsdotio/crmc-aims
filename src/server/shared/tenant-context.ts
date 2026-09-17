@@ -172,6 +172,26 @@ export async function resolveTenantFromHeaders(): Promise<TenantContext> {
     // headers() throws if called outside Next.js request context (e.g. background tasks or unit tests)
   }
 
+  // Cookie fallback when headers are unset
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const cookieVal = cookieStore.get("aims_tenant")?.value?.trim();
+    if (cookieVal) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cookieVal);
+      const row = isUuid ? await getCachedTenantById(cookieVal) : await getCachedTenantBySlug(cookieVal);
+      if (row) {
+        return {
+          tenantId: row.id,
+          tenantSlug: row.slug,
+          tenantName: row.name,
+        };
+      }
+    }
+  } catch {
+    // cookies() throws if called outside request context
+  }
+
   // Default tenant fallback
   const defaultTenant = await getDefaultTenant();
   return {

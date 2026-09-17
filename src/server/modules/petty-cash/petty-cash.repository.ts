@@ -16,32 +16,54 @@ export class PettyCashRepository implements IPettyCashRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<PettyCashRow | null> {
+  async findById(
+    id: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<PettyCashRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(pettyCashVouchers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(pettyCashVouchers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(pettyCashVouchers)
-      .where(eq(pettyCashVouchers.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
-  async findByCode(code: string, session?: DbSession): Promise<PettyCashRow | null> {
+  async findByCode(
+    code: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<PettyCashRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(pettyCashVouchers.pcvNumber, code)];
+    if (resolvedTenantId) conditions.push(eq(pettyCashVouchers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(pettyCashVouchers)
-      .where(eq(pettyCashVouchers.pcvNumber, code))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListPettyCashFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<{ vouchers: PettyCashRow[]; total: number }> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(pettyCashVouchers.tenantId, resolvedTenantId));
+    }
 
     if (filters.status) {
       conditions.push(eq(pettyCashVouchers.status, filters.status));
@@ -107,7 +129,15 @@ export class PettyCashRepository implements IPettyCashRepository {
     session?: DbSession
   ): Promise<PettyCashRow> {
     const db = this.db(session);
-    const [row] = await db.insert(pettyCashVouchers).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(pettyCashVouchers)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create petty cash voucher.");
     return row;
   }
@@ -115,13 +145,18 @@ export class PettyCashRepository implements IPettyCashRepository {
   async update(
     id: string,
     data: Partial<Omit<PettyCashRow, "id" | "createdAt">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PettyCashRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(pettyCashVouchers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(pettyCashVouchers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(pettyCashVouchers)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(pettyCashVouchers.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
@@ -163,9 +198,17 @@ export class PettyCashRepository implements IPettyCashRepository {
     return latestCode ?? rows[0]?.pcvNumber ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(
+    id: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<boolean> {
     const db = this.db(session);
-    const result = await db.delete(pettyCashVouchers).where(eq(pettyCashVouchers.id, id)).returning();
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(pettyCashVouchers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(pettyCashVouchers.tenantId, resolvedTenantId));
+
+    const result = await db.delete(pettyCashVouchers).where(and(...conditions)).returning();
     return result.length > 0;
   }
 }

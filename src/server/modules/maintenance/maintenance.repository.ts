@@ -183,7 +183,15 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     session?: DbSession
   ): Promise<MaintenanceLogRow> {
     const db = this.db(session);
-    const [row] = await db.insert(maintenanceLogs).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(maintenanceLogs)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create maintenance log.");
     return row;
   }

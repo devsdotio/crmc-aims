@@ -59,7 +59,7 @@ export class MaintenanceLogService {
     if (actor) {
       await this.syncOrphanNeedsRepairFlags(actor, filters.includeSandbox === true);
     }
-    const rows = await this.repo.list(filters);
+    const rows = await this.repo.list(filters, undefined, actor?.tenantId);
     return rows.map(toDTO);
   }
 
@@ -73,7 +73,7 @@ export class MaintenanceLogService {
   ): Promise<void> {
     const orphans = await this.repo.findNeedsRepairWithoutOpenLog({
       includeSandbox,
-    });
+    }, undefined, actor.tenantId);
     if (orphans.length === 0) return;
 
     for (const asset of orphans) {
@@ -81,10 +81,10 @@ export class MaintenanceLogService {
       if (asset.currentHolder) continue;
 
       await withTransaction(async (tx) => {
-        const stillOpen = await this.repo.countOpenByAssetId(asset.id, tx);
+        const stillOpen = await this.repo.countOpenByAssetId(asset.id, tx, actor.tenantId);
         if (stillOpen > 0) return;
 
-        const openBorrow = await this.borrowLogs.findActiveByAssetId(asset.id, tx);
+        const openBorrow = await this.borrowLogs.findActiveByAssetId(asset.id, tx, actor.tenantId);
         const openProject = await this.projectAssignments.findOpenByAssetId(
           asset.id,
           tx
@@ -94,6 +94,7 @@ export class MaintenanceLogService {
         const logCode = generateOperationalCode("MNT");
         await this.repo.create(
           {
+            tenantId: actor.tenantId,
             logCode,
             assetId: asset.id,
             assetCode: asset.assetCode,
@@ -141,9 +142,9 @@ export class MaintenanceLogService {
     }
   }
 
-  async getById(rawId: string): Promise<MaintenanceLogDTO> {
+  async getById(rawId: string, actor?: ActorContext): Promise<MaintenanceLogDTO> {
     const id = maintenanceIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!row) throw new NotFoundError("Maintenance log", id);
     return toDTO(row);
   }
@@ -218,6 +219,7 @@ export class MaintenanceLogService {
 
       const row = await this.repo.create(
         {
+          tenantId: actor.tenantId,
           logCode,
           assetId,
           assetCode: asset?.assetCode ?? input.assetCode,
@@ -250,7 +252,8 @@ export class MaintenanceLogService {
           await this.assets.update(
             asset.id,
             { status: "needs_repair", lastUpdated: new Date() },
-            tx
+            tx,
+            actor.tenantId
           );
         }
 
@@ -307,7 +310,7 @@ export class MaintenanceLogService {
     const input = resolveMaintenanceSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findById(id, tx);
+      const existing = await this.repo.findById(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Maintenance log", id);
       if (existing.isResolved) {
         throw new ConflictError("Maintenance log is already resolved.");
@@ -324,7 +327,8 @@ export class MaintenanceLogService {
           resolvedByName: input.technician?.trim() || actor.displayName,
           repairCost: input.repairCost ?? null,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Maintenance log", id);
 

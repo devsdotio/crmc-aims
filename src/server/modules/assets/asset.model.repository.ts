@@ -25,37 +25,56 @@ export class AssetModelRepository {
 
   async findById(
     id: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetModelRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assetModels.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assetModels.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select()
       .from(assetModels)
-      .where(eq(assetModels.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByModelCode(
     modelCode: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetModelRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assetModels.modelCode, modelCode)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assetModels.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select()
       .from(assetModels)
-      .where(eq(assetModels.modelCode, modelCode))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListAssetModelFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetModelRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
 
+    if (resolvedTenantId) {
+      conditions.push(eq(assetModels.tenantId, resolvedTenantId));
+    }
     if (filters.category?.trim()) {
       conditions.push(eq(assetModels.category, filters.category.trim()));
     }
@@ -82,12 +101,18 @@ export class AssetModelRepository {
     return base.where(and(...conditions));
   }
 
-  async countUnits(modelId: string, session?: DbSession): Promise<number> {
+  async countUnits(modelId: string, session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.modelId, modelId)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assets.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select({ value: count() })
       .from(assets)
-      .where(eq(assets.modelId, modelId));
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 
@@ -97,9 +122,10 @@ export class AssetModelRepository {
    */
   async maxUnitSequenceForPrefix(
     prefix: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
-    const used = await this.collectSequencesForPrefix(prefix, session);
+    const used = await this.collectSequencesForPrefix(prefix, session, tenantId);
     let max = 0;
     for (const n of used) {
       if (n > max) max = n;
@@ -160,7 +186,13 @@ export class AssetModelRepository {
     session?: DbSession
   ): Promise<AssetModelRow> {
     const db = this.db(session);
-    const [row] = await db.insert(assetModels).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const insertPayload = resolvedTenantId
+      ? { ...data, tenantId: resolvedTenantId }
+      : data;
+
+    const [row] = await db.insert(assetModels).values(insertPayload).returning();
     if (!row) throw new Error("Failed to create asset model.");
     return row;
   }
@@ -168,22 +200,35 @@ export class AssetModelRepository {
   async update(
     id: string,
     data: Partial<Omit<AssetModelRow, "id" | "createdAt">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetModelRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assetModels.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assetModels.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .update(assetModels)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(assetModels.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assetModels.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assetModels.tenantId, resolvedTenantId));
+    }
+
     const result = await db
       .delete(assetModels)
-      .where(eq(assetModels.id, id))
+      .where(and(...conditions))
       .returning({ id: assetModels.id });
     return result.length > 0;
   }
@@ -194,29 +239,34 @@ export class AssetModelRepository {
    */
   async countAvailableUnits(
     modelId: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(assets.modelId, modelId),
+      eq(assets.status, "active"),
+      sql`${assets.currentHolder} is null`,
+      sql`not exists (
+        select 1 from ${projectAssetAssignments}
+        where ${projectAssetAssignments.assetId} = ${assets.id}
+          and ${projectAssetAssignments.status} = 'assigned'
+      )`,
+      sql`not exists (
+        select 1 from ${borrowTransactions}
+        where ${borrowTransactions.assetId} = ${assets.id}
+          and ${borrowTransactions.status} = 'active'
+      )`
+    ];
+    if (resolvedTenantId) {
+      conditions.push(eq(assets.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select({ value: count() })
       .from(assets)
-      .where(
-        and(
-          eq(assets.modelId, modelId),
-          eq(assets.status, "active"),
-          sql`${assets.currentHolder} is null`,
-          sql`not exists (
-            select 1 from ${projectAssetAssignments}
-            where ${projectAssetAssignments.assetId} = ${assets.id}
-              and ${projectAssetAssignments.status} = 'assigned'
-          )`,
-          sql`not exists (
-            select 1 from ${borrowTransactions}
-            where ${borrowTransactions.assetId} = ${assets.id}
-              and ${borrowTransactions.status} = 'active'
-          )`
-        )
-      );
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 }

@@ -36,8 +36,8 @@ export class MaintenanceController {
 
   async get(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.getById(id));
+      const actor = await requireActor();
+      return ok(await this.service.getById(id, actor));
     } catch (error) {
       return handleError(error);
     }

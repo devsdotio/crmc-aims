@@ -71,7 +71,15 @@ export class SupplierRepository implements ISupplierRepository {
     session?: DbSession
   ): Promise<SupplierRow> {
     const db = this.db(session);
-    const [row] = await db.insert(suppliers).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(suppliers)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create supplier.");
     return row;
   }

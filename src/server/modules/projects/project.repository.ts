@@ -71,7 +71,15 @@ export class ProjectRepository implements IProjectRepository {
     session?: DbSession
   ): Promise<ProjectRow> {
     const db = this.db(session);
-    const [row] = await db.insert(projects).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(projects)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create project.");
     return row;
   }

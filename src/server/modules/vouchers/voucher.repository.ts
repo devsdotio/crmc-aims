@@ -16,32 +16,54 @@ export class VoucherRepository implements IVoucherRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<VoucherRow | null> {
+  async findById(
+    id: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<VoucherRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(vouchers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(vouchers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(vouchers)
-      .where(eq(vouchers.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
-  async findByCode(code: string, session?: DbSession): Promise<VoucherRow | null> {
+  async findByCode(
+    code: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<VoucherRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(vouchers.voucherCode, code)];
+    if (resolvedTenantId) conditions.push(eq(vouchers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(vouchers)
-      .where(eq(vouchers.voucherCode, code))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListVoucherFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<{ vouchers: VoucherRow[]; total: number }> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(vouchers.tenantId, resolvedTenantId));
+    }
 
     if (filters.type) {
       conditions.push(eq(vouchers.type, filters.type));
@@ -103,7 +125,15 @@ export class VoucherRepository implements IVoucherRepository {
     session?: DbSession
   ): Promise<VoucherRow> {
     const db = this.db(session);
-    const [row] = await db.insert(vouchers).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(vouchers)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create voucher.");
     return row;
   }
@@ -111,13 +141,18 @@ export class VoucherRepository implements IVoucherRepository {
   async update(
     id: string,
     data: Partial<Omit<VoucherRow, "id" | "createdAt">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<VoucherRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(vouchers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(vouchers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(vouchers)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(vouchers.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
@@ -159,9 +194,17 @@ export class VoucherRepository implements IVoucherRepository {
     return latestCode ?? rows[0]?.voucherCode ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(
+    id: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<boolean> {
     const db = this.db(session);
-    const result = await db.delete(vouchers).where(eq(vouchers.id, id)).returning();
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(vouchers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(vouchers.tenantId, resolvedTenantId));
+
+    const result = await db.delete(vouchers).where(and(...conditions)).returning();
     return result.length > 0;
   }
 }

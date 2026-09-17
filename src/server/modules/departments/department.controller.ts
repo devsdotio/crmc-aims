@@ -21,7 +21,7 @@ export class DepartmentController {
           url.searchParams.get("includeSandbox"),
           session.actor.role
         ),
-      });
+      }, session.actor.tenantId);
       return okWithEtag(request, data, {
         cacheControl: { maxAge: 60, staleWhileRevalidate: 300 },
       });
@@ -32,8 +32,8 @@ export class DepartmentController {
 
   async get(id: string) {
     try {
-      await requireUserManager();
-      return ok(await this.service.getById(id));
+      const session = await requireUserManager();
+      return ok(await this.service.getById(id, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -41,9 +41,9 @@ export class DepartmentController {
 
   async create(request: NextRequest | Request) {
     try {
-      await requireUserManager();
+      const session = await requireUserManager();
       const body = await request.json();
-      return created(await this.service.create(body));
+      return created(await this.service.create(body, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -51,9 +51,9 @@ export class DepartmentController {
 
   async update(request: NextRequest | Request, id: string) {
     try {
-      await requireUserManager();
+      const session = await requireUserManager();
       const body = await request.json();
-      return ok(await this.service.update(id, body));
+      return ok(await this.service.update(id, body, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -61,8 +61,8 @@ export class DepartmentController {
 
   async delete(id: string) {
     try {
-      await requireUserManager();
-      return ok(await this.service.delete(id));
+      const session = await requireUserManager();
+      return ok(await this.service.delete(id, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

@@ -31,22 +31,35 @@ export type ProjectAssetDamageReportDTO = {
 };
 
 export interface IProjectAssetAssignmentRepository {
-  findById(id: string): Promise<ProjectAssetAssignmentRow | null>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<ProjectAssetAssignmentRow | null>;
   listByProject(
     projectId: string,
-    status?: ProjectAssetAssignmentStatus
+    status?: ProjectAssetAssignmentStatus,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentRow[]>;
-  findOpenByAssetId(assetId: string): Promise<ProjectAssetAssignmentRow | null>;
+  findOpenByAssetId(
+    assetId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<ProjectAssetAssignmentRow | null>;
   create(
     data: Omit<
       import("@/server/db/schema").NewProjectAssetAssignmentRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<ProjectAssetAssignmentRow>;
   update(
     id: string,
     data: Partial<
       Omit<ProjectAssetAssignmentRow, "id" | "createdAt" | "projectId">
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentRow | null>;
 }

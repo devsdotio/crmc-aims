@@ -86,27 +86,27 @@ export class ProjectService {
     private readonly expenses = new ProjectExpenseRepository()
   ) {}
 
-  private async spentFor(projectId: string): Promise<string> {
-    const map = await this.expenses.sumAmountsByProjectIds([projectId]);
+  private async spentFor(projectId: string, actorTenantId?: string): Promise<string> {
+    const map = await this.expenses.sumAmountsByProjectIds([projectId], undefined, actorTenantId);
     return map.get(projectId) ?? ZERO;
   }
 
-  private async spentMap(projectIds: string[]): Promise<Map<string, string>> {
-    return this.expenses.sumAmountsByProjectIds(projectIds);
+  private async spentMap(projectIds: string[], actorTenantId?: string): Promise<Map<string, string>> {
+    return this.expenses.sumAmountsByProjectIds(projectIds, undefined, actorTenantId);
   }
 
-  async list(rawQuery: unknown): Promise<ProjectDTO[]> {
+  async list(rawQuery: unknown, actorTenantId?: string): Promise<ProjectDTO[]> {
     const filters = listProjectsQuerySchema.parse(rawQuery ?? {});
-    const rows = await this.repo.list(filters);
-    const spent = await this.spentMap(rows.map((r) => r.id));
+    const rows = await this.repo.list(filters, undefined, actorTenantId);
+    const spent = await this.spentMap(rows.map((r) => r.id), actorTenantId);
     return rows.map((row) => toDTO(row, spent.get(row.id) ?? ZERO));
   }
 
-  async getById(rawId: string): Promise<ProjectDTO> {
+  async getById(rawId: string, actorTenantId?: string): Promise<ProjectDTO> {
     const id = projectIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Project", id);
-    return toDTO(row, await this.spentFor(id));
+    return toDTO(row, await this.spentFor(id, actorTenantId));
   }
 
   async create(rawInput: unknown, actor: ActorContext): Promise<ProjectDTO> {
@@ -114,6 +114,7 @@ export class ProjectService {
     assertValidDateRange(input.startDate, input.endDate);
 
     const row = await this.repo.create({
+      tenantId: actor.tenantId,
       projectCode: generateOperationalCode("PRJ"),
       name: input.name,
       description: input.description ?? null,
@@ -131,11 +132,11 @@ export class ProjectService {
     return toDTO(row, ZERO);
   }
 
-  async update(rawId: string, rawInput: unknown): Promise<ProjectDTO> {
+  async update(rawId: string, rawInput: unknown, actorTenantId?: string): Promise<ProjectDTO> {
     const id = projectIdSchema.parse(rawId);
     const input = updateProjectSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actorTenantId);
     if (!existing) throw new NotFoundError("Project", id);
     assertMutable(existing);
 
@@ -159,15 +160,15 @@ export class ProjectService {
       ...(input.endDate !== undefined ? { endDate: input.endDate } : {}),
       ...(input.budget !== undefined ? { budget: input.budget } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
-    });
+    }, undefined, actorTenantId);
 
     if (!updated) throw new NotFoundError("Project", id);
-    return toDTO(updated, await this.spentFor(id));
+    return toDTO(updated, await this.spentFor(id, actorTenantId));
   }
 
-  async delete(rawId: string): Promise<void> {
+  async delete(rawId: string, actorTenantId?: string): Promise<void> {
     const id = projectIdSchema.parse(rawId);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actorTenantId);
     if (!existing) throw new NotFoundError("Project", id);
     assertMutable(existing);
 
@@ -177,7 +178,7 @@ export class ProjectService {
       );
     }
 
-    const deleted = await this.repo.delete(id);
+    const deleted = await this.repo.delete(id, undefined, actorTenantId);
     if (!deleted) throw new NotFoundError("Project", id);
   }
 }

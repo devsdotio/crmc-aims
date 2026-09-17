@@ -267,7 +267,15 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
     session?: DbSession
   ): Promise<PurchaseLotRow> {
     const db = this.db(session);
-    const [row] = await db.insert(purchaseLots).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(purchaseLots)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create purchase lot.");
     return row;
   }

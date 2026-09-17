@@ -279,7 +279,15 @@ export class AssetRepository implements IAssetRepository {
     session?: DbSession
   ): Promise<AssetRow> {
     const db = this.db(session);
-    const [row] = await db.insert(assets).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(assets)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
 
     if (!row) {
       throw new Error("Failed to create asset: no row returned from insert.");

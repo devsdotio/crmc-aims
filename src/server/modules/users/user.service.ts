@@ -175,7 +175,8 @@ export class UserService {
   private async resolveDepartmentForAccount(
     role: AppRole,
     departmentId: string | null | undefined,
-    currentUserId?: string
+    currentUserId?: string,
+    targetTenantId?: string
   ): Promise<{ departmentId: string | null; departmentName: string | null }> {
     if (role !== "borrower") {
       return { departmentId: null, departmentName: null };
@@ -187,13 +188,13 @@ export class UserService {
       );
     }
 
-    const department = await this.departmentRepository.findById(departmentId);
+    const department = await this.departmentRepository.findById(departmentId, undefined, targetTenantId);
     if (!department) {
       throw new NotFoundError("Department", departmentId);
     }
 
     const existingAccount =
-      await this.profileRepository.findBorrowerByDepartmentId(department.id);
+      await this.profileRepository.findBorrowerByDepartmentId(department.id, targetTenantId);
     if (existingAccount && existingAccount.userId !== currentUserId) {
       throw new ConflictError(
         `${department.name} already has a department account (${existingAccount.email}).`
@@ -294,9 +295,18 @@ export class UserService {
 
     const admin = createAdminClient();
 
+    const targetTenantId =
+      input.role === "superadmin"
+        ? undefined
+        : actor.role === "superadmin" && input.tenantId
+        ? input.tenantId
+        : actor.tenantId ?? undefined;
+
     const link = await this.resolveDepartmentForAccount(
       input.role,
-      input.departmentId
+      input.departmentId,
+      undefined,
+      targetTenantId
     );
     const fullName = input.name.trim() || link.departmentName || input.email;
 
@@ -399,7 +409,8 @@ export class UserService {
     const link = await this.resolveDepartmentForAccount(
       nextRole,
       nextDepartmentId,
-      userId
+      userId,
+      existing.tenantId ?? actor.tenantId ?? undefined
     );
 
     const hasProfileFields =

@@ -23,7 +23,10 @@ import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
 import { formatPhp } from "@/components/projects/format-money";
 
-export function invalidateDashboardCache(): void {
+export function invalidateDashboardCache(tenantId?: string): void {
+  if (tenantId) {
+    serverCache.invalidateTag(`tenant:${tenantId}:dashboard`);
+  }
   serverCache.invalidateTag("dashboard");
 }
 
@@ -177,12 +180,12 @@ export class DashboardService {
     private readonly departments = new DepartmentRepository()
   ) {}
 
-  private async resolveBorrowerDeptContext(userId: string): Promise<{
+  private async resolveBorrowerDeptContext(userId: string, actorTenantId?: string): Promise<{
     departmentId: string | null;
     includeSandbox: boolean;
   }> {
     const db = getDb();
-    const resolvedTenantId = getTenantContext()?.tenantId;
+    const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
     const conditions = [eq(profiles.userId, userId)];
     if (resolvedTenantId) conditions.push(eq(profiles.tenantId, resolvedTenantId));
 
@@ -195,7 +198,7 @@ export class DashboardService {
     if (!departmentId) {
       return { departmentId: null, includeSandbox: false };
     }
-    const dept = await this.departments.findById(departmentId);
+    const dept = await this.departments.findById(departmentId, undefined, resolvedTenantId);
     return {
       departmentId,
       includeSandbox: Boolean(dept?.isSandbox),
@@ -254,20 +257,23 @@ export class DashboardService {
    * Sidebar badges only — cheap COUNT queries, no full list payload.
    * Layout used to call getSnapshot() on every private page and exhaust the DB pool.
    */
-  async getSidebarSummary(userId?: string): Promise<DashboardSummaryDTO> {
-    const cacheKey = userId ? `dashboard:sidebar:${userId}` : "dashboard:sidebar:all";
+  async getSidebarSummary(userId?: string, actorTenantId?: string): Promise<DashboardSummaryDTO> {
+    const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
+    const cacheKey = userId
+      ? `tenant:${tenantId}:dashboard:sidebar:${userId}`
+      : `tenant:${tenantId}:dashboard:sidebar:all`;
     return serverCache.wrap(
       cacheKey,
       30_000,
       async () => {
         if (userId) {
           const { departmentId, includeSandbox } =
-            await this.resolveBorrowerDeptContext(userId);
+            await this.resolveBorrowerDeptContext(userId, tenantId);
 
           const [activeBorrows, pendingApprovals, overdueAssets] = await Promise.all([
             departmentId
               ? this.borrowLog
-                  .countDepartmentHeld(departmentId, { includeSandbox })
+                  .countDepartmentHeld(departmentId, { includeSandbox, tenantId })
                   .catch((err) => {
                     console.error(
                       "[dashboard] failed to count department held assets for borrower:",
@@ -277,11 +283,11 @@ export class DashboardService {
                   })
               : Promise.resolve(0),
             Promise.all([
-              this.requests.countPending(undefined, userId).catch((err) => {
+              this.requests.countPending(undefined, userId, tenantId).catch((err) => {
                 console.error("[dashboard] failed to count pending requests for borrower:", err);
                 return 0;
               }),
-              this.consumableRequests.countPending(undefined, userId).catch((err) => {
+              this.consumableRequests.countPending(undefined, userId, tenantId).catch((err) => {
                 console.error("[dashboard] failed to count pending supply requests for borrower:", err);
                 return 0;
               }),
@@ -291,6 +297,7 @@ export class DashboardService {
                   .countDepartmentHeld(departmentId, {
                     includeSandbox,
                     overdueOnly: true,
+                    tenantId,
                   })
                   .catch((err) => {
                     console.error(
@@ -317,29 +324,29 @@ export class DashboardService {
           lowStockItems,
           overdueAssets,
         ] = await Promise.all([
-          this.borrowLog.countActive().catch((err) => {
+          this.borrowLog.countActive(undefined, undefined, "borrow", tenantId).catch((err) => {
             console.error("[dashboard] failed to count active borrows:", err);
             return 0;
           }),
-          this.assets.countAssigned().catch((err) => {
+          this.assets.countAssigned(undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to count active assignments:", err);
             return 0;
           }),
           Promise.all([
-            this.requests.countPending().catch((err) => {
+            this.requests.countPending(undefined, undefined, tenantId).catch((err) => {
               console.error("[dashboard] failed to count pending requests:", err);
               return 0;
             }),
-            this.consumableRequests.countPending().catch((err) => {
+            this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err) => {
               console.error("[dashboard] failed to count pending supply requests:", err);
               return 0;
             }),
           ]).then(([a, b]) => a + b),
-          this.consumables.countLowStock().catch((err) => {
+          this.consumables.countLowStock(undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to count low stock consumables:", err);
             return 0;
           }),
-          this.borrowLog.countOverdue().catch((err) => {
+          this.borrowLog.countOverdue(undefined, undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to count overdue assets:", err);
             return 0;
           }),
@@ -353,11 +360,11 @@ export class DashboardService {
           overdueAssets,
         };
       },
-      ["dashboard", "dashboard:sidebar"]
+      ["dashboard", "dashboard:sidebar", `tenant:${tenantId}:dashboard`]
     );
   }
 
-  async getBorrowerSnapshot(userId: string, limit = 5): Promise<DashboardSnapshotDTO> {
+  async getBorrowerSnapshot(userId: string, limit = 5, actorTenantId?: string): Promise<DashboardSnapshotDTO> {
     const isRealUuid = Boolean(
       userId &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -365,14 +372,15 @@ export class DashboardService {
         )
     );
     const targetUserId = isRealUuid ? userId.trim() : undefined;
-    const cacheKey = `dashboard:snapshot:borrower:${targetUserId ?? "anon"}:${limit}`;
+    const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
+    const cacheKey = `tenant:${tenantId}:dashboard:snapshot:borrower:${targetUserId ?? "anon"}:${limit}`;
 
     return serverCache.wrap(
       cacheKey,
       30_000,
       async () => {
         const { departmentId, includeSandbox } = targetUserId
-          ? await this.resolveBorrowerDeptContext(targetUserId)
+          ? await this.resolveBorrowerDeptContext(targetUserId, tenantId)
           : { departmentId: null, includeSandbox: false };
 
         const [
@@ -386,7 +394,7 @@ export class DashboardService {
         ] = await Promise.all([
           departmentId
             ? this.borrowLog
-                .countDepartmentHeld(departmentId, { includeSandbox })
+                .countDepartmentHeld(departmentId, { includeSandbox, tenantId })
                 .catch((err) => {
                   console.error(
                     "[dashboard] failed to count borrower department held assets:",
@@ -396,11 +404,11 @@ export class DashboardService {
                 })
             : Promise.resolve(0),
           Promise.all([
-            this.requests.countPending(undefined, targetUserId).catch((err) => {
+            this.requests.countPending(undefined, targetUserId, tenantId).catch((err) => {
               console.error("[dashboard] failed to count borrower pending requests:", err);
               return 0;
             }),
-            this.consumableRequests.countPending(undefined, targetUserId).catch((err) => {
+            this.consumableRequests.countPending(undefined, targetUserId, tenantId).catch((err) => {
               console.error("[dashboard] failed to count borrower pending supply requests:", err);
               return 0;
             }),
@@ -410,6 +418,7 @@ export class DashboardService {
                 .countDepartmentHeld(departmentId, {
                   includeSandbox,
                   overdueOnly: true,
+                  tenantId,
                 })
                 .catch((err) => {
                   console.error(
@@ -420,16 +429,16 @@ export class DashboardService {
                 })
             : Promise.resolve(0),
           Promise.all([
-            this.requests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
+            this.requests.count(targetUserId ? { requesterUserId: targetUserId } : {}, undefined, tenantId).catch((err) => {
               console.error("[dashboard] failed to count total borrow requests for requester:", err);
               return 0;
             }),
-            this.consumableRequests.count(targetUserId ? { requesterUserId: targetUserId } : {}).catch((err) => {
+            this.consumableRequests.count(targetUserId ? { requesterUserId: targetUserId } : {}, undefined, tenantId).catch((err) => {
               console.error("[dashboard] failed to count total supply requests for requester:", err);
               return 0;
             }),
           ]).then(([a, b]) => a + b),
-          this.requests.list({ status: "pending", ...(targetUserId ? { requesterUserId: targetUserId } : {}), limit }).catch((err) => {
+          this.requests.list({ status: "pending", ...(targetUserId ? { requesterUserId: targetUserId } : {}), limit }, undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to list borrower pending requests:", err);
             return [];
           }),
@@ -437,7 +446,7 @@ export class DashboardService {
             status: "pending",
             ...(targetUserId ? { requesterUserId: targetUserId } : {}),
             limit,
-          }).catch((err) => {
+          }, undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to list borrower pending supply requests:", err);
             return [];
           }),
@@ -449,7 +458,7 @@ export class DashboardService {
                   excludeProjects: true,
                   custodyKind: "all",
                   includeSandbox,
-                })
+                }, undefined, tenantId)
                 .catch((err) => {
                   console.error(
                     "[dashboard] failed to list borrower department overdue rows:",
@@ -491,13 +500,14 @@ export class DashboardService {
           recentActivity: [],
         };
       },
-      ["dashboard", "dashboard:snapshot"]
+      ["dashboard", "dashboard:snapshot", `tenant:${tenantId}:dashboard`]
     );
   }
 
-  async getSnapshot(limit = 5): Promise<DashboardSnapshotDTO> {
+  async getSnapshot(limit = 5, actorTenantId?: string): Promise<DashboardSnapshotDTO> {
+    const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
     return serverCache.wrap(
-      `dashboard:snapshot:${limit}`,
+      `tenant:${tenantId}:dashboard:snapshot:${limit}`,
       30_000,
       async () => {
         const [
@@ -515,61 +525,61 @@ export class DashboardService {
           categoryDistribution,
           recentLifecycle,
         ] = await Promise.all([
-          this.borrowLog.countActive().catch((err: unknown) => {
+          this.borrowLog.countActive(undefined, undefined, "borrow", tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count active borrows:", err);
             return 0;
           }),
-          this.assets.countAssigned().catch((err: unknown) => {
+          this.assets.countAssigned(undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count active assignments:", err);
             return 0;
           }),
           Promise.all([
-            this.requests.countPending().catch((err: unknown) => {
+            this.requests.countPending(undefined, undefined, tenantId).catch((err: unknown) => {
               console.error("[dashboard] failed to count pending requests:", err);
               return 0;
             }),
-            this.consumableRequests.countPending().catch((err: unknown) => {
+            this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err: unknown) => {
               console.error("[dashboard] failed to count pending supply requests:", err);
               return 0;
             }),
           ]).then(([a, b]) => a + b),
-          this.consumables.countLowStock().catch((err: unknown) => {
+          this.consumables.countLowStock(undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count low stock items:", err);
             return 0;
           }),
-          this.borrowLog.countOverdue().catch((err: unknown) => {
+          this.borrowLog.countOverdue(undefined, undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count overdue assets:", err);
             return 0;
           }),
-          this.assets.countByType("assignable").catch((err: unknown) => {
+          this.assets.countByType("assignable", undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count total assignable assets:", err);
             return 0;
           }),
-          this.assets.countByType("borrowable").catch((err: unknown) => {
+          this.assets.countByType("borrowable", undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count total borrowable assets:", err);
             return 0;
           }),
-          this.requests.list({ status: "pending", limit }).catch((err: unknown) => {
+          this.requests.list({ status: "pending", limit }, undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to list pending requests:", err);
             return [];
           }),
-          this.consumableRequests.list({ status: "pending", limit }).catch((err: unknown) => {
+          this.consumableRequests.list({ status: "pending", limit }, undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to list pending supply requests:", err);
             return [];
           }),
-          this.borrowLog.list({ status: "overdue" }).catch((err: unknown) => {
+          this.borrowLog.list({ status: "overdue" }, undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to list overdue assets:", err);
             return [];
           }),
-          this.consumables.getLowStockItems(limit).catch((err: unknown) => {
+          this.consumables.getLowStockItems(limit, undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to get low stock items:", err);
             return [];
           }),
-          this.getCombinedCategoryDistribution(limit, "all").catch((err: unknown) => {
+          this.getCombinedCategoryDistribution(limit, "all", tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to get category distribution:", err);
             return [];
           }),
-          this.listRecentLifecycle(limit).catch((err: unknown) => {
+          this.listRecentLifecycle(limit, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to list recent lifecycle:", err);
             return [];
           }),
@@ -588,7 +598,7 @@ export class DashboardService {
           totalStock: totalAssignable + totalBorrowable,
           overdueAssets,
           lowStock: lowStockItems,
-        }).catch(() => undefined);
+        }, 30, tenantId).catch(() => undefined);
 
         return {
           summary: {
@@ -623,15 +633,16 @@ export class DashboardService {
           recentActivity: recentLifecycle,
         };
       },
-      ["dashboard", "snapshot"]
+      ["dashboard", "snapshot", `tenant:${tenantId}:dashboard`]
     );
   }
 
   private async listRecentLifecycle(
-    limit: number
+    limit: number,
+    actorTenantId?: string
   ): Promise<DashboardActivityEntry[]> {
     const db = getDb();
-    const resolvedTenantId = getTenantContext()?.tenantId;
+    const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
     if (resolvedTenantId) conditions.push(eq(assetLifecycleEvents.tenantId, resolvedTenantId));
 
@@ -680,11 +691,12 @@ export class DashboardService {
    */
   async getNotifications(
     userId?: string,
-    limit = 8
+    limit = 8,
+    actorTenantId?: string
   ): Promise<DashboardNotificationItem[]> {
     const snapshot = userId
-      ? await this.getBorrowerSnapshot(userId, limit)
-      : await this.getSnapshot(limit);
+      ? await this.getBorrowerSnapshot(userId, limit, actorTenantId)
+      : await this.getSnapshot(limit, actorTenantId);
 
     const items: DashboardNotificationItem[] = [];
 
@@ -747,10 +759,10 @@ export class DashboardService {
     totalStock: number;
     overdueAssets: number;
     lowStock: number;
-  }): Promise<void> {
+  }, actorTenantId?: string): Promise<void> {
     try {
       const db = getDb();
-      const resolvedTenantId = getTenantContext()?.tenantId;
+      const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
       if (!resolvedTenantId) return; // Skip daily snapshot if no tenant context
       
       const today = new Date().toISOString().slice(0, 10);
@@ -793,7 +805,8 @@ export class DashboardService {
       overdueAssets: number;
       lowStock: number;
     },
-    lookbackDays = 30
+    lookbackDays = 30,
+    actorTenantId?: string
   ): Promise<{
     activeOps?: StatDeltaDTO;
     totalStock?: StatDeltaDTO;
@@ -802,7 +815,7 @@ export class DashboardService {
   }> {
     try {
       const db = getDb();
-      const resolvedTenantId = getTenantContext()?.tenantId;
+      const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
       const today = new Date().toISOString().slice(0, 10);
       const targetDate = new Date(Date.now() - lookbackDays * 86400000)
         .toISOString()
@@ -902,9 +915,11 @@ export class DashboardService {
    */
   async getCombinedCategoryDistribution(
     limit = 10,
-    source: "all" | "assets" | "consumables" = "all"
+    source: "all" | "assets" | "consumables" = "all",
+    actorTenantId?: string
   ): Promise<DashboardCategoryCount[]> {
-    const cacheKey = `dashboard:top-categories:${source}:${limit}`;
+    const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
+    const cacheKey = `tenant:${tenantId}:dashboard:top-categories:${source}:${limit}`;
     return serverCache.wrap(
       cacheKey,
       60_000,
@@ -912,10 +927,10 @@ export class DashboardService {
         const [assetCats, consumableCats] = await Promise.all([
           source === "consumables"
             ? Promise.resolve([])
-            : this.assets.getCategoryDistribution().catch(() => []),
+            : this.assets.getCategoryDistribution(undefined, tenantId).catch(() => []),
           source === "assets"
             ? Promise.resolve([])
-            : this.consumables.getCategoryDistribution().catch(() => []),
+            : this.consumables.getCategoryDistribution(undefined, tenantId).catch(() => []),
         ]);
 
         const categoryMap = new Map<string, { assetUnits: number; consumableUnits: number }>();
@@ -949,7 +964,7 @@ export class DashboardService {
           .sort((a, b) => b.count - a.count)
           .slice(0, limit);
       },
-      ["dashboard", "dashboard:top-categories"]
+      ["dashboard", "dashboard:top-categories", `tenant:${tenantId}:dashboard`]
     );
   }
 
@@ -960,18 +975,24 @@ export class DashboardService {
     limit?: number;
     search?: string;
     tag?: string;
-  }): Promise<DashboardAssetRowDTO[]> {
+    tenantId?: string;
+  }, actorTenantId?: string): Promise<DashboardAssetRowDTO[]> {
     const limit = params?.limit ?? 5;
     const search = params?.search?.trim() ?? "";
     const tag = params?.tag ?? "all";
-    const cacheKey = `dashboard:assets:${limit}:${tag}:${search}`;
+    const tenantId = params?.tenantId ?? actorTenantId ?? getTenantContext()?.tenantId ?? "global";
+    const cacheKey = `tenant:${tenantId}:dashboard:assets:${limit}:${tag}:${search}`;
 
     return serverCache.wrap(
       cacheKey,
       30_000,
       async () => {
         const db = getDb();
+        const resolvedTenantId = params?.tenantId ?? actorTenantId ?? getTenantContext()?.tenantId;
         const conditions = [eq(assets.isSandbox, false)];
+        if (resolvedTenantId) {
+          conditions.push(eq(assets.tenantId, resolvedTenantId));
+        }
 
         if (params?.tag === "assignable") {
           conditions.push(eq(assets.assignmentType, "assignable"));
@@ -1016,6 +1037,14 @@ export class DashboardService {
           .limit(limit);
 
         // Fetch active borrow transactions for these assets
+        const activeBorrowConditions = [
+          eq(borrowTransactions.status, "active"),
+          isNull(borrowTransactions.returnedAt),
+        ];
+        if (resolvedTenantId) {
+          activeBorrowConditions.push(eq(borrowTransactions.tenantId, resolvedTenantId));
+        }
+
         const activeBorrows = await db
           .select({
             assetId: borrowTransactions.assetId,
@@ -1024,7 +1053,7 @@ export class DashboardService {
             releasedAt: borrowTransactions.releasedAt,
           })
           .from(borrowTransactions)
-          .where(and(eq(borrowTransactions.status, "active"), isNull(borrowTransactions.returnedAt)));
+          .where(and(...activeBorrowConditions));
 
         const activeBorrowMap = new Map<string, (typeof activeBorrows)[0]>();
         for (const b of activeBorrows) {
@@ -1097,7 +1126,7 @@ export class DashboardService {
           };
         });
       },
-      ["dashboard", "dashboard:assets"]
+      ["dashboard", "dashboard:assets", `tenant:${tenantId}:dashboard`]
     );
   }
 
@@ -1108,7 +1137,8 @@ export class DashboardService {
     paramsOrTimeframe:
       | { timeframe?: "weekly" | "monthly" | "yearly"; category?: string }
       | ("weekly" | "monthly" | "yearly") = "monthly",
-    categoryArg = "all"
+    categoryArg = "all",
+    actorTenantId?: string
   ): Promise<StockVolumeResponseDTO> {
     const timeframe =
       typeof paramsOrTimeframe === "object"
@@ -1119,12 +1149,14 @@ export class DashboardService {
         ? (paramsOrTimeframe.category ?? "all")
         : categoryArg;
 
-    const cacheKey = `dashboard:stock-volume:${timeframe}:${category}`;
+    const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
+    const cacheKey = `tenant:${tenantId}:dashboard:stock-volume:${timeframe}:${category}`;
     return serverCache.wrap(
       cacheKey,
       60_000,
       async () => {
         const db = getDb();
+        const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
         const now = new Date();
 
         // 1. Generate empty-filled buckets
@@ -1168,6 +1200,18 @@ export class DashboardService {
         const rangeEnd = buckets[buckets.length - 1].bucketEnd;
         const filterByCategory = category && category !== "all";
 
+        const inflowConditions = [
+          eq(purchaseLots.itemType, "consumable"),
+          gte(purchaseLots.createdAt, rangeStart),
+          lte(purchaseLots.createdAt, rangeEnd),
+        ];
+        if (resolvedTenantId) {
+          inflowConditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+        }
+        if (filterByCategory) {
+          inflowConditions.push(sql`LOWER(${consumables.category}) = LOWER(${category})`);
+        }
+
         // 2. Inflow — consumable purchase_lots restocked quantity
         const inflowRows = await db
           .select({
@@ -1177,16 +1221,19 @@ export class DashboardService {
           })
           .from(purchaseLots)
           .innerJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
-          .where(
-            and(
-              eq(purchaseLots.itemType, "consumable"),
-              gte(purchaseLots.createdAt, rangeStart),
-              lte(purchaseLots.createdAt, rangeEnd),
-              filterByCategory
-                ? sql`LOWER(${consumables.category}) = LOWER(${category})`
-                : undefined
-            )
-          );
+          .where(and(...inflowConditions));
+
+        const outflowConditions = [
+          eq(consumableRequests.status, "released"),
+          gte(consumableRequests.releasedAt, rangeStart),
+          lte(consumableRequests.releasedAt, rangeEnd),
+        ];
+        if (resolvedTenantId) {
+          outflowConditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+        }
+        if (filterByCategory) {
+          outflowConditions.push(sql`LOWER(${consumableRequestLines.category}) = LOWER(${category})`);
+        }
 
         // 3. Outflow — released consumable request lines only
         const consumableOutflow = await db
@@ -1200,16 +1247,7 @@ export class DashboardService {
             consumableRequests,
             eq(consumableRequestLines.requestId, consumableRequests.id)
           )
-          .where(
-            and(
-              eq(consumableRequests.status, "released"),
-              gte(consumableRequests.releasedAt, rangeStart),
-              lte(consumableRequests.releasedAt, rangeEnd),
-              filterByCategory
-                ? sql`LOWER(${consumableRequestLines.category}) = LOWER(${category})`
-                : undefined
-            )
-          );
+          .where(and(...outflowConditions));
 
         // 4. Zero-fill bucket aggregation
         const points: StockVolumePointDTO[] = buckets.map((b) => {
@@ -1248,7 +1286,7 @@ export class DashboardService {
           points,
         };
       },
-      ["dashboard", "dashboard:stock-volume"]
+      ["dashboard", "dashboard:stock-volume", `tenant:${tenantId}:dashboard`]
     );
   }
 }
