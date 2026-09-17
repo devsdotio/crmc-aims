@@ -38,6 +38,8 @@ function toDTO(row: VoucherRow): VoucherDTO {
     purpose: row.purpose ?? "",
     particulars: row.particulars,
     checkNumber: row.checkNumber ?? null,
+    departmentId: row.departmentId ?? null,
+    departmentName: row.departmentName ?? null,
     isLegacy: row.isLegacy,
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
@@ -151,6 +153,8 @@ export class VoucherService {
       purpose: input.purpose ?? "",
       particulars: input.particulars ?? "",
       checkNumber: emptyToNull(input.checkNumber),
+      departmentId: emptyToNull(input.departmentId),
+      departmentName: emptyToNull(input.departmentName),
       isLegacy: input.isLegacy ?? false,
       createdByUserId: actor.userId,
       createdByName: actor.displayName,
@@ -221,6 +225,12 @@ export class VoucherService {
       ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
       ...(input.particulars !== undefined ? { particulars: input.particulars } : {}),
       ...(input.checkNumber !== undefined ? { checkNumber: emptyToNull(input.checkNumber) } : {}),
+      ...(input.departmentId !== undefined
+        ? { departmentId: emptyToNull(input.departmentId) }
+        : {}),
+      ...(input.departmentName !== undefined
+        ? { departmentName: emptyToNull(input.departmentName) }
+        : {}),
     }, undefined, actor?.tenantId);
 
     if (!updated) throw new NotFoundError("Voucher", id);

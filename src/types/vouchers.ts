@@ -24,6 +24,8 @@ export interface Voucher {
   purpose: string;
   particulars: string;
   checkNumber: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
   isLegacy: boolean;
   createdByUserId: string;
   createdByName: string;

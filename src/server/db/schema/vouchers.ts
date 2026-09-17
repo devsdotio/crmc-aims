@@ -14,6 +14,7 @@ import {
 import { tenants } from "./tenants";
 
 import { assets } from "./assets";
+import { departments } from "./departments";
 import { suppliers } from "./suppliers";
 
 /**
@@ -92,6 +93,12 @@ export const vouchers = pgTable(
     /** Payment or accounting reference (e.g. check no., bank reference, or OR no.) */
     checkNumber: text("check_number"),
 
+    /** Optional requesting / charging department */
+    departmentId: uuid("department_id").references(() => departments.id, {
+      onDelete: "set null",
+    }),
+    departmentName: text("department_name"),
+
     /** Toggle for legacy unlinked vouchers */
     isLegacy: boolean("is_legacy").notNull().default(false),
 
@@ -122,6 +129,7 @@ export const vouchers = pgTable(
     index("vouchers_asset_id_idx").on(table.assetId),
     index("vouchers_po_number_idx").on(table.purchaseOrderNumber),
     index("vouchers_date_idx").on(table.voucherDate),
+    index("vouchers_department_id_idx").on(table.departmentId),
   ]
 );
 

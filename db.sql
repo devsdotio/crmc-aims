@@ -498,6 +498,8 @@ CREATE TABLE public.vouchers (
   particulars text NOT NULL DEFAULT ''::text,
   check_number text,
   payment_method text,
+  department_id uuid,
+  department_name text,
   is_legacy boolean NOT NULL DEFAULT false,
   created_by_user_id uuid NOT NULL,
   created_by_name text NOT NULL,
@@ -514,7 +516,8 @@ CREATE TABLE public.vouchers (
   CONSTRAINT vouchers_pkey PRIMARY KEY (id),
   CONSTRAINT vouchers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id),
   CONSTRAINT vouchers_supplier_id_suppliers_id_fk FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT vouchers_asset_id_assets_id_fk FOREIGN KEY (asset_id) REFERENCES public.assets(id)
+  CONSTRAINT vouchers_asset_id_assets_id_fk FOREIGN KEY (asset_id) REFERENCES public.assets(id),
+  CONSTRAINT vouchers_department_id_departments_id_fk FOREIGN KEY (department_id) REFERENCES public.departments(id)
 );
 CREATE TABLE public.petty_cash_vouchers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),

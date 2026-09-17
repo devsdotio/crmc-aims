@@ -33,6 +33,7 @@ import {
 } from "@/features/vouchers/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
 import { useSuppliersQuery } from "@/features/suppliers/client/use-suppliers";
+import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
 import { groupLotsByPO, type GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { formatPhp } from "@/components/projects/format-money";
 import type { VoucherType } from "@/types/vouchers";
@@ -71,6 +72,7 @@ export function CreateVoucherDialog({
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
+  const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [purpose, setPurpose] = useState("");
   const [listItems, setListItems] = useState<ParticularLineItem[]>([
     { description: "", amount: "" },
@@ -84,6 +86,7 @@ export function CreateVoucherDialog({
   // Queries
   const { data: lots = [] } = usePurchaseLotsQuery({ enabled: isOpen });
   const { data: suppliers = [] } = useSuppliersQuery({ enabled: isOpen, activeOnly: true });
+  const { data: departments = [] } = useDepartmentsQuery();
   const {
     data: nextCodeData,
     isLoading: isLoadingNextCode,
@@ -119,6 +122,7 @@ export function CreateVoucherDialog({
       setSupplierId(null);
       setSupplierName("");
       setPurchaseOrderNumber("");
+      setDepartmentId(null);
       setPurpose("");
       setListItems([{ description: "", amount: "" }]);
       setCheckNumber("");
@@ -276,6 +280,7 @@ export function CreateVoucherDialog({
     }
 
     const finalParticulars = serializeParticulars(listItems);
+    const selectedDept = departments.find((d) => d.id === departmentId);
 
     try {
       const createdVoucher = await createMutation.mutateAsync({
@@ -288,6 +293,8 @@ export function CreateVoucherDialog({
         supplierId: supplierId || null,
         supplierName: supplierName.trim() || null,
         purchaseOrderNumber: purchaseOrderNumber.trim() || null,
+        departmentId: departmentId || null,
+        departmentName: selectedDept?.name || null,
         purpose: purpose.trim(),
         particulars: finalParticulars,
         checkNumber: checkNumber.trim() || null,
@@ -588,6 +595,28 @@ export function CreateVoucherDialog({
                         className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm font-mono text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
                       />
                     </div>
+                  </div>
+
+                  {/* Requesting Department */}
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-text mb-1.5">
+                      Requesting Department
+                    </label>
+                    <select
+                      value={departmentId || ""}
+                      onChange={(e) => setDepartmentId(e.target.value || null)}
+                      className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+                    >
+                      <option value="">None / General Custodian Fund</option>
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.code})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-text-secondary">
+                      Department or office this disbursement is charged / requested for.
+                    </p>
                   </div>
 
                   {/* Purpose (paragraph) + Particulars (itemized with costs) */}
