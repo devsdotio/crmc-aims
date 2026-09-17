@@ -1,17 +1,42 @@
 ---
 alwaysApply: true
+description: Load project memory from Obsidian (developer-io) via MCP by default
 ---
-# Obsidian vault (developer-io)
+# Obsidian vault (developer-io) — default workflow
 
-Persistent project memory lives in the Obsidian vault folder in this workspace:
+Persistent project memory lives in the Obsidian vault **developer-io**.
+Prefer the **Obsidian MCP** (`user-obsidian`) over reading vault files from disk.
 
-`C:/Users/CLIET/.antigravity-ide/developer-io` (workspace root name: **developer-io (Obsidian)**)
+Keep Obsidian open with this vault; Local REST API must be running.
 
-## Cold start (mandatory)
+## Transport (already configured)
 
-1. Read **only** `Projects/CRMC-Aims/_Card.md` (or `Projects/CourtSync/_Card.md` for that project).
-2. Open `Meta/Context-Loading-Protocol.md` and name any **additional** notes for this task **before** reading them.
-3. Feature-scoped work → add **one** `Projects/<P>/Features/<slug>.md` — do **not** load full Architecture, Tasks, Sessions, or Components/Index unless the protocol says so.
+Cursor connects to the plugin MCP at `https://127.0.0.1:27124/mcp/` (via `mcp-remote` in `~/.cursor/mcp.json`).
+
+## Cold start (mandatory — every session)
+
+Use Obsidian MCP tools, not the filesystem:
+
+1. `vault_read` **only** `Projects/CRMC-Aims/_Card.md` (or `Projects/CourtSync/_Card.md`).
+2. `vault_read` `Meta/Context-Loading-Protocol.md`, then **name** any additional notes for this task **before** reading them.
+3. Feature-scoped work → `vault_read` **one** `Projects/<P>/Features/<slug>.md` — do **not** load full Architecture, Tasks, Sessions, or Components/Index unless the protocol says so.
+
+Confirm ready after those reads.
+
+## During the session
+
+| Need | MCP tool |
+|------|----------|
+| Read a note | `vault_read` |
+| List a folder | `vault_list` |
+| Find notes | `search_simple` / `search_query` |
+| Edit a heading / frontmatter | `vault_patch` |
+| Append to a note | `vault_append` |
+| Create / overwrite a note | `vault_write` |
+| Open note in Obsidian UI | `open_file` |
+| Tags | `tag_list` |
+
+Use vault-relative paths with extension, e.g. `Projects/CRMC-Aims/Features/borrow-requests.md`.
 
 ## Do not
 
@@ -19,18 +44,24 @@ Persistent project memory lives in the Obsidian vault folder in this workspace:
 - Follow the old five-file bootstrap (Overview + Architecture + Conventions + Tasks + Sessions)
 - Load `agents/*.examples.md` unless explicitly asked
 - Use bare wikilinks like `[[Architecture]]` — use full paths under `Projects/CRMC-Aims/…`
+- Bypass MCP to dump large vault trees into context
 
 ## Session end
 
-From vault root:
+1. Update `_Card.md` last-session / sprint via `vault_patch` (or `vault_write` section) if it moved.
+2. From vault root (shell is fine for scripts):
 
 ```bash
 node Meta/scripts/vault-track.mjs session --project crmc-aims --write
 node Meta/scripts/vault-track.mjs stale --project crmc-aims
 ```
 
-Update `_Card.md` last-session / sprint line if it moved. Changelog only for pushed commits.
+Changelog only for pushed commits.
 
 ## Project overrides
 
-When using specialized agents, also pass `Projects/CRMC-Aims/agent-overrides.md`.
+When using specialized agents, also `vault_read` `Projects/CRMC-Aims/agent-overrides.md`.
+
+## If MCP fails
+
+If tools return `fetch failed`, open Obsidian with **developer-io** and confirm Local REST API is enabled. Fall back to reading the vault folder on disk only then.
