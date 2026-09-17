@@ -11,51 +11,56 @@
 
 # Obsidian Vault & Session Automation
 
-The `developer-io` Obsidian vault (`C:/Users/CLIET/.antigravity-ide/developer-io`) is the single source of truth for project knowledge, session state, and workflows. This strictly follows the **everything-claude-code workflow system**.
+Vault: `C:/Users/CLIET/.antigravity-ide/developer-io` (branch `vault/optimization`).  
+Protocol: `Meta/Context-Loading-Protocol.md`.
 
-### 1. Mandatory Session Bootstrap (Memory Persistence)
+### 1. Session bootstrap (Tier 0)
 
-Before performing codebase exploration or writing code for non-trivial tasks, check the vault notes to save tokens. Do not blindly read all notes or scan the repository. Read selectively:
+Before exploring the codebase, **do not** load Overview + Architecture + Conventions + Tasks + Sessions by default.
 
-1. **Always Read:** `Context/Sessions.md` (read only the last entry to pick up where the previous session left off) and `Projects/crmc-aims/Tasks.md` (read the active/pending roadmap).
-2. **Read Selectively Based on Task:**
-   - Schema/Backend changes -> `Projects/crmc-aims/DataModel.md`
-   - System design/refactoring -> `Projects/crmc-aims/Architecture.md`
-   - UI/Styling constraints -> `Projects/crmc-aims/Conventions.md`
-   - _Only_ read `Projects/crmc-aims/Overview.md` if completely lost on the project domain.
+1. **Always read only:** `Projects/CRMC-Aims/_Card.md` (stack, invariants, sprint, hot paths, last session).
+2. **Then**, using the task router in `Meta/Context-Loading-Protocol.md`, name extra notes **before** reading them:
+   - Single feature → `Projects/CRMC-Aims/Features/<slug>.md` only (Tier 1.5)
+   - Schema → DataModel (relevant section)
+   - Cross-cutting design → Architecture + Conventions
+   - Auth/security → Architecture auth section + `Projects/CRMC-Aims/agent-overrides.md`
+3. Do **not** read full `Tasks.md` or `Context/Sessions.md` at cold start — sprint/last-session live on the card. Open them only when updating checkboxes or writing history.
 
-### 2. Task-to-Agent Delegation Matrix & Subagent Orchestration
+### 2. Agent delegation
 
-Adopt the specialized subagent persona and workflow from `Workflows/Agents.md` based on the request:
+Use `Workflows/Agents.md` personas. Brief subagents with `_Card.md` + `agent-overrides.md` + the one Features note (not whole Architecture unless cross-cutting).
 
-- **Complex / Multi-file Feature:** Act as **Planner** (generate implementation plan before editing).
-- **Schema, Auth, or System Design:** Act as **Architect** (verify against `DataModel.md` and `Architecture.md`).
-- **Build / Lint / Type Failure:** Act as **Build Error Resolver** (fix root cause without suppressions or ad-hoc any-casts).
-- **Refactoring / Cleanup:** Act as **Refactor Cleaner** (remove dead code, ensure component modularity).
-- **Pre-Completion Quality Check:** Act as **Code Reviewer** (verify against layout height ownership and Tailwind `@theme` conventions).
+- Multi-file feature → Planner  
+- Schema / system design → Architect  
+- Build/type failure → Build Error Resolver (fast model; 2 attempts then escalate)  
+- Cleanup → Refactor Cleaner  
+- Pre-merge quality → Code Reviewer (layout + `@theme` rules above)
 
-**The Context Problem:** When delegating to subagents, pass only the relevant vault notes as context (not full source files). Use `Projects/crmc-aims/Architecture.md` and `Projects/crmc-aims/Conventions.md` as the subagent briefing to save tokens.
+### 3. Change logging (prefer tooling)
 
-### 3. Continuous Learning & Automated Change Logging
+From vault root:
 
-Whenever code is modified, new patterns emerge, or a session concludes:
+```bash
+node Meta/scripts/vault-track.mjs session --project crmc-aims --write
+node Meta/scripts/vault-track.mjs stale --project crmc-aims
+node Meta/scripts/vault-track.mjs changelog --project crmc-aims --range origin/main..HEAD
+```
 
-- **Unlisted Tasks First:** If requested to perform a task that is not already listed, ALWAYS update `Projects/crmc-aims/Tasks.md` first.
-- **Task Auto-Completion:** When any feature/bugfix is verified, check it off in `Projects/crmc-aims/Tasks.md` (`- [ ]` → `- [x] ✅ YYYY-MM-DD`).
-- **Code Changes:** Prepend a new changelog entry to the `## Recent Changes` section in `Projects/crmc-aims/Changelog.md`. If >3 entries, move oldest to `Changelog-Archive.md`.
-- **New Component Discovered:** Update `Projects/crmc-aims/Components/Index.md`.
-- **Architecture / Tech Decisions:** Log to `Context/Decisions.md` to avoid re-reasoning.
-- **Convention Established (Continuous Learning):** Auto-extract reusable patterns and log to `Projects/crmc-aims/Conventions.md` immediately.
+Still update when needed:
 
-### 4. Verification Loops
+- Unlisted work → add checkbox under Active Sprint in `Projects/CRMC-Aims/Tasks.md` first  
+- Feature facts → `Projects/CRMC-Aims/Features/<slug>.md` (Index is a rollup)  
+- Decisions → `Projects/CRMC-Aims/Context/Decisions.md` or vault `Context/Decisions.md`  
+- New conventions → `Projects/CRMC-Aims/Conventions.md`
 
-After any significant change, enforce a strict verification loop:
+### 4. Verification
 
-- Build verification: `npm run build`
-- Lint: `npm run lint`
-- Manual smoke test on affected routes.
+After significant changes: `npm run lint`, `npx tsc --noEmit` or `npm run build`, smoke the affected routes.
 
-### 5. Strategic Compaction & Session End
+### 5. Session end
 
-- **Task & Sprint Synchronization:** Before concluding or compacting, ALWAYS synchronize `Projects/crmc-aims/Tasks.md` — verify that completed work is checked off (`- [x] ✅ YYYY-MM-DD`), update the status of the `## 🎯 Active Sprint`, and ensure any new or remaining backlog items are properly reflected under active or pending milestones.
-- **Session Snapshot Logging:** Prepend a session snapshot to the top of the `## Sessions Log` section in `Context/Sessions.md` detailing active files, work completed, blockers, and next steps (using `Templates/Session-Snapshot` structure). Do not create new session files. If the file exceeds 3 entries, move the oldest to `Sessions-Archive.md`.
+1. Sync Active Sprint checkboxes on `Tasks.md` if you touched them  
+2. `vault-track session --write` (or prepend snapshot; keep ≤3 recent entries in `Sessions.md`)  
+3. `vault-track stale`  
+4. Update `_Card.md` last-session / sprint line if it moved  
+5. Changelog only for **pushed** commits

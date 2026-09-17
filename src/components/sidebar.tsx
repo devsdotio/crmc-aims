@@ -836,7 +836,7 @@ export default function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar">
+      <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar">
         {sections.map((section, index) => (
           <div key={section.label}>
             {!isCollapsed ? (
@@ -846,7 +846,7 @@ export default function Sidebar({
             ) : (
               index > 0 && <div className="h-px bg-white/10 my-2 mx-1" />
             )}
-            <div className="space-y-1">{section.items.map(renderNavItem)}</div>
+            <div className="space-y-0.5">{section.items.map(renderNavItem)}</div>
           </div>
         ))}
       </nav>
