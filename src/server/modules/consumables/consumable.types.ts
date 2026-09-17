@@ -1,11 +1,17 @@
 import type { ConsumableRow, StockHistoryEntry } from "@/server/db/schema";
 import type { PaginationParams, PaginatedResponse } from "@/types/filters";
+import {
+  DEFAULT_CONSUMABLE_CLASSIFICATION,
+  isConsumableClassification,
+  type ConsumableClassification,
+} from "@/lib/consumable-classification";
 
 export type ConsumableDTO = {
   id: string;
   itemCode: string;
   name: string;
   category: string;
+  classification: ConsumableClassification;
   unit: string;
   currentQty: number;
   reservedQty: number;
@@ -21,6 +27,7 @@ export type ConsumableDTO = {
 
 export type ListConsumableFilters = PaginationParams & {
   category?: ConsumableDTO["category"];
+  classification?: ConsumableClassification;
   stockLevel?: "all" | "healthy" | "low" | "critical";
   search?: string;
   includeSandbox?: boolean;

@@ -29,6 +29,8 @@ import {
   Edit3,
   Save,
   Undo2,
+  ListOrdered,
+  Plus,
 } from "lucide-react";
 import type { Voucher, VoucherStatus, VoucherType } from "@/types/vouchers";
 import { formatPhp } from "@/components/projects/format-money";
@@ -42,6 +44,13 @@ import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
+import { filterMoneyInput } from "@/lib/numeric-input";
+import {
+  parseParticulars,
+  serializeParticulars,
+  sumParticularAmounts,
+  type ParticularLineItem,
+} from "@/lib/voucher-particulars";
 
 interface VoucherDetailSheetProps {
   voucher: Voucher | null;
@@ -167,8 +176,11 @@ export function VoucherDetailSheet({
     supplierName: "",
     purchaseOrderNumber: "",
     assetCode: "",
-    particulars: "",
+    purpose: "",
   });
+  const [editListItems, setEditListItems] = useState<ParticularLineItem[]>([
+    { description: "", amount: "" },
+  ]);
 
   const updateStatusMutation = useUpdateVoucherStatusMutation();
   const updateVoucherMutation = useUpdateVoucherMutation();
@@ -207,8 +219,12 @@ export function VoucherDetailSheet({
         supplierName: voucher.supplierName || "",
         purchaseOrderNumber: voucher.purchaseOrderNumber || "",
         assetCode: voucher.assetCode || "",
-        particulars: voucher.particulars || "",
+        purpose: voucher.purpose || "",
       });
+      const parsed = parseParticulars(voucher.particulars);
+      setEditListItems(
+        parsed.length > 0 ? parsed : [{ description: "", amount: "" }]
+      );
       setIsEditing(false);
       setActiveTab("details");
     }
@@ -240,7 +256,11 @@ export function VoucherDetailSheet({
 
   if (!isOpen || !voucher) return null;
 
+  const purposeDeptMatch = voucher.purpose?.match(/^\[(.*?)\]/);
   const particularsDeptMatch = voucher.particulars?.match(/^\[(.*?)\]/);
+  const extractedDeptFromPurpose = purposeDeptMatch
+    ? purposeDeptMatch[1].trim()
+    : null;
   const extractedDeptFromParticulars = particularsDeptMatch
     ? particularsDeptMatch[1].trim()
     : null;
@@ -252,6 +272,7 @@ export function VoucherDetailSheet({
     voucher.createdByName?.trim() || matchedUser?.name || "Authorized Staff";
 
   const displayDepartment =
+    extractedDeptFromPurpose ||
     extractedDeptFromParticulars ||
     extractedDeptFromLot ||
     matchedUser?.department?.trim() ||
@@ -266,13 +287,15 @@ export function VoucherDetailSheet({
     return "Disbursing Officer";
   })();
 
-  const cleanParticulars = (() => {
-    if (!voucher.particulars) return "";
-    if (particularsDeptMatch) {
-      return voucher.particulars.replace(/^\[(.*?)\]\s*/, "").trim();
+  const cleanPurpose = (() => {
+    if (!voucher.purpose) return "";
+    if (purposeDeptMatch) {
+      return voucher.purpose.replace(/^\[(.*?)\]\s*/, "").trim();
     }
-    return voucher.particulars;
+    return voucher.purpose;
   })();
+
+  const particularItems = parseParticulars(voucher.particulars);
 
   const statusInfo = getStatusBadge(voucher.status);
   const typeInfo = getTypeBadge(voucher.type);
@@ -303,6 +326,42 @@ export function VoucherDetailSheet({
     }
   };
 
+  const handleEditItemChange = (
+    index: number,
+    field: keyof ParticularLineItem,
+    val: string
+  ) => {
+    setEditListItems((prev) => {
+      const updated = [...prev];
+      const nextVal =
+        field === "amount" ? (filterMoneyInput(val) ?? prev[index].amount) : val;
+      updated[index] = { ...updated[index], [field]: nextVal };
+      if (field === "amount") {
+        const total = sumParticularAmounts(updated);
+        if (total > 0) {
+          setEditForm((f) => ({ ...f, amount: total.toFixed(2) }));
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleAddEditItem = () => {
+    setEditListItems((prev) => [...prev, { description: "", amount: "" }]);
+  };
+
+  const handleRemoveEditItem = (index: number) => {
+    setEditListItems((prev) => {
+      if (prev.length <= 1) return [{ description: "", amount: "" }];
+      const next = prev.filter((_, i) => i !== index);
+      const total = sumParticularAmounts(next);
+      if (total > 0) {
+        setEditForm((f) => ({ ...f, amount: total.toFixed(2) }));
+      }
+      return next;
+    });
+  };
+
   const handleSaveEdit = async () => {
     if (!editForm.payeeName.trim()) {
       toast.error("Payee name is required.");
@@ -322,7 +381,8 @@ export function VoucherDetailSheet({
           supplierName: editForm.supplierName.trim() || null,
           purchaseOrderNumber: editForm.purchaseOrderNumber.trim() || null,
           assetCode: editForm.assetCode.trim() || null,
-          particulars: editForm.particulars.trim(),
+          purpose: editForm.purpose.trim(),
+          particulars: serializeParticulars(editListItems),
         },
       });
       toast.success("Voucher updated successfully.");
@@ -901,23 +961,93 @@ export function VoucherDetailSheet({
                   </div>
                 </div>
 
-                {/* Particulars */}
-                <div className="space-y-1.5 text-xs">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                    Particulars / Explanatory Notes
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={editForm.particulars}
-                    onChange={(e) =>
-                      setEditForm((prev) => ({
-                        ...prev,
-                        particulars: e.target.value,
-                      }))
-                    }
-                    placeholder="Enter itemized requisition or accounting notes..."
-                    className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs leading-relaxed focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y"
-                  />
+                {/* Purpose + Particulars */}
+                <div className="space-y-3">
+                  <div className="space-y-1.5 text-xs">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                      Purpose
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editForm.purpose}
+                      onChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          purpose: e.target.value,
+                        }))
+                      }
+                      placeholder="Brief purpose / justification for this disbursement..."
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs leading-relaxed focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+                      <ListOrdered className="h-3.5 w-3.5" />
+                      Particulars
+                    </label>
+                    <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
+                      <div className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                        <span className="w-7 text-center">#</span>
+                        <span>Description</span>
+                        <span className="text-right pr-1">Cost</span>
+                        <span className="w-8" />
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {editListItems.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 items-center"
+                          >
+                            <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
+                              {idx + 1}
+                            </span>
+                            <input
+                              type="text"
+                              value={item.description}
+                              onChange={(e) =>
+                                handleEditItemChange(
+                                  idx,
+                                  "description",
+                                  e.target.value
+                                )
+                              }
+                              placeholder={`Item #${idx + 1}...`}
+                              className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            />
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={item.amount}
+                              onChange={(e) =>
+                                handleEditItemChange(idx, "amount", e.target.value)
+                              }
+                              placeholder="0.00"
+                              className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEditItem(idx)}
+                              className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-bg transition-colors cursor-pointer"
+                              title="Remove item"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-end pt-1 border-t border-border/50">
+                        <button
+                          type="button"
+                          onClick={handleAddEditItem}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add Item
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Save / Cancel Edit Actions */}
@@ -1049,78 +1179,76 @@ export function VoucherDetailSheet({
                   </div>
                 </div>
 
-                {/* Particulars Card */}
-                {(() => {
-                  const rawContent =
-                    cleanParticulars || voucher.particulars || "";
-                  const lines = rawContent
-                    .split("\n")
-                    .map((l) => l.trim())
-                    .filter(Boolean);
-                  const isNumberedList =
-                    lines.length > 0 &&
-                    lines.every((l) => /^\d+[\.\)]\s*/.test(l));
-
-                  return (
-                    <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3.5 shadow-2xs">
-                      {/* Card Header */}
-                      <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-                        <div className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-                          <FileText className="h-3.5 w-3.5 text-primary" />
-                          <span>Particulars &amp; Notes</span>
-                        </div>
-                        {lines.length > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-primary/25 bg-primary/10 text-primary">
-                            {isNumberedList
-                              ? `${lines.length} Line Items`
-                              : "Narrative Entry"}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-text-secondary italic">
-                            Unspecified
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Card Body */}
-                      {lines.length > 0 ? (
-                        isNumberedList ? (
-                          <div className="space-y-2">
-                            {lines.map((line, idx) => {
-                              const match = line.match(/^(\d+)[\.\)]\s*(.*)$/);
-                              const itemNumber = match ? match[1] : `${idx + 1}`;
-                              const itemText = match ? match[2] : line;
-                              return (
-                                <div
-                                  key={idx}
-                                  className="flex items-start gap-3 rounded-xl border border-border/70 bg-bg p-2.5 text-xs text-text transition-colors hover:border-primary/40 hover:bg-bg-subtle/40"
-                                >
-                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary/10 font-mono text-[10px] font-bold text-primary">
-                                    {itemNumber}
-                                  </span>
-                                  <span className="flex-1 font-medium leading-relaxed pt-0.5">
-                                    {itemText}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-border/70 bg-bg p-3.5 text-xs text-text leading-relaxed font-medium whitespace-pre-wrap">
-                            {rawContent}
-                          </div>
-                        )
-                      ) : (
-                        <div className="rounded-xl border border-dashed border-border bg-bg/50 p-4 text-center">
-                          <p className="text-xs italic text-text-secondary">
-                            No particulars or explanatory notes recorded for
-                            this voucher.
-                          </p>
-                        </div>
-                      )}
+                {/* Purpose & Particulars Card */}
+                <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3.5 shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
+                    <div className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-primary" />
+                      <span>Purpose &amp; Particulars</span>
                     </div>
-                  );
-                })()}
+                    {particularItems.length > 0 ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-primary/25 bg-primary/10 text-primary">
+                        {particularItems.length} Line Item
+                        {particularItems.length === 1 ? "" : "s"}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-text-secondary italic">
+                        Unspecified
+                      </span>
+                    )}
+                  </div>
+
+                  {cleanPurpose ? (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
+                        Purpose
+                      </span>
+                      <div className="rounded-xl border border-border/70 bg-bg p-3.5 text-xs text-text leading-relaxed font-medium whitespace-pre-wrap">
+                        {cleanPurpose}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {particularItems.length > 0 ? (
+                    <div className="space-y-2">
+                      <span className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
+                        Particulars
+                      </span>
+                      {particularItems.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-3 rounded-xl border border-border/70 bg-bg p-2.5 text-xs text-text transition-colors hover:border-primary/40 hover:bg-bg-subtle/40"
+                        >
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary/10 font-mono text-[10px] font-bold text-primary">
+                            {idx + 1}
+                          </span>
+                          <span className="flex-1 font-medium leading-relaxed pt-0.5">
+                            {item.description}
+                          </span>
+                          {item.amount ? (
+                            <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400 pt-0.5">
+                              {formatPhp(item.amount)}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                      {sumParticularAmounts(particularItems) > 0 ? (
+                        <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
+                          <span>Line items total</span>
+                          <span className="font-mono font-bold text-text">
+                            {formatPhp(sumParticularAmounts(particularItems))}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : !cleanPurpose ? (
+                    <div className="rounded-xl border border-dashed border-border bg-bg/50 p-4 text-center">
+                      <p className="text-xs italic text-text-secondary">
+                        No purpose or particulars recorded for this voucher.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ))}
 

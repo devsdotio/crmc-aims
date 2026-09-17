@@ -33,8 +33,12 @@ export async function fetchJson<T>(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Avoid browser HTTP cache / 304 empty bodies for JSON APIs that use ETag.
+    // A 304 has no body, and returning undefined corrupts React Query consumers
+    // (e.g. empty department dropdowns after the first successful load).
     const response = await fetch(input, {
       ...restInit,
+      cache: restInit.cache ?? "no-store",
       credentials: "same-origin",
       signal: controller.signal,
       headers: {
@@ -58,12 +62,10 @@ export async function fetchJson<T>(
       return undefined as T;
     }
 
+    // 304 should not occur with cache: "no-store"; if it does, fail clearly
+    // instead of returning undefined and breaking callers that expect `.data`.
     if (response.status === 304) {
-      try {
-        return (await response.json()) as T;
-      } catch {
-        return undefined as T;
-      }
+      throw new Error("Stale cache response (304). Please retry.");
     }
 
     return (await response.json()) as T;

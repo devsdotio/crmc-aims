@@ -48,7 +48,7 @@ export const vouchers = pgTable(
 
     /**
      * Unique code with hybrid format:
-     * e.g. DDR2026-000428 (prefix 'DDR2026-' auto-generated from type & year, suffix '000428' manually entered)
+     * e.g. DRR2026-000428 (prefix 'DRR2026-' auto-generated from type & year, suffix '000428' manually entered)
      */
     voucherCode: text("voucher_code").notNull(),
     type: voucherTypeEnum("type").notNull().default("disbursement"),
@@ -79,7 +79,14 @@ export const vouchers = pgTable(
     assetCode: text("asset_code"),
     assetName: text("asset_name"),
 
-    /** Particulars / purpose / remarks / notes */
+    /** Narrative purpose / justification (paragraph) */
+    purpose: text("purpose").notNull().default(""),
+
+    /**
+     * Itemized particulars as JSON:
+     * [{ "description": "...", "amount": "123.45" }, ...]
+     * Legacy plain-text values are still accepted and parsed on read.
+     */
     particulars: text("particulars").notNull().default(""),
 
     /** Payment or accounting reference (e.g. check no., bank reference, or OR no.) */

@@ -3,6 +3,12 @@
 import { useState, useEffect, useMemo } from "react";
 import { X, PackagePlus, Edit } from "lucide-react";
 import type { ConsumableItem, ConsumableCategory } from "@/types/inventory";
+import {
+  CONSUMABLE_CLASSIFICATIONS,
+  CONSUMABLE_CLASSIFICATION_LABELS,
+  DEFAULT_CONSUMABLE_CLASSIFICATION,
+  type ConsumableClassification,
+} from "@/lib/consumable-classification";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import { useSuppliersQuery } from "@/features/suppliers/client";
 import Link from "next/link";
@@ -76,6 +82,9 @@ function AddEditConsumableDialogForm({
   const [name, setName] = useState(() => initialItem?.name ?? "");
   const [category, setCategory] = useState(
     () => initialItem?.category ?? ""
+  );
+  const [classification, setClassification] = useState<ConsumableClassification>(
+    () => initialItem?.classification ?? DEFAULT_CONSUMABLE_CLASSIFICATION
   );
   const [unit, setUnit] = useState(() => initialItem?.unit ?? "reams");
   const [currentQty, setCurrentQty] = useState(() =>
@@ -172,6 +181,7 @@ function AddEditConsumableDialogForm({
           : `CON-${Math.floor(1000 + Math.random() * 9000)}`,
         name: name.trim(),
         category: category as ConsumableCategory,
+        classification,
         unit: unit.trim() || "units",
         currentQty: qty,
         minThreshold: threshold,
@@ -226,7 +236,7 @@ function AddEditConsumableDialogForm({
                   : "Register New Consumable Item"}
               </h3>
               <p className="text-xs text-text-secondary mt-0.5">
-                Categories come from Settings → Category Management.
+                Choose Supplies or Materials, then a category from Settings.
               </p>
             </div>
           </div>
@@ -265,6 +275,30 @@ function AddEditConsumableDialogForm({
               placeholder="e.g. A4 Multipurpose Copy Paper 80gsm"
               className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
             />
+          </div>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="classification-select"
+              className="block text-xs font-semibold text-text"
+            >
+              Classification <span className="text-accent">*</span>
+            </label>
+            <select
+              id="classification-select"
+              value={classification}
+              onChange={(e) =>
+                setClassification(e.target.value as ConsumableClassification)
+              }
+              disabled={isSubmitting}
+              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
+            >
+              {CONSUMABLE_CLASSIFICATIONS.map((id) => (
+                <option key={id} value={id}>
+                  {CONSUMABLE_CLASSIFICATION_LABELS[id]}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -67,6 +67,8 @@ export const consumables = pgTable(
     itemCode: text("item_code").notNull(),
     name: text("name").notNull(),
     category: text("category").notNull(),
+    /** Broad class: Consumable Supplies (`supply`) vs Consumable Materials (`material`). */
+    classification: text("classification").notNull().default("supply"),
     unit: text("unit").notNull(),
     currentQty: integer("current_qty").notNull().default(0),
     /** Qty promised to approved supply requests that have not been issued yet. */
@@ -94,6 +96,7 @@ export const consumables = pgTable(
   },
   (table) => [
     index("consumables_category_idx").on(table.category),
+    index("consumables_classification_idx").on(table.classification),
     index("consumables_location_idx").on(table.location),
     index("consumables_current_qty_idx").on(table.currentQty),
     index("consumables_is_sandbox_idx").on(table.isSandbox),

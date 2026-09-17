@@ -79,6 +79,7 @@ export type CreatePurchaseOrderItemInput = {
   isNewItem?: boolean;
   name: string;
   category: string;
+  classification?: "supply" | "material";
   unit?: string;
   minThreshold?: number;
   location?: string;

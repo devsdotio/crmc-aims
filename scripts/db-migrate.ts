@@ -24,6 +24,10 @@ const db = drizzle(client);
 async function main() {
   console.log("Applying migrations from src/server/db/migrations ...");
   try {
+    // Hosted Postgres often ships a short statement_timeout; DDL on busy tables
+    // can wait on locks longer than that. Disable for the migration session only.
+    await client`SET statement_timeout = 0`;
+    await client`SET lock_timeout = 0`;
     await migrate(db, { migrationsFolder: "./src/server/db/migrations" });
     console.log("Migrations applied successfully.");
   } catch (error) {
