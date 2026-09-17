@@ -20,7 +20,7 @@ interface TenantOnboardingModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (tenantId: string) => void;
-  onSwitchWorkspace: (tenantId: string) => void;
+  onSwitchWorkspace?: (tenantId: string) => void;
 }
 
 export function TenantOnboardingModal({
@@ -415,21 +415,23 @@ Admin Password: ${adminPassword}`;
           ) : (
             <div className="flex items-center justify-end gap-3 w-full">
               <button
+                type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text rounded-lg cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text rounded-lg cursor-pointer transition-colors"
               >
-                Done
+                Close
               </button>
               <button
+                type="button"
                 onClick={() => {
-                  if (createdTenantId) {
-                    onSwitchWorkspace(createdTenantId);
-                    onClose();
+                  onClose();
+                  if (typeof window !== "undefined" && createdTenantId) {
+                    window.location.href = `/users?institution=${createdTenantId}`;
                   }
                 }}
                 className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-[#2A3260] hover:bg-[#1E2548] rounded-lg transition-colors cursor-pointer shadow-xs"
               >
-                <span>Switch to Workspace</span>
+                <span>View Institution Users</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>

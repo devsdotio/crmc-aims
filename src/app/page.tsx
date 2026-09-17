@@ -31,7 +31,7 @@ export default async function Home() {
   }
 
   if (profileRole === "superadmin") {
-    redirect("/platform/tenants");
+    redirect("/platform");
   }
 
   redirect("/dashboard");

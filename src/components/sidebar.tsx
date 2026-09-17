@@ -35,7 +35,6 @@ import {
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
 import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
-import { TenantSwitcher } from "@/components/tenant/tenant-switcher";
 
 interface NavSubItem {
   name: string;
@@ -162,6 +161,12 @@ export default function Sidebar({
       label: "Platform",
       items: [
         {
+          name: "Platform Overview",
+          href: "/platform",
+          icon: LayoutDashboard,
+          roles: ["superadmin"],
+        },
+        {
           name: "Institutions & Tenants",
           href: "/platform/tenants",
           icon: Building2,
@@ -171,18 +176,6 @@ export default function Sidebar({
           name: "User Governance",
           href: "/users",
           icon: Users,
-          roles: ["superadmin"],
-        },
-        {
-          name: "Audit & System Logs",
-          href: "/audit-logs",
-          icon: FileText,
-          roles: ["superadmin"],
-        },
-        {
-          name: "Settings",
-          href: "/settings",
-          icon: Settings,
           roles: ["superadmin"],
         },
       ],
@@ -798,7 +791,13 @@ export default function Sidebar({
           </button>
         ) : (
           <Link
-            href="/dashboard"
+            href={
+              userRole === "superadmin"
+                ? "/platform"
+                : userRole === "borrower"
+                  ? "/borrower-db/dashboard"
+                  : "/dashboard"
+            }
             className="flex items-center gap-2 overflow-hidden select-none"
           >
             <div className="flex items-center justify-center w-7 h-7 rounded-full shrink-0">
@@ -817,13 +816,6 @@ export default function Sidebar({
           </Link>
         )}
       </div>
-
-      {/* Superadmin Tenant Switcher */}
-      {userRole === "superadmin" && (
-        <div className={cn("shrink-0", isCollapsed ? "p-2" : "px-3 pt-3")}>
-          <TenantSwitcher isSidebar isCollapsed={isCollapsed} />
-        </div>
-      )}
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar">
@@ -969,8 +961,8 @@ export default function Sidebar({
                   onClick={handleNavigateProfile}
                   className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer group"
                 >
-                  <User className="w-4 h-4 text-white/50 group-hover:text-white transition-colors" />
-                  <span className="font-medium">Profile</span>
+                  <Settings className="w-4 h-4 text-white/50 group-hover:text-white transition-colors" />
+                  <span className="font-medium">Profile & Settings</span>
                 </button>
 
                 <button
