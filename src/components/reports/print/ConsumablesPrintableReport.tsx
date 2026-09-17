@@ -1,12 +1,7 @@
 "use client";
 
+import { Fragment, useMemo } from "react";
 import type { ConsumableStockRow, ConsumableStockSummary, BaseReportFilters } from "@/types/reports";
-import {
-  PrintMetricBar,
-  PrintHorizontalDistribution,
-  PrintObservationsBox,
-  PrintStatusBadge,
-} from "./PrintCharts";
 
 interface ConsumablesPrintableReportProps {
   data: ConsumableStockRow[];
@@ -14,6 +9,24 @@ interface ConsumablesPrintableReportProps {
   canViewCosts?: boolean;
   filters?: BaseReportFilters;
   generatedAt?: Date;
+}
+
+/** Formats dates to standard CHED/COA DD-MMM-YYYY format (e.g., 15-Jan-2026). */
+function formatChedDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const day = String(d.getDate()).padStart(2, "0");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mon = monthNames[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day}-${mon}-${year}`;
+}
+
+/** Formats currency with Philippine Peso symbol and two decimal places. */
+function formatPhp(amount: number | null | undefined): string {
+  if (amount == null || !Number.isFinite(amount)) return "—";
+  return `₱${amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export function ConsumablesPrintableReport({
@@ -24,321 +37,430 @@ export function ConsumablesPrintableReport({
   generatedAt = new Date(),
 }: ConsumablesPrintableReportProps) {
   const totalSkus = summary?.totalSkus || data.length || 0;
-  const lowStockCount = summary?.lowStockItemsCount || data.filter((d) => d.isLowStock).length;
-  const totalValuation = summary?.totalInventoryValuation || 0;
-  const totalDispatched = summary?.totalDispatched30d || 0;
-  const totalDispatchedValue = summary?.totalDispatchedValue30d || 0;
+  const lowStockCount = summary?.lowStockItemsCount || data.filter((d) => d.isLowStock || d.currentQty <= d.minThreshold).length;
+  const totalValuation = summary?.totalInventoryValuation || data.reduce((sum, d) => sum + (d.stockValuation || 0), 0);
+  const totalDispatched = summary?.totalDispatched30d || data.reduce((sum, d) => sum + (d.usage30d || 0), 0);
+  const optimalCount = Math.max(0, totalSkus - lowStockCount);
 
-  const departmentRankings = (summary?.topConsumingDepartments || []).sort((a, b) => b.unitsConsumed - a.unitsConsumed);
+  const formattedGeneratedDate = formatChedDate(generatedAt.toISOString().slice(0, 10));
 
-  const totalDeptConsumption = departmentRankings.reduce((sum, d) => sum + d.unitsConsumed, 0) || 1;
+  // Determine reporting period display
+  const reportingPeriod =
+    filters?.startDate && filters?.endDate
+      ? `${formatChedDate(filters.startDate)} to ${formatChedDate(filters.endDate)}`
+      : filters?.startDate
+      ? `From ${formatChedDate(filters.startDate)}`
+      : `As of ${formattedGeneratedDate}`;
 
-  const deptHorizontalBars = departmentRankings.map((d) => ({
-    label: d.departmentName,
-    value: d.unitsConsumed,
-    displayValue: `${d.unitsConsumed.toLocaleString()} units (${Math.round((d.unitsConsumed / totalDeptConsumption) * 100)}%)`,
-  }));
+  const controlNumber = `CRMC-CUST-SUP-${generatedAt.getFullYear()}${String(generatedAt.getMonth() + 1).padStart(2, "0")}-${String(generatedAt.getDate()).padStart(2, "0")}`;
 
-  const formattedDate = generatedAt.toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-  const formattedTime = generatedAt.toLocaleTimeString("en-PH", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  // Pre-calculate grouped categories with continuous sequential item numbering
+  const categoryGroupsWithIndices = useMemo(() => {
+    const map = new Map<string, ConsumableStockRow[]>();
+    data.forEach((item) => {
+      const cat = (item.category || "General Supplies").trim();
+      const capitalized = cat.charAt(0).toUpperCase() + cat.slice(1);
+      if (!map.has(capitalized)) {
+        map.set(capitalized, []);
+      }
+      map.get(capitalized)!.push(item);
+    });
 
-  const filterSummary = [
-    filters?.category ? `Category: ${filters.category}` : "Category: All",
-    filters?.status ? `Stock Filter: ${filters.status}` : "Stock: All",
-    filters?.search ? `Search: "${filters.search}"` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+    const sortedEntries = Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const result: {
+      categoryName: string;
+      groupEndingBalance: number;
+      groupIssued: number;
+      groupTotalValue: number;
+      groupCount: number;
+      items: { row: ConsumableStockRow; itemNo: number }[];
+    }[] = [];
 
-  const criticalItems = data.filter((d) => d.isLowStock || d.currentQty <= d.minThreshold);
-
-  const observations = [
-    `Department consumption ranked #${1}: ${departmentRankings[0]?.departmentName || "Primary Department"} leads supply requisitions with ${departmentRankings[0]?.unitsConsumed.toLocaleString()} units (${Math.round(((departmentRankings[0]?.unitsConsumed || 0) / totalDeptConsumption) * 100)}% of total distribution).`,
-    `${lowStockCount > 0 ? `${lowStockCount} consumable items` : "All consumable items"} are operating within safety stock buffers.`,
-    `30-day institutional inventory consumption totaled ${totalDispatched.toLocaleString()} units${canViewCosts ? ` valued at ₱${totalDispatchedValue.toLocaleString()}` : ""}.`,
-  ];
+    let currentItemNo = 0;
+    for (const [categoryName, items] of sortedEntries) {
+      const groupEndingBalance = items.reduce((sum, item) => sum + (item.currentQty || 0), 0);
+      const groupIssued = items.reduce((sum, item) => sum + (item.usage30d || 0), 0);
+      const groupTotalValue = items.reduce((sum, item) => sum + (item.stockValuation || 0), 0);
+      const itemsWithNumbers: { row: ConsumableStockRow; itemNo: number }[] = [];
+      for (const row of items) {
+        currentItemNo += 1;
+        itemsWithNumbers.push({ row, itemNo: currentItemNo });
+      }
+      result.push({
+        categoryName,
+        groupEndingBalance,
+        groupIssued,
+        groupTotalValue,
+        groupCount: items.length,
+        items: itemsWithNumbers,
+      });
+    }
+    return result;
+  }, [data]);
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
-      {/* ─── Institutional Header ───────────────────────────────────────── */}
-      <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+    <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
+      <style>{`
+        @page {
+          size: 14in 8.5in;
+          margin: 10mm;
+        }
+        @media print {
+          body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color: #000000 !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            vertical-align: top;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+          }
+          .print-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            color: #000000 !important;
+            background: #ffffff !important;
+            vertical-align: top;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+          }
+          .print-page img {
+            filter: none !important;
+            -webkit-filter: none !important;
+          }
+          table {
+            break-inside: auto;
+          }
+          tr {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          thead, tr.category-header-row {
+            break-inside: avoid;
+            break-after: avoid;
+            page-break-after: avoid;
+          }
+        }
+      `}</style>
+
+      {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
+      <header className="avoid-break border-b-2 border-black pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/CRMC%20LOGO.png"
               alt="CRMC Seal"
-              className="h-11 w-11 object-contain shrink-0"
+              className="h-12 w-12 object-contain shrink-0"
             />
             <div className="space-y-0.5">
-              <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
-                CRMC-AIMS
-              </h1>
-              <div className="text-[11px] font-semibold text-neutral-700">
-                Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
+              <div className="text-[12px] font-black uppercase tracking-wide text-black">
+                Cebu Roosevelt Memorial Colleges, Inc.
               </div>
-              <div className="text-[9.5px] font-medium text-neutral-500">
-                Upper Pandan, Bogo City, Cebu, Philippines
+              <div className="text-[10.5px] font-bold text-black uppercase tracking-wider">
+                Property Custodian Office
+              </div>
+              <div className="text-[9px] text-black">
+                Upper Pandan, Bogo City, Cebu, Philippines 6010 · aims@crmc.edu.ph
               </div>
             </div>
           </div>
-          <div suppressHydrationWarning className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[9.5px] space-y-0.5 shrink-0">
+
+          <div className="border border-black bg-white px-3 py-1 text-right font-mono text-[9px] space-y-0.5 shrink-0 text-black">
             <div>
-              <span className="text-neutral-500">Generated:</span>{" "}
-              <span className="font-semibold text-neutral-800">{formattedDate}, {formattedTime}</span>
+              <span className="uppercase font-sans font-bold">Control No:</span>{" "}
+              <span className="font-bold">{controlNumber}</span>
             </div>
             <div>
-              <span className="text-neutral-500">Doc ID:</span>{" "}
-              <span className="font-bold text-neutral-800">
-                CSM-RPT-{generatedAt.getFullYear()}{String(generatedAt.getMonth() + 1).padStart(2, "0")}
-              </span>
+              <span className="uppercase font-sans font-bold">Date Printed:</span>{" "}
+              <span className="font-semibold">{formattedGeneratedDate}</span>
             </div>
           </div>
         </div>
 
-        <div className="mt-2 flex items-baseline justify-between border-t border-neutral-200 pt-1.5">
+        <div className="mt-2 pt-1.5 border-t border-black flex items-end justify-between text-black">
           <div>
-            <h2 className="text-sm font-extrabold text-[#2A3260] tracking-tight uppercase">
-              Consumables Stock &amp; Usage Report
-            </h2>
-            <div className="text-[10px] text-neutral-500 mt-0.5">{filterSummary}</div>
+            <h1 className="text-sm font-black tracking-tight uppercase text-black">
+              Report on the Physical Count of Inventories (RPCI) / Custodian Report of Supplies and Materials
+            </h1>
+            <div className="text-[10px] font-medium mt-0.5 text-black">
+              <span className="font-bold">Reporting Period:</span> {reportingPeriod}
+            </div>
           </div>
-          <span className="text-[9.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-xs">
-            Inventory &amp; Department Audit
-          </span>
+          <div className="text-right text-[9px] font-mono text-black">
+            <span>CHED / COA Inventory Accountability Standard</span>
+          </div>
         </div>
       </header>
 
-      {/* ─── Top Stats Bar (Standard Operational Metrics) ───────────────── */}
-      <section className="avoid-break">
-        <PrintMetricBar
-          metrics={[
-            {
-              label: "Active SKUs",
-              value: totalSkus.toLocaleString(),
-              delta: "Cataloged",
-              deltaType: "neutral",
-              subtext: "Tracked consumables",
-            },
-            {
-              label: "Inventory Valuation",
-              value: canViewCosts ? `₱${(totalValuation / 1000).toFixed(0)}k` : "—",
-              delta: "On-Hand Value",
-              deltaType: "positive",
-              subtext: "Stores valuation",
-            },
-            {
-              label: "Below Reorder Point",
-              value: lowStockCount.toString(),
-              delta: lowStockCount > 0 ? "Action Required" : "Optimal",
-              deltaType: lowStockCount > 0 ? "warning" : "positive",
-              subtext: "Safety buffer status",
-            },
-            {
-              label: "30-Day Dispatch Volume",
-              value: `${totalDispatched.toLocaleString()} units`,
-              delta: "Monthly Burn",
-              deltaType: "neutral",
-              subtext: "Dispatched to departments",
-            },
-          ]}
-        />
+      {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
+      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Cataloged Items (SKUs)
+          </span>
+          <span className="text-sm font-black font-mono">{totalSkus}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Optimal Stock Items
+          </span>
+          <span className="text-sm font-black font-mono">{optimalCount}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Below Reorder Point
+          </span>
+          <span className="text-sm font-black font-mono">{lowStockCount}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Recent Issued Volume
+          </span>
+          <span className="text-sm font-black font-mono">{totalDispatched.toLocaleString()}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Total Inventory Valuation
+          </span>
+          <span className="text-sm font-black font-mono">
+            {canViewCosts ? formatPhp(totalValuation) : "—"}
+          </span>
+        </div>
       </section>
 
-      {/* ─── Card 1 (Row 1 - 1 card per row): Top Departments Consuming Supplies Bar Chart ─── */}
-      <section className="avoid-break w-full">
-        <PrintHorizontalDistribution
-          title="1. Department Supply Consumption Distribution"
-          items={deptHorizontalBars}
-          valueSuffix=" units"
-          className="w-full"
-        />
-      </section>
-
-      {/* ─── Card 2 (Row 2 - 1 card per row): Ranked Department Requisitions Ledger ─── */}
-      <section className="avoid-break w-full">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
-            <span>2. Department Supply Requisition &amp; Consumption Ranking</span>
-            <span className="text-[10px] text-neutral-500 font-normal">
-              {departmentRankings.length} Departments Tracked
-            </span>
-          </div>
-          <table className="w-full border-collapse text-[11px]">
+      {/* ─── 3. Standard CHED Custodian Supplies / Materials Table ────────── */}
+      <section className="w-full">
+        <div className="border-2 border-black overflow-hidden bg-white">
+          <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1 px-3 text-center w-12">Rank</th>
-                <th className="py-1 px-3 text-left">Department Name</th>
-                <th className="py-1 px-3 text-right">Units Consumed</th>
-                <th className="py-1 px-3 text-right">Volume Share %</th>
-                {canViewCosts && <th className="py-1 px-3 text-right">Spend Valuation</th>}
+              <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
+                <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
+                <th className="py-2 px-2 border-r border-black min-w-44">Stock / Item Description</th>
+                <th className="py-2 px-2 text-center border-r border-black w-16">Unit of Measure</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Beginning Balance</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Received</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Issued</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Ending Balance</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Unit Cost</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Total Value</th>
+                <th className="py-2 px-2 min-w-32">Remarks</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {departmentRankings.map((dept, index) => {
-                const pct = Math.round((dept.unitsConsumed / totalDeptConsumption) * 100);
+            <tbody className="divide-y divide-black/40 text-black">
+              {categoryGroupsWithIndices.map((group) => {
                 return (
-                  <tr key={dept.departmentName} className={index === 0 ? "bg-teal-50/40 font-semibold" : ""}>
-                    <td className="py-1 px-3 text-center font-mono font-bold text-teal-800">
-                      #{index + 1}
-                    </td>
-                    <td className="py-1 px-3 font-semibold text-[#2A3260]">
-                      {dept.departmentName}
-                    </td>
-                    <td className="py-1 px-3 text-right font-mono font-bold text-neutral-900">
-                      {dept.unitsConsumed.toLocaleString()}{" "}
-                      <span className="text-[9.5px] font-normal text-neutral-500">units</span>
-                    </td>
-                    <td className="py-1 px-3 text-right">
-                      <span className="inline-flex items-center rounded-xs bg-neutral-100 px-2 py-0.5 font-mono font-bold text-neutral-700 text-[10px]">
-                        {pct}%
-                      </span>
-                    </td>
-                    {canViewCosts && (
-                      <td className="py-1 px-3 text-right font-mono font-semibold text-neutral-900">
-                        {dept.spendValue != null ? `₱${dept.spendValue.toLocaleString()}` : "—"}
+                  <Fragment key={group.categoryName}>
+                    {/* Category Group Header */}
+                    <tr className="bg-white font-bold border-t-2 border-black text-black category-header-row avoid-orphan-header">
+                      <td colSpan={10} className="py-1 px-2 text-[9px] uppercase tracking-wider font-black">
+                        Category: {group.categoryName} ({group.groupCount} {group.groupCount === 1 ? "stock item" : "stock items"})
                       </td>
-                    )}
-                  </tr>
+                    </tr>
+
+                    {group.items.map(({ row, itemNo }) => {
+                      const isLow = row.isLowStock || row.currentQty <= row.minThreshold;
+
+                      const calculatedUnitCost =
+                        row.unitCost != null
+                          ? row.unitCost
+                          : row.stockValuation != null && row.currentQty > 0
+                          ? row.stockValuation / row.currentQty
+                          : null;
+
+                      const unitCostDisplay = calculatedUnitCost != null ? formatPhp(calculatedUnitCost) : "[TO BE FILLED]";
+                      const totalValueDisplay = row.stockValuation != null ? formatPhp(row.stockValuation) : "[TO BE FILLED]";
+                      const issuedDisplay = row.usage30d != null ? row.usage30d.toLocaleString() : "[TO BE FILLED]";
+
+                      const remarks = isLow
+                        ? `Critical stock; below reorder point (Buffer: ${row.minThreshold} ${row.unit})`
+                        : `Stock level adequate (Safety threshold: ${row.minThreshold} ${row.unit})`;
+
+                      return (
+                        <tr key={row.id}>
+                          <td className="py-1 px-1 text-center font-mono font-bold border-r border-black">
+                            {itemNo}
+                          </td>
+                          <td className="py-1 px-2 border-r border-black font-medium text-black">
+                            <div className="font-semibold">{row.name}</div>
+                            <div className="text-[8px] font-mono">
+                              SKU / Stock No: {row.itemCode}
+                            </div>
+                          </td>
+                          <td className="py-1 px-2 text-center border-r border-black uppercase text-[8px]">
+                            {row.unit || "unit"}
+                          </td>
+                          <td className="py-1 px-2 text-right font-mono border-r border-black">
+                            [TO BE FILLED]
+                          </td>
+                          <td className="py-1 px-2 text-right font-mono border-r border-black">
+                            [TO BE FILLED]
+                          </td>
+                          <td className="py-1 px-2 text-right font-mono border-r border-black">
+                            {issuedDisplay}
+                          </td>
+                          <td className="py-1 px-2 text-right font-mono font-bold border-r border-black">
+                            {row.currentQty.toLocaleString()}
+                          </td>
+                          <td className="py-1 px-2 text-right font-mono border-r border-black whitespace-nowrap">
+                            {canViewCosts ? unitCostDisplay : "—"}
+                          </td>
+                          <td className="py-1 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap">
+                            {canViewCosts ? totalValueDisplay : "—"}
+                          </td>
+                          <td className="py-1 px-2 text-[8px]">
+                            {remarks}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* Category Subtotal */}
+                    <tr className="bg-white font-bold border-t border-b-2 border-black text-black text-[9px]">
+                      <td colSpan={5} className="py-1 px-2 text-right uppercase tracking-wider border-r border-black">
+                        Subtotal for {group.categoryName}:
+                      </td>
+                      <td className="py-1 px-2 text-right font-mono border-r border-black">
+                        {group.groupIssued.toLocaleString()}
+                      </td>
+                      <td className="py-1 px-2 text-right font-mono border-r border-black">
+                        {group.groupEndingBalance.toLocaleString()}
+                      </td>
+                      <td className="py-1 px-2 border-r border-black text-center font-mono">
+                        —
+                      </td>
+                      <td className="py-1 px-2 text-right font-mono border-r border-black">
+                        {canViewCosts ? formatPhp(group.groupTotalValue) : "—"}
+                      </td>
+                      <td className="py-1 px-2 italic text-[8px]">
+                        Subtotal for {group.groupCount} item line(s)
+                      </td>
+                    </tr>
+                  </Fragment>
                 );
               })}
-              {departmentRankings.length === 0 && (
-                <tr>
-                  <td colSpan={canViewCosts ? 5 : 4} className="py-3 text-center text-neutral-400 italic text-[11px]">
-                    No departmental consumption data recorded for this period.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
-      {/* ─── Card 3 (Row 3 - 1 card per row): Critical Reorder Alerts Table ─── */}
-      <section className="avoid-break w-full">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
-            <span>3. Critical Stock Reorder Alerts</span>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              {criticalItems.length} items below minimum safety threshold
-            </span>
-          </div>
-          <table className="w-full border-collapse text-[11px] table-auto">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">SKU Code</th>
-                <th className="py-1.5 px-3 text-left">Item Name</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap">Category</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">Current Stock</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">Reorder Threshold</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-28">Status Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {criticalItems.slice(0, 6).map((item) => (
-                <tr key={item.id}>
-                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">{item.itemCode}</td>
-                  <td className="py-1.5 px-3 font-medium">{item.name}</td>
-                  <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap">{item.category}</td>
-                  <td className="py-1.5 px-3 text-right font-mono font-bold text-rose-700 whitespace-nowrap">
-                    {item.currentQty} <span className="text-[9.5px] font-normal text-neutral-500">{item.unit}</span>
-                  </td>
-                  <td className="py-1.5 px-3 text-right font-mono text-neutral-600 whitespace-nowrap">
-                    {item.minThreshold} {item.unit}
-                  </td>
-                  <td className="py-1.5 px-3 whitespace-nowrap">
-                    <PrintStatusBadge status="reorder" label="Reorder Now" />
-                  </td>
-                </tr>
-              ))}
-              {criticalItems.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-3 text-center text-emerald-700 italic text-[11px]">
-                    All inventory items are currently operating safely above reorder thresholds.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {/* ─── Card 4 (Row 4 - 1 card per row): Consumables Stock Inventory Ledger ─── */}
-      <section className="avoid-break w-full">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
-            <span>4. Consumables Stock Inventory &amp; Consumption Ledger</span>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              Showing {Math.min(data.length, 10)} of {totalSkus} cataloged items
-            </span>
-          </div>
-          <table className="w-full border-collapse text-[11px] table-auto">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">SKU Code</th>
-                <th className="py-1.5 px-3 text-left">Item Name</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap">Category</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">On Hand</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">30-Day Burn</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Status</th>
-                {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Valuation</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {data.slice(0, 10).map((row) => (
-                <tr key={row.id}>
-                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">{row.itemCode}</td>
-                  <td className="py-1.5 px-3 font-medium">{row.name}</td>
-                  <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap">{row.category}</td>
-                  <td className="py-1.5 px-3 text-right font-mono font-bold whitespace-nowrap">
-                    {row.currentQty} <span className="text-[9.5px] font-normal text-neutral-500">{row.unit}</span>
-                  </td>
-                  <td className="py-1.5 px-3 text-right font-mono text-neutral-600 whitespace-nowrap">{row.usage30d}</td>
-                  <td className="py-1.5 px-3 whitespace-nowrap">
-                    {row.isLowStock ? (
-                      <PrintStatusBadge status="low stock" label="Low Stock" />
-                    ) : (
-                      <PrintStatusBadge status="optimal" label="Optimal" />
-                    )}
-                  </td>
-                  {canViewCosts && (
-                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
-                      {row.stockValuation != null ? `₱${row.stockValuation.toLocaleString()}` : "—"}
-                    </td>
-                  )}
-                </tr>
-              ))}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={canViewCosts ? 7 : 6} className="py-3 text-center text-neutral-400 italic text-[11px]">
-                    No consumable items found matching active filters.
+                  <td colSpan={10} className="py-6 text-center italic text-[10px]">
+                    No inventory supplies or materials found matching specified filter criteria.
                   </td>
                 </tr>
               )}
             </tbody>
+
+            {/* Grand Total Rollup */}
+            {data.length > 0 && (
+              <tfoot>
+                <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
+                  <td colSpan={5} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                    Grand Total Supplies Count:
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono border-r border-black">
+                    {totalDispatched.toLocaleString()}
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono border-r border-black">
+                    {data.reduce((sum, d) => sum + (d.currentQty || 0), 0).toLocaleString()}
+                  </td>
+                  <td className="py-1.5 px-2 border-r border-black text-center font-mono">
+                    —
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono border-r border-black">
+                    {canViewCosts ? formatPhp(totalValuation) : "—"}
+                  </td>
+                  <td className="py-1.5 px-2 text-[8.5px] font-sans font-normal">
+                    Physical count inventory verified against Custodian stock cards.
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </section>
 
-      {/* ─── Key Observations ─────────────────────────────────────────────── */}
-      <section className="avoid-break w-full">
-        <PrintObservationsBox observations={observations} />
-      </section>
+      {/* ─── 4. Formal Quadruple Signature Block (Pure Black Ink) ─────────── */}
+      <footer className="avoid-break pt-3 border-t-2 border-black space-y-3 text-black">
+        <div className="grid grid-cols-4 gap-4 text-center">
+          {/* 1. Prepared by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Prepared by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              Property Custodian Staff
+            </div>
+            <div className="text-[8.5px]">
+              Accountable Custodian Officer
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
 
-      {/* ─── Institutional Footer ───────────────────────────────────────── */}
-      <footer className="avoid-break pt-2 border-t border-neutral-200">
-        <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">
-          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS Consumables Audit</div>
-          <div>Official Institutional Report</div>
+          {/* 2. Reviewed by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Reviewed by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              Internal Auditor / Inventory Chair
+            </div>
+            <div className="text-[8.5px]">
+              Audit &amp; Inspection Committee
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
+
+          {/* 3. Certified Correct by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Certified Correct by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              Head Property Custodian
+            </div>
+            <div className="text-[8.5px]">
+              Physical Plant &amp; Custodial Services
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
+
+          {/* 4. Approved by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Approved by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              VP for Administration / President
+            </div>
+            <div className="text-[8.5px]">
+              College Executive Administration
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 pt-1.5 border-t border-black flex items-center justify-between text-[8px] font-mono text-black">
+          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS Custodian Office</div>
+          <div>Official CHED RPCI Standard Form · Pure Black Ink Folio</div>
           <div suppressHydrationWarning>
-            Verification Code: CRMC-CSM-{generatedAt.getTime().toString(36).toUpperCase()}
+            Verification: {controlNumber}
           </div>
         </div>
       </footer>

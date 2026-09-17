@@ -329,19 +329,44 @@ nextjs-portal {
   }
 }
 
-/* ─── Printable Document Styles (Standard Letter: 8.5in x 11in) ─────────── */
+/* ─── Printable Document Styles (Legal: 8.5in x 14in Landscape) ─── */
 @page {
-  size: letter portrait;
-  margin: 0.35in 0.45in 0.35in 0.45in;
+  size: 14in 8.5in;
+  margin: 10mm;
 }
 
 @media print {
   html,
   body {
+    margin: 0 !important;
+    padding: 0 !important;
     background: #ffffff !important;
-    color: #1b2140 !important;
+    color: #000000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    vertical-align: top;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  /* Force pure black ink throughout all printable documents */
+  .print-page,
+  .print-page * {
+    color: #000000 !important;
+    border-color: #000000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Logo must retain its vibrant color */
+  .print-page img {
+    filter: none !important;
+    -webkit-filter: none !important;
+  }
+
+  .print-page [class*="bg-"] {
+    background-color: transparent !important;
   }
 
   /* Hide screen chrome and controls */
@@ -360,6 +385,10 @@ nextjs-portal {
     max-width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+    vertical-align: top;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
     box-shadow: none !important;
     background: #ffffff !important;
   }
@@ -379,9 +408,18 @@ nextjs-portal {
     break-inside: auto;
   }
 
+  /* Allow rows to cut/break across pages naturally to fill page completely */
   tr {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* Only proceed to next page if header would be the last element at bottom */
+  thead,
+  .avoid-orphan-header {
     break-inside: avoid;
-    break-after: auto;
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   thead {
