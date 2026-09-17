@@ -1,12 +1,6 @@
 "use client";
 
 import type { ProjectReportRow, ProjectReportSummary, BaseReportFilters } from "@/types/reports";
-import {
-  PrintMetricBar,
-  PrintHorizontalDistribution,
-  PrintObservationsBox,
-  PrintStatusBadge,
-} from "./PrintCharts";
 
 interface ProjectsPrintableReportProps {
   data: ProjectReportRow[];
@@ -14,6 +8,31 @@ interface ProjectsPrintableReportProps {
   canViewCosts?: boolean;
   filters?: BaseReportFilters;
   generatedAt?: Date;
+}
+
+/** Formats dates to standard CHED/COA DD-MMM-YYYY format (e.g., 15-Jan-2026). */
+function formatChedDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  const day = String(d.getDate()).padStart(2, "0");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mon = monthNames[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day}-${mon}-${year}`;
+}
+
+/** Formats currency with Philippine Peso symbol and two decimal places. */
+function formatPhp(amount: number | null | undefined): string {
+  if (amount == null || !Number.isFinite(amount)) return "—";
+  return `₱${amount.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Normalizes internal project status to CHED standard status (Ongoing/Completed/Suspended). */
+function formatChedStatus(status: string): "Ongoing" | "Completed" | "Suspended" {
+  if (status === "active") return "Ongoing";
+  if (status === "completed") return "Completed";
+  return "Suspended";
 }
 
 export function ProjectsPrintableReport({
@@ -26,202 +45,336 @@ export function ProjectsPrintableReport({
   const totalProjects = summary?.totalProjects || data.length || 0;
   const activeProjects = summary?.activeProjects || data.filter((d) => d.status === "active").length;
   const completedProjects = summary?.completedProjects || data.filter((d) => d.status === "completed").length;
-  const assignedAssets = summary?.totalAssetsAssigned || 0;
-  const totalSpend = summary?.totalProjectSpend || 0;
+  const suspendedProjects = data.filter((d) => d.status === "on_hold" || d.status === "cancelled").length;
+  const totalProjectCostSum = data.reduce((sum, d) => sum + (d.totalProjectCost || 0), 0);
 
-  const completionRate = totalProjects > 0 ? Math.round((completedProjects / totalProjects) * 100) : 0;
+  const formattedGeneratedDate = formatChedDate(generatedAt.toISOString().slice(0, 10));
 
-  // Department distribution
-  const deptCounts: Record<string, number> = {};
-  data.forEach((d) => {
-    const dept = d.department || "General";
-    deptCounts[dept] = (deptCounts[dept] || 0) + 1;
-  });
-  const deptDistribution = Object.entries(deptCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([label, value]) => ({ label, value }));
+  // Determine reporting period display
+  const reportingPeriod =
+    filters?.startDate && filters?.endDate
+      ? `${formatChedDate(filters.startDate)} to ${formatChedDate(filters.endDate)}`
+      : filters?.startDate
+      ? `From ${formatChedDate(filters.startDate)}`
+      : `As of ${formattedGeneratedDate}`;
 
-  const formattedDate = generatedAt.toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-  const formattedTime = generatedAt.toLocaleTimeString("en-PH", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const filterSummary = [
-    filters?.status ? `Status: ${filters.status}` : "Status: All",
-    filters?.search ? `Search: "${filters.search}"` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-
-  const observations = [
-    `${activeProjects} capital projects actively ongoing, with ${completedProjects} successfully completed.`,
-    `${assignedAssets} institutional capital assets currently allocated to active project work sites.`,
-    `Total capital project material and asset commitment stands at ${canViewCosts ? `₱${(totalSpend / 1000).toFixed(0)}k` : "active commitments"}.`,
-  ];
+  const controlNumber = `CRMC-CUST-PRJ-${generatedAt.getFullYear()}${String(generatedAt.getMonth() + 1).padStart(2, "0")}-${String(generatedAt.getDate()).padStart(2, "0")}`;
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
-      {/* ─── Header ──────────────────────────────────────────────────────── */}
-      <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+    <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
+      <style>{`
+        @page {
+          size: 14in 8.5in;
+          margin: 10mm;
+        }
+        @media print {
+          body {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color: #000000 !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            vertical-align: top;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+          }
+          .print-page {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            color: #000000 !important;
+            background: #ffffff !important;
+            vertical-align: top;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+          }
+          .print-page img {
+            filter: none !important;
+            -webkit-filter: none !important;
+          }
+          table {
+            break-inside: auto;
+          }
+          tr {
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          thead {
+            break-inside: avoid;
+            break-after: avoid;
+            page-break-after: avoid;
+          }
+        }
+      `}</style>
+
+      {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
+      <header className="avoid-break border-b-2 border-black pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/CRMC%20LOGO.png"
               alt="CRMC Seal"
-              className="h-11 w-11 object-contain shrink-0"
+              className="h-12 w-12 object-contain shrink-0"
             />
             <div className="space-y-0.5">
-              <h1 className="text-base font-extrabold tracking-tight text-[#2A3260] uppercase">
-                CRMC-AIMS
-              </h1>
-              <div className="text-[11px] font-semibold text-neutral-700">
-                Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
+              <div className="text-[12px] font-black uppercase tracking-wide text-black">
+                Cebu Roosevelt Memorial Colleges, Inc.
               </div>
-              <div className="text-[9.5px] font-medium text-neutral-500">
-                Upper Pandan, Bogo City, Cebu, Philippines
+              <div className="text-[10.5px] font-bold text-black uppercase tracking-wider">
+                Property Custodian Office
+              </div>
+              <div className="text-[9px] text-black">
+                Upper Pandan, Bogo City, Cebu, Philippines 6010 · aims@crmc.edu.ph
               </div>
             </div>
           </div>
-          <div suppressHydrationWarning className="rounded-xs border border-neutral-200 bg-neutral-50/80 px-2.5 py-1 text-right font-mono text-[9.5px] space-y-0.5 shrink-0">
+
+          <div className="border border-black bg-white px-3 py-1 text-right font-mono text-[9px] space-y-0.5 shrink-0 text-black">
             <div>
-              <span className="text-neutral-500">Generated:</span>{" "}
-              <span className="font-semibold text-neutral-800">{formattedDate}, {formattedTime}</span>
+              <span className="uppercase font-sans font-bold">Control No:</span>{" "}
+              <span className="font-bold">{controlNumber}</span>
             </div>
             <div>
-              <span className="text-neutral-500">Doc ID:</span>{" "}
-              <span className="font-bold text-neutral-800">
-                PRJ-RPT-{generatedAt.getFullYear()}{String(generatedAt.getMonth() + 1).padStart(2, "0")}
-              </span>
+              <span className="uppercase font-sans font-bold">Date Printed:</span>{" "}
+              <span className="font-semibold">{formattedGeneratedDate}</span>
             </div>
           </div>
         </div>
 
-        <div className="mt-2 flex items-baseline justify-between border-t border-neutral-200 pt-1.5">
+        <div className="mt-2 pt-1.5 border-t border-black flex items-end justify-between text-black">
           <div>
-            <h2 className="text-sm font-extrabold text-[#2A3260] tracking-tight uppercase">
-              Capital Projects Allocation Report
-            </h2>
-            <div className="text-[10px] text-neutral-500 mt-0.5">{filterSummary}</div>
+            <h1 className="text-sm font-black tracking-tight uppercase text-black">
+              Custodian Report on Ongoing and Completed Projects
+            </h1>
+            <div className="text-[10px] font-medium mt-0.5 text-black">
+              <span className="font-bold">Reporting Period:</span> {reportingPeriod}
+            </div>
           </div>
-          <span className="text-[9.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-xs">
-            Projects Audit
-          </span>
+          <div className="text-right text-[9px] font-mono text-black">
+            <span>CHED / COA Property Accountability Standard</span>
+          </div>
         </div>
       </header>
 
-      {/* ─── Metric Bar ──────────────────────────────────────────────────── */}
-      <section className="avoid-break">
-        <PrintMetricBar
-          metrics={[
-            {
-              label: "Active Projects",
-              value: activeProjects.toString(),
-              delta: `${completionRate}% completed`,
-              deltaType: "positive",
-              subtext: `${totalProjects} total projects`,
-            },
-            {
-              label: "Allocated Assets",
-              value: `${assignedAssets} units`,
-              delta: "Deployed",
-              deltaType: "neutral",
-              subtext: "Equipment in use",
-            },
-            {
-              label: "Consumables Used",
-              value: `${summary?.totalConsumablesConsumed || 0} items`,
-              delta: "Materials",
-              deltaType: "neutral",
-              subtext: "Supplies consumed",
-            },
-            {
-              label: "Total Project Spend",
-              value: canViewCosts ? `₱${(totalSpend / 1000).toFixed(0)}k` : "—",
-              delta: "Budget Consumed",
-              deltaType: "neutral",
-              subtext: "Direct allocations",
-            },
-          ]}
-        />
+      {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
+      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Total Projects
+          </span>
+          <span className="text-sm font-black font-mono">{totalProjects}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Ongoing Projects
+          </span>
+          <span className="text-sm font-black font-mono">{activeProjects}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Completed Projects
+          </span>
+          <span className="text-sm font-black font-mono">{completedProjects}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Suspended / On Hold
+          </span>
+          <span className="text-sm font-black font-mono">{suspendedProjects}</span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Combined Projects Cost
+          </span>
+          <span className="text-sm font-black font-mono">
+            {canViewCosts ? formatPhp(totalProjectCostSum) : "—"}
+          </span>
+        </div>
       </section>
 
-      {/* ─── Department Project Distribution ──────────────────────────────── */}
-      <section className="avoid-break">
-        <PrintHorizontalDistribution
-          title="Projects by Department"
-          items={deptDistribution}
-          valueSuffix=" projects"
-        />
-      </section>
-
-      {/* ─── Projects Table ──────────────────────────────────────────────── */}
-      <section className="avoid-break">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
-            <span>Capital Projects Ledger</span>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              Showing {Math.min(data.length, 10)} of {totalProjects} projects
-            </span>
-          </div>
-          <table className="w-full border-collapse text-[11px] table-auto">
+      {/* ─── 3. Standard CHED Custodian Projects Table (Pure Black Ink) ───── */}
+      <section className="w-full">
+        <div className="border-2 border-black overflow-hidden bg-white">
+          <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Code</th>
-                <th className="py-1.5 px-3 text-left">Project Name</th>
-                <th className="py-1.5 px-3 text-left">Department</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">Assets</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Status</th>
-                {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Total Cost</th>}
+              <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
+                <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
+                <th className="py-2 px-2 border-r border-black min-w-44">Project Title / Description</th>
+                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Status</th>
+                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Fund Source</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Budget / Cost</th>
+                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Date Started</th>
+                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Target / Actual Completion</th>
+                <th className="py-2 px-2 border-r border-black min-w-32">Accountable Person / Office</th>
+                <th className="py-2 px-2 min-w-28">Remarks</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {data.slice(0, 10).map((row) => (
-                <tr key={row.id}>
-                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">{row.projectCode}</td>
-                  <td className="py-1.5 px-3 font-medium truncate max-w-44">{row.projectName}</td>
-                  <td className="py-1.5 px-3 text-neutral-600 truncate max-w-36">{row.department}</td>
-                  <td className="py-1.5 px-3 text-right font-mono font-semibold whitespace-nowrap">{row.assignedAssetsCount}</td>
-                  <td className="py-1.5 px-3 whitespace-nowrap">
-                    <PrintStatusBadge status={row.status} />
-                  </td>
-                  {canViewCosts && (
-                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
-                      {row.totalProjectCost != null ? `₱${row.totalProjectCost.toLocaleString()}` : "—"}
+            <tbody className="divide-y divide-black/40 text-black">
+              {data.map((row, index) => {
+                const statusLabel = formatChedStatus(row.status);
+                const fundSource = "Institutional Fund";
+                const accountable = row.department || "[TO BE FILLED]";
+                const budgetCost = row.totalProjectCost != null ? formatPhp(row.totalProjectCost) : "[TO BE FILLED]";
+                const completionDate = row.endDate ? formatChedDate(row.endDate) : "[TO BE FILLED]";
+
+                const remarks =
+                  row.status === "completed"
+                    ? "Completed; 100% physically accomplished"
+                    : row.status === "active"
+                    ? "Ongoing physical accomplishment"
+                    : "Suspended / deferred implementation";
+
+                return (
+                  <tr key={row.id}>
+                    <td className="py-1.5 px-1 text-center font-mono font-bold border-r border-black">
+                      {index + 1}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="py-1.5 px-2 border-r border-black font-semibold text-black">
+                      <div>{row.projectName}</div>
+                      {row.description && (
+                        <div className="text-[8px] font-normal">
+                          {row.description}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 border-r border-black text-center whitespace-nowrap">
+                      <span className="font-bold text-[8px] uppercase">
+                        {statusLabel}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2 border-r border-black text-black">
+                      {fundSource}
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap">
+                      {canViewCosts ? budgetCost : "—"}
+                    </td>
+                    <td className="py-1.5 px-2 border-r border-black font-mono whitespace-nowrap">
+                      {row.startDate ? formatChedDate(row.startDate) : "[TO BE FILLED]"}
+                    </td>
+                    <td className="py-1.5 px-2 border-r border-black font-mono whitespace-nowrap">
+                      {completionDate}
+                    </td>
+                    <td className="py-1.5 px-2 border-r border-black font-medium">
+                      {accountable}
+                    </td>
+                    <td className="py-1.5 px-2 text-[8px]">
+                      {remarks}
+                    </td>
+                  </tr>
+                );
+              })}
+
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={canViewCosts ? 6 : 5} className="py-3 text-center text-neutral-400 italic text-[11px]">
-                    No project records found matching active filters.
+                  <td colSpan={9} className="py-6 text-center italic text-[10px]">
+                    No ongoing or completed projects found matching specified filters.
                   </td>
                 </tr>
               )}
             </tbody>
+
+            {/* Grand Total Cost Row */}
+            {data.length > 0 && (
+              <tfoot>
+                <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
+                  <td colSpan={4} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                    Grand Total Projects Cost:
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono border-r border-black">
+                    {canViewCosts ? formatPhp(totalProjectCostSum) : "—"}
+                  </td>
+                  <td colSpan={4} className="py-1.5 px-2 text-[8.5px] font-sans font-normal">
+                    Factual summary of project capital equipment &amp; material requisitions.
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </section>
 
-      {/* ─── Key Observations ─────────────────────────────────────────────── */}
-      <section className="avoid-break">
-        <PrintObservationsBox observations={observations} />
-      </section>
+      {/* ─── 4. Formal Quadruple Signature Block (Pure Black Ink) ─────────── */}
+      <footer className="avoid-break pt-3 border-t-2 border-black space-y-3 text-black">
+        <div className="grid grid-cols-4 gap-4 text-center">
+          {/* 1. Prepared by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Prepared by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              Property Custodian Staff
+            </div>
+            <div className="text-[8.5px]">
+              Accountable Custodian Officer
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
 
-      {/* ─── Footer ──────────────────────────────────────────────────────── */}
-      <footer className="avoid-break pt-2 border-t border-neutral-200">
-        <div className="flex items-center justify-between text-[9.5px] text-neutral-500 font-mono">
-          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS Projects</div>
-          <div>Page 1 of 1</div>
+          {/* 2. Reviewed by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Reviewed by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              Internal Auditor / Planning
+            </div>
+            <div className="text-[8.5px]">
+              Audit &amp; Inspection Committee
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
+
+          {/* 3. Certified Correct by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Certified Correct by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              Head Property Custodian
+            </div>
+            <div className="text-[8.5px]">
+              Physical Plant &amp; Custodial Services
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
+
+          {/* 4. Approved by */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-left">
+              Approved by:
+            </div>
+            <div className="border-b border-black pt-7 mb-1" />
+            <div className="text-[10px] font-bold uppercase">
+              VP for Administration / President
+            </div>
+            <div className="text-[8.5px]">
+              College Executive Administration
+            </div>
+            <div className="text-[8.5px] font-mono">
+              Date: ____________________
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 pt-1.5 border-t border-black flex items-center justify-between text-[8px] font-mono text-black">
+          <div>Cebu Roosevelt Memorial Colleges, Inc. · CRMC-AIMS Custodian Office</div>
+          <div>Official CHED Report Form · Pure Black Ink Folio</div>
           <div suppressHydrationWarning>
-            Verification Code: CRMC-PRJ-{generatedAt.getTime().toString(36).toUpperCase()}
+            Verification: {controlNumber}
           </div>
         </div>
       </footer>

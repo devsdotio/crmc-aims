@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, X, RotateCcw } from "lucide-react";
 import type { BaseReportFilters } from "@/types/reports";
 import { cn } from "@/lib/utils";
+import { DATE_PRESETS, getPresetDates } from "./report-timeframe-filter";
 
 interface FilterOption {
   label: string;
@@ -19,58 +20,13 @@ interface ReportFilterBarProps {
   actions?: React.ReactNode;
 }
 
-const DATE_PRESETS = [
-  { label: "All Time", value: "all" },
-  { label: "Today", value: "today" },
-  { label: "This Week", value: "this_week" },
-  { label: "This Month", value: "this_month" },
-  { label: "Fiscal Qtr", value: "fiscal_quarter" },
-];
-
-function getPresetDates(preset: string): { start: string | undefined; end: string | undefined } {
-  const now = new Date();
-  
-  if (preset === "all") return { start: undefined, end: undefined };
-  
-  if (preset === "today") {
-    const today = now.toISOString().split("T")[0];
-    return { start: today, end: today };
-  }
-  
-  if (preset === "this_week") {
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
-    const start = monday.toISOString().split("T")[0];
-    
-    const sunday = new Date(monday);
-    sunday.setDate(sunday.getDate() + 6);
-    return { start, end: sunday.toISOString().split("T")[0] };
-  }
-  
-  if (preset === "this_month") {
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return { start: firstDay.toISOString().split("T")[0], end: lastDay.toISOString().split("T")[0] };
-  }
-  
-  if (preset === "fiscal_quarter") {
-    const quarter = Math.floor(now.getMonth() / 3);
-    const firstDate = new Date(now.getFullYear(), quarter * 3, 1);
-    const lastDate = new Date(now.getFullYear(), firstDate.getMonth() + 3, 0);
-    return { start: firstDate.toISOString().split("T")[0], end: lastDate.toISOString().split("T")[0] };
-  }
-  
-  return { start: undefined, end: undefined };
-}
-
 export function ReportFilterBar({
   filters,
   onFilterChange,
   onReset,
   categories,
   statuses,
-  showDatePresets = true,
+  showDatePresets = false,
   searchPlaceholder = "Search records…",
   actions,
 }: ReportFilterBarProps) {
@@ -103,7 +59,7 @@ export function ReportFilterBar({
   );
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border/80 bg-card p-3 sm:p-4 shadow-xs">
+    <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-3 sm:p-4 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Search Input */}
         <div className="relative min-w-55 flex-1 max-w-md">
@@ -206,9 +162,27 @@ export function ReportFilterBar({
                 </button>
               );
             })}
+
+            {/* Custom Month Picker */}
+            <div className="flex items-center gap-1 pl-1 border-l border-border/80">
+              <input
+                type="month"
+                title="Select Specific Month"
+                aria-label="Filter report by specific month"
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  const [year, month] = e.target.value.split("-").map(Number);
+                  const firstDay = new Date(year, month - 1, 1).toISOString().split("T")[0];
+                  const lastDay = new Date(year, month, 0).toISOString().split("T")[0];
+                  onFilterChange({ startDate: firstDay, endDate: lastDay, page: 1 });
+                }}
+                className="h-7 px-1.5 text-[11px] rounded-md border border-border bg-bg-subtle text-text cursor-pointer"
+              />
+            </div>
           </div>
         )}
       </div>
     </div>
+
   );
 }

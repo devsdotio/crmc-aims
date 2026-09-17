@@ -25,7 +25,7 @@ export const listVouchersQuerySchema = z.object({
 });
 
 export const createVoucherSchema = z.object({
-  /** Hybrid code e.g. DDR2026-000428 (or auto-generated if omitted) */
+  /** Hybrid code e.g. DRR2026-000428 (or auto-generated if omitted) */
   voucherCode: z
     .string()
     .trim()
@@ -48,7 +48,8 @@ export const createVoucherSchema = z.object({
   assetId: z.string().uuid("Invalid asset ID").optional().nullable(),
   assetCode: z.string().trim().max(100).optional().nullable(),
   assetName: z.string().trim().max(255).optional().nullable(),
-  particulars: z.string().trim().max(4000).optional().default(""),
+  purpose: z.string().trim().max(4000).optional().default(""),
+  particulars: z.string().trim().max(8000).optional().default(""),
   checkNumber: z.string().trim().max(100).optional().nullable(),
   isLegacy: z.boolean().optional().default(false),
 });
@@ -71,7 +72,8 @@ export const updateVoucherSchema = z
     assetId: z.string().uuid().optional().nullable(),
     assetCode: z.string().trim().max(100).optional().nullable(),
     assetName: z.string().trim().max(255).optional().nullable(),
-    particulars: z.string().trim().max(4000).optional(),
+    purpose: z.string().trim().max(4000).optional(),
+    particulars: z.string().trim().max(8000).optional(),
     checkNumber: z.string().trim().max(100).optional().nullable(),
   })
   .refine((body) => Object.keys(body).length > 0, {

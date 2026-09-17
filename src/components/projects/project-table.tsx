@@ -35,6 +35,9 @@ function SkeletonTableRow() {
       <td className="px-3 py-4 hidden sm:table-cell">
         <div className="h-3.5 w-16 bg-border rounded" />
       </td>
+      <td className="px-3 py-4 hidden xl:table-cell">
+        <div className="h-3.5 w-24 bg-border rounded" />
+      </td>
       <td className="px-5 py-4 text-right">
         <div className="flex justify-end gap-2">
           <div className="h-7 w-14 bg-border rounded" />
@@ -77,11 +80,15 @@ export function ProjectTable({
               <th scope="col" className="px-3 py-3 hidden sm:table-cell">
                 Spent
               </th>
+              <th scope="col" className="px-3 py-3 hidden xl:table-cell">
+                Progress
+              </th>
               <th scope="col" className="px-5 py-3 text-right">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
+
           <tbody>
             {Array.from({ length: 6 }).map((_, i) => (
               <SkeletonTableRow key={i} />

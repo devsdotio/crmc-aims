@@ -54,44 +54,37 @@ export function PrintMetricBar({
 }) {
   return (
     <div
-      className={`avoid-break grid divide-x divide-neutral-200 rounded-md border border-neutral-200 bg-white p-3 ${className}`}
+      className={`avoid-break grid divide-x divide-black rounded-xs border border-black bg-white p-2.5 text-black ${className}`}
       style={{ gridTemplateColumns: `repeat(${metrics.length}, minmax(0, 1fr))` }}
     >
-      {metrics.map((m, idx) => {
-        let deltaColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-        if (m.deltaType === "negative") deltaColor = "text-rose-700 bg-rose-50 border-rose-200";
-        if (m.deltaType === "warning") deltaColor = "text-amber-700 bg-amber-50 border-amber-200";
-        if (m.deltaType === "neutral") deltaColor = "text-neutral-600 bg-neutral-100 border-neutral-200";
-
-        return (
-          <div key={idx} className="px-3 first:pl-1 last:pr-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 truncate">
-              {m.label}
-            </div>
-            <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-[15px] font-extrabold text-neutral-900 tracking-tight">
-                {m.value}
+      {metrics.map((m, idx) => (
+        <div key={idx} className="px-2.5 first:pl-1 last:pr-1">
+          <div className="text-[9.5px] font-bold uppercase tracking-wider text-black truncate">
+            {m.label}
+          </div>
+          <div className="mt-0.5 flex items-baseline gap-1.5 flex-wrap">
+            <span className="text-[14px] font-extrabold text-black font-mono tracking-tight">
+              {m.value}
+            </span>
+            {m.delta && (
+              <span className="text-[8.5px] font-bold px-1 py-0.5 rounded-xs border border-black text-black">
+                {m.delta}
               </span>
-              {m.delta && (
-                <span className={`text-[9.5px] font-semibold px-1.5 py-0.5 rounded-xs border ${deltaColor}`}>
-                  {m.delta}
-                </span>
-              )}
-            </div>
-            {m.subtext && (
-              <div className="mt-0.5 text-[9px] text-neutral-500 truncate">
-                {m.subtext}
-              </div>
             )}
           </div>
-        );
-      })}
+          {m.subtext && (
+            <div className="mt-0.5 text-[8.5px] text-black truncate">
+              {m.subtext}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
 
 /**
- * Status Badge for Tables & Lists
+ * Status Badge for Tables & Lists (Pure Black Ink)
  */
 export function PrintStatusBadge({
   status,
@@ -100,22 +93,10 @@ export function PrintStatusBadge({
   status: string;
   label?: string;
 }) {
-  const s = (status || "").toLowerCase();
   const text = label || status;
 
-  let style = "bg-neutral-100 text-neutral-700 border-neutral-300";
-  if (s.includes("active") || s.includes("fulfilled") || s.includes("approved") || s.includes("completed") || s.includes("optimal") || s.includes("good")) {
-    style = "bg-emerald-50 text-emerald-800 border-emerald-200";
-  } else if (s.includes("repair") || s.includes("pending") || s.includes("low") || s.includes("ordered") || s.includes("preventive")) {
-    style = "bg-amber-50 text-amber-800 border-amber-200";
-  } else if (s.includes("reorder") || s.includes("reject") || s.includes("breach") || s.includes("corrective") || s.includes("critical")) {
-    style = "bg-rose-50 text-rose-800 border-rose-200";
-  } else if (s.includes("draft") || s.includes("retired")) {
-    style = "bg-slate-100 text-slate-700 border-slate-300";
-  }
-
   return (
-    <span className={`inline-flex items-center rounded-xs px-2 py-0.5 text-[10.5px] font-semibold border ${style}`}>
+    <span className="inline-flex items-center rounded-xs px-1.5 py-0.5 text-[9px] font-bold font-mono uppercase border border-black text-black bg-white">
       {text}
     </span>
   );
@@ -288,13 +269,13 @@ export function PrintSignatories({
   className?: string;
 }) {
   return (
-    <div className={`avoid-break pt-4 border-t border-neutral-200 grid grid-cols-3 gap-6 ${className}`}>
+    <div className={`avoid-break pt-4 border-t border-black grid grid-cols-3 gap-6 ${className}`}>
       {signers.map((s, idx) => (
         <div key={idx} className="text-center">
-          <div className="h-7 border-b border-neutral-400 mx-auto w-4/5" />
-          <div className="mt-1 text-[11px] font-bold text-neutral-800">{s.name}</div>
-          <div className="text-[9.5px] text-neutral-500 uppercase tracking-wider">{s.role}</div>
-          {s.title && <div className="text-[8.5px] text-neutral-400 italic">{s.title}</div>}
+          <div className="h-7 border-b border-black mx-auto w-4/5" />
+          <div className="mt-1 text-[10px] font-bold text-black uppercase">{s.name}</div>
+          <div className="text-[8.5px] text-black uppercase tracking-wider">{s.role}</div>
+          {s.title && <div className="text-[8px] text-black italic">{s.title}</div>}
         </div>
       ))}
     </div>

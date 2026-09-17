@@ -20,7 +20,6 @@ import {
   RotateCcw,
   Banknote,
   Lock,
-  AlignLeft,
   ListOrdered,
   Plus,
   Trash2,
@@ -38,6 +37,12 @@ import { groupLotsByPO, type GroupedPurchaseOrder } from "@/types/grouped-purcha
 import { formatPhp } from "@/components/projects/format-money";
 import type { VoucherType } from "@/types/vouchers";
 import { cn } from "@/lib/utils";
+import { filterMoneyInput } from "@/lib/numeric-input";
+import {
+  serializeParticulars,
+  sumParticularAmounts,
+  type ParticularLineItem,
+} from "@/lib/voucher-particulars";
 
 interface CreateVoucherDialogProps {
   isOpen: boolean;
@@ -52,7 +57,7 @@ export function CreateVoucherDialog({
 }: CreateVoucherDialogProps) {
   const toast = useToast();
   const currentYear = new Date().getFullYear();
-  const prefix = `DDR${currentYear}-`;
+  const prefix = `DRR${currentYear}-`;
 
   // Form states
   const [codeSuffix, setCodeSuffix] = useState("");
@@ -66,9 +71,10 @@ export function CreateVoucherDialog({
   const [supplierId, setSupplierId] = useState<string | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
-  const [particulars, setParticulars] = useState("");
-  const [particularsMode, setParticularsMode] = useState<"paragraph" | "list">("paragraph");
-  const [listItems, setListItems] = useState<string[]>([""]);
+  const [purpose, setPurpose] = useState("");
+  const [listItems, setListItems] = useState<ParticularLineItem[]>([
+    { description: "", amount: "" },
+  ]);
   const [checkNumber, setCheckNumber] = useState("");
   const [isLegacy, setIsLegacy] = useState(false);
 
@@ -113,9 +119,8 @@ export function CreateVoucherDialog({
       setSupplierId(null);
       setSupplierName("");
       setPurchaseOrderNumber("");
-      setParticulars("");
-      setParticularsMode("paragraph");
-      setListItems([""]);
+      setPurpose("");
+      setListItems([{ description: "", amount: "" }]);
       setCheckNumber("");
       setIsLegacy(false);
       setPoSearch("");
@@ -148,7 +153,7 @@ export function CreateVoucherDialog({
     }
   };
 
-  // Handle PO selection and auto-fill line items into particulars
+  // Handle PO selection and auto-fill purpose + line items
   const handleSelectPO = (po: GroupedPurchaseOrder) => {
     if (isLegacy) return;
     setPurchaseOrderNumber(po.poNumber);
@@ -157,86 +162,86 @@ export function CreateVoucherDialog({
     setPayeeName(suppName);
     setSupplierId(po.representative.supplierId || null);
     setAmount(po.totalCost ? String(po.totalCost) : "0");
+    setPurpose(`Disbursement / settlement for Purchase Order #${po.poNumber}`);
 
-    // Extract and format all line items from the selected PO
     const rawItems =
       po.lineItems && po.lineItems.length > 0
         ? po.lineItems
         : po.representative
-        ? [po.representative]
-        : [];
+          ? [po.representative]
+          : [];
 
-    const formattedList = rawItems
+    const formattedList: ParticularLineItem[] = rawItems
       .filter((li) => Boolean(li && li.itemName))
       .map((li) => {
         const qty = li.quantity ? `${li.quantity}x ` : "";
-        const uCost = parseFloat(li.unitCost || "0");
         const tCost = parseFloat(li.totalCost || "0");
-        const priceInfo =
-          uCost > 0
-            ? ` @ ${formatPhp(uCost)}`
-            : tCost > 0
-            ? ` (${formatPhp(tCost)})`
-            : "";
-        return `${qty}${li.itemName}${priceInfo}`;
+        const uCost = parseFloat(li.unitCost || "0");
+        const lineAmount =
+          tCost > 0
+            ? tCost.toFixed(2)
+            : uCost > 0 && li.quantity
+              ? (uCost * Number(li.quantity)).toFixed(2)
+              : uCost > 0
+                ? uCost.toFixed(2)
+                : "";
+        return {
+          description: `${qty}${li.itemName}`.trim(),
+          amount: lineAmount,
+        };
       });
 
-    const items =
+    setListItems(
       formattedList.length > 0
         ? formattedList
-        : [`Disbursement for Purchase Order #${po.poNumber}`];
-
-    // Auto-fill particulars in both list mode and paragraph text
-    setListItems(items);
-    setParticulars(items.map((it, idx) => `${idx + 1}. ${it}`).join("\n"));
-    setParticularsMode("list");
+        : [{ description: `Items from Purchase Order #${po.poNumber}`, amount: po.totalCost ? String(po.totalCost) : "" }]
+    );
   };
 
   const handleClearPO = () => {
     setPurchaseOrderNumber("");
     setPayeeName("");
     setAmount("");
-    setParticulars("");
-    setListItems([""]);
+    setPurpose("");
+    setListItems([{ description: "", amount: "" }]);
     setSupplierId(null);
     setSupplierName("");
   };
 
-  // Switch between paragraph and list format
-  const handleSwitchMode = (mode: "paragraph" | "list") => {
-    if (mode === particularsMode) return;
-    if (mode === "list") {
-      const lines = particulars
-        .split("\n")
-        .map((l) => l.replace(/^(\s*[-*•]|\s*\d+[\.\)])\s*/, "").trim())
-        .filter(Boolean);
-      setListItems(lines.length > 0 ? lines : [""]);
-    } else {
-      const validItems = listItems.map((it) => it.trim()).filter(Boolean);
-      if (validItems.length > 0) {
-        setParticulars(validItems.map((it, idx) => `${idx + 1}. ${it}`).join("\n"));
-      }
+  const syncAmountFromLines = (items: ParticularLineItem[]) => {
+    const total = sumParticularAmounts(items);
+    if (total > 0) {
+      setAmount(total.toFixed(2));
     }
-    setParticularsMode(mode);
   };
 
-  // List item actions
-  const handleItemChange = (index: number, val: string) => {
+  const handleItemChange = (
+    index: number,
+    field: keyof ParticularLineItem,
+    val: string
+  ) => {
     setListItems((prev) => {
       const updated = [...prev];
-      updated[index] = val;
+      const nextVal =
+        field === "amount" ? (filterMoneyInput(val) ?? prev[index].amount) : val;
+      updated[index] = { ...updated[index], [field]: nextVal };
+      if (field === "amount") {
+        syncAmountFromLines(updated);
+      }
       return updated;
     });
   };
 
   const handleAddItem = () => {
-    setListItems((prev) => [...prev, ""]);
+    setListItems((prev) => [...prev, { description: "", amount: "" }]);
   };
 
   const handleRemoveItem = (index: number) => {
     setListItems((prev) => {
-      if (prev.length <= 1) return [""];
-      return prev.filter((_, i) => i !== index);
+      if (prev.length <= 1) return [{ description: "", amount: "" }];
+      const next = prev.filter((_, i) => i !== index);
+      syncAmountFromLines(next);
+      return next;
     });
   };
 
@@ -270,14 +275,7 @@ export function CreateVoucherDialog({
       return;
     }
 
-    const finalParticulars =
-      particularsMode === "list"
-        ? listItems
-            .map((it) => it.trim())
-            .filter(Boolean)
-            .map((it, idx) => `${idx + 1}. ${it}`)
-            .join("\n")
-        : particulars.trim();
+    const finalParticulars = serializeParticulars(listItems);
 
     try {
       const createdVoucher = await createMutation.mutateAsync({
@@ -290,6 +288,7 @@ export function CreateVoucherDialog({
         supplierId: supplierId || null,
         supplierName: supplierName.trim() || null,
         purchaseOrderNumber: purchaseOrderNumber.trim() || null,
+        purpose: purpose.trim(),
         particulars: finalParticulars,
         checkNumber: checkNumber.trim() || null,
         isLegacy,
@@ -591,79 +590,88 @@ export function CreateVoucherDialog({
                     </div>
                   </div>
 
-                  {/* Particulars / Purpose of Purchase */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2">
+                  {/* Purpose (paragraph) + Particulars (itemized with costs) */}
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
                         <label className="text-xs font-semibold uppercase tracking-wider text-text">
-                          Particulars / Purpose
+                          Purpose
                         </label>
                         <span className="text-[11px] text-text-secondary">
                           Optional
                         </span>
                       </div>
-
-                      {/* Paragraph vs List Mode Toggle */}
-                      <div className="flex items-center gap-0.5 bg-bg-subtle p-0.5 rounded-lg border border-border">
-                        <button
-                          type="button"
-                          onClick={() => handleSwitchMode("paragraph")}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold rounded-md transition-all cursor-pointer",
-                            particularsMode === "paragraph"
-                              ? "bg-accent text-accent-foreground shadow-2xs"
-                              : "text-text-secondary hover:text-text"
-                          )}
-                          title="Free-form paragraph description"
-                        >
-                          <AlignLeft className="h-3 w-3" />
-                          Paragraph
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSwitchMode("list")}
-                          className={cn(
-                            "flex items-center gap-1.5 px-2 py-0.5 text-xs font-semibold rounded-md transition-all cursor-pointer",
-                            particularsMode === "list"
-                              ? "bg-accent text-accent-foreground shadow-2xs"
-                              : "text-text-secondary hover:text-text"
-                          )}
-                          title="Itemized list with dynamic rows"
-                        >
-                          <ListOrdered className="h-3 w-3" />
-                          List
-                        </button>
-                      </div>
-                    </div>
-
-                    {particularsMode === "paragraph" ? (
                       <textarea
                         rows={3}
-                        value={particulars}
-                        onChange={(e) => setParticulars(e.target.value)}
-                        placeholder="Specify what items/materials are to be purchased with the disbursed funds..."
+                        value={purpose}
+                        onChange={(e) => setPurpose(e.target.value)}
+                        placeholder="Briefly state why funds are being disbursed (e.g. office replenishment, settlement of PO, emergency purchase)..."
                         className="w-full rounded-lg border border-border bg-bg p-3 text-sm text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
                       />
-                    ) : (
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-semibold uppercase tracking-wider text-text">
+                            Particulars
+                          </label>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-secondary">
+                            <ListOrdered className="h-3 w-3" />
+                            Itemized list
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-text-secondary">
+                          Optional
+                        </span>
+                      </div>
+
                       <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                          <span className="w-7 text-center">#</span>
+                          <span>Description</span>
+                          <span className="text-right pr-1">Cost</span>
+                          <span className="w-8" />
+                        </div>
+
                         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                           {listItems.map((item, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
+                            <div
+                              key={idx}
+                              className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 items-center"
+                            >
                               <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
                                 {idx + 1}
                               </span>
                               <input
                                 type="text"
-                                value={item}
-                                onChange={(e) => handleItemChange(idx, e.target.value)}
+                                value={item.description}
+                                onChange={(e) =>
+                                  handleItemChange(idx, "description", e.target.value)
+                                }
                                 onKeyDown={handleItemKeyDown}
-                                placeholder={`Item or purpose #${idx + 1}...`}
-                                className="flex-1 rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                placeholder={`Item / expense #${idx + 1}...`}
+                                className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                              />
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={item.amount}
+                                onChange={(e) =>
+                                  handleItemChange(idx, "amount", e.target.value)
+                                }
+                                placeholder="0.00"
+                                className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary"
                               />
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItem(idx)}
-                                disabled={listItems.length <= 1 && idx === 0 && !item}
+                                disabled={
+                                  listItems.length <= 1 &&
+                                  idx === 0 &&
+                                  !item.description &&
+                                  !item.amount
+                                }
                                 className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-bg transition-colors cursor-pointer disabled:opacity-30 disabled:hover:text-text-secondary disabled:cursor-not-allowed"
                                 title="Remove item"
                               >
@@ -675,7 +683,11 @@ export function CreateVoucherDialog({
 
                         <div className="flex items-center justify-between pt-1 border-t border-border/50">
                           <span className="text-[11px] text-text-secondary">
-                            Press <kbd className="px-1 py-0.5 text-[10px] font-mono bg-bg rounded border border-border">Enter</kbd> to add row
+                            Line costs update the total amount when provided. Press{" "}
+                            <kbd className="px-1 py-0.5 text-[10px] font-mono bg-bg rounded border border-border">
+                              Enter
+                            </kbd>{" "}
+                            to add a row.
                           </span>
                           <button
                             type="button"
@@ -687,7 +699,7 @@ export function CreateVoucherDialog({
                           </button>
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
                 </form>
 

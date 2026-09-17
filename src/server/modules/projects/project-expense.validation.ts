@@ -160,37 +160,46 @@ export const useConsumableOnProjectSchema = z.object({
 });
 
 /** Manual material not tracked in inventory (no stock deduction). */
-export const createManualMaterialSchema = z
-  .object({
-    materialName: z.string().trim().min(1, "Material name is required.").max(255),
-    description: z.string().trim().max(2000).optional().nullable(),
-    quantity: z
-      .union([z.string(), z.number()])
-      .transform((value, ctx) => {
-        const n = typeof value === "number" ? value : Number(value);
-        if (!Number.isFinite(n) || n <= 0) {
-          ctx.addIssue({
-            code: "custom",
-            message: "Quantity must be a positive number.",
-          });
-          return z.NEVER;
-        }
-        return n.toFixed(2);
-      }),
-    /** Overall cost charged to the project. */
-    amount: amountSchema,
-    incurredOn: dateSchema.optional(),
-    notes: z.string().trim().max(4000).optional().nullable(),
-  })
-  .superRefine((data, ctx) => {
-    if (Number(data.amount) < 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Overall cost must be positive.",
-        path: ["amount"],
-      });
-    }
-  });
+export const manualMaterialItemSchema = z.object({
+  materialName: z.string().trim().min(1, "Material name is required.").max(255),
+  description: z.string().trim().max(2000).optional().nullable(),
+  quantity: z
+    .union([z.string(), z.number()])
+    .transform((value, ctx) => {
+      const n = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(n) || n <= 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Quantity must be a positive number.",
+        });
+        return z.NEVER;
+      }
+      return n.toFixed(2);
+    }),
+  unitCost: z
+    .union([z.string(), z.number()])
+    .transform((value, ctx) => {
+      const n = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(n) || n < 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Unit cost must be a non-negative number.",
+        });
+        return z.NEVER;
+      }
+      return n.toFixed(2);
+    }),
+  incurredOn: dateSchema.optional(),
+  notes: z.string().trim().max(4000).optional().nullable(),
+});
+
+export const batchManualMaterialsSchema = z.object({
+  items: z
+    .array(manualMaterialItemSchema)
+    .min(1, "At least one material line item is required."),
+});
+
+export const createManualMaterialSchema = manualMaterialItemSchema;
 
 export type CreateProjectExpenseBody = z.infer<typeof createProjectExpenseSchema>;
 export type UpdateProjectExpenseBody = z.infer<typeof updateProjectExpenseSchema>;
@@ -198,6 +207,9 @@ export type UseConsumableOnProjectBody = z.infer<
   typeof useConsumableOnProjectSchema
 >;
 export type CreateManualMaterialBody = z.infer<typeof createManualMaterialSchema>;
+export type ManualMaterialItemBody = z.infer<typeof manualMaterialItemSchema>;
+export type BatchManualMaterialsBody = z.infer<typeof batchManualMaterialsSchema>;
 
 /** @deprecated Use MANUAL_LINE_TYPES */
 export const PHASE2_LINE_TYPES = ["miscellaneous", "adjustment"] as const;
+

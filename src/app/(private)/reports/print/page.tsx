@@ -312,10 +312,12 @@ function PrintableReportView() {
     [searchParams]
   );
 
+  const isLandscape = true; // All official CHED / Custodian reports adhere to the landscape A4 folio standard
+
   return (
     <div className="h-full w-full overflow-y-auto bg-[#E5E7EB] py-3 sm:py-5 px-2 sm:px-4 print:bg-white print:p-0 print:m-0 print:overflow-visible">
       {/* ─── Top Control Toolbar (Screen Only) ──────────────────────────── */}
-      <div className="no-print mx-auto mb-3 flex max-w-[7.6in] flex-wrap items-center justify-between gap-3 rounded-md border border-neutral-300 bg-white p-2.5 sm:p-3 shadow-xs">
+      <div className={`no-print mx-auto mb-3 flex ${isLandscape ? "max-w-[10.4in]" : "max-w-[7.6in]"} flex-wrap items-center justify-between gap-3 rounded-md border border-neutral-300 bg-white p-2.5 sm:p-3 shadow-xs`}>
         <div className="flex items-center gap-3">
           <Link
             href={meta.backHref}
@@ -330,7 +332,9 @@ function PrintableReportView() {
               Print Preview: {meta.title}
             </div>
             <div className="text-[10px] text-neutral-500 font-mono">
-              Standard Letter (8.5&quot; × 11&quot;) · Live Institutional Data
+              {isLandscape
+                ? "Legal Landscape (14\" × 8.5\") · CHED / COA Custodian Report Standard"
+                : "Standard Letter (8.5\" × 11\") · Live Institutional Data"}
             </div>
           </div>
         </div>
@@ -341,7 +345,7 @@ function PrintableReportView() {
       </div>
 
       {/* ─── Printable Document Sheet Container ─────────────────────────── */}
-      <div className="mx-auto max-w-[7.6in] rounded-xs border border-neutral-300 bg-white p-5 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none">
+      <div className={`mx-auto ${isLandscape ? "max-w-[10.4in]" : "max-w-[7.6in]"} rounded-xs border border-neutral-300 bg-white p-5 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none`}>
         {rawType === "executive" && <ExecutivePrintContent filtersSummary={meta.scopeText} />}
         {(rawType === "assets" || rawType === "asset") && <AssetsPrintContent filters={filters} />}
         {(rawType === "consumables" || rawType === "consumable") && <ConsumablesPrintContent filters={filters} />}

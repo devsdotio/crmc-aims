@@ -20,6 +20,8 @@ import { RecentListCard } from "@/components/reports/recent-list-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
+import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-filter";
+import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { ProcurementPrintableReport } from "@/components/reports/print/ProcurementPrintableReport";
 
 const TYPE_OPTIONS = [
@@ -29,6 +31,7 @@ const TYPE_OPTIONS = [
 ];
 
 export default function PurchaseOrdersReportPage() {
+  const { timeframe, setTimeframe } = useReportTimeframe();
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
     pageSize: 20,
@@ -36,7 +39,16 @@ export default function PurchaseOrdersReportPage() {
     category: "",
   });
 
-  const { data, isLoading } = usePurchaseOrdersReportQuery(filters);
+  const effectiveFilters = useMemo<BaseReportFilters>(
+    () => ({
+      ...filters,
+      startDate: timeframe.startDate,
+      endDate: timeframe.endDate,
+    }),
+    [filters, timeframe.startDate, timeframe.endDate]
+  );
+
+  const { data, isLoading } = usePurchaseOrdersReportQuery(effectiveFilters);
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
@@ -85,6 +97,12 @@ export default function PurchaseOrdersReportPage() {
   }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
+    if ("startDate" in updated || "endDate" in updated) {
+      setTimeframe({
+        startDate: updated.startDate,
+        endDate: updated.endDate,
+      });
+    }
     setFilters((prev) => ({ ...prev, ...updated }));
   };
 
@@ -181,14 +199,14 @@ export default function PurchaseOrdersReportPage() {
           data={data?.data || []}
           summary={summary}
           canViewCosts={canViewCosts}
-          filters={filters}
+          filters={effectiveFilters}
         />
       </div>
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
       <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-bold tracking-tight text-text">
@@ -203,8 +221,9 @@ export default function PurchaseOrdersReportPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 print:hidden">
-            <ReportExportButton reportType="purchase-orders" filters={filters} />
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <ReportTimeframeFilter filters={effectiveFilters} onFilterChange={handleFilterChange} />
+            <ReportExportButton reportType="purchase-orders" filters={effectiveFilters} />
           </div>
         </div>
       </div>
@@ -317,7 +336,7 @@ export default function PurchaseOrdersReportPage() {
       {/* ── Search & Filter Controls ─────────────────────────────────── */}
       <div className="print:hidden">
         <ReportFilterBar
-          filters={filters}
+          filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
           categories={TYPE_OPTIONS}

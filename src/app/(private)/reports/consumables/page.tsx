@@ -21,6 +21,8 @@ import { RecentListCard } from "@/components/reports/recent-list-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
+import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-filter";
+import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { ConsumableDetailDialog } from "@/components/reports/consumable-detail-dialog";
 import { ConsumablesPrintableReport } from "@/components/reports/print/ConsumablesPrintableReport";
 
@@ -38,6 +40,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function ConsumablesReportPage() {
+  const { timeframe, setTimeframe } = useReportTimeframe();
   const [selectedConsumable, setSelectedConsumable] = useState<ConsumableStockRow | null>(null);
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
@@ -47,7 +50,16 @@ export default function ConsumablesReportPage() {
     status: "",
   });
 
-  const { data, isLoading } = useConsumablesReportQuery(filters);
+  const effectiveFilters = useMemo<BaseReportFilters>(
+    () => ({
+      ...filters,
+      startDate: timeframe.startDate,
+      endDate: timeframe.endDate,
+    }),
+    [filters, timeframe.startDate, timeframe.endDate]
+  );
+
+  const { data, isLoading } = useConsumablesReportQuery(effectiveFilters);
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
@@ -84,6 +96,12 @@ export default function ConsumablesReportPage() {
   }, [reportRows]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
+    if ("startDate" in updated || "endDate" in updated) {
+      setTimeframe({
+        startDate: updated.startDate,
+        endDate: updated.endDate,
+      });
+    }
     setFilters((prev) => ({ ...prev, ...updated }));
   };
 
@@ -272,7 +290,7 @@ export default function ConsumablesReportPage() {
             data={data?.data || []}
             summary={summary}
             canViewCosts={canViewCosts}
-            filters={filters}
+            filters={effectiveFilters}
           />
         </div>
       )}
@@ -280,7 +298,7 @@ export default function ConsumablesReportPage() {
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
       <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
-        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-2xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-bold tracking-tight text-text">
@@ -295,8 +313,9 @@ export default function ConsumablesReportPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 print:hidden">
-            <ReportExportButton reportType="consumables" filters={filters} />
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <ReportTimeframeFilter filters={effectiveFilters} onFilterChange={handleFilterChange} />
+            <ReportExportButton reportType="consumables" filters={effectiveFilters} />
           </div>
         </div>
       </div>
@@ -405,7 +424,7 @@ export default function ConsumablesReportPage() {
       {/* ── Search & Filter Controls ─────────────────────────────────── */}
       <div className="print:hidden">
         <ReportFilterBar
-          filters={filters}
+          filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
           categories={CATEGORY_OPTIONS}

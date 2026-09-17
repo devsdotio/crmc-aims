@@ -27,11 +27,13 @@ import { ProjectRepository } from "./project.repository";
 import { ProjectExpenseRepository } from "./project-expense.repository";
 import type { ProjectExpenseLineDTO } from "./project-expense.types";
 import {
+  batchManualMaterialsSchema,
   createProjectExpenseSchema,
   expenseIdSchema,
   updateProjectExpenseSchema,
   useConsumableOnProjectSchema,
 } from "./project-expense.validation";
+
 import { projectIdSchema } from "./project.validation";
 
 function formatMoney(value: string | null | undefined): string | null {
@@ -190,6 +192,50 @@ export class ProjectExpenseService {
 
     return toDTO(row);
   }
+
+  async createBatchManualMaterials(
+    rawProjectId: string,
+    rawInput: unknown,
+    actor: ActorContext
+  ): Promise<ProjectExpenseLineDTO[]> {
+    const projectId = projectIdSchema.parse(rawProjectId);
+    await this.requireMutableProject(projectId);
+    const { items } = batchManualMaterialsSchema.parse(rawInput);
+
+    return withTransaction(async (tx) => {
+      const createdRows: ProjectExpenseLineRow[] = [];
+      for (const item of items) {
+        const qtyNum = Number(item.quantity);
+        const unitNum = Number(item.unitCost);
+        const totalAmount = (qtyNum * unitNum).toFixed(2);
+        const notesParts = [item.description, item.notes].filter(Boolean);
+
+        const row = await this.expenses.create(
+          {
+            tenantId: actor.tenantId,
+            projectId,
+            lineType: "material",
+            category: "miscellaneous",
+            description: item.materialName,
+            amount: totalAmount,
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+            consumableId: null,
+            assetId: null,
+            incurredOn: item.incurredOn ?? todayDateString(),
+            notes: notesParts.length > 0 ? notesParts.join(" · ") : null,
+            metadata: {},
+            recordedByUserId: actor.userId,
+            recordedByName: actor.displayName,
+          },
+          tx
+        );
+        createdRows.push(row);
+      }
+      return createdRows.map(toDTO);
+    });
+  }
+
 
   /**
    * Phase 3: charge inventory to a project.

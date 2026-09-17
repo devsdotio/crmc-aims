@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { PettyCashVoucher, PettyCashStatus } from "@/types/petty-cash";
 import { formatPhp } from "@/components/projects/format-money";
+import { formatPurposeParticularsPreview } from "@/lib/voucher-particulars";
 import { cn } from "@/lib/utils";
 
 type SortField = "pcvNumber" | "voucherDate" | "payeeName" | "category" | "amount" | "status";
@@ -233,7 +234,7 @@ export function PettyCashTable({
                 </div>
               </th>
               <th scope="col" className="py-3 px-4">
-                Particulars / Purpose
+                Purpose
               </th>
               <th scope="col" className="py-3 px-4">
                 Ref / Receipt #
@@ -325,13 +326,22 @@ export function PettyCashTable({
                     </span>
                   </td>
 
-                  {/* Particulars Preview */}
+                  {/* Purpose Preview */}
                   <td className="py-3.5 px-4 text-text-secondary max-w-55">
                     <p
                       className="truncate text-[11px] leading-relaxed"
-                      title={voucher.particulars}
+                      title={
+                        formatPurposeParticularsPreview(
+                          voucher.purpose,
+                          voucher.particulars,
+                          200
+                        ) || undefined
+                      }
                     >
-                      {voucher.particulars || "—"}
+                      {formatPurposeParticularsPreview(
+                        voucher.purpose,
+                        voucher.particulars
+                      ) || "—"}
                     </p>
                   </td>
 

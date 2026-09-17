@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FolderKanban,
   CheckCircle2,
@@ -21,6 +21,8 @@ import { KpiCard } from "@/components/reports/kpi-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
 import { ReportTable, type ColumnDef } from "@/components/reports/report-table";
 import { ReportExportButton } from "@/components/reports/report-export-button";
+import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-filter";
+import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { ProjectDetailDialog } from "@/components/reports/project-detail-dialog";
 import { ProjectsPrintableReport } from "@/components/reports/print/ProjectsPrintableReport";
 
@@ -72,6 +74,7 @@ function StatusBadge({ status }: { status: ProjectReportRow["status"] }) {
 }
 
 export default function ProjectReportsPage() {
+  const { timeframe, setTimeframe } = useReportTimeframe();
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
     pageSize: 20,
@@ -80,11 +83,26 @@ export default function ProjectReportsPage() {
   });
   const [selectedProject, setSelectedProject] = useState<ProjectReportRow | null>(null);
 
-  const { data, isLoading } = useProjectReportQuery(filters);
+  const effectiveFilters = useMemo<BaseReportFilters>(
+    () => ({
+      ...filters,
+      startDate: timeframe.startDate,
+      endDate: timeframe.endDate,
+    }),
+    [filters, timeframe.startDate, timeframe.endDate]
+  );
+
+  const { data, isLoading } = useProjectReportQuery(effectiveFilters);
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
+    if ("startDate" in updated || "endDate" in updated) {
+      setTimeframe({
+        startDate: updated.startDate,
+        endDate: updated.endDate,
+      });
+    }
     setFilters((prev) => ({ ...prev, ...updated }));
   };
 
@@ -218,15 +236,15 @@ export default function ProjectReportsPage() {
             data={data?.data || []}
             summary={summary}
             canViewCosts={canViewCosts}
-            filters={filters}
+            filters={effectiveFilters}
           />
         </div>
       )}
 
       <div className="flex flex-col gap-3 w-full print:hidden">
-      {/* ── Page Header ─────────────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
+      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
+        <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl font-bold tracking-tight text-text">
@@ -240,8 +258,9 @@ export default function ProjectReportsPage() {
               Assigned assets, consumables consumed, overall project cost, and project timelines.
             </p>
           </div>
-          <div className="flex items-center gap-2 print:hidden">
-            <ReportExportButton reportType="projects" filters={filters} />
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <ReportTimeframeFilter filters={effectiveFilters} onFilterChange={handleFilterChange} />
+            <ReportExportButton reportType="projects" filters={effectiveFilters} />
           </div>
         </div>
       </div>
@@ -303,12 +322,11 @@ export default function ProjectReportsPage() {
       {/* ── Search & Filter Controls ─────────────────────────────────── */}
       <div className="print:hidden">
         <ReportFilterBar
-          filters={filters}
+          filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search project code, name, department, manager…"
-          showDatePresets
         />
       </div>
 
