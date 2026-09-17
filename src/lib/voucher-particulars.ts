@@ -122,3 +122,35 @@ function normalizeAmount(value: string): string {
   if (!Number.isFinite(n) || n < 0) return "";
   return n.toFixed(2);
 }
+
+/** Extract department label from PO purpose format: `[Dept Name] remaining purpose…` */
+export function extractDepartmentNameFromPoPurpose(
+  purpose: string | null | undefined
+): string | null {
+  if (!purpose?.trim()) return null;
+  const match = purpose.match(/^\[(.*?)\]/);
+  const name = match?.[1]?.trim();
+  return name || null;
+}
+
+/**
+ * Resolve a department id from a grouped PO by matching the `[Dept]`
+ * prefix in purpose against the departments catalog (name or code).
+ */
+export function resolveDepartmentIdFromPo(
+  purposes: Array<string | null | undefined>,
+  departments: Array<{ id: string; name: string; code?: string | null }>
+): string | null {
+  for (const purpose of purposes) {
+    const label = extractDepartmentNameFromPoPurpose(purpose);
+    if (!label) continue;
+    const needle = label.toLowerCase();
+    const match = departments.find(
+      (d) =>
+        d.name.trim().toLowerCase() === needle ||
+        (d.code && d.code.trim().toLowerCase() === needle)
+    );
+    if (match) return match.id;
+  }
+  return null;
+}

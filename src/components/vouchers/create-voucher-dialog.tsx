@@ -42,6 +42,7 @@ import { filterMoneyInput } from "@/lib/numeric-input";
 import {
   serializeParticulars,
   sumParticularAmounts,
+  resolveDepartmentIdFromPo,
   type ParticularLineItem,
 } from "@/lib/voucher-particulars";
 
@@ -157,7 +158,7 @@ export function CreateVoucherDialog({
     }
   };
 
-  // Handle PO selection and auto-fill purpose + line items
+  // Handle PO selection and auto-fill purpose + line items + department
   const handleSelectPO = (po: GroupedPurchaseOrder) => {
     if (isLegacy) return;
     setPurchaseOrderNumber(po.poNumber);
@@ -167,6 +168,15 @@ export function CreateVoucherDialog({
     setSupplierId(po.representative.supplierId || null);
     setAmount(po.totalCost ? String(po.totalCost) : "0");
     setPurpose(`Disbursement / settlement for Purchase Order #${po.poNumber}`);
+
+    const resolvedDeptId = resolveDepartmentIdFromPo(
+      [
+        po.representative.purpose,
+        ...po.lineItems.map((li) => li.purpose),
+      ],
+      departments
+    );
+    setDepartmentId(resolvedDeptId);
 
     const rawItems =
       po.lineItems && po.lineItems.length > 0
@@ -210,6 +220,7 @@ export function CreateVoucherDialog({
     setListItems([{ description: "", amount: "" }]);
     setSupplierId(null);
     setSupplierName("");
+    setDepartmentId(null);
   };
 
   const syncAmountFromLines = (items: ParticularLineItem[]) => {
@@ -599,15 +610,37 @@ export function CreateVoucherDialog({
 
                   {/* Requesting Department */}
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-text mb-1.5">
-                      Requesting Department
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold uppercase tracking-wider text-text">
+                        Requesting Department
+                      </label>
+                      {purchaseOrderNumber ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                          <Lock className="h-3 w-3" />
+                          From linked PO
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-text-secondary">
+                          Optional
+                        </span>
+                      )}
+                    </div>
                     <select
                       value={departmentId || ""}
                       onChange={(e) => setDepartmentId(e.target.value || null)}
-                      className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+                      disabled={Boolean(purchaseOrderNumber)}
+                      className={cn(
+                        "w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                        purchaseOrderNumber
+                          ? "cursor-not-allowed opacity-75 bg-bg-subtle"
+                          : "cursor-pointer"
+                      )}
                     >
-                      <option value="">None / General Custodian Fund</option>
+                      <option value="">
+                        {purchaseOrderNumber
+                          ? "No department on linked PO"
+                          : "None / General Custodian Fund"}
+                      </option>
                       {departments.map((d) => (
                         <option key={d.id} value={d.id}>
                           {d.name} ({d.code})
@@ -615,7 +648,9 @@ export function CreateVoucherDialog({
                       ))}
                     </select>
                     <p className="mt-1 text-[11px] text-text-secondary">
-                      Department or office this disbursement is charged / requested for.
+                      {purchaseOrderNumber
+                        ? "Department is taken from the linked purchase order and cannot be changed until the PO link is cleared."
+                        : "Department or office this disbursement is charged / requested for."}
                     </p>
                   </div>
 
