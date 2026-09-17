@@ -45,6 +45,10 @@ import {
   issueConsumableSchema,
   updateConsumableSchema,
 } from "./consumable.validation";
+import {
+  DEFAULT_CONSUMABLE_CLASSIFICATION,
+  isConsumableClassification,
+} from "@/lib/consumable-classification";
 
 function getStockSeverity(
   currentQty: number,
@@ -66,6 +70,9 @@ function toDTO(row: ConsumableRow): ConsumableDTO {
     itemCode: row.itemCode,
     name: row.name,
     category: row.category,
+    classification: isConsumableClassification(row.classification)
+      ? row.classification
+      : DEFAULT_CONSUMABLE_CLASSIFICATION,
     unit: row.unit,
     currentQty: row.currentQty,
     reservedQty,
@@ -166,6 +173,7 @@ export class ConsumableService {
     const filters = listConsumablesQuerySchema.parse(rawQuery ?? {});
     const result = await this.repo.list({
       category: filters.category,
+      classification: filters.classification,
       search: filters.search,
       stockLevel: filters.stockLevel === "critical" ? "critical" : undefined,
       page: filters.page,
@@ -213,6 +221,7 @@ export class ConsumableService {
       itemCode,
       name: input.name,
       category: categoryName,
+      classification: input.classification,
       unit: input.unit,
       minThreshold: input.minThreshold,
       location: input.location,
@@ -313,6 +322,9 @@ export class ConsumableService {
     const updated = await this.repo.update(id, {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(categoryName !== undefined ? { category: categoryName } : {}),
+      ...(input.classification !== undefined
+        ? { classification: input.classification }
+        : {}),
       ...(input.unit !== undefined ? { unit: input.unit } : {}),
       ...(input.minThreshold !== undefined
         ? { minThreshold: input.minThreshold }

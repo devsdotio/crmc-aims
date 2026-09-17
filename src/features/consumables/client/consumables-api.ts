@@ -8,6 +8,7 @@ export type CreateConsumablePayload = {
   itemCode?: string;
   name: string;
   category: ConsumableItem["category"];
+  classification?: ConsumableItem["classification"];
   unit: string;
   currentQty?: number;
   minThreshold?: number;
@@ -23,6 +24,7 @@ export type CreateConsumablePayload = {
 export type UpdateConsumablePayload = {
   name?: string;
   category?: ConsumableItem["category"];
+  classification?: ConsumableItem["classification"];
   unit?: string;
   minThreshold?: number;
   location?: string;
@@ -66,6 +68,7 @@ export type StockAdjustPayload = {
 export const consumablesApi = {
   async list(params?: {
     category?: ConsumableItem["category"];
+    classification?: ConsumableItem["classification"];
     stockLevel?: "all" | "healthy" | "low" | "critical";
     search?: string;
     page?: number;
@@ -74,6 +77,7 @@ export const consumablesApi = {
   }): Promise<import("@/types/filters").PaginatedResponse<ConsumableItem>> {
     const sp = new URLSearchParams();
     if (params?.category) sp.set("category", params.category);
+    if (params?.classification) sp.set("classification", params.classification);
     if (params?.stockLevel) sp.set("stockLevel", params.stockLevel);
     if (params?.search) sp.set("search", params.search);
     if (params?.page) sp.set("page", params.page.toString());

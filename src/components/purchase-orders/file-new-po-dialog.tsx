@@ -43,6 +43,12 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
+import {
+  CONSUMABLE_CLASSIFICATIONS,
+  CONSUMABLE_CLASSIFICATION_LABELS,
+  DEFAULT_CONSUMABLE_CLASSIFICATION,
+  type ConsumableClassification,
+} from "@/lib/consumable-classification";
 
 interface FileNewPODialogProps {
   isOpen: boolean;
@@ -61,6 +67,7 @@ interface POLineItemForm {
   assetId?: string;
   name: string;
   category: string;
+  classification: ConsumableClassification;
   unit: string;
   minThreshold: number;
   location: string;
@@ -94,6 +101,7 @@ function generateInitialRow(poType: POType = "consumable", isNew = false): POLin
     isNew,
     name: "",
     category: "",
+    classification: DEFAULT_CONSUMABLE_CLASSIFICATION,
     unit: poType === "asset" ? "unit" : "pcs",
     minThreshold: 5,
     location: "Main Property Supply",
@@ -114,9 +122,20 @@ export function FileNewPODialog({
   defaultPurpose,
 }: FileNewPODialogProps) {
   const { data: me } = useMeQuery();
-  const { data: departments = [] } = useDepartmentsQuery();
-  const { data: suppliers = [] } = useSuppliersQuery({ activeOnly: true });
-  const { data: allCategories = [] } = useCategoriesQuery();
+  // Prefetch while the PO page is mounted so the department select is warm
+  // when the dialog opens (avoids racing the slow first DB connection).
+  const {
+    data: departmentsData,
+    isLoading: departmentsLoading,
+    isError: departmentsError,
+    refetch: refetchDepartments,
+  } = useDepartmentsQuery();
+  const departments = Array.isArray(departmentsData) ? departmentsData : [];
+  const { data: suppliers = [] } = useSuppliersQuery({
+    activeOnly: true,
+    enabled: isOpen,
+  });
+  const { data: allCategories = [] } = useCategoriesQuery({ enabled: isOpen });
   const { data: consumablePage } = useConsumablesQuery({ limit: 100 });
   const consumables = useMemo(
     () => consumablePage?.data ?? [],
@@ -246,6 +265,7 @@ export function FileNewPODialog({
               ? defaultAssetCategory
               : defaultConsumableCategory
             : "",
+          classification: DEFAULT_CONSUMABLE_CLASSIFICATION,
           unit: poType === "asset" ? "unit" : "pcs",
         };
       })
@@ -283,6 +303,7 @@ export function FileNewPODialog({
       consumableId: c.id,
       name: c.name,
       category: c.category,
+      classification: c.classification ?? DEFAULT_CONSUMABLE_CLASSIFICATION,
       unit: c.unit || "pcs",
       minThreshold: c.minThreshold || 5,
       location: c.location || "Main Property Storage",
@@ -327,6 +348,7 @@ export function FileNewPODialog({
       assetId: a.id,
       name: a.name,
       category: a.category,
+      classification: DEFAULT_CONSUMABLE_CLASSIFICATION,
       unit: "unit",
       minThreshold: 5,
       location: a.location || "Main Property Storage",
@@ -363,6 +385,8 @@ export function FileNewPODialog({
           consumableId: matched.id,
           name: matched.name,
           category: matched.category,
+          classification:
+            matched.classification ?? DEFAULT_CONSUMABLE_CLASSIFICATION,
           unit: matched.unit,
           location: matched.location,
           suggestedDealer: matched.supplier || item.suggestedDealer || supObj?.name || "",
@@ -561,6 +585,9 @@ export function FileNewPODialog({
           isNewItem: item.isNew,
           name: item.name.trim(),
           category: item.category.trim() || (isAsset ? defaultAssetCategory : defaultConsumableCategory),
+          classification: !isAsset
+            ? item.classification || DEFAULT_CONSUMABLE_CLASSIFICATION
+            : undefined,
           unit: item.unit || (isAsset ? "unit" : "pcs"),
           minThreshold: item.minThreshold || 5,
           location: item.location || "Main Property Storage",
@@ -920,15 +947,38 @@ export function FileNewPODialog({
                       value={targetDepartment}
                       onChange={(e) => setTargetDepartment(e.target.value)}
                       required
-                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer font-medium"
+                      disabled={departmentsLoading}
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer font-medium disabled:opacity-60"
                     >
-                      <option value="">-- Choose Department --</option>
+                      <option value="">
+                        {departmentsLoading
+                          ? "Loading departments…"
+                          : departmentsError
+                            ? "Failed to load departments"
+                            : "-- Choose Department --"}
+                      </option>
                       {departments.map((dept) => (
                         <option key={dept.id} value={dept.name}>
                           {dept.name} {dept.code ? `(${dept.code})` : ""}
                         </option>
                       ))}
                     </select>
+                    {departmentsError && (
+                      <button
+                        type="button"
+                        onClick={() => void refetchDepartments()}
+                        className="text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                      >
+                        Retry loading departments
+                      </button>
+                    )}
+                    {!departmentsLoading &&
+                      !departmentsError &&
+                      departments.length === 0 && (
+                        <p className="text-[11px] text-text-secondary">
+                          No departments found. Add one under Settings first.
+                        </p>
+                      )}
                   </div>
                 </div>
 
@@ -1347,8 +1397,14 @@ export function FileNewPODialog({
                           </div>
                         </div>
 
-                        {/* Row 2: 1 Unified Row for Quantity, Unit Cost, Category & Unit of Measure */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1 border-t border-border/40">
+                        <div
+                          className={cn(
+                            "grid grid-cols-2 gap-3 pt-1 border-t border-border/40",
+                            poType === "consumable" && item.isNew
+                              ? "sm:grid-cols-3 lg:grid-cols-5"
+                              : "sm:grid-cols-4"
+                          )}
+                        >
                           {/* 1. Quantity */}
                           <div className="space-y-1">
                             <label className="font-semibold text-text">Quantity</label>
@@ -1386,7 +1442,32 @@ export function FileNewPODialog({
                             />
                           </div>
 
-                          {/* 3. Category */}
+                          {/* 3. Classification (new consumable) / Category */}
+                          {poType === "consumable" && item.isNew && (
+                            <div className="space-y-1">
+                              <label className="font-semibold text-text">
+                                Classification
+                              </label>
+                              <select
+                                value={item.classification}
+                                onChange={(e) =>
+                                  handleItemFieldChange(
+                                    item.id,
+                                    "classification",
+                                    e.target.value
+                                  )
+                                }
+                                className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden cursor-pointer"
+                              >
+                                {CONSUMABLE_CLASSIFICATIONS.map((id) => (
+                                  <option key={id} value={id}>
+                                    {CONSUMABLE_CLASSIFICATION_LABELS[id]}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
                           <div className="space-y-1">
                             <label className="font-semibold text-text">Category</label>
                             {item.isNew ? (
@@ -1406,7 +1487,11 @@ export function FileNewPODialog({
                             ) : (
                               <input
                                 type="text"
-                                value={item.category || "General Supply"}
+                                value={
+                                  poType === "consumable"
+                                    ? `${CONSUMABLE_CLASSIFICATION_LABELS[item.classification] || "Consumable Supplies"} · ${item.category || "General Supply"}`
+                                    : item.category || "Equipment"
+                                }
                                 readOnly
                                 className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"
                               />

@@ -26,6 +26,7 @@ import { IndividualConsumablePrintableReport } from "@/components/reports/print/
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import type { ConsumableItem } from "@/types/inventory";
+import { consumableClassificationLabel } from "@/lib/consumable-classification";
 import type { PurchaseLot } from "@/types/purchase-lots";
 import { useConsumableQuery } from "@/features/consumables/client/use-consumables";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
@@ -189,6 +190,9 @@ export function ConsumableDetailPanel({
               {displayItem.itemCode}
             </h2>
             <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-bg border border-border text-text-secondary">
+                {consumableClassificationLabel(displayItem.classification)}
+              </span>
               <span
                 className={cn(
                   "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs",

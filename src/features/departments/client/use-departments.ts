@@ -54,6 +54,9 @@ async function fetchDepartments(
       timeoutMs: 60_000,
     }
   );
+  if (!result || !Array.isArray(result.data)) {
+    throw new Error("Departments response was empty. Please retry.");
+  }
   return result.data;
 }
 
@@ -67,6 +70,9 @@ export function useDepartmentsQuery(options?: {
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
+    // Remote DB + pool contention can stretch the first list call; one retry
+    // is enough — multi-retry with a 60s client timeout looked like an empty dropdown.
+    retry: 1,
     enabled: options?.enabled ?? true,
   });
 }

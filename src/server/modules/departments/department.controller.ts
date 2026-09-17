@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireUserManager } from "@/server/shared/auth";
+import { requireStaffShell, requireUserManager } from "@/server/shared/auth";
 import { created, handleError, ok, okWithEtag } from "@/server/shared/http";
 
 import { DepartmentService } from "./department.service";
@@ -12,7 +12,9 @@ export class DepartmentController {
 
   async list(request: NextRequest | Request) {
     try {
-      const session = await requireUserManager();
+      // Read access for any staff shell user — PO filing and release dialogs
+      // need department names; mutating endpoints stay admin-gated.
+      const session = await requireStaffShell();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       const data = await this.service.list({

@@ -3,6 +3,7 @@ export const consumableQueryKeys = {
   lists: () => [...consumableQueryKeys.all, "list"] as const,
   list: (filters?: {
     category?: string;
+    classification?: string;
     stockLevel?: string;
     search?: string;
     page?: number;

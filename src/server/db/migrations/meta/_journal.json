@@ -232,6 +232,13 @@
       "when": 1786367000000,
       "tag": "0032_maintenance_repair_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786368000000,
+      "tag": "0033_consumable_classification",
+      "breakpoints": true
     }
   ]
 }

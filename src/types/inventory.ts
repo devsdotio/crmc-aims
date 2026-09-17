@@ -1,8 +1,11 @@
 import type { BaseFilterState } from "./filters";
+import type { ConsumableClassification } from "@/lib/consumable-classification";
 
 export type StockSeverity = "healthy" | "low" | "critical";
 
 export type ConsumableCategory = string;
+
+export type { ConsumableClassification };
 
 export type StockActionType = "restock" | "adjustment" | "checkout";
 
@@ -37,6 +40,8 @@ export interface ConsumableItem {
   itemCode: string;
   name: string;
   category: ConsumableCategory;
+  /** Broad class: supply (Consumable Supplies) or material (Consumable Materials). */
+  classification: ConsumableClassification;
   unit: string;
   currentQty: number;
   /** Qty promised to approved supply requests not yet issued. */
@@ -56,6 +61,7 @@ export interface ConsumableItem {
 
 export interface ConsumableFilterState extends BaseFilterState {
   category: string;
+  classification: "all" | ConsumableClassification;
   stockLevel: "all" | "healthy" | "low" | "critical";
   sortBy: "qty" | "qty_desc" | "critical" | "name" | "updated";
 }
