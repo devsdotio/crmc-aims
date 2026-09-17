@@ -1054,6 +1054,7 @@ export class PurchaseLotService {
       }
 
       const poCode = derivePONumber(lot.lotCode, lot.reference);
+      const meta = parseNotesMetadata(lot.notes);
 
       // If delivered and already drawn down, prevent hard delete
       if (meta.status === "delivered" && lot.quantityRemaining < lot.quantity) {

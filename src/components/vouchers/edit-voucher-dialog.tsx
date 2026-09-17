@@ -103,7 +103,7 @@ export function EditVoucherDialog({
       const next = [...prev];
       const row = { ...next[index] };
       if (field === "amount") {
-        row.amount = filterMoneyInput(value);
+        row.amount = filterMoneyInput(value) ?? row.amount;
       } else {
         row.description = value;
       }
