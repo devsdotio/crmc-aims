@@ -56,20 +56,53 @@ export function withAssetMeta(asset: Asset & { modelId?: string | null }): Asset
  * repositories can be swapped or mocked in tests.
  */
 export interface IAssetRepository {
-  getCategoryDistribution(): Promise<{ category: string; count: number }[]>;
-  countAssigned(): Promise<number>;
-  countByType(type: "borrowable" | "assignable"): Promise<number>;
-  findMany(filters?: ListAssetsFilters): Promise<AssetRow[]>;
-  findById(id: string): Promise<AssetRow | null>;
-  findByAssetCode(assetCode: string): Promise<AssetRow | null>;
-  findByModelId(modelId: string): Promise<AssetRow[]>;
+  getCategoryDistribution(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<{ category: string; count: number }[]>;
+  countAssigned(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  countByType(
+    type: "borrowable" | "assignable",
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  findMany(
+    filters?: ListAssetsFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<AssetRow[]>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<AssetRow | null>;
+  findByAssetCode(
+    assetCode: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<AssetRow | null>;
+  findByModelId(
+    modelId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<AssetRow[]>;
   create(
     data: Omit<NewAssetRow, "id" | "createdAt" | "updatedAt" | "lastUpdated"> &
-      Partial<Pick<NewAssetRow, "lastUpdated">>
+      Partial<Pick<NewAssetRow, "lastUpdated">>,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<AssetRow>;
   update(
     id: string,
-    data: Partial<Omit<AssetRow, "id" | "createdAt">>
+    data: Partial<Omit<AssetRow, "id" | "createdAt">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<AssetRow | null>;
-  delete(id: string): Promise<boolean>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
 }

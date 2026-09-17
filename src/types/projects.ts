@@ -21,7 +21,8 @@ export type ProjectExpenseCategory =
   | "broken_asset"
   | "fees"
   | "adjustment"
-  | "miscellaneous";
+  | "miscellaneous"
+  | "other";
 
 export interface Project {
   id: string;
@@ -49,6 +50,8 @@ export interface ProjectExpenseLine {
   projectId: string;
   lineType: ProjectExpenseLineType;
   category: ProjectExpenseCategory;
+  /** Custom label when category is `other`. */
+  categoryLabel?: string | null;
   description: string;
   amount: string;
   quantity: string | null;
@@ -109,12 +112,25 @@ export const PROJECT_EXPENSE_CATEGORY_LABELS: Record<
   fees: "Fees",
   adjustment: "Adjustment",
   miscellaneous: "Miscellaneous",
+  other: "Other",
 };
 
 export const PROJECT_EXPENSE_LINE_TYPE_LABELS: Record<
-  "miscellaneous" | "adjustment",
+  "miscellaneous" | "adjustment" | "material",
   string
 > = {
   miscellaneous: "Expense",
   adjustment: "Adjustment / credit",
+  material: "Manual material",
 };
+
+/** Display label for expense category (uses custom text for Other). */
+export function expenseCategoryDisplay(
+  category: ProjectExpenseCategory,
+  categoryLabel?: string | null
+): string {
+  if (category === "other" && categoryLabel?.trim()) {
+    return categoryLabel.trim();
+  }
+  return PROJECT_EXPENSE_CATEGORY_LABELS[category];
+}

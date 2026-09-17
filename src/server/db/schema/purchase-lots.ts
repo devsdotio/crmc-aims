@@ -8,7 +8,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { assets } from "./assets";
 import { consumables } from "./consumables";
@@ -28,8 +31,9 @@ export const purchaseLots = pgTable(
   "purchase_lots",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    lotCode: text("lot_code").notNull().unique(),
+    lotCode: text("lot_code").notNull(),
     itemType: purchaseLotItemTypeEnum("item_type").notNull(),
 
     consumableId: uuid("consumable_id").references(() => consumables.id, {
@@ -59,6 +63,7 @@ export const purchaseLots = pgTable(
     purchasedOn: date("purchased_on", { mode: "string" }).notNull(),
     reference: text("reference"),
     notes: text("notes"),
+    receiptUrl: text("receipt_url"),
 
     recordedByUserId: uuid("recorded_by_user_id").notNull(),
     recordedByName: text("recorded_by_name").notNull(),

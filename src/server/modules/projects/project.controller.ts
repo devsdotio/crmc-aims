@@ -19,13 +19,16 @@ export class ProjectController {
 
   async list(request: NextRequest | Request) {
     try {
-      await requireUserManager();
+      const session = await requireUserManager();
       const url = new URL(request.url);
       return ok(
-        await this.service.list({
-          search: url.searchParams.get("search") ?? undefined,
-          status: url.searchParams.get("status") ?? undefined,
-        })
+        await this.service.list(
+          {
+            search: url.searchParams.get("search") ?? undefined,
+            status: url.searchParams.get("status") ?? undefined,
+          },
+          session.actor.tenantId
+        )
       );
     } catch (error) {
       return handleError(error);
@@ -34,8 +37,8 @@ export class ProjectController {
 
   async get(id: string) {
     try {
-      await requireUserManager();
-      return ok(await this.service.getById(id));
+      const session = await requireUserManager();
+      return ok(await this.service.getById(id, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -53,9 +56,9 @@ export class ProjectController {
 
   async update(request: NextRequest | Request, id: string) {
     try {
-      await requireUserManager();
+      const session = await requireUserManager();
       const body = await request.json();
-      return ok(await this.service.update(id, body));
+      return ok(await this.service.update(id, body, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }
@@ -63,8 +66,8 @@ export class ProjectController {
 
   async delete(id: string) {
     try {
-      await requireUserManager();
-      await this.service.delete(id);
+      const session = await requireUserManager();
+      await this.service.delete(id, session.actor.tenantId);
       return noContent();
     } catch (error) {
       return handleError(error);

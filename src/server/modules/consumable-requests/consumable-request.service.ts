@@ -192,9 +192,9 @@ export class ConsumableRequestService {
 
     const { page, limit, ...countFilters } = filters;
     const [rows, total, counts] = await Promise.all([
-      this.repo.list(filters),
-      this.repo.count(filters),
-      this.repo.countByStatus(countFilters),
+      this.repo.list(filters, undefined, actor?.tenantId),
+      this.repo.count(filters, undefined, actor?.tenantId),
+      this.repo.countByStatus(countFilters, undefined, actor?.tenantId),
     ]);
 
     const allLines = await this.repo.listLinesByRequestIds(rows.map((r) => r.id));
@@ -224,7 +224,7 @@ export class ConsumableRequestService {
     actor?: ActorContext
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!row) throw new NotFoundError("Consumable request", id);
     if (
       actor &&

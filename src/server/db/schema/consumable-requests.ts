@@ -9,7 +9,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { consumables } from "./consumables";
 import { departments } from "./departments";
@@ -52,8 +55,9 @@ export const consumableRequests = pgTable(
   "consumable_requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    requestCode: text("request_code").notNull().unique(),
+    requestCode: text("request_code").notNull(),
 
     requesterUserId: uuid("requester_user_id"),
     requesterName: text("requester_name").notNull(),

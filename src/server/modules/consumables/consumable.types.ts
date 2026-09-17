@@ -33,6 +33,7 @@ export interface IConsumableRepository {
   countYear(): Promise<number>;
   countLowStock(): Promise<number>;
   getLowStockItems(limit: number): Promise<ConsumableRow[]>;
+  getCategoryDistribution(session?: import("@/server/db/transaction").DbSession): Promise<{ category: string; count: number }[]>;
   create(
     data: Omit<
       import("@/server/db/schema").NewConsumableRow,

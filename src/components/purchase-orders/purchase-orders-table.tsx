@@ -17,6 +17,7 @@ import {
   Trash2,
   Layers,
   Building2,
+  Receipt,
 } from "lucide-react";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
 import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
@@ -434,6 +435,14 @@ export function PurchaseOrdersTable({
                       <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-accent/10 text-accent border border-accent/25 shrink-0">
                         <Layers className="h-2.5 w-2.5" />
                         {group.itemCount}
+                      </span>
+                    )}
+                    {lot.receiptUrl && (
+                      <span
+                        title="Receipt / Sales invoice attached"
+                        className="inline-flex items-center text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 p-1 rounded-md border border-emerald-500/25 shrink-0 shadow-2xs"
+                      >
+                        <Receipt className="h-3 w-3" />
                       </span>
                     )}
                   </div>

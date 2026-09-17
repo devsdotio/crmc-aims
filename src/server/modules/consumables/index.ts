@@ -21,17 +21,20 @@ export class ConsumableController {
       const limitParam = url.searchParams.get("limit");
 
       return ok(
-        await this.service.list({
-          category: url.searchParams.get("category") ?? undefined,
-          stockLevel: url.searchParams.get("stockLevel") ?? undefined,
-          search: url.searchParams.get("search") ?? undefined,
-          page: pageParam ? parseInt(pageParam, 10) : undefined,
-          limit: limitParam ? parseInt(limitParam, 10) : undefined,
-          includeSandbox: parseIncludeSandbox(
-            url.searchParams.get("includeSandbox"),
-            session.role
-          ),
-        })
+        await this.service.list(
+          {
+            category: url.searchParams.get("category") ?? undefined,
+            stockLevel: url.searchParams.get("stockLevel") ?? undefined,
+            search: url.searchParams.get("search") ?? undefined,
+            page: pageParam ? parseInt(pageParam, 10) : undefined,
+            limit: limitParam ? parseInt(limitParam, 10) : undefined,
+            includeSandbox: parseIncludeSandbox(
+              url.searchParams.get("includeSandbox"),
+              session.role
+            ),
+          },
+          session.tenantId
+        )
       );
     } catch (error) {
       return handleError(error);
@@ -40,8 +43,8 @@ export class ConsumableController {
 
   async get(id: string) {
     try {
-      await requireActor();
-      return ok(await this.service.getById(id));
+      const session = await requireActor();
+      return ok(await this.service.getById(id, session.tenantId));
     } catch (error) {
       return handleError(error);
     }

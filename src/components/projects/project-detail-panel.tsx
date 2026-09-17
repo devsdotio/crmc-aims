@@ -21,7 +21,10 @@ import {
   Boxes,
   Undo2,
   Wrench,
+  PackagePlus,
+  Printer,
 } from "lucide-react";
+import { IndividualProjectPrintableReport } from "@/components/reports/print/individual/IndividualProjectPrintableReport";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import type {
@@ -29,7 +32,9 @@ import type {
   ProjectAssetAssignment,
   ProjectExpenseLine,
 } from "@/types/projects";
-import { PROJECT_EXPENSE_CATEGORY_LABELS } from "@/types/projects";
+import {
+  expenseCategoryDisplay,
+} from "@/types/projects";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { formatPhp } from "./format-money";
 import {
@@ -53,6 +58,11 @@ import {
   AddMaterialDialog,
   type MaterialFormInput,
 } from "./add-material-dialog";
+import {
+  AddManualMaterialDialog,
+  type ManualMaterialFormInput,
+} from "./add-manual-material-dialog";
+import { ProjectExpensePrintDialog } from "./project-expense-print-dialog";
 import {
   AssignAssetDialog,
   type AssignAssetFormInput,
@@ -128,6 +138,8 @@ export function ProjectDetailPanel({
     ProjectExpenseLine | null | undefined
   >(undefined);
   const [materialOpen, setMaterialOpen] = useState(false);
+  const [manualMaterialOpen, setManualMaterialOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [damageTarget, setDamageTarget] =
     useState<ProjectAssetAssignment | null>(null);
@@ -145,6 +157,8 @@ export function ProjectDetailPanel({
         isOpen &&
         editExpense === undefined &&
         !materialOpen &&
+        !manualMaterialOpen &&
+        !printOpen &&
         !assignOpen &&
         !damageTarget &&
         !returnTarget &&
@@ -159,6 +173,8 @@ export function ProjectDetailPanel({
     onClose,
     editExpense,
     materialOpen,
+    manualMaterialOpen,
+    printOpen,
     assignOpen,
     damageTarget,
     returnTarget,
@@ -169,6 +185,8 @@ export function ProjectDetailPanel({
     if (!isOpen) {
       setEditExpense(undefined);
       setMaterialOpen(false);
+      setManualMaterialOpen(false);
+      setPrintOpen(false);
       setAssignOpen(false);
       setDamageTarget(null);
       setReturnTarget(null);
@@ -189,6 +207,8 @@ export function ProjectDetailPanel({
     const payload = {
       lineType: input.lineType,
       category: input.category,
+      categoryLabel:
+        input.category === "other" ? input.categoryLabel || null : null,
       description: input.description,
       amount: input.amount,
       incurredOn: input.incurredOn || undefined,
@@ -211,6 +231,35 @@ export function ProjectDetailPanel({
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to save expense.");
+      throw err;
+    }
+  };
+
+  const handleManualMaterialSubmit = async (input: ManualMaterialFormInput) => {
+    setActionError(null);
+    const qty = Number(input.quantity);
+    const amount = Number(input.amount);
+    const unitCost =
+      Number.isFinite(qty) && qty > 0 ? amount / qty : undefined;
+    const notesParts = [input.description, input.notes].filter(Boolean);
+    try {
+      await createExpense.mutateAsync({
+        projectId: project.id,
+        payload: {
+          lineType: "material",
+          description: input.materialName,
+          amount,
+          quantity: qty,
+          unitCost,
+          incurredOn: input.incurredOn || undefined,
+          notes: notesParts.length > 0 ? notesParts.join(" · ") : null,
+        },
+      });
+      toast.success("Manual material charged to project.");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to record material."
+      );
       throw err;
     }
   };
@@ -317,48 +366,76 @@ export function ProjectDetailPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+    <>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200 print:hidden">
+        <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="project-detail-heading"
-        className={cn(
-          "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
-          "animate-in slide-in-from-right duration-250 ease-in-out"
-        )}
-      >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
-          <div className="min-w-0 flex-1 pr-3">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold tracking-tight px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/25">
-                <FolderKanban className="h-3.5 w-3.5" />
-                {project.projectCode}
-              </span>
-              <ProjectStatusBadge status={project.status} />
-              {!project.isMutable && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-bg-subtle border border-border text-text-secondary">
-                  <Lock className="h-3 w-3" />
-                  Read-only
+        <aside
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="project-detail-heading"
+          className={cn(
+            "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
+            "animate-in slide-in-from-right duration-250 ease-in-out"
+          )}
+        >
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
+            <div className="min-w-0 flex-1 pr-3">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 font-mono text-sm font-bold tracking-tight px-2.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/25">
+                  <FolderKanban className="h-3.5 w-3.5" />
+                  {project.projectCode}
                 </span>
-              )}
+                <ProjectStatusBadge status={project.status} />
+                {!project.isMutable && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-bg-subtle border border-border text-text-secondary">
+                    <Lock className="h-3 w-3" />
+                    Read-only
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-secondary font-medium mt-1 truncate">
+                Project Workspace • <strong className="text-text font-semibold">{project.name}</strong>
+              </p>
             </div>
-            <p className="text-xs text-text-secondary font-medium mt-1 truncate">
-              Project Workspace • <strong className="text-text font-semibold">{project.name}</strong>
-            </p>
-          </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close project detail"
-            className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setPrintOpen(true)}
+                className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer shadow-xs"
+                title="Export expense report"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Expenses
+              </button>
+
+              <button
+                type="button"
+                onClick={() => window.print()}
+                aria-label="Print Project Dossier Report"
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+              >
+                <Printer className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
+                >
+                  Print Report (PDF)
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close project detail"
+                className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <section className="grid grid-cols-2 gap-3">
@@ -502,14 +579,24 @@ export function ProjectDetailPanel({
                 Expenses & materials
               </h3>
               {project.isMutable && (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <button
                     type="button"
                     onClick={() => setMaterialOpen(true)}
                     className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-bold rounded-md border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer"
+                    title="Issue from inventory stock"
                   >
                     <Boxes className="h-3.5 w-3.5" />
-                    Materials
+                    Inventory
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualMaterialOpen(true)}
+                    className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-bold rounded-md border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer"
+                    title="Add material not in inventory"
+                  >
+                    <PackagePlus className="h-3.5 w-3.5" />
+                    Manual
                   </button>
                   <button
                     type="button"
@@ -544,18 +631,26 @@ export function ProjectDetailPanel({
                 <div className="space-y-1 max-w-xs">
                   <h4 className="text-xs font-bold text-text">No project expenses yet</h4>
                   <p className="text-[11px] text-text-secondary leading-relaxed">
-                    Track material usages from stock checkout (FIFO lots) or log miscellaneous travel, meals, fees, and credits.
+                    Issue from inventory, charge manual materials not in stock, or log travel, meals, fees, and credits.
                   </p>
                 </div>
                 {project.isMutable && (
-                  <div className="flex items-center gap-2 pt-1">
+                  <div className="flex items-center gap-2 pt-1 flex-wrap justify-center">
                     <button
                       type="button"
                       onClick={() => setMaterialOpen(true)}
                       className="inline-flex items-center gap-1.5 h-7 px-3 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle transition-colors cursor-pointer shadow-2xs"
                     >
                       <Boxes className="h-3 w-3" />
-                      Add Materials
+                      Inventory
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setManualMaterialOpen(true)}
+                      className="inline-flex items-center gap-1.5 h-7 px-3 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle transition-colors cursor-pointer shadow-2xs"
+                    >
+                      <PackagePlus className="h-3 w-3" />
+                      Manual material
                     </button>
                     <button
                       type="button"
@@ -573,7 +668,8 @@ export function ProjectDetailPanel({
                 {expenses.map((line) => {
                   const amount = Number(line.amount);
                   const isCredit = amount < 0;
-                  const isMaterial = line.lineType === "consumable";
+                  const isInventory = line.lineType === "consumable";
+                  const isManualMaterial = line.lineType === "material";
                   const isWriteOff = line.lineType === "asset_writeoff";
                   return (
                     <li
@@ -586,10 +682,16 @@ export function ProjectDetailPanel({
                             <span className="font-bold text-text truncate">
                               {line.description}
                             </span>
-                            {isMaterial && (
+                            {isInventory && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-category-furniture-bg/15 text-category-furniture-bg border border-category-furniture-bg/30">
                                 <Boxes className="h-3 w-3" />
                                 Inventory Stock
+                              </span>
+                            )}
+                            {isManualMaterial && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-accent/10 text-accent border border-accent/25">
+                                <PackagePlus className="h-3 w-3" />
+                                Manual material
                               </span>
                             )}
                             {isWriteOff && (
@@ -605,12 +707,15 @@ export function ProjectDetailPanel({
                             )}
                             {line.lineType === "miscellaneous" && (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-bg-subtle text-text-secondary border border-border">
-                                {PROJECT_EXPENSE_CATEGORY_LABELS[line.category]}
+                                {expenseCategoryDisplay(
+                                  line.category,
+                                  line.categoryLabel
+                                )}
                               </span>
                             )}
                           </div>
                           <div className="text-[10px] text-text-secondary mt-1 flex items-center gap-1.5 flex-wrap">
-                            {isMaterial
+                            {isInventory || isManualMaterial
                               ? [
                                   line.quantity != null
                                     ? `qty ${Number(line.quantity)}`
@@ -654,6 +759,7 @@ export function ProjectDetailPanel({
                           {project.isMutable &&
                             (line.lineType === "miscellaneous" ||
                               line.lineType === "adjustment" ||
+                              line.lineType === "material" ||
                               line.lineType === "consumable") && (
                               <button
                                 type="button"
@@ -853,6 +959,19 @@ export function ProjectDetailPanel({
         onSubmit={handleMaterialSubmit}
       />
 
+      <AddManualMaterialDialog
+        isOpen={manualMaterialOpen}
+        onClose={() => setManualMaterialOpen(false)}
+        onSubmit={handleManualMaterialSubmit}
+      />
+
+      <ProjectExpensePrintDialog
+        project={project}
+        expenses={expenses}
+        isOpen={printOpen}
+        onClose={() => setPrintOpen(false)}
+      />
+
       <AssignAssetDialog
         isOpen={assignOpen}
         assets={assets}
@@ -903,5 +1022,14 @@ export function ProjectDetailPanel({
         onClose={() => setDeleteExpenseTarget(null)}
       />
     </div>
+
+    <div className="hidden print:block">
+      <IndividualProjectPrintableReport
+        project={project}
+        assignedAssets={assignments}
+        expenses={expenses}
+      />
+    </div>
+    </>
   );
 }

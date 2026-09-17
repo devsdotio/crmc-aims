@@ -59,6 +59,7 @@ function asDate(value: Date | string): Date {
 function custodyHistoryFromRow(row: BorrowTransactionRow): AuditLogRow[] {
   const released: AuditLogRow = {
     id: `${row.id}-released`,
+    tenantId: row.tenantId,
     entityType: "borrow_transaction",
     entityId: row.id,
     action: "released",
@@ -79,6 +80,7 @@ function custodyHistoryFromRow(row: BorrowTransactionRow): AuditLogRow[] {
     released,
     {
       id: `${row.id}-${isVoided ? "voided" : "returned"}`,
+      tenantId: row.tenantId,
       entityType: "borrow_transaction",
       entityId: row.id,
       action: isVoided ? "voided" : flagged ? "flagged_repair" : "returned",
@@ -196,13 +198,13 @@ export class BorrowLogService {
       }
     }
 
-    const rows = await this.repo.list(filters);
+    const rows = await this.repo.list(filters, undefined, actor?.tenantId);
     return rows.map((row) => toBorrowLogDTO(row));
   }
 
   async getById(rawId: string, actor?: ActorContext): Promise<BorrowLogDTO> {
     const id = borrowLogIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!row) throw new NotFoundError("Borrow log", id);
     if (actor && !isAssetOperatorRole(actor.role)) {
       const isOwn = row.borrowerUserId === actor.userId;
@@ -414,6 +416,7 @@ export class BorrowLogService {
 
     const row = await this.repo.create(
       {
+        tenantId: actor.tenantId,
         logCode,
         requestId,
         requestCode,
@@ -676,6 +679,7 @@ export class BorrowLogService {
                 resolvedByUserId: null,
                 resolvedByName: null,
                 repairCost: null,
+                repairParts: [],
                 relatedBorrowLogCode: existing.logCode,
                 scheduledDate: null,
               },

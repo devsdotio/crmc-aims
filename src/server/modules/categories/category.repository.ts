@@ -2,6 +2,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   categories,
   assets,
@@ -18,37 +19,47 @@ export class CategoryRepository {
     return session ?? getDb();
   }
 
-  async listByType(type?: CategoryType, session?: DbSession) {
+  async listByType(type?: CategoryType, session?: DbSession, tenantId?: string) {
     const db = this.db(session);
-    if (type) {
-      return db
-        .select()
-        .from(categories)
-        .where(eq(categories.type, type))
-        .orderBy(asc(categories.name));
-    }
-    return db.select().from(categories).orderBy(asc(categories.name));
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [];
+    if (resolvedTenantId) conditions.push(eq(categories.tenantId, resolvedTenantId));
+    if (type) conditions.push(eq(categories.type, type));
+
+    const base = db.select().from(categories).orderBy(asc(categories.name));
+    return conditions.length > 0 ? base.where(and(...conditions)) : base;
   }
 
-  async listWithCounts(type?: CategoryType, session?: DbSession) {
+  async listWithCounts(type?: CategoryType, session?: DbSession, tenantId?: string) {
     const db = this.db(session);
-    const rows = await this.listByType(type, session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const rows = await this.listByType(type, session, resolvedTenantId);
 
-    const assetCounts = await db
+    const assetConditions = [];
+    if (resolvedTenantId) assetConditions.push(eq(assets.tenantId, resolvedTenantId));
+    const assetCountsBase = db
       .select({
         categoryLower: sql<string>`lower(${assets.category})`,
         count: sql<number>`count(*)::int`,
       })
-      .from(assets)
-      .groupBy(sql`lower(${assets.category})`);
+      .from(assets);
+    
+    const assetCounts = await (assetConditions.length > 0 
+      ? assetCountsBase.where(and(...assetConditions)).groupBy(sql`lower(${assets.category})`)
+      : assetCountsBase.groupBy(sql`lower(${assets.category})`));
 
-    const consumableCounts = await db
+    const consumableConditions = [];
+    if (resolvedTenantId) consumableConditions.push(eq(consumables.tenantId, resolvedTenantId));
+    const consumableCountsBase = db
       .select({
         categoryLower: sql<string>`lower(${consumables.category})`,
         count: sql<number>`count(*)::int`,
       })
-      .from(consumables)
-      .groupBy(sql`lower(${consumables.category})`);
+      .from(consumables);
+
+    const consumableCounts = await (consumableConditions.length > 0
+      ? consumableCountsBase.where(and(...consumableConditions)).groupBy(sql`lower(${consumables.category})`)
+      : consumableCountsBase.groupBy(sql`lower(${consumables.category})`));
 
     const assetCountMap = new Map(assetCounts.map((r) => [r.categoryLower, r.count]));
     const consumableCountMap = new Map(
@@ -74,12 +85,16 @@ export class CategoryRepository {
     });
   }
 
-  async findById(id: string, session?: DbSession) {
+  async findById(id: string, session?: DbSession, tenantId?: string) {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(categories.id, id)];
+    if (resolvedTenantId) conditions.push(eq(categories.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(categories)
-      .where(eq(categories.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
@@ -88,18 +103,21 @@ export class CategoryRepository {
   async findByTypeAndName(
     type: CategoryType,
     name: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ) {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(categories.type, type),
+      sql`lower(${categories.name}) = lower(${name.trim()})`
+    ];
+    if (resolvedTenantId) conditions.push(eq(categories.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(categories)
-      .where(
-        and(
-          eq(categories.type, type),
-          sql`lower(${categories.name}) = lower(${name.trim()})`
-        )
-      )
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
@@ -107,22 +125,28 @@ export class CategoryRepository {
   async countUsages(
     name: string,
     type: CategoryType,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
     const db = this.db(session);
     const lower = name.trim().toLowerCase();
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
 
     if (type === "asset") {
+      const conditions = [sql`lower(${assets.category}) = ${lower}`];
+      if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
       const [res] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(assets)
-        .where(sql`lower(${assets.category}) = ${lower}`);
+        .where(and(...conditions));
       return res?.count ?? 0;
     } else {
+      const conditions = [sql`lower(${consumables.category}) = ${lower}`];
+      if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
       const [res] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(consumables)
-        .where(sql`lower(${consumables.category}) = ${lower}`);
+        .where(and(...conditions));
       return res?.count ?? 0;
     }
   }
@@ -134,13 +158,18 @@ export class CategoryRepository {
       type: CategoryType;
       colorToken?: string | null;
     },
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ) {
     const run = async (tx: DbSession) => {
+      const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+      const selectConditions = [eq(categories.id, id)];
+      if (resolvedTenantId) selectConditions.push(eq(categories.tenantId, resolvedTenantId));
+
       const [existing] = await tx
         .select()
         .from(categories)
-        .where(eq(categories.id, id))
+        .where(and(...selectConditions))
         .limit(1);
 
       if (!existing) {
@@ -161,7 +190,7 @@ export class CategoryRepository {
             : {}),
           updatedAt: now,
         })
-        .where(eq(categories.id, id))
+        .where(and(...selectConditions))
         .returning();
 
       // If category name changed, cascade update to all entities referencing this category name
@@ -169,32 +198,42 @@ export class CategoryRepository {
         const oldLower = oldName.toLowerCase();
 
         if (existing.type === "asset" || payload.type === "asset") {
+          const assetUpdateConditions = [sql`lower(${assets.category}) = ${oldLower}`];
+          if (resolvedTenantId) assetUpdateConditions.push(eq(assets.tenantId, resolvedTenantId));
           await tx
             .update(assets)
             .set({ category: newName, lastUpdated: now })
-            .where(sql`lower(${assets.category}) = ${oldLower}`);
+            .where(and(...assetUpdateConditions));
 
+          const assetModelUpdateConditions = [sql`lower(${assetModels.category}) = ${oldLower}`];
+          if (resolvedTenantId) assetModelUpdateConditions.push(eq(assetModels.tenantId, resolvedTenantId));
           await tx
             .update(assetModels)
             .set({ category: newName, updatedAt: now })
-            .where(sql`lower(${assetModels.category}) = ${oldLower}`);
+            .where(and(...assetModelUpdateConditions));
 
+          const maintenanceUpdateConditions = [sql`lower(${maintenanceLogs.category}) = ${oldLower}`];
+          if (resolvedTenantId) maintenanceUpdateConditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
           await tx
             .update(maintenanceLogs)
             .set({ category: newName, updatedAt: now })
-            .where(sql`lower(${maintenanceLogs.category}) = ${oldLower}`);
+            .where(and(...maintenanceUpdateConditions));
 
+          const borrowUpdateConditions = [sql`lower(${borrowTransactions.category}) = ${oldLower}`];
+          if (resolvedTenantId) borrowUpdateConditions.push(eq(borrowTransactions.tenantId, resolvedTenantId));
           await tx
             .update(borrowTransactions)
             .set({ category: newName, updatedAt: now })
-            .where(sql`lower(${borrowTransactions.category}) = ${oldLower}`);
+            .where(and(...borrowUpdateConditions));
         }
 
         if (existing.type === "consumable" || payload.type === "consumable") {
+          const consumableUpdateConditions = [sql`lower(${consumables.category}) = ${oldLower}`];
+          if (resolvedTenantId) consumableUpdateConditions.push(eq(consumables.tenantId, resolvedTenantId));
           await tx
             .update(consumables)
             .set({ category: newName, updatedAt: now })
-            .where(sql`lower(${consumables.category}) = ${oldLower}`);
+            .where(and(...consumableUpdateConditions));
         }
       }
 
@@ -202,16 +241,20 @@ export class CategoryRepository {
       const lower = newName.toLowerCase();
       let count = 0;
       if (updated.type === "asset") {
+        const countConditions = [sql`lower(${assets.category}) = ${lower}`];
+        if (resolvedTenantId) countConditions.push(eq(assets.tenantId, resolvedTenantId));
         const [assetRes] = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(assets)
-          .where(sql`lower(${assets.category}) = ${lower}`);
+          .where(and(...countConditions));
         count = assetRes?.count ?? 0;
       } else {
+        const countConditions = [sql`lower(${consumables.category}) = ${lower}`];
+        if (resolvedTenantId) countConditions.push(eq(consumables.tenantId, resolvedTenantId));
         const [consumableRes] = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(consumables)
-          .where(sql`lower(${consumables.category}) = ${lower}`);
+          .where(and(...countConditions));
         count = consumableRes?.count ?? 0;
       }
 

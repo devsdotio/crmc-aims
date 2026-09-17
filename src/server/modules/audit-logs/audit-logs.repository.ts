@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import { auditLogs, type AuditLogRow, type NewAuditLogRow } from "@/server/db/schema/audit-logs";
 import type { ListAuditLogsQuery } from "./audit-logs.validation";
 
@@ -9,10 +10,14 @@ export class AuditLogRepository {
     return session ?? getDb();
   }
 
-  async list(filters: ListAuditLogsQuery = {}, session?: DbSession): Promise<AuditLogRow[]> {
+  async list(filters: ListAuditLogsQuery = {}, session?: DbSession, tenantId?: string): Promise<AuditLogRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
 
+    if (resolvedTenantId) {
+      conditions.push(eq(auditLogs.tenantId, resolvedTenantId));
+    }
     if (filters.entityType) {
       conditions.push(eq(auditLogs.entityType, filters.entityType));
     }
@@ -33,19 +38,15 @@ export class AuditLogRepository {
   }
 
   async create(data: NewAuditLogRow, session?: DbSession): Promise<AuditLogRow> {
-    // General audit_logs table is unused. Operational history lives in
-    // borrow_transactions, stock_movements, and request JSON timelines.
-    void session;
-    return {
-      id: crypto.randomUUID(),
-      entityType: data.entityType,
-      entityId: data.entityId,
-      action: data.action,
-      actorName: data.actorName,
-      actorUserId: data.actorUserId ?? null,
-      timestamp: data.timestamp ?? new Date(),
-      notes: data.notes ?? null,
-      metadata: data.metadata ?? null,
-    };
+    const db = this.db(session);
+    const resolvedTenantId =
+      data.tenantId ?? getTenantContext()?.tenantId;
+    const insertPayload = resolvedTenantId
+      ? { ...data, tenantId: resolvedTenantId }
+      : data;
+
+    const [row] = await db.insert(auditLogs).values(insertPayload).returning();
+    if (!row) throw new Error("Failed to create audit log.");
+    return row;
   }
 }

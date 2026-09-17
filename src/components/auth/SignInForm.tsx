@@ -326,7 +326,7 @@ export function SignInForm() {
           <button
             type="submit"
             disabled={formState.isLoading}
-            className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF4E45] hover:bg-[#E03E36] text-white font-medium text-sm shadow-md shadow-[#FF4E45]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+            className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm shadow-md shadow-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
           >
             {formState.isLoading ? (
               <>

@@ -7,7 +7,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 /**
  * Custodian-managed work units (renovation, construction, etc.).
@@ -28,8 +31,9 @@ export const projects = pgTable(
   "projects",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    projectCode: text("project_code").notNull().unique(),
+    projectCode: text("project_code").notNull(),
     name: text("name").notNull(),
     description: text("description"),
     status: projectStatusEnum("status").notNull().default("active"),
@@ -56,6 +60,7 @@ export const projects = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("projects_tenant_project_code_idx").on(table.tenantId, table.projectCode),
     index("projects_status_idx").on(table.status),
     index("projects_start_date_idx").on(table.startDate),
   ]

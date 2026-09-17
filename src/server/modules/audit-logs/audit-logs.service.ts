@@ -14,7 +14,7 @@ import {
   maintenanceLogs,
   profiles,
 } from "@/server/db/schema";
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 export class AuditLogService {
   constructor(private readonly repo = new AuditLogRepository()) {}
@@ -31,7 +31,7 @@ export class AuditLogService {
       filters.actorUserId = actor.userId;
     }
 
-    const logs = await this.repo.list(filters);
+    const logs = await this.repo.list(filters, undefined, actor.tenantId);
 
     const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     const isUuid = (id: string) => UUID_REGEX.test(id);
@@ -55,45 +55,55 @@ export class AuditLogService {
       }
     }
 
+    const tenantCondition = (col: unknown) =>
+      actor.tenantId ? [eq(col as typeof borrowRequests.tenantId, actor.tenantId)] : [];
+
     const validBorrowUuids = borrowRequestIds.filter(isUuid);
     if (validBorrowUuids.length > 0) {
-      const rows = await db.select({ id: borrowRequests.id, code: borrowRequests.requestCode }).from(borrowRequests).where(inArray(borrowRequests.id, validBorrowUuids));
+      const conditions = [inArray(borrowRequests.id, validBorrowUuids), ...tenantCondition(borrowRequests.tenantId)];
+      const rows = await db.select({ id: borrowRequests.id, code: borrowRequests.requestCode }).from(borrowRequests).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code);
     }
 
     const validConsumableReqUuids = consumableRequestIds.filter(isUuid);
     if (validConsumableReqUuids.length > 0) {
-      const rows = await db.select({ id: consumableRequests.id, code: consumableRequests.requestCode }).from(consumableRequests).where(inArray(consumableRequests.id, validConsumableReqUuids));
+      const conditions = [inArray(consumableRequests.id, validConsumableReqUuids), ...tenantCondition(consumableRequests.tenantId)];
+      const rows = await db.select({ id: consumableRequests.id, code: consumableRequests.requestCode }).from(consumableRequests).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code);
     }
 
     const validAssetUuids = assetIds.filter(isUuid);
     if (validAssetUuids.length > 0) {
-      const rows = await db.select({ id: assets.id, code: assets.assetCode }).from(assets).where(inArray(assets.id, validAssetUuids));
+      const conditions = [inArray(assets.id, validAssetUuids), ...tenantCondition(assets.tenantId)];
+      const rows = await db.select({ id: assets.id, code: assets.assetCode }).from(assets).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code);
     }
 
     const validConsumableUuids = consumableIds.filter(isUuid);
     if (validConsumableUuids.length > 0) {
-      const rows = await db.select({ id: consumables.id, code: consumables.itemCode }).from(consumables).where(inArray(consumables.id, validConsumableUuids));
+      const conditions = [inArray(consumables.id, validConsumableUuids), ...tenantCondition(consumables.tenantId)];
+      const rows = await db.select({ id: consumables.id, code: consumables.itemCode }).from(consumables).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code);
     }
 
     const validLotUuids = lotIds.filter(isUuid);
     if (validLotUuids.length > 0) {
-      const rows = await db.select({ id: purchaseLots.id, code: purchaseLots.lotCode }).from(purchaseLots).where(inArray(purchaseLots.id, validLotUuids));
+      const conditions = [inArray(purchaseLots.id, validLotUuids), ...tenantCondition(purchaseLots.tenantId)];
+      const rows = await db.select({ id: purchaseLots.id, code: purchaseLots.lotCode }).from(purchaseLots).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code);
     }
 
     const validMaintenanceUuids = maintenanceIds.filter(isUuid);
     if (validMaintenanceUuids.length > 0) {
-      const rows = await db.select({ id: maintenanceLogs.id, code: maintenanceLogs.logCode }).from(maintenanceLogs).where(inArray(maintenanceLogs.id, validMaintenanceUuids));
+      const conditions = [inArray(maintenanceLogs.id, validMaintenanceUuids), ...tenantCondition(maintenanceLogs.tenantId)];
+      const rows = await db.select({ id: maintenanceLogs.id, code: maintenanceLogs.logCode }).from(maintenanceLogs).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code);
     }
 
     const validUserUuids = userIds.filter(isUuid);
     if (validUserUuids.length > 0) {
-      const rows = await db.select({ id: profiles.userId, code: profiles.email, name: profiles.fullName }).from(profiles).where(inArray(profiles.userId, validUserUuids));
+      const conditions = [inArray(profiles.userId, validUserUuids), ...tenantCondition(profiles.tenantId)];
+      const rows = await db.select({ id: profiles.userId, code: profiles.email, name: profiles.fullName }).from(profiles).where(and(...conditions));
       for (const r of rows) codeMap.set(r.id, r.code || r.name || r.id);
     }
 
@@ -119,6 +129,26 @@ export class AuditLogService {
       }
 
       return log;
+    });
+  }
+
+  async log(data: {
+    entityType: string;
+    entityId: string;
+    action: string;
+    actorName: string;
+    actorUserId?: string | null;
+    notes?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }): Promise<AuditLogRow> {
+    return this.repo.create({
+      entityType: data.entityType,
+      entityId: data.entityId,
+      action: data.action,
+      actorName: data.actorName,
+      actorUserId: data.actorUserId ?? null,
+      notes: data.notes ?? null,
+      metadata: data.metadata ?? null,
     });
   }
 }

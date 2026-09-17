@@ -301,22 +301,15 @@ function BorrowLogContent() {
       <div className="px-4 md:px-6 pt-5 pb-4 bg-bg shrink-0 border-b border-border space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent shrink-0">
-                <Repeat className="h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight text-text leading-tight">
-                  Custody Log
-                </h1>
-                <p className="text-xs text-text-secondary mt-0.5">
-                  {isAssignmentMode
-                    ? "Track assignable assets issued to departments or projects — return, or undo mistaken issues."
-                    : "Track borrowable asset loans, overdue returns, and check-ins."}{" "}
-                  (<span className="font-mono font-bold">LOG-</span>)
-                </p>
-              </div>
-            </div>
+            <h1 className="text-xl font-bold tracking-tight text-text">
+              Custody Log
+            </h1>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {isAssignmentMode
+                ? "Track assignable assets issued to departments or projects — return, or undo mistaken issues."
+                : "Track borrowable asset loans, overdue returns, and check-ins."}{" "}
+              (<span className="font-mono font-bold">LOG-</span>)
+            </p>
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-center">
@@ -335,9 +328,9 @@ function BorrowLogContent() {
               type="button"
               onClick={handleExportCSV}
               disabled={filteredRecords.length === 0}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-4 w-4" />
               <span>Export CSV</span>
             </button>
           </div>

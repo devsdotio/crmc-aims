@@ -15,11 +15,8 @@ import {
   Truck,
   PackageCheck,
   Ban,
-  Boxes,
-  Tag,
   Check,
   Layers,
-  Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PurchaseOrderStatus } from "@/types/purchase-lots";
@@ -55,14 +52,51 @@ const STATUS_CONFIGS: Array<{
   id: PurchaseOrderStatusFilter;
   label: string;
   icon: React.ElementType;
-  dotColor: string;
+  activePillClasses: string;
+  activeIconColor: string;
 }> = [
-  { id: "all", label: "All Statuses", icon: Layers, dotColor: "bg-text-secondary" },
-  { id: "pending_approval", label: "Pending", icon: Clock, dotColor: "bg-amber-500" },
-  { id: "approved", label: "Approved", icon: ShieldCheck, dotColor: "bg-blue-500" },
-  { id: "ordered", label: "Ordered", icon: Truck, dotColor: "bg-indigo-500" },
-  { id: "delivered", label: "Delivered", icon: PackageCheck, dotColor: "bg-emerald-500" },
-  { id: "cancelled", label: "Cancelled", icon: Ban, dotColor: "bg-rose-500" },
+  {
+    id: "all",
+    label: "All Statuses",
+    icon: Layers,
+    activePillClasses: "bg-bg-subtle border-border text-text font-semibold",
+    activeIconColor: "text-text-secondary",
+  },
+  {
+    id: "pending_approval",
+    label: "Pending",
+    icon: Clock,
+    activePillClasses: "bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/40 font-bold",
+    activeIconColor: "text-purple-600 dark:text-purple-400",
+  },
+  {
+    id: "approved",
+    label: "Approved",
+    icon: ShieldCheck,
+    activePillClasses: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40 font-bold",
+    activeIconColor: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    id: "ordered",
+    label: "Ordered",
+    icon: Truck,
+    activePillClasses: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/40 font-bold",
+    activeIconColor: "text-blue-600 dark:text-blue-400",
+  },
+  {
+    id: "delivered",
+    label: "Delivered",
+    icon: PackageCheck,
+    activePillClasses: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40 font-bold",
+    activeIconColor: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    id: "cancelled",
+    label: "Cancelled",
+    icon: Ban,
+    activePillClasses: "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/40 font-bold",
+    activeIconColor: "text-rose-600 dark:text-rose-400",
+  },
 ];
 
 export function PurchaseOrdersFilters({
@@ -72,13 +106,11 @@ export function PurchaseOrdersFilters({
   supplierOptions,
 }: PurchaseOrdersFiltersProps) {
   const [isStatusOpen, setIsStatusOpen] = useState(false);
-  const [isTypeOpen, setIsTypeOpen] = useState(false);
   const [isSupplierOpen, setIsSupplierOpen] = useState(false);
   const [supplierSearch, setSupplierSearch] = useState("");
   const [isDateOpen, setIsDateOpen] = useState(false);
 
   const statusRef = useRef<HTMLDivElement>(null);
-  const typeRef = useRef<HTMLDivElement>(null);
   const supplierRef = useRef<HTMLDivElement>(null);
   const dateRef = useRef<HTMLDivElement>(null);
 
@@ -88,9 +120,6 @@ export function PurchaseOrdersFilters({
       const target = event.target as Node;
       if (statusRef.current && !statusRef.current.contains(target)) {
         setIsStatusOpen(false);
-      }
-      if (typeRef.current && !typeRef.current.contains(target)) {
-        setIsTypeOpen(false);
       }
       if (supplierRef.current && !supplierRef.current.contains(target)) {
         setIsSupplierOpen(false);
@@ -105,7 +134,6 @@ export function PurchaseOrdersFilters({
 
   const isFiltered =
     Boolean(filters.search.trim()) ||
-    filters.itemType !== "all" ||
     filters.status !== "all" ||
     filters.stockStatus !== "all" ||
     Boolean(filters.supplierId) ||
@@ -187,11 +215,18 @@ export function PurchaseOrdersFilters({
               className={cn(
                 "h-8.5 px-2.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
                 filters.status !== "all"
-                  ? "bg-accent/10 border-accent/40 text-accent font-bold"
+                  ? selectedStatusConfig.activePillClasses
                   : "bg-bg border-border text-text-secondary hover:text-text hover:border-border-subtle"
               )}
             >
-              <selectedStatusConfig.icon className="h-3.5 w-3.5" />
+              <selectedStatusConfig.icon
+                className={cn(
+                  "h-3.5 w-3.5",
+                  filters.status !== "all"
+                    ? selectedStatusConfig.activeIconColor
+                    : "text-text-secondary"
+                )}
+              />
               <span>{filters.status === "all" ? "Status" : selectedStatusConfig.label}</span>
               <ChevronDown className="h-3 w-3 opacity-60" />
             </button>
@@ -211,80 +246,23 @@ export function PurchaseOrdersFilters({
                       }}
                       className={cn(
                         "w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg transition-colors text-left",
-                        isSelected ? "font-bold text-accent bg-accent/5" : "text-text hover:bg-bg-subtle"
+                        isSelected
+                          ? cn("font-bold", st.id === "all" ? "bg-bg-subtle text-text" : st.activePillClasses)
+                          : "text-text hover:bg-bg-subtle"
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <span className={cn("h-2 w-2 rounded-full", st.dotColor)} />
-                        <Icon className="h-3.5 w-3.5 text-text-secondary" />
+                        <Icon
+                          className={cn(
+                            "h-3.5 w-3.5",
+                            isSelected && st.id !== "all"
+                              ? st.activeIconColor
+                              : "text-text-secondary"
+                          )}
+                        />
                         <span>{st.label}</span>
                       </div>
-                      {isSelected && <Check className="h-3.5 w-3.5 text-accent" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Item Type Filter Popover */}
-          <div className="relative" ref={typeRef}>
-            <button
-              type="button"
-              onClick={() => setIsTypeOpen((prev) => !prev)}
-              className={cn(
-                "h-8.5 px-2.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
-                filters.itemType !== "all"
-                  ? "bg-accent/10 border-accent/40 text-accent font-bold"
-                  : "bg-bg border-border text-text-secondary hover:text-text hover:border-border-subtle"
-              )}
-            >
-              {filters.itemType === "consumable" ? (
-                <Boxes className="h-3.5 w-3.5" />
-              ) : filters.itemType === "asset" ? (
-                <Tag className="h-3.5 w-3.5" />
-              ) : (
-                <Filter className="h-3.5 w-3.5" />
-              )}
-              <span>
-                {filters.itemType === "all"
-                  ? "Type"
-                  : filters.itemType === "consumable"
-                  ? "Consumables"
-                  : "Assets"}
-              </span>
-              <ChevronDown className="h-3 w-3 opacity-60" />
-            </button>
-
-            {isTypeOpen && (
-              <div className="absolute top-full left-0 mt-1 w-44 bg-card border border-border rounded-xl shadow-lg z-50 p-1 space-y-0.5 animate-in fade-in zoom-in-95 duration-100">
-                {(
-                  [
-                    { id: "all", label: "All Items", icon: Layers },
-                    { id: "consumable", label: "Consumables", icon: Boxes },
-                    { id: "asset", label: "Assets", icon: Tag },
-                  ] as const
-                ).map((t) => {
-                  const Icon = t.icon;
-                  const isSelected = filters.itemType === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => {
-                        onFilterChange({ itemType: t.id });
-                        setIsTypeOpen(false);
-                      }}
-                      className={cn(
-                        "w-full flex items-center justify-between px-2.5 py-1.5 text-xs rounded-lg transition-colors text-left",
-                        isSelected ? "font-bold text-accent bg-accent/5" : "text-text hover:bg-bg-subtle"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-3.5 w-3.5 text-text-secondary" />
-                        <span>{t.label}</span>
-                      </div>
-                      {isSelected && <Check className="h-3.5 w-3.5 text-accent" />}
+                      {isSelected && <Check className="h-3.5 w-3.5" />}
                     </button>
                   );
                 })}
@@ -300,7 +278,7 @@ export function PurchaseOrdersFilters({
               className={cn(
                 "h-8.5 px-2.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
                 filters.supplierId
-                  ? "bg-accent/10 border-accent/40 text-accent font-bold"
+                  ? "bg-bg-subtle border-border text-text font-semibold"
                   : "bg-bg border-border text-text-secondary hover:text-text hover:border-border-subtle"
               )}
             >
@@ -380,7 +358,7 @@ export function PurchaseOrdersFilters({
               className={cn(
                 "h-8.5 px-2.5 rounded-lg border text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs",
                 filters.datePreset !== "all" || filters.startDate || filters.endDate
-                  ? "bg-accent/10 border-accent/40 text-accent font-bold"
+                  ? "bg-bg-subtle border-border text-text font-semibold"
                   : "bg-bg border-border text-text-secondary hover:text-text hover:border-border-subtle"
               )}
             >
@@ -467,7 +445,7 @@ export function PurchaseOrdersFilters({
             <button
               type="button"
               onClick={onResetFilters}
-              className="inline-flex items-center gap-1.5 h-8.5 px-2.5 rounded-lg text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-colors cursor-pointer shadow-2xs"
+              className="inline-flex items-center gap-1.5 h-8.5 px-2.5 rounded-lg text-xs font-semibold text-text-secondary hover:text-text bg-bg border border-border hover:bg-bg-subtle transition-colors cursor-pointer shadow-2xs"
             >
               <RotateCcw className="h-3 w-3" />
               <span>Reset</span>

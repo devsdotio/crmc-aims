@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { Menu, ChevronRight, User } from "lucide-react";
+import { HeaderBibleVerse } from "@/components/header-bible-verse";
 
 // ─── Route Metadata Map ──────────────────────────────────────────────────────
 
@@ -53,8 +54,8 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     category: "Operations",
   },
   "/vouchers": {
-    title: "Vouchers",
-    subtitle: "Disbursement, property accountability, and liquidation vouchers",
+    title: "Disbursement Vouchers",
+    subtitle: "Custodian disbursement records for purchasing items and settling orders",
     category: "Operations",
   },
   "/consumables": {
@@ -166,7 +167,8 @@ export default function GlobalHeader({
       </div>
 
       <div className="flex items-center gap-2 md:gap-3 shrink-0">
-        {/* Notifications bell hidden for now — API/hooks remain under dashboard. */}
+        {/* Dynamic Bible Verse Section */}
+        <HeaderBibleVerse />
 
         <div
           className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-full bg-bg-subtle border border-[#E3E5EC] max-w-56"

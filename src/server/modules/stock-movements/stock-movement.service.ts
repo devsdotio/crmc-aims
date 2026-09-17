@@ -123,7 +123,8 @@ function toIso(value: Date | string): string {
 }
 
 async function destinationLabelsFor(
-  rows: Array<{ departmentId: string | null; projectId: string | null }>
+  rows: Array<{ departmentId: string | null; projectId: string | null }>,
+  tenantId?: string
 ): Promise<Map<string, string>> {
   const deptIds = [
     ...new Set(rows.map((r) => r.departmentId).filter((id): id is string => Boolean(id))),
@@ -136,6 +137,9 @@ async function destinationLabelsFor(
   const labels = new Map<string, string>();
 
   if (deptIds.length > 0) {
+    const { and, eq } = await import("drizzle-orm");
+    const conditions = [inArray(departments.id, deptIds)];
+    if (tenantId) conditions.push(eq(departments.tenantId, tenantId));
     const depts = await db
       .select({
         id: departments.id,
@@ -143,12 +147,15 @@ async function destinationLabelsFor(
         name: departments.name,
       })
       .from(departments)
-      .where(inArray(departments.id, deptIds));
+      .where(and(...conditions));
     for (const d of depts) {
       labels.set(`d:${d.id}`, departmentHolderLabel(d.code, d.name));
     }
   }
   if (projectIds.length > 0) {
+    const { and, eq } = await import("drizzle-orm");
+    const conditions = [inArray(projects.id, projectIds)];
+    if (tenantId) conditions.push(eq(projects.tenantId, tenantId));
     const projs = await db
       .select({
         id: projects.id,
@@ -156,7 +163,7 @@ async function destinationLabelsFor(
         name: projects.name,
       })
       .from(projects)
-      .where(inArray(projects.id, projectIds));
+      .where(and(...conditions));
     for (const p of projs) {
       labels.set(`p:${p.id}`, projectHolderLabel(p.code, p.name));
     }
@@ -225,6 +232,7 @@ export class StockMovementService {
     if (input.lines.length === 0) return [];
     return this.repo.createMany(
       input.lines.map((line) => ({
+        tenantId: input.actor.tenantId,
         movementCode: generateOperationalCode("MOV"),
         consumableId: input.consumableId,
         qty: line.qty,
@@ -245,17 +253,17 @@ export class StockMovementService {
     );
   }
 
-  async listByConsumable(rawId: string): Promise<StockMovementDTO[]> {
+  async listByConsumable(rawId: string, actorTenantId?: string): Promise<StockMovementDTO[]> {
     const id = consumableIdSchema.parse(rawId);
-    const item = await this.consumables.findById(id);
+    const item = await this.consumables.findById(id, undefined, actorTenantId);
     if (!item) throw new NotFoundError("Consumable", id);
 
-    const rows = await this.repo.listByConsumableId(id);
-    const labels = await destinationLabelsFor(rows);
+    const rows = await this.repo.listByConsumableId(id, undefined, actorTenantId);
+    const labels = await destinationLabelsFor(rows, actorTenantId);
     const issueIds = rows
       .filter((r) => r.direction === "out" && r.reason === "issue")
       .map((r) => r.id);
-    const reversals = await this.repo.findReversalsForIds(issueIds);
+    const reversals = await this.repo.findReversalsForIds(issueIds, undefined, actorTenantId);
 
     return rows.map((row) => {
       const reversal = reversals.get(row.id);
@@ -270,18 +278,19 @@ export class StockMovementService {
     });
   }
 
-  async list(rawQuery: unknown): Promise<StockMovementDTO[]> {
+  async list(rawQuery: unknown, actorTenantId?: string): Promise<StockMovementDTO[]> {
     const query = listStockMovementsQuerySchema.parse(rawQuery);
     const rows = await this.repo.listRecent({
       reason: query.reason,
       limit: query.limit,
       includeSandbox: query.includeSandbox,
+      tenantId: actorTenantId,
     });
-    const labels = await destinationLabelsFor(rows);
+    const labels = await destinationLabelsFor(rows, actorTenantId);
     const issueIds = rows
       .filter((r) => r.direction === "out" && r.reason === "issue")
       .map((r) => r.id);
-    const reversals = await this.repo.findReversalsForIds(issueIds);
+    const reversals = await this.repo.findReversalsForIds(issueIds, undefined, actorTenantId);
 
     return rows.map((row) => {
       const reversal = reversals.get(row.id);

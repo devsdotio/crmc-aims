@@ -11,6 +11,7 @@ import { borrowLogQueryKeys } from "@/features/borrow-log/client/query-keys";
 
 interface UseBorrowerRealtimeSyncOptions {
   enabled?: boolean;
+  tenantId?: string;
 }
 
 /**
@@ -21,7 +22,7 @@ interface UseBorrowerRealtimeSyncOptions {
 export function useBorrowerRealtimeSync(
   options: UseBorrowerRealtimeSyncOptions = {}
 ) {
-  const { enabled = true } = options;
+  const { enabled = true, tenantId } = options;
   const qc = useQueryClient();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -44,21 +45,22 @@ export function useBorrowerRealtimeSync(
       }, 250);
     };
 
+    const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
     const channel = supabase
-      .channel("borrower-realtime-sync")
+      .channel(`borrower-realtime-sync${tenantId ? `-${tenantId}` : ""}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "requests" },
+        { event: "*", schema: "public", table: "requests", filter },
         () => triggerInvalidation()
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "consumable_requests" },
+        { event: "*", schema: "public", table: "consumable_requests", filter },
         () => triggerInvalidation()
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "borrow_transactions" },
+        { event: "*", schema: "public", table: "borrow_transactions", filter },
         () => triggerInvalidation()
       )
       .subscribe((status) => {
@@ -74,5 +76,5 @@ export function useBorrowerRealtimeSync(
       }
       void supabase.removeChannel(channel);
     };
-  }, [enabled, qc]);
+  }, [enabled, qc, tenantId]);
 }

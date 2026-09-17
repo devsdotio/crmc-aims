@@ -89,6 +89,14 @@ function assertCanMutateTarget(actor: ActorContext, target: ProfileRow) {
     throw new ForbiddenError("Only superadmins can manage superadmin accounts.");
   }
 
+  if (actor.role !== "superadmin") {
+    if (target.tenantId && target.tenantId !== actor.tenantId) {
+      throw new ForbiddenError(
+        "You cannot modify accounts outside your institutional workspace."
+      );
+    }
+  }
+
   if (target.role === "admin" && actor.role === "admin") {
     throw new ForbiddenError("Admins cannot modify other admin accounts.");
   }
@@ -167,7 +175,8 @@ export class UserService {
   private async resolveDepartmentForAccount(
     role: AppRole,
     departmentId: string | null | undefined,
-    currentUserId?: string
+    currentUserId?: string,
+    targetTenantId?: string
   ): Promise<{ departmentId: string | null; departmentName: string | null }> {
     if (role !== "borrower") {
       return { departmentId: null, departmentName: null };
@@ -179,13 +188,13 @@ export class UserService {
       );
     }
 
-    const department = await this.departmentRepository.findById(departmentId);
+    const department = await this.departmentRepository.findById(departmentId, undefined, targetTenantId);
     if (!department) {
       throw new NotFoundError("Department", departmentId);
     }
 
     const existingAccount =
-      await this.profileRepository.findBorrowerByDepartmentId(department.id);
+      await this.profileRepository.findBorrowerByDepartmentId(department.id, targetTenantId);
     if (existingAccount && existingAccount.userId !== currentUserId) {
       throw new ConflictError(
         `${department.name} already has a department account (${existingAccount.email}).`
@@ -247,7 +256,23 @@ export class UserService {
 
     return rows
       .filter((row) => {
-        if (actor.role === "superadmin") return true;
+        if (actor.role === "superadmin") {
+          // If the query specifically requests "all" tenants
+          if (filters.tenantId === "all") {
+            return true;
+          }
+          // If the query specifically requests a tenant, filter by it
+          if (filters.tenantId) {
+            return row.tenantId === filters.tenantId;
+          }
+          // If superadmin has an explicit tenant selected via workspace switcher, filter to it; else allow all
+          if (actor.tenantId && !actor.isCrossTenant) {
+            return row.tenantId === actor.tenantId;
+          }
+          return true;
+        }
+        // Non-superadmins only see users in their tenant
+        if (row.tenantId && row.tenantId !== actor.tenantId) return false;
         // Admins never see superadmin profiles
         if (row.role === "superadmin") return false;
         return true;
@@ -270,9 +295,18 @@ export class UserService {
 
     const admin = createAdminClient();
 
+    const targetTenantId =
+      input.role === "superadmin"
+        ? undefined
+        : actor.role === "superadmin" && input.tenantId
+        ? input.tenantId
+        : actor.tenantId ?? undefined;
+
     const link = await this.resolveDepartmentForAccount(
       input.role,
-      input.departmentId
+      input.departmentId,
+      undefined,
+      targetTenantId
     );
     const fullName = input.name.trim() || link.departmentName || input.email;
 
@@ -298,6 +332,7 @@ export class UserService {
     try {
       await this.profileRepository.create({
         userId: data.user.id,
+        tenantId: input.role === "superadmin" ? null : (actor.role === "superadmin" && input.tenantId ? input.tenantId : actor.tenantId),
         email,
         fullName,
         role: input.role,
@@ -374,7 +409,8 @@ export class UserService {
     const link = await this.resolveDepartmentForAccount(
       nextRole,
       nextDepartmentId,
-      userId
+      userId,
+      existing.tenantId ?? actor.tenantId ?? undefined
     );
 
     const hasProfileFields =

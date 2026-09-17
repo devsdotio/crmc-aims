@@ -186,9 +186,9 @@ export class BorrowRequestService {
     
     const { page, limit, status, ...countFilters } = filters;
     const [rows, total, counts] = await Promise.all([
-      this.repo.list(filters),
-      this.repo.count(filters),
-      this.repo.countByStatus(countFilters),
+      this.repo.list(filters, undefined, actor?.tenantId),
+      this.repo.count(filters, undefined, actor?.tenantId),
+      this.repo.countByStatus(countFilters, undefined, actor?.tenantId),
     ]);
     
     return {
@@ -205,7 +205,7 @@ export class BorrowRequestService {
 
   async getById(rawId: string, actor?: ActorContext): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
-    const row = await this.repo.findById(id);
+    const row = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!row) throw new NotFoundError("Borrow request", id);
     if (actor && !isAssetOperatorRole(actor.role) && row.requesterUserId !== actor.userId) {
       throw new ForbiddenError("You are not allowed to view this request.");
@@ -234,6 +234,7 @@ export class BorrowRequestService {
 
     const row = await withTransaction(async (tx) => {
       const created = await this.repo.create({
+        tenantId: actor.tenantId,
         requestCode,
         requesterUserId,
         requesterName: input.requesterName,
@@ -269,7 +270,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = approveBorrowRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be approved.");
@@ -306,7 +307,8 @@ export class BorrowRequestService {
           items: nextItems,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Borrow request", id);
 
@@ -322,7 +324,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = rejectBorrowRequestSchema.parse(rawInput);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be rejected.");
@@ -338,7 +340,7 @@ export class BorrowRequestService {
         status: "rejected",
         rejectionReason: input.reason,
         history,
-      }, tx);
+      }, tx, actor.tenantId);
       if (!up) throw new NotFoundError("Borrow request", id);
 
       return up;
@@ -353,7 +355,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = releaseBorrowRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "approved") {
       throw new ConflictError("Only approved requests can be released.");
@@ -403,7 +405,7 @@ export class BorrowRequestService {
         }
         seenAssetIds.add(assetId);
 
-        const asset = await this.assetRepo.findById(assetId);
+        const asset = await this.assetRepo.findById(assetId, undefined, actor.tenantId);
         if (!asset) throw new NotFoundError("Asset", assetId);
         await this.assertAssetFreeForRequest(asset);
         if (asset.assignmentType !== expectedAssignmentType) {
@@ -430,7 +432,9 @@ export class BorrowRequestService {
     let departmentId = existing.departmentId ?? null;
     if (!departmentId && existing.department.trim()) {
       const dept = await this.departments.findByNameLower(
-        existing.department.trim()
+        existing.department.trim(),
+        undefined,
+        actor.tenantId
       );
       departmentId = dept?.id ?? null;
     }
@@ -491,7 +495,8 @@ export class BorrowRequestService {
           items: issuedItems,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Borrow request", id);
 
@@ -507,7 +512,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = cancelBorrowRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "pending" && existing.status !== "approved") {
       throw new ConflictError("Only pending or approved requests can be cancelled.");
@@ -536,7 +541,8 @@ export class BorrowRequestService {
           cancellationReason: reason || null,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Borrow request", id);
 
@@ -553,7 +559,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = undoBorrowRequestApprovalSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "approved") {
       throw new ConflictError("Only approved requests can have their approval undone.");
@@ -575,7 +581,8 @@ export class BorrowRequestService {
           status: "pending",
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Borrow request", id);
 
@@ -591,7 +598,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = markUnreleasedBorrowRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "approved") {
       throw new ConflictError("Only approved requests can be marked as unreleased.");
@@ -606,7 +613,7 @@ export class BorrowRequestService {
       const up = await this.repo.update(id, {
         status: "unreleased",
         history,
-      }, tx);
+      }, tx, actor.tenantId);
       if (!up) throw new NotFoundError("Borrow request", id);
 
       return up;
@@ -617,7 +624,7 @@ export class BorrowRequestService {
   async markReturned(rawId: string, rawInput: unknown, actor: ActorContext): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = returnBorrowRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "released") {
       throw new ConflictError("Only released requests can be marked returned.");
@@ -646,7 +653,7 @@ export class BorrowRequestService {
       for (const item of existing.items) {
         if (!item.assetId) continue;
 
-        const open = await this.borrowLogRepo.findActiveByAssetId(item.assetId, tx);
+        const open = await this.borrowLogRepo.findActiveByAssetId(item.assetId, tx, actor.tenantId);
         if (open) {
           await this.borrowLogs.returnLog(
             open.id,
@@ -661,7 +668,7 @@ export class BorrowRequestService {
           );
         } else {
           // Legacy release without log — clear holder + any orphan project row.
-          const asset = await this.assetRepo.findByIdForUpdate(item.assetId, tx);
+          const asset = await this.assetRepo.findByIdForUpdate(item.assetId, tx, actor.tenantId);
           if (asset?.currentHolder) {
             await this.assetRepo.update(
               item.assetId,
@@ -670,12 +677,14 @@ export class BorrowRequestService {
                 reservedForRequestId: null,
                 lastUpdated: new Date(),
               },
-              tx
+              tx,
+              actor.tenantId
             );
           }
           const openProject = await this.projectAssignments.findOpenByAssetId(
             item.assetId,
-            tx
+            tx,
+            actor.tenantId
           );
           if (openProject) {
             await this.projectAssignments.update(
@@ -687,7 +696,8 @@ export class BorrowRequestService {
                 returnedByName: actor.displayName,
                 returnNotes: noteWithReturner,
               },
-              tx
+              tx,
+              actor.tenantId
             );
           }
         }
@@ -699,7 +709,8 @@ export class BorrowRequestService {
           status: "returned",
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Borrow request", id);
 
@@ -715,7 +726,7 @@ export class BorrowRequestService {
   ): Promise<BorrowRequestDTO> {
     const id = borrowRequestIdSchema.parse(rawId);
     const input = updateBorrowRequestSchema.parse(rawInput);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be edited.");
@@ -725,7 +736,7 @@ export class BorrowRequestService {
     let departmentId = existing.departmentId;
     if (input.departmentId !== undefined) {
       if (input.departmentId) {
-        const d = await this.departments.findById(input.departmentId);
+        const d = await this.departments.findById(input.departmentId, undefined, actor.tenantId);
         if (!d) throw new NotFoundError("Department", input.departmentId);
         departmentName = d.name;
         departmentId = d.id;
@@ -766,7 +777,8 @@ export class BorrowRequestService {
           history,
           updatedAt: new Date(),
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Borrow request", id);
 

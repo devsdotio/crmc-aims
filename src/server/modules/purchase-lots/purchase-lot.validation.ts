@@ -56,6 +56,7 @@ export const createPurchaseOrderSchema = z.object({
   supplierName: z.string().trim().optional(),
   purpose: z.string().trim().optional(),
   notes: z.string().trim().optional(),
+  receiptUrl: z.string().trim().nullable().optional(),
   status: purchaseOrderStatusSchema.default("pending_approval"),
   items: z
     .array(createPurchaseOrderItemSchema)
@@ -65,6 +66,7 @@ export const createPurchaseOrderSchema = z.object({
 export const updatePurchaseOrderStatusSchema = z.object({
   status: purchaseOrderStatusSchema,
   notes: z.string().trim().max(2000).optional(),
+  receiptUrl: z.string().trim().nullable().optional(),
   approvedBy: z.string().trim().max(255).optional(),
   /** Actual qty received on deliver (consumables). Defaults to ordered qty when omitted. */
   receivedQuantity: z.number().int().positive().optional(),
@@ -77,7 +79,9 @@ export const updatePurchaseOrderSchema = z.object({
   reference: z.string().trim().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
   purpose: z.string().trim().nullable().optional(),
+  receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
+  recordedByName: z.string().trim().nullable().optional(),
 });
 
 /** Staff scan: release qty from a supplier purchase lot. */

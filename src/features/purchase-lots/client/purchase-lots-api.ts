@@ -44,6 +44,7 @@ export type CreatePurchaseOrderPayload = {
   supplierName?: string;
   purpose?: string;
   notes?: string;
+  receiptUrl?: string | null;
   status?: PurchaseOrderStatus;
   items: CreatePurchaseOrderItemPayload[];
 };
@@ -55,12 +56,15 @@ export type UpdatePurchaseOrderPayload = {
   reference?: string | null;
   notes?: string | null;
   purpose?: string | null;
+  receiptUrl?: string | null;
   purchasedOn?: string;
+  recordedByName?: string | null;
 };
 
 export type UpdatePOStatusPayload = {
   status: PurchaseOrderStatus;
   notes?: string;
+  receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
 };
@@ -164,5 +168,36 @@ export const purchaseLotsApi = {
       }
     );
     return res.data;
+  },
+
+  async uploadReceipt(
+    file: File,
+    options?: { poNumber?: string; lotId?: string }
+  ): Promise<{
+    success: boolean;
+    url: string;
+    path: string;
+    size: number;
+    mimeType: string;
+    originalName: string;
+    lot?: PurchaseLot | null;
+  }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (options?.poNumber) formData.append("poNumber", options.poNumber);
+    if (options?.lotId) formData.append("lotId", options.lotId);
+
+    const res = await fetch("/api/purchase-lots/receipt/upload", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      const errJson = await res.json().catch(() => null);
+      throw new Error(
+        errJson?.error || errJson?.message || "Failed to upload receipt image."
+      );
+    }
+    const json = await res.json();
+    return json.data || json;
   },
 };

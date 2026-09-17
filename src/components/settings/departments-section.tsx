@@ -7,6 +7,7 @@ import {
   Edit3,
   Mail,
   Plus,
+  Printer,
   Search,
   ShieldCheck,
   Trash2,
@@ -16,8 +17,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DepartmentDTO } from "@/features/departments/client";
-import { StatMetricCard } from "@/components/ui/stat-metric-card";
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { SandboxBadge } from "@/components/shared/sandbox-badge";
+import { IndividualDepartmentPrintableReport } from "@/components/reports/print/individual/IndividualDepartmentPrintableReport";
 
 export interface DepartmentsSectionProps {
   departments: DepartmentDTO[];
@@ -39,8 +41,16 @@ export function DepartmentsSection({
 }: DepartmentsSectionProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<DepartmentDTO | null>(null);
+  const [printDepartment, setPrintDepartment] = useState<DepartmentDTO | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [accountFilter, setAccountFilter] = useState<AccountFilter>("all");
+
+  const handlePrintDossier = (dept: DepartmentDTO) => {
+    setPrintDepartment(dept);
+    setTimeout(() => {
+      window.print();
+    }, 100);
+  };
 
   // Metric summaries
   const totalCount = departments.length;
@@ -77,45 +87,61 @@ export function DepartmentsSection({
   }, [departments, accountFilter, searchQuery]);
 
   return (
-    <div className="w-full space-y-6">
+    <>
+      <div className="w-full space-y-6 print:hidden">
       {/* ── KPI Metric Cards ────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatMetricCard
+      <StatCardGrid>
+        <StatCard
           title="Total Departments"
+          sublabel="OFFICES // UNITS"
           value={totalCount}
-          subtitle="registered offices"
-          description="All academic departments and campus offices."
           icon={Building2}
           tone="blue"
+          badge={{ text: "Campuses & Units", pulse: true }}
+          subtitle="Academic & administrative departments"
         />
 
-        <StatMetricCard
-          title="Linked Accounts"
+        <StatCard
+          title="Linked Logins"
+          sublabel="SECURITY // CREDENTIALS"
           value={withAccountCount}
-          subtitle="with login access"
-          description="Offices that have their own login account."
           icon={UserCheck}
           tone="emerald"
+          toneValue={true}
+          badge={
+            totalCount > 0
+              ? `${Math.round((withAccountCount / totalCount) * 100)}% equipped`
+              : "0%"
+          }
+          subtitle="Offices equipped with portal access"
+          progress={{
+            value: withAccountCount,
+            max: totalCount || 1,
+          }}
         />
 
-        <StatMetricCard
-          title="No Login Assigned"
+        <StatCard
+          title="Pending Setup"
+          sublabel="ACCESS // SETUP"
           value={noAccountCount}
-          subtitle="awaiting account"
-          description="Offices that still need a login account."
           icon={UserX}
           tone="amber"
+          toneValue={noAccountCount > 0}
+          badge={noAccountCount > 0 ? "Setup Required" : "All Assigned"}
+          subtitle="Offices waiting for borrower logins"
         />
 
-        <StatMetricCard
+        <StatCard
           title="Active In Circulation"
+          sublabel="CIRCULATION // LOANS"
           value={activeAccountCount}
-          subtitle="can borrow now"
-          description="Offices allowed to borrow items right now."
           icon={ShieldCheck}
           tone="purple"
+          toneValue={true}
+          badge="Eligible"
+          subtitle="Offices permitted to borrow assets"
         />
-      </div>
+      </StatCardGrid>
 
       {/* ── Control Bar (Search, Filter Tabs, Add Button) ─────────── */}
       <div className="p-4 rounded-2xl border border-border bg-bg shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
@@ -187,7 +213,7 @@ export function DepartmentsSection({
               setEditTarget(null);
               setDialogOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-opacity cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-opacity cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             <span>Add Department</span>
@@ -279,6 +305,16 @@ export function DepartmentsSection({
                   <div className="flex items-center gap-1.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
                     <button
                       type="button"
+                      onClick={() => handlePrintDossier(dept)}
+                      aria-label={`Print dossier for ${dept.name}`}
+                      title="Print Department Dossier (PDF)"
+                      className="p-2 rounded-lg border border-border bg-bg text-text-secondary hover:text-text hover:border-primary/50 hover:bg-bg-subtle transition-all cursor-pointer shadow-2xs"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => {
                         setEditTarget(dept);
                         setDialogOpen(true);
@@ -358,6 +394,13 @@ export function DepartmentsSection({
         onSave={onSave}
       />
     </div>
+
+    {printDepartment && (
+      <div className="hidden print:block">
+        <IndividualDepartmentPrintableReport department={printDepartment} />
+      </div>
+    )}
+  </>
   );
 }
 

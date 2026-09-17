@@ -2,6 +2,7 @@ import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   consumables,
   stockMovements,
@@ -44,7 +45,13 @@ export class StockMovementRepository {
     session?: DbSession
   ): Promise<StockMovementRow> {
     const db = this.db(session);
-    const [row] = await db.insert(stockMovements).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const insertPayload = resolvedTenantId
+      ? { ...data, tenantId: resolvedTenantId }
+      : data;
+
+    const [row] = await db.insert(stockMovements).values(insertPayload).returning();
     if (!row) throw new Error("Failed to create stock movement.");
     return row;
   }
@@ -55,30 +62,50 @@ export class StockMovementRepository {
   ): Promise<StockMovementRow[]> {
     if (rows.length === 0) return [];
     const db = this.db(session);
-    return db.insert(stockMovements).values(rows).returning();
+    const defaultTenantId = getTenantContext()?.tenantId;
+    const payload = rows.map((r) => {
+      const resolvedTenantId = (r as { tenantId?: string }).tenantId ?? defaultTenantId;
+      return resolvedTenantId ? { ...r, tenantId: resolvedTenantId } : r;
+    });
+
+    return db.insert(stockMovements).values(payload).returning();
   }
 
   async findById(
     id: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<StockMovementRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(stockMovements.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select()
       .from(stockMovements)
-      .where(eq(stockMovements.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByIdForUpdate(
     id: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<StockMovementRow | null> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(stockMovements.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+
     const [row] = await session
       .select()
       .from(stockMovements)
-      .where(eq(stockMovements.id, id))
+      .where(and(...conditions))
       .for("update")
       .limit(1);
     return row ?? null;
@@ -87,14 +114,21 @@ export class StockMovementRepository {
   /** Compensating restock that undoes a given issue movement, if any. */
   async findReversalOf(
     movementId: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<StockMovementRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const marker = reversesMarker(movementId);
+    const conditions = [ilike(stockMovements.notes, `%${marker}%`)];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select()
       .from(stockMovements)
-      .where(ilike(stockMovements.notes, `%${marker}%`))
+      .where(and(...conditions))
       .orderBy(desc(stockMovements.createdAt))
       .limit(1);
     return row ?? null;
@@ -102,19 +136,26 @@ export class StockMovementRepository {
 
   async findReversalsForIds(
     movementIds: string[],
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Map<string, StockMovementRow>> {
     const out = new Map<string, StockMovementRow>();
     if (movementIds.length === 0) return out;
 
     const db = this.db(session);
-    const conditions = movementIds.map((id) =>
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const markerConditions = movementIds.map((id) =>
       ilike(stockMovements.notes, `%${reversesMarker(id)}%`)
     );
+    const conditions = [or(...markerConditions)!];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+
     const rows = await db
       .select()
       .from(stockMovements)
-      .where(or(...conditions)!)
+      .where(and(...conditions))
       .orderBy(desc(stockMovements.createdAt));
 
     for (const row of rows) {
@@ -129,26 +170,40 @@ export class StockMovementRepository {
   async updateNotes(
     id: string,
     notes: string | null,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<StockMovementRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(stockMovements.id, id)];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .update(stockMovements)
       .set({ notes })
-      .where(eq(stockMovements.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 
   async listByConsumableId(
     consumableId: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<StockMovementRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(stockMovements.consumableId, consumableId)];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+
     return db
       .select()
       .from(stockMovements)
-      .where(eq(stockMovements.consumableId, consumableId))
+      .where(and(...conditions))
       .orderBy(desc(stockMovements.createdAt));
   }
 
@@ -156,10 +211,13 @@ export class StockMovementRepository {
     reason?: StockMovementRow["reason"];
     limit?: number;
     includeSandbox?: boolean;
+    tenantId?: string;
   }): Promise<StockMovementListRow[]> {
     const db = this.db();
+    const resolvedTenantId = filters.tenantId ?? getTenantContext()?.tenantId;
     const columns = {
       id: stockMovements.id,
+      tenantId: stockMovements.tenantId,
       movementCode: stockMovements.movementCode,
       consumableId: stockMovements.consumableId,
       qty: stockMovements.qty,
@@ -182,6 +240,9 @@ export class StockMovementRepository {
     };
 
     const conditions = [];
+    if (resolvedTenantId) {
+      conditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
     if (filters.reason) {
       conditions.push(eq(stockMovements.reason, filters.reason));
     }

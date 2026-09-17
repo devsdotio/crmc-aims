@@ -177,36 +177,38 @@ export class AssetService {
   }
 
   /** Next `{PREFIX}-{NNN}` — first free slot from 001 upward. */
-  async peekNextAssetCode(categoryLabel: string): Promise<{
+  async peekNextAssetCode(categoryLabel: string, tenantId?: string): Promise<{
     assetCode: string;
     prefix: string;
   }> {
     const categoryName = await this.resolveAssetCategoryName(categoryLabel);
     const prefix = assetCategoryCodePrefix(categoryName);
-    const assetCode = await this.nextAssetCodeForPrefix(prefix);
+    const assetCode = await this.nextAssetCodeForPrefix(prefix, undefined, tenantId);
     return { assetCode, prefix };
   }
 
   private async nextAssetCodeForPrefix(
     prefix: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<string> {
     const seq = await this.models.repository.firstAvailableSequenceForPrefix(
       prefix,
-      session
+      session,
+      tenantId
     );
     return `${prefix}-${padSeq(seq)}`;
   }
 
-  async listAssets(rawQuery: unknown): Promise<AssetDTOWithMeta[]> {
+  async listAssets(rawQuery: unknown, tenantId?: string): Promise<AssetDTOWithMeta[]> {
     const filters: ListAssetsFilters = listAssetsQuerySchema.parse(rawQuery ?? {});
-    const rows = await this.assetRepository.findMany(filters);
+    const rows = await this.assetRepository.findMany(filters, undefined, tenantId);
     return this.withOpenProjectCustodyHolders(rows.map(toAssetDTO));
   }
 
-  async getAssetById(rawId: string): Promise<AssetDTOWithMeta> {
+  async getAssetById(rawId: string, tenantId?: string): Promise<AssetDTOWithMeta> {
     const id = assetIdSchema.parse(rawId);
-    const row = await this.assetRepository.findById(id);
+    const row = await this.assetRepository.findById(id, undefined, tenantId);
 
     if (!row) {
       throw new NotFoundError("Asset", id);
@@ -216,12 +218,12 @@ export class AssetService {
     return dto!;
   }
 
-  async getAssetByCode(rawCode: string): Promise<AssetDTOWithMeta> {
+  async getAssetByCode(rawCode: string, tenantId?: string): Promise<AssetDTOWithMeta> {
     const parsed = parseScanPayload(rawCode);
     if (!parsed.code) {
       throw new BadRequestError("Asset code is required.");
     }
-    const row = await this.assetRepository.findByAssetCode(parsed.code);
+    const row = await this.assetRepository.findByAssetCode(parsed.code, undefined, tenantId);
     if (!row) {
       throw new NotFoundError("Asset", parsed.code);
     }
@@ -229,9 +231,9 @@ export class AssetService {
     return dto!;
   }
 
-  async listUnitsForModel(rawModelId: string): Promise<AssetDTOWithMeta[]> {
+  async listUnitsForModel(rawModelId: string, tenantId?: string): Promise<AssetDTOWithMeta[]> {
     const model = await this.models.requireModel(rawModelId);
-    const rows = await this.assetRepository.findByModelId(model.id);
+    const rows = await this.assetRepository.findByModelId(model.id, undefined, tenantId);
     return this.withOpenProjectCustodyHolders(rows.map(toAssetDTO));
   }
 
@@ -359,11 +361,12 @@ export class AssetService {
           const assetCode =
             attempt === 0 && preferredCode
               ? preferredCode
-              : await this.nextAssetCodeForPrefix(codePrefix, tx);
+              : await this.nextAssetCodeForPrefix(codePrefix, tx, actor.tenantId);
 
           const now = new Date();
           const row = await this.assetRepository.create(
             {
+              tenantId: actor.tenantId,
               assetCode,
               name: input.name,
               category: categoryName,
@@ -607,7 +610,8 @@ export class AssetService {
     const startSeq =
       (await this.models.repository.maxUnitSequenceForPrefix(
         args.codePrefix,
-        tx
+        tx,
+        actor.tenantId
       )) + 1;
 
     const created: AssetDTOWithMeta[] = [];
@@ -621,6 +625,7 @@ export class AssetService {
       try {
         const row = await this.assetRepository.create(
           {
+            tenantId: actor.tenantId,
             assetCode,
             name: args.model.name,
             category: args.model.category,
@@ -1097,6 +1102,7 @@ export class AssetService {
           resolvedByUserId: null,
           resolvedByName: null,
           repairCost: null,
+          repairParts: [],
           relatedBorrowLogCode: null,
           scheduledDate: null,
         },
@@ -1169,7 +1175,8 @@ export class AssetService {
         );
       }
 
-      const description =
+      const notes =
+        input.notes?.trim() ||
         input.description?.trim() ||
         "Flagged for maintenance inspection by Property Custodian.";
 
@@ -1196,13 +1203,14 @@ export class AssetService {
           dateLogged: todayDateString(),
           loggedByUserId: actor.userId,
           loggedByName: actor.displayName,
-          notes: [description, input.notes].filter(Boolean).join(" — "),
+          notes,
           isResolved: false,
           resolutionDate: null,
           resolutionNotes: null,
           resolvedByUserId: null,
           resolvedByName: null,
           repairCost: null,
+          repairParts: [],
           relatedBorrowLogCode: null,
           scheduledDate: null,
         },
@@ -1221,8 +1229,7 @@ export class AssetService {
           toHolder: next.currentHolder,
           payload: {
             via: "manual_flag",
-            description,
-            notes: input.notes ?? null,
+            notes,
             maintenanceLogCode: mntCode,
           },
         },

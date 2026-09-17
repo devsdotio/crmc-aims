@@ -49,10 +49,11 @@ export function RequisitionSlip({
   const toast = useToast();
 
   useEffect(() => {
-    if (me?.name && !requisitionedBy) {
-      setRequisitionedBy(me.name);
+    if (!open) {
+      setRequisitionedBy("");
+      return;
     }
-  }, [me?.name, requisitionedBy]);
+  }, [open]);
 
   const approvedBy = { name: "Mr. Victor Elliot S. Lepiten, III", title: "President" };
 
@@ -279,11 +280,23 @@ export function RequisitionSlip({
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-10">
-          <SignatureBlock
-            label="Requisitioned by"
-            nameValue={requisitionedBy}
-            onNameChange={setRequisitionedBy}
-          />
+          <div className="flex flex-col items-center gap-1.5">
+            <SignatureBlock
+              label="Requisitioned by"
+              nameValue={requisitionedBy}
+              onNameChange={setRequisitionedBy}
+            />
+            {me?.name &&
+              requisitionedBy.trim() !== me.name.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setRequisitionedBy(me.name)}
+                  className="text-[10px] font-semibold text-accent hover:underline cursor-pointer"
+                >
+                  Use registered name
+                </button>
+              )}
+          </div>
           <SignatureBlock
             label="Recommending Office / Person"
             nameValue={recommendingPerson}

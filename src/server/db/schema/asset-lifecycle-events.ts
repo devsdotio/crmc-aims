@@ -8,6 +8,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { tenants } from "./tenants";
+
 import { assets } from "./assets";
 
 /**
@@ -38,6 +40,7 @@ export const assetLifecycleEvents = pgTable(
   "asset_lifecycle_events",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
     /** Null after hard-delete of asset; code retained for audit. */
     assetId: uuid("asset_id").references(() => assets.id, {

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { UserPlus, AlertCircle, Users, UserCheck, Building2, Shield } from "lucide-react";
+import { useState, useMemo, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { UserPlus, AlertCircle, Users, UserCheck, Building2, Shield, Loader2 } from "lucide-react";
 import type { UserAccount, UserFilterState, UserRole } from "@/types/users";
 
-import { StatMetricCard } from "@/components/ui/stat-metric-card";
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { UserFilters } from "@/components/users/user-filters";
 import { UserTable } from "@/components/users/user-table";
 import { UserDetailPanel } from "@/components/users/user-detail-panel";
@@ -25,14 +26,60 @@ import {
 import { useToast } from "@/components/providers/toast-context";
 import { useDepartmentsQuery } from "@/features/departments/client";
 
-export default function UsersPage() {
+const rolePriority: Record<UserRole, number> = {
+  superadmin: 1,
+  admin: 2,
+  staff: 3,
+  borrower: 4,
+};
+
+function UsersContent() {
+  const searchParams = useSearchParams();
+  const institutionParam = searchParams.get("institution") || searchParams.get("tenantId");
+
   const { data: me, error: meError } = useMeQuery();
+  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
+
+  // We need the filters state here to pass to useUsersQuery
+  const [filters, setFilters] = useState<UserFilterState>({
+    searchQuery: "",
+    role: "all",
+    status: "all",
+    tenantId: institutionParam || "all",
+  });
+
+  // Sync when query params change
+  useEffect(() => {
+    if (institutionParam) {
+      setFilters((prev) => ({
+        ...prev,
+        tenantId: institutionParam,
+      }));
+    }
+  }, [institutionParam]);
+
+  const activeFilters = useMemo(() => {
+    return {
+      ...(filters.tenantId && filters.tenantId !== "all" ? { tenantId: filters.tenantId } : {}),
+    };
+  }, [filters.tenantId]);
+
   const {
     data: users = [],
     isLoading: usersLoading,
     error: usersError,
     isFetching,
-  } = useUsersQuery();
+  } = useUsersQuery(activeFilters);
+
+  // Fetch tenants for superadmin dropdown
+  useEffect(() => {
+    if (me?.role === "superadmin") {
+      fetch("/api/platform/tenants")
+        .then((res) => res.json())
+        .then((data) => setTenants(data.data || []))
+        .catch((err) => console.error("Failed to load tenants for filter", err));
+    }
+  }, [me?.role]);
 
   const createUser = useCreateUserMutation();
   const updateUser = useUpdateUserMutation();
@@ -43,14 +90,7 @@ export default function UsersPage() {
 
   const currentUserId = me?.id ?? "";
   const canInviteAdmin = me?.role === "superadmin";
-  // Table only waits on users list; me gates invite only.
   const isLoading = usersLoading;
-
-  const [filters, setFilters] = useState<UserFilterState>({
-    searchQuery: "",
-    role: "all",
-    status: "all",
-  });
 
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -59,25 +99,40 @@ export default function UsersPage() {
     useState<UserAccount | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
+  // Filter and automatically sort users:
+  // 1. Role hierarchy (Superadmin -> Admin -> Staff -> Borrower)
+  // 2. Active status (Active before Deactivated)
+  // 3. Alphabetical by Name
   const filteredUsers = useMemo(() => {
-    return users.filter((u) => {
-      if (filters.searchQuery?.trim()) {
-        const query = filters.searchQuery.toLowerCase();
-        const matchName = u.name.toLowerCase().includes(query);
-        const matchEmail = u.email.toLowerCase().includes(query);
-        if (!matchName && !matchEmail) return false;
-      }
+    return users
+      .filter((u) => {
+        if (filters.searchQuery?.trim()) {
+          const query = filters.searchQuery.toLowerCase();
+          const matchName = u.name.toLowerCase().includes(query);
+          const matchEmail = u.email.toLowerCase().includes(query);
+          if (!matchName && !matchEmail) return false;
+        }
 
-      if (filters.role && filters.role !== "all" && u.role !== filters.role) {
-        return false;
-      }
+        if (filters.role && filters.role !== "all" && u.role !== filters.role) {
+          return false;
+        }
 
-      if (filters.status && filters.status !== "all" && u.status !== filters.status) {
-        return false;
-      }
+        if (filters.status && filters.status !== "all" && u.status !== filters.status) {
+          return false;
+        }
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => {
+        const diffRole = (rolePriority[a.role] ?? 99) - (rolePriority[b.role] ?? 99);
+        if (diffRole !== 0) return diffRole;
+
+        if (a.status !== b.status) {
+          return a.status === "active" ? -1 : 1;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
   }, [users, filters]);
 
   const totalUsersCount = users.length;
@@ -114,6 +169,7 @@ export default function UsersPage() {
       searchQuery: "",
       role: "all",
       status: "all",
+      tenantId: "all",
     });
   };
 
@@ -217,8 +273,7 @@ export default function UsersPage() {
             </span>
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Set passwords and department logins. Create departments in Settings
-            first, then attach one login per department.
+            Set passwords and department logins. Create departments in Settings first, then attach one login per department.
           </p>
         </div>
 
@@ -227,7 +282,7 @@ export default function UsersPage() {
             type="button"
             onClick={() => setInviteDialogOpen(true)}
             disabled={Boolean(loadError) || !me}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <UserPlus className="h-4 w-4" strokeWidth={2.5} />
             Create User
@@ -236,42 +291,63 @@ export default function UsersPage() {
       </div>
 
       {/* ── KPI Metric Cards ────────────────────────────────────────── */}
-      <div className="px-4 md:px-6 pt-4 pb-1 shrink-0 grid grid-cols-2 md:grid-cols-4 gap-3 bg-bg">
-        <StatMetricCard
-          title="Total Accounts"
-          value={totalUsersCount}
-          subtitle="system users"
-          description="Total user accounts created in the system."
-          icon={Users}
-          tone="blue"
-        />
+      <div className="px-4 md:px-6 pt-4 pb-1 shrink-0 bg-bg">
+        <StatCardGrid>
+          <StatCard
+            title="Total Accounts"
+            sublabel="DIRECTORY // USERS"
+            value={totalUsersCount}
+            icon={Users}
+            tone="blue"
+            badge={{ text: "Directory", pulse: true }}
+            subtitle="Registered accounts across institution"
+            loading={isLoading}
+          />
 
-        <StatMetricCard
-          title="Active Users"
-          value={activeUsersCount}
-          subtitle="can log in"
-          description="Users who can log in and use the app."
-          icon={UserCheck}
-          tone="emerald"
-        />
+          <StatCard
+            title="Active Users"
+            sublabel="SECURITY // STATUS"
+            value={activeUsersCount}
+            icon={UserCheck}
+            tone="emerald"
+            toneValue={true}
+            badge={
+              totalUsersCount > 0
+                ? `${Math.round((activeUsersCount / totalUsersCount) * 100)}% active`
+                : "0%"
+            }
+            subtitle="Verified credentials enabled to sign in"
+            progress={{
+              value: activeUsersCount,
+              max: totalUsersCount || 1,
+            }}
+            loading={isLoading}
+          />
 
-        <StatMetricCard
-          title="Department Logins"
-          value={departmentLoginsCount}
-          subtitle="borrower accounts"
-          description="Accounts used by offices to request items."
-          icon={Building2}
-          tone="purple"
-        />
+          <StatCard
+            title="Department Logins"
+            sublabel="OFFICE // ACCESS"
+            value={departmentLoginsCount}
+            icon={Building2}
+            tone="purple"
+            toneValue={true}
+            badge="Borrowers"
+            subtitle="Designated accounts assigned to offices"
+            loading={isLoading}
+          />
 
-        <StatMetricCard
-          title="Admin & Staff"
-          value={adminStaffCount}
-          subtitle="managers"
-          description="Users who can approve requests and manage items."
-          icon={Shield}
-          tone="amber"
-        />
+          <StatCard
+            title="Admin & Staff"
+            sublabel="PRIVILEGE // ROLES"
+            value={adminStaffCount}
+            icon={Shield}
+            tone="amber"
+            toneValue={true}
+            badge="Elevated"
+            subtitle="Managers & custodians with operation rights"
+            loading={isLoading}
+          />
+        </StatCardGrid>
       </div>
 
       {loadError && (
@@ -286,6 +362,7 @@ export default function UsersPage() {
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
         totalUsersCount={users.length}
+        tenants={tenants}
       />
 
       <main className="flex-1 overflow-y-auto min-h-0 bg-bg">
@@ -326,6 +403,8 @@ export default function UsersPage() {
         onClose={() => setInviteDialogOpen(false)}
         onCreateUser={handleCreateUser}
         departments={departments}
+        canInviteAdmin={canInviteAdmin}
+        tenants={tenants}
       />
 
       <EditUserDialog
@@ -345,5 +424,20 @@ export default function UsersPage() {
         onConfirmDeactivate={handleConfirmDeactivate}
       />
     </div>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-full flex items-center justify-center bg-bg-subtle text-text-secondary gap-2">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <span className="text-sm">Loading user accounts...</span>
+        </div>
+      }
+    >
+      <UsersContent />
+    </Suspense>
   );
 }

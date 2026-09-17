@@ -9,7 +9,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 /** Legacy enum type; column storage is text after 0013. */
 export const consumableCategoryEnum = pgEnum("consumable_category", [
@@ -59,8 +62,9 @@ export const consumables = pgTable(
   "consumables",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    itemCode: text("item_code").notNull().unique(),
+    itemCode: text("item_code").notNull(),
     name: text("name").notNull(),
     category: text("category").notNull(),
     unit: text("unit").notNull(),

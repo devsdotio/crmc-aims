@@ -973,11 +973,14 @@ function StepDetails({
   values,
   onChange,
   errors,
+  registeredName,
 }: {
   items: BrowseItem[];
   values: Omit<WizardFormValues, "selectedItems">;
   onChange: (patch: Partial<Omit<WizardFormValues, "selectedItems">>) => void;
   errors: Record<string, string>;
+  /** Department account display name (`me.name`) for optional fill. */
+  registeredName?: string | null;
 }) {
   const hasAsset = items.some(i => i.type === "asset");
   const isTemporaryLoan = hasAsset && values.requestType !== "assignable";
@@ -1213,14 +1216,23 @@ function StepDetails({
 
       {/* ── Requested By ── */}
       <section aria-label="Requested By" className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <User className="h-3.5 w-3.5 text-accent" />
             <label htmlFor="requestedByName" className="text-[11px] font-bold uppercase tracking-wider text-text">
               Requested By <span className="text-status-outofservice-bg">*</span>
             </label>
           </div>
-          <span className="text-[10px] text-text-secondary font-medium">Defaults to department account</span>
+          {registeredName &&
+            values.requestedByName.trim() !== registeredName.trim() && (
+              <button
+                type="button"
+                onClick={() => onChange({ requestedByName: registeredName })}
+                className="text-[11px] font-semibold text-accent hover:underline cursor-pointer shrink-0"
+              >
+                Use registered name ({registeredName})
+              </button>
+            )}
         </div>
 
         <input
@@ -1243,7 +1255,7 @@ function StepDetails({
           </p>
         ) : (
           <p id="requested-by-hint" className="text-[11px] text-text-secondary">
-            Auto-filled from your department account. Override if someone else needs the items.
+            Enter who this request is for. Use registered name to fill your department account display name.
           </p>
         )}
       </section>
@@ -1508,23 +1520,12 @@ export function NewBorrowRequestWizard({
       quantities: {},
       purpose: "",
       notes: "",
-      requestedByName: me?.name ?? "",
+      requestedByName: "",
     });
     setFieldErrors({});
     setErrorMessage("");
     resetMutation();
-    // Intentionally omit me?.name: profile may load after open; seeded below without wiping other fields.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefilledItems, resetMutation, initialType]);
-
-  // Seed Requested By from department account when profile arrives after the wizard opens.
-  useEffect(() => {
-    if (!open || !me?.name) return;
-    setValues((prev) => {
-      if (prev.requestedByName.trim()) return prev;
-      return { ...prev, requestedByName: me.name };
-    });
-  }, [open, me?.name]);
 
   const patchValues = useCallback(
     (patch: Partial<WizardFormValues>) => setValues((p) => ({ ...p, ...patch })),
@@ -1806,6 +1807,7 @@ export function NewBorrowRequestWizard({
               }}
               onChange={patchValues}
               errors={fieldErrors}
+              registeredName={me?.name}
             />
           )}
           {step === "review" && (

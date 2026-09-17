@@ -14,13 +14,16 @@ export type ProjectExpenseCategory =
   | "broken_asset"
   | "fees"
   | "adjustment"
-  | "miscellaneous";
+  | "miscellaneous"
+  | "other";
 
 export type ProjectExpenseLineDTO = {
   id: string;
   projectId: string;
   lineType: ProjectExpenseLineType;
   category: ProjectExpenseCategory;
+  /** Present when category is `other`. */
+  categoryLabel?: string | null;
   description: string;
   amount: string;
   quantity: string | null;
@@ -44,20 +47,39 @@ export type ListExpenseFilters = {
 };
 
 export interface IProjectExpenseRepository {
-  findById(id: string): Promise<ProjectExpenseLineRow | null>;
-  listByProject(projectId: string): Promise<ProjectExpenseLineRow[]>;
-  sumAmountsByProjectIds(projectIds: string[]): Promise<Map<string, string>>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<ProjectExpenseLineRow | null>;
+  listByProject(
+    projectId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<ProjectExpenseLineRow[]>;
+  sumAmountsByProjectIds(
+    projectIds: string[],
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<Map<string, string>>;
   create(
     data: Omit<
       import("@/server/db/schema").NewProjectExpenseLineRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<ProjectExpenseLineRow>;
   update(
     id: string,
     data: Partial<
       Omit<ProjectExpenseLineRow, "id" | "createdAt" | "projectId">
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<ProjectExpenseLineRow | null>;
-  delete(id: string): Promise<boolean>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
 }

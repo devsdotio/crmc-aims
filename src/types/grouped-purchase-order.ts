@@ -16,13 +16,45 @@ export interface GroupedPurchaseOrder {
 }
 
 /**
+ * Detects whether a purchase lot represents an opening inventory / initial stock
+ * adjustment on item creation rather than a formal Purchase Order.
+ */
+export function isInitialStockLot(lot: PurchaseLot): boolean {
+  const ref = (lot.reference || "").trim().toLowerCase();
+  const po = (lot.poNumber || "").trim().toLowerCase();
+  const notes = (lot.notes || "").trim().toLowerCase();
+  const purpose = (lot.purpose || "").trim().toLowerCase();
+
+  return (
+    ref === "initial stock" ||
+    ref.startsWith("initial stock") ||
+    ref === "opening balance" ||
+    ref.startsWith("opening balance") ||
+    po === "initial stock" ||
+    po === "po-initial stock" ||
+    po.startsWith("initial stock") ||
+    notes.includes("opening balance on item create") ||
+    purpose.includes("initial stock")
+  );
+}
+
+/**
  * Groups a flat array of PurchaseLot records by their PO number.
  * Multi-item POs (sharing the same poNumber) are collapsed into a single group.
+ * By default, excludes opening balance / initial stock lots which do not represent real purchase orders.
  */
-export function groupLotsByPO(lots: PurchaseLot[]): GroupedPurchaseOrder[] {
+export function groupLotsByPO(
+  lots: PurchaseLot[],
+  options?: { excludeInitialStock?: boolean }
+): GroupedPurchaseOrder[] {
+  const { excludeInitialStock = true } = options ?? {};
+  const validLots = excludeInitialStock
+    ? lots.filter((lot) => !isInitialStockLot(lot))
+    : lots;
+
   const map = new Map<string, PurchaseLot[]>();
 
-  for (const lot of lots) {
+  for (const lot of validLots) {
     const key = lot.poNumber || lot.lotCode;
     const existing = map.get(key);
     if (existing) {
@@ -64,6 +96,15 @@ export function groupLotsByPO(lots: PurchaseLot[]): GroupedPurchaseOrder[] {
       representative.items = mappedItems;
       for (const li of lineItems) {
         li.items = mappedItems;
+      }
+    }
+
+    // Sync receiptUrl across representative and all line items in group
+    const groupReceiptUrl = lineItems.find((li) => Boolean(li.receiptUrl))?.receiptUrl ?? null;
+    if (groupReceiptUrl) {
+      representative.receiptUrl = groupReceiptUrl;
+      for (const li of lineItems) {
+        li.receiptUrl = groupReceiptUrl;
       }
     }
 

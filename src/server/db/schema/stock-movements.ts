@@ -7,7 +7,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { consumables } from "./consumables";
 import { consumableRequests } from "./consumable-requests";
@@ -34,7 +37,8 @@ export const stockMovements = pgTable(
   "stock_movements",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    movementCode: text("movement_code").notNull().unique(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
+    movementCode: text("movement_code").notNull(),
 
     consumableId: uuid("consumable_id")
       .notNull()

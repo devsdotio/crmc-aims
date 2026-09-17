@@ -1,9 +1,12 @@
-import { pgTable, uuid, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, unique } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 export const locations = pgTable("locations", {
   id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-  code: text("code").notNull().unique(),
+  code: text("code").notNull(),
   name: text("name").notNull(),
   description: text("description"),
 

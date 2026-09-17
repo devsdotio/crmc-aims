@@ -28,6 +28,7 @@ export type PurchaseLotDTO = {
   reference: string | null;
   purpose?: string | null;
   notes: string | null;
+  receiptUrl?: string | null;
   recordedByUserId: string;
   recordedByName: string;
   approvedByName?: string | null;
@@ -65,6 +66,7 @@ export type CreatePurchaseLotInput = {
   reference?: string | null;
   purpose?: string | null;
   notes?: string | null;
+  receiptUrl?: string | null;
   status?: PurchaseOrderStatus;
   recordedByUserId: string;
   recordedByName: string;
@@ -97,6 +99,7 @@ export type CreatePurchaseOrderInput = {
   supplierName?: string;
   purpose?: string;
   notes?: string;
+  receiptUrl?: string | null;
   status?: PurchaseOrderStatus;
   items: CreatePurchaseOrderItemInput[];
 };
@@ -108,23 +111,35 @@ export type UpdatePurchaseOrderInput = {
   reference?: string | null;
   notes?: string | null;
   purpose?: string | null;
+  receiptUrl?: string | null;
   purchasedOn?: string;
+  recordedByName?: string | null;
 };
 
 export type UpdatePurchaseOrderStatusInput = {
   status: PurchaseOrderStatus;
   notes?: string;
+  receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
 };
 
 export interface IPurchaseLotRepository {
-  findById(id: string): Promise<PurchaseLotRow | null>;
-  list(filters?: ListPurchaseLotFilters): Promise<PurchaseLotRow[]>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<PurchaseLotRow | null>;
+  list(
+    filters?: ListPurchaseLotFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<PurchaseLotRow[]>;
   create(
     data: Omit<
       import("@/server/db/schema").NewPurchaseLotRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<PurchaseLotRow>;
 }

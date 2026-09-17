@@ -24,6 +24,7 @@ export class UserController {
         role: url.searchParams.get("role") ?? undefined,
         status: url.searchParams.get("status") ?? undefined,
         search: url.searchParams.get("search") ?? undefined,
+        tenantId: url.searchParams.get("tenantId") ?? undefined,
       };
       const data = await this.userService.listUsersForActor(session.actor, query);
       return ok(data);

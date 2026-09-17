@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   assets,
   consumables,
@@ -22,25 +23,35 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
 
   async findById(
     id: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(purchaseLots.id, id)];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(purchaseLots)
-      .where(eq(purchaseLots.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByIdForUpdate(
     id: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(purchaseLots.id, id)];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await session
       .select()
       .from(purchaseLots)
-      .where(eq(purchaseLots.id, id))
+      .where(and(...conditions))
       .for("update")
       .limit(1);
     return row ?? null;
@@ -48,35 +59,45 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
 
   async findByLotCode(
     lotCode: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const altCode = lotCode.startsWith("PO-")
       ? lotCode.replace(/^PO-/, "LOT-")
       : lotCode.startsWith("LOT-")
       ? lotCode.replace(/^LOT-/, "PO-")
       : lotCode;
+    const conditions = [or(eq(purchaseLots.lotCode, lotCode), eq(purchaseLots.lotCode, altCode), eq(purchaseLots.reference, lotCode))!];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(purchaseLots)
-      .where(or(eq(purchaseLots.lotCode, lotCode), eq(purchaseLots.lotCode, altCode), eq(purchaseLots.reference, lotCode)))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByLotCodeForUpdate(
     lotCode: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const altCode = lotCode.startsWith("PO-")
       ? lotCode.replace(/^PO-/, "LOT-")
       : lotCode.startsWith("LOT-")
       ? lotCode.replace(/^LOT-/, "PO-")
       : lotCode;
+    const conditions = [or(eq(purchaseLots.lotCode, lotCode), eq(purchaseLots.lotCode, altCode), eq(purchaseLots.reference, lotCode))!];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await session
       .select()
       .from(purchaseLots)
-      .where(or(eq(purchaseLots.lotCode, lotCode), eq(purchaseLots.lotCode, altCode), eq(purchaseLots.reference, lotCode)))
+      .where(and(...conditions))
       .for("update")
       .limit(1);
     return row ?? null;
@@ -84,10 +105,16 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
 
   async list(
     filters: ListPurchaseLotFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+    }
 
     if (filters.consumableId) {
       conditions.push(eq(purchaseLots.consumableId, filters.consumableId));
@@ -144,18 +171,21 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
    */
   async listAvailableForConsumableFifo(
     consumableId: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow[]> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(purchaseLots.consumableId, consumableId),
+      eq(purchaseLots.itemType, "consumable"),
+      gt(purchaseLots.quantityRemaining, 0)
+    ];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     return session
       .select()
       .from(purchaseLots)
-      .where(
-        and(
-          eq(purchaseLots.consumableId, consumableId),
-          eq(purchaseLots.itemType, "consumable"),
-          gt(purchaseLots.quantityRemaining, 0)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(asc(purchaseLots.purchasedOn), asc(purchaseLots.createdAt))
       .for("update");
   }
@@ -163,13 +193,18 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
   async updateRemaining(
     id: string,
     quantityRemaining: number,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(purchaseLots.id, id)];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(purchaseLots)
       .set({ quantityRemaining, updatedAt: new Date() })
-      .where(eq(purchaseLots.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
@@ -179,13 +214,18 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
     id: string,
     quantity: number,
     quantityRemaining: number,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(purchaseLots.id, id)];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(purchaseLots)
       .set({ quantity, quantityRemaining, updatedAt: new Date() })
-      .where(eq(purchaseLots.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
@@ -193,22 +233,31 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
   async update(
     id: string,
     data: Partial<Omit<NewPurchaseLotRow, "id" | "createdAt">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<PurchaseLotRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(purchaseLots.id, id)];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(purchaseLots)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(purchaseLots.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(purchaseLots.id, id)];
+    if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+
     const [deleted] = await db
       .delete(purchaseLots)
-      .where(eq(purchaseLots.id, id))
+      .where(and(...conditions))
       .returning();
     return Boolean(deleted);
   }
@@ -218,7 +267,15 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
     session?: DbSession
   ): Promise<PurchaseLotRow> {
     const db = this.db(session);
-    const [row] = await db.insert(purchaseLots).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(purchaseLots)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create purchase lot.");
     return row;
   }

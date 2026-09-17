@@ -2,6 +2,7 @@ import { and, desc, eq, ilike, or } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   suppliers,
   type NewSupplierRow,
@@ -15,22 +16,32 @@ export class SupplierRepository implements ISupplierRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<SupplierRow | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<SupplierRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(suppliers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(suppliers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(suppliers)
-      .where(eq(suppliers.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListSupplierFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<SupplierRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(suppliers.tenantId, resolvedTenantId));
+    }
 
     if (filters.activeOnly) {
       conditions.push(eq(suppliers.status, "active"));
@@ -60,21 +71,51 @@ export class SupplierRepository implements ISupplierRepository {
     session?: DbSession
   ): Promise<SupplierRow> {
     const db = this.db(session);
-    const [row] = await db.insert(suppliers).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(suppliers)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create supplier.");
     return row;
+  }
+
+  async delete(
+    id: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<boolean> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(suppliers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(suppliers.tenantId, resolvedTenantId));
+
+    const deleted = await db
+      .delete(suppliers)
+      .where(and(...conditions))
+      .returning({ id: suppliers.id });
+    return deleted.length > 0;
   }
 
   async update(
     id: string,
     data: Partial<Omit<SupplierRow, "id" | "createdAt" | "supplierCode">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<SupplierRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(suppliers.id, id)];
+    if (resolvedTenantId) conditions.push(eq(suppliers.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(suppliers)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(suppliers.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }

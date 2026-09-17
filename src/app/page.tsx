@@ -13,15 +13,25 @@ export default async function Home() {
     redirect("/sign-in");
   }
 
-  const db = getDb();
-  const [profile] = await db
-    .select()
-    .from(profiles)
-    .where(eq(profiles.userId, userId))
-    .limit(1);
+  let profileRole: string | undefined;
+  try {
+    const db = getDb();
+    const [profile] = await db
+      .select({ role: profiles.role })
+      .from(profiles)
+      .where(eq(profiles.userId, userId))
+      .limit(1);
+    profileRole = profile?.role;
+  } catch (error) {
+    console.error("Transient error querying profile on root redirect:", error);
+  }
 
-  if (profile?.role === "borrower") {
+  if (profileRole === "borrower") {
     redirect("/borrower-db/dashboard");
+  }
+
+  if (profileRole === "superadmin") {
+    redirect("/platform");
   }
 
   redirect("/dashboard");

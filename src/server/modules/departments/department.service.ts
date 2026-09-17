@@ -34,41 +34,42 @@ function toDTO(row: Department | DepartmentListRow): DepartmentDTO {
 export class DepartmentService {
   constructor(private readonly repo = new DepartmentRepository()) {}
 
-  async list(rawQuery: unknown): Promise<DepartmentDTO[]> {
+  async list(rawQuery: unknown, actorTenantId?: string): Promise<DepartmentDTO[]> {
     const filters = listDepartmentsQuerySchema.parse(rawQuery ?? {});
-    const cacheKey = `departments:list:${JSON.stringify(filters)}`;
+    const tenantId = actorTenantId ?? (await import("@/server/shared/tenant-context")).getTenantContext()?.tenantId ?? "global";
+    const cacheKey = `tenant:${tenantId}:departments:list:${JSON.stringify(filters)}`;
     return serverCache.wrap(
       cacheKey,
       10 * 60 * 1000,
       async () => {
-        const rows = await this.repo.list(filters);
+        const rows = await this.repo.list(filters, undefined, actorTenantId);
         return rows.map(toDTO);
       },
-      ["departments"]
+      ["departments", `tenant:${tenantId}:departments`]
     );
   }
 
-  async getById(rawId: string): Promise<DepartmentDTO> {
+  async getById(rawId: string, actorTenantId?: string): Promise<DepartmentDTO> {
     const id = departmentIdSchema.parse(rawId);
     // By-id fetch must not apply list sandbox filters — mutations (e.g. toggling
     // isSandbox) would otherwise 404 after a successful write.
-    const rows = await this.repo.list({ includeSandbox: true });
+    const rows = await this.repo.list({ includeSandbox: true }, undefined, actorTenantId);
     const match = rows.find((row) => row.id === id);
     if (!match) throw new NotFoundError("Department", id);
     return toDTO(match);
   }
 
-  async create(rawInput: unknown): Promise<DepartmentDTO> {
+  async create(rawInput: unknown, actorTenantId?: string): Promise<DepartmentDTO> {
     const input = createDepartmentSchema.parse(rawInput);
 
-    const byCode = await this.repo.findByCode(input.code);
+    const byCode = await this.repo.findByCode(input.code, undefined, actorTenantId);
     if (byCode) {
       throw new ConflictError(
         `Department code "${input.code}" is already in use.`
       );
     }
 
-    const byName = await this.repo.findByNameLower(input.name);
+    const byName = await this.repo.findByNameLower(input.name, undefined, actorTenantId);
     if (byName) {
       throw new ConflictError(
         `Department "${input.name}" already exists.`
@@ -80,8 +81,12 @@ export class DepartmentService {
         code: input.code,
         name: input.name,
         isSandbox: input.isSandbox ?? false,
+        tenantId: actorTenantId,
       });
       serverCache.invalidateTag("departments");
+      if (actorTenantId) {
+        serverCache.invalidateTag(`tenant:${actorTenantId}:departments`);
+      }
       return toDTO({
         ...row,
         accountUserId: null,
@@ -98,15 +103,15 @@ export class DepartmentService {
     }
   }
 
-  async update(rawId: string, rawInput: unknown): Promise<DepartmentDTO> {
+  async update(rawId: string, rawInput: unknown, actorTenantId?: string): Promise<DepartmentDTO> {
     const id = departmentIdSchema.parse(rawId);
     const input = updateDepartmentSchema.parse(rawInput);
 
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actorTenantId);
     if (!existing) throw new NotFoundError("Department", id);
 
     if (input.code && input.code !== existing.code) {
-      const clash = await this.repo.findByCode(input.code);
+      const clash = await this.repo.findByCode(input.code, undefined, actorTenantId);
       if (clash && clash.id !== id) {
         throw new ConflictError(
           `Department code "${input.code}" is already in use.`
@@ -115,7 +120,7 @@ export class DepartmentService {
     }
 
     if (input.name && input.name.toLowerCase() !== existing.name.toLowerCase()) {
-      const clash = await this.repo.findByNameLower(input.name);
+      const clash = await this.repo.findByNameLower(input.name, undefined, actorTenantId);
       if (clash && clash.id !== id) {
         throw new ConflictError(`Department "${input.name}" already exists.`);
       }
@@ -129,7 +134,7 @@ export class DepartmentService {
         ...(input.isSandbox !== undefined
           ? { isSandbox: input.isSandbox }
           : {}),
-      });
+      }, undefined, actorTenantId);
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw new ConflictError(
@@ -142,18 +147,21 @@ export class DepartmentService {
     if (!updated) throw new NotFoundError("Department", id);
 
     serverCache.invalidateTag("departments");
+    if (actorTenantId) {
+      serverCache.invalidateTag(`tenant:${actorTenantId}:departments`);
+    }
 
     if (input.name && input.name !== existing.name) {
       await this.repo.syncLinkedProfileDepartmentName(id, updated.name);
       invalidateProfileCache();
     }
 
-    return this.getById(id);
+    return this.getById(id, actorTenantId);
   }
 
-  async delete(rawId: string): Promise<{ deleted: true }> {
+  async delete(rawId: string, actorTenantId?: string): Promise<{ deleted: true }> {
     const id = departmentIdSchema.parse(rawId);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actorTenantId);
     if (!existing) throw new NotFoundError("Department", id);
 
     const linked = await this.repo.countLinkedProfiles(id);
@@ -163,9 +171,12 @@ export class DepartmentService {
       );
     }
 
-    const deleted = await this.repo.delete(id);
+    const deleted = await this.repo.delete(id, undefined, actorTenantId);
     if (!deleted) throw new NotFoundError("Department", id);
     serverCache.invalidateTag("departments");
+    if (actorTenantId) {
+      serverCache.invalidateTag(`tenant:${actorTenantId}:departments`);
+    }
     return { deleted: true };
   }
 }

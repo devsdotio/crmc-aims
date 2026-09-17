@@ -6,7 +6,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { assetAssignmentTypeEnum } from "./assets";
 
@@ -22,9 +25,10 @@ export const assetModels = pgTable(
   "asset_models",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
     /** Stable short code, e.g. PRT-EPSON-310 */
-    modelCode: text("model_code").notNull().unique(),
+    modelCode: text("model_code").notNull(),
     name: text("name").notNull(),
     category: text("category").notNull(),
     description: text("description"),

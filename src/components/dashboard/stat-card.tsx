@@ -94,30 +94,38 @@ export function StatCard({
   const cardContent = (
     <div
       className={cn(
-        "group relative flex flex-col justify-between overflow-hidden rounded-lg border p-5 transition-all duration-300 select-none",
-        "h-full min-h-40 bg-card text-text shadow-sm hover:shadow-md",
+        "group relative flex flex-col justify-between overflow-hidden rounded-xl border p-4 transition-all duration-200 select-none",
+        "h-full min-h-36 bg-card text-text hover:shadow-md",
         // Uniform card background with distinct operational borders & accents
         isOverdue
-          ? "border-status-outofservice-bg/60 hover:border-status-outofservice-bg"
+          ? "border-status-outofservice-bg/40 hover:border-status-outofservice-bg/80"
           : isLowStock
-          ? "border-status-repair-bg/50 hover:border-status-repair-bg"
+          ? "border-status-repair-bg/40 hover:border-status-repair-bg/80"
           : isPending
-          ? "border-category-computing-bg/40 hover:border-category-computing-bg"
+          ? "border-category-computing-bg/40 hover:border-category-computing-bg/80"
           : isAssignable
-          ? "border-amber-500/50 hover:border-amber-500"
+          ? "border-amber-500/35 hover:border-amber-500/80"
           : isBorrow
-          ? "border-primary/40 hover:border-primary"
+          ? "border-primary/35 hover:border-primary/80"
           : "border-border hover:border-text-secondary/40"
       )}
       aria-label={`${label}: ${isLoading ? "loading" : displayValue}`}
     >
-      {/* Background Operational Grid / Diagonal Pattern */}
+      {/* PO Ambient Glow Gradient on Hover */}
       <div
         className={cn(
-          "absolute inset-0 pointer-events-none opacity-5 group-hover:opacity-10 transition-opacity duration-300",
+          "absolute inset-0 bg-linear-to-br via-transparent to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300",
           isOverdue
-            ? "bg-[radial-gradient(var(--status-outofservice-bg)_1px,transparent_1px)] [background-size:12px_12px]"
-            : "bg-[linear-gradient(45deg,currentColor_1px,transparent_1px)] [background-size:16px_16px]"
+            ? "from-rose-500/5"
+            : isLowStock
+            ? "from-amber-500/5"
+            : isPending
+            ? "from-purple-500/5"
+            : isAssignable
+            ? "from-blue-500/5"
+            : isBorrow
+            ? "from-accent/5"
+            : "from-text-secondary/5"
         )}
       />
 
@@ -177,7 +185,7 @@ export function StatCard({
           <div className="flex items-baseline gap-2">
             <span
               className={cn(
-                "font-mono text-4xl font-extrabold tracking-tight tabular-nums transition-transform duration-300 group-hover:-translate-y-0.5",
+                "font-mono text-2xl sm:text-3xl font-extrabold tracking-tight tabular-nums transition-transform duration-300 group-hover:-translate-y-0.5",
                 isOverdue
                   ? "text-status-outofservice-bg drop-shadow-[0_0_12px_var(--status-outofservice-bg)]"
                   : isLowStock

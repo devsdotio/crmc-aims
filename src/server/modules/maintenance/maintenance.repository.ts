@@ -2,6 +2,7 @@ import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   assets,
   maintenanceLogs,
@@ -19,22 +20,32 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<MaintenanceLogRow | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<MaintenanceLogRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(maintenanceLogs.id, id)];
+    if (resolvedTenantId) conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(maintenanceLogs)
-      .where(eq(maintenanceLogs.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListMaintenanceFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<MaintenanceLogRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+    }
 
     if (filters.openOnly) {
       conditions.push(eq(maintenanceLogs.isResolved, false));
@@ -72,29 +83,36 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     return base.where(and(...conditions));
   }
 
-  async countOpen(session?: DbSession): Promise<number> {
+  async countOpen(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(maintenanceLogs.isResolved, false)];
+    if (resolvedTenantId) conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select({ value: count() })
       .from(maintenanceLogs)
-      .where(eq(maintenanceLogs.isResolved, false));
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 
   async countOpenByAssetId(
     assetId: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(maintenanceLogs.assetId, assetId),
+      eq(maintenanceLogs.isResolved, false)
+    ];
+    if (resolvedTenantId) conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select({ value: count() })
       .from(maintenanceLogs)
-      .where(
-        and(
-          eq(maintenanceLogs.assetId, assetId),
-          eq(maintenanceLogs.isResolved, false)
-        )
-      );
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 
@@ -104,7 +122,8 @@ export class MaintenanceRepository implements IMaintenanceRepository {
    */
   async findNeedsRepairWithoutOpenLog(
     options: { includeSandbox?: boolean } = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<
     Array<{
       id: string;
@@ -117,6 +136,7 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     }>
   > {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [
       eq(assets.status, "needs_repair"),
       sql`not exists (
@@ -125,6 +145,8 @@ export class MaintenanceRepository implements IMaintenanceRepository {
           and ${maintenanceLogs.isResolved} = false
       )`,
     ];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+    
     if (!options.includeSandbox) {
       conditions.push(eq(assets.isSandbox, false));
     }
@@ -143,14 +165,16 @@ export class MaintenanceRepository implements IMaintenanceRepository {
       .where(and(...conditions));
   }
 
-  async countYear(session?: DbSession): Promise<number> {
+  async countYear(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [sql`extract(year from ${maintenanceLogs.createdAt}) = extract(year from now())`];
+    if (resolvedTenantId) conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select({ value: count() })
       .from(maintenanceLogs)
-      .where(
-        sql`extract(year from ${maintenanceLogs.createdAt}) = extract(year from now())`
-      );
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 
@@ -159,7 +183,15 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     session?: DbSession
   ): Promise<MaintenanceLogRow> {
     const db = this.db(session);
-    const [row] = await db.insert(maintenanceLogs).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(maintenanceLogs)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create maintenance log.");
     return row;
   }
@@ -167,13 +199,18 @@ export class MaintenanceRepository implements IMaintenanceRepository {
   async update(
     id: string,
     data: Partial<Omit<MaintenanceLogRow, "id" | "createdAt" | "logCode">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<MaintenanceLogRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(maintenanceLogs.id, id)];
+    if (resolvedTenantId) conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(maintenanceLogs)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(maintenanceLogs.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }

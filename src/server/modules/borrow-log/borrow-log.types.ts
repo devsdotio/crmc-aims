@@ -48,22 +48,47 @@ export type ListBorrowLogFilters = {
 };
 
 export interface IBorrowLogRepository {
-  findById(id: string): Promise<BorrowTransactionRow | null>;
-  findActiveByAssetId(assetId: string): Promise<BorrowTransactionRow | null>;
-  list(filters?: ListBorrowLogFilters): Promise<BorrowTransactionRow[]>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  countActive(session?: any, userId?: string): Promise<number>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  countOverdue(session?: any, userId?: string): Promise<number>;
-  countYear(): Promise<number>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<BorrowTransactionRow | null>;
+  findActiveByAssetId(
+    assetId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<BorrowTransactionRow | null>;
+  list(
+    filters?: ListBorrowLogFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<BorrowTransactionRow[]>;
+  countActive(
+    session?: import("@/server/db/transaction").DbSession,
+    userId?: string,
+    custodyKind?: "borrow" | "assignment",
+    tenantId?: string
+  ): Promise<number>;
+  countOverdue(
+    session?: import("@/server/db/transaction").DbSession,
+    userId?: string,
+    tenantId?: string
+  ): Promise<number>;
+  countYear(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
   create(
     data: Omit<
       import("@/server/db/schema").NewBorrowTransactionRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<BorrowTransactionRow>;
   update(
     id: string,
-    data: Partial<Omit<BorrowTransactionRow, "id" | "createdAt" | "logCode">>
+    data: Partial<Omit<BorrowTransactionRow, "id" | "createdAt" | "logCode">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<BorrowTransactionRow | null>;
-};
+}

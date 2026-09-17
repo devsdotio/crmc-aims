@@ -17,3 +17,7 @@ export * from "./project-asset-assignments";
 export * from "./suppliers";
 export * from "./purchase-lots";
 export * from "./audit-logs";
+export * from "./dashboard-snapshots";
+export * from "./vouchers";
+export * from "./petty-cash";
+export * from "./tenants";

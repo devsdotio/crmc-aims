@@ -238,6 +238,34 @@ export function useDeletePurchaseOrderMutation(): UseMutationResult<
   });
 }
 
+export function useUploadPOReceiptMutation(): UseMutationResult<
+  {
+    success: boolean;
+    url: string;
+    path: string;
+    size: number;
+    mimeType: string;
+    originalName: string;
+    lot?: PurchaseLot | null;
+  },
+  Error,
+  { file: File; poNumber?: string; lotId?: string }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, poNumber, lotId }) =>
+      purchaseLotsApi.uploadReceipt(file, { poNumber, lotId }),
+    onSettled: (_data, _err, vars) => {
+      void invalidateDomains(qc, PO_DOMAINS);
+      if (vars.lotId) {
+        qc.invalidateQueries({
+          queryKey: purchaseLotQueryKeys.detail(vars.lotId),
+        });
+      }
+    },
+  });
+}
+
 export function useReleaseFromLotMutation(): UseMutationResult<
   LotReleaseResult,
   Error,

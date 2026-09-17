@@ -27,4 +27,5 @@ export interface UserAccount {
 export interface UserFilterState extends BaseFilterState {
   role: string;
   status: string;
+  tenantId?: string;
 }

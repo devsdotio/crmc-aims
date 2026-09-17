@@ -88,28 +88,28 @@ export class AssetModelService {
     private readonly taxonomy: CategoryRepository = new CategoryRepository()
   ) {}
 
-  async list(rawQuery: unknown): Promise<AssetModelDTO[]> {
+  async list(rawQuery: unknown, tenantId?: string): Promise<AssetModelDTO[]> {
     const filters = listAssetModelsQuerySchema.parse(rawQuery ?? {});
-    const rows = await this.modelRepo.list(filters);
+    const rows = await this.modelRepo.list(filters, undefined, tenantId);
     return Promise.all(
       rows.map(async (row) =>
         toAssetModelDTO(
           row,
-          await this.modelRepo.countUnits(row.id),
-          await this.modelRepo.countAvailableUnits(row.id)
+          await this.modelRepo.countUnits(row.id, undefined, tenantId),
+          await this.modelRepo.countAvailableUnits(row.id, undefined, tenantId)
         )
       )
     );
   }
 
-  async getById(rawId: string): Promise<AssetModelDTO> {
+  async getById(rawId: string, tenantId?: string): Promise<AssetModelDTO> {
     const id = assetModelIdSchema.parse(rawId);
-    const row = await this.modelRepo.findById(id);
+    const row = await this.modelRepo.findById(id, undefined, tenantId);
     if (!row) throw new NotFoundError("Asset model", id);
     return toAssetModelDTO(
       row,
-      await this.modelRepo.countUnits(row.id),
-      await this.modelRepo.countAvailableUnits(row.id)
+      await this.modelRepo.countUnits(row.id, undefined, tenantId),
+      await this.modelRepo.countAvailableUnits(row.id, undefined, tenantId)
     );
   }
 
@@ -119,19 +119,20 @@ export class AssetModelService {
   ): Promise<AssetModelDTO> {
     const input: CreateAssetModelBody = createAssetModelSchema.parse(rawInput);
 
-    const found = await this.taxonomy.findByTypeAndName("asset", input.category);
+    const found = await this.taxonomy.findByTypeAndName("asset", input.category, undefined, actor.tenantId);
     if (!found) {
       throw new BadRequestError(
         `Unknown asset category “${input.category}”. Add it under Settings → Categories first.`
       );
     }
 
-    const existing = await this.modelRepo.findByModelCode(input.modelCode);
+    const existing = await this.modelRepo.findByModelCode(input.modelCode, undefined, actor.tenantId);
     if (existing) {
       throw new ConflictError(`Model code ${input.modelCode} already exists.`);
     }
 
     const row = await this.modelRepo.create({
+      tenantId: actor.tenantId,
       modelCode: input.modelCode,
       name: input.name,
       category: found.name,
@@ -153,15 +154,15 @@ export class AssetModelService {
     return toAssetModelDTO(row, 0, 0);
   }
 
-  async update(rawId: string, rawInput: unknown): Promise<AssetModelDTO> {
+  async update(rawId: string, rawInput: unknown, tenantId?: string): Promise<AssetModelDTO> {
     const id = assetModelIdSchema.parse(rawId);
     const input: UpdateAssetModelBody = updateAssetModelSchema.parse(rawInput);
 
-    const existing = await this.modelRepo.findById(id);
+    const existing = await this.modelRepo.findById(id, undefined, tenantId);
     if (!existing) throw new NotFoundError("Asset model", id);
 
     if (input.modelCode && input.modelCode !== existing.modelCode) {
-      const clash = await this.modelRepo.findByModelCode(input.modelCode);
+      const clash = await this.modelRepo.findByModelCode(input.modelCode, undefined, tenantId);
       if (clash) {
         throw new ConflictError(`Model code ${input.modelCode} already exists.`);
       }
@@ -171,7 +172,9 @@ export class AssetModelService {
     if (input.category !== undefined) {
       const found = await this.taxonomy.findByTypeAndName(
         "asset",
-        input.category
+        input.category,
+        undefined,
+        tenantId
       );
       if (!found) {
         throw new BadRequestError(
@@ -203,37 +206,37 @@ export class AssetModelService {
       ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
       ...(input.notes !== undefined ? { notes: input.notes } : {}),
       ...(input.isSandbox !== undefined ? { isSandbox: input.isSandbox } : {}),
-    });
+    }, undefined, tenantId);
 
     if (!updated) throw new NotFoundError("Asset model", id);
     return toAssetModelDTO(
       updated,
-      await this.modelRepo.countUnits(updated.id),
-      await this.modelRepo.countAvailableUnits(updated.id)
+      await this.modelRepo.countUnits(updated.id, undefined, tenantId),
+      await this.modelRepo.countAvailableUnits(updated.id, undefined, tenantId)
     );
   }
 
-  async delete(rawId: string): Promise<void> {
+  async delete(rawId: string, tenantId?: string): Promise<void> {
     const id = assetModelIdSchema.parse(rawId);
-    const existing = await this.modelRepo.findById(id);
+    const existing = await this.modelRepo.findById(id, undefined, tenantId);
     if (!existing) throw new NotFoundError("Asset model", id);
 
-    const units = await this.modelRepo.countUnits(id);
+    const units = await this.modelRepo.countUnits(id, undefined, tenantId);
     if (units > 0) {
       throw new ConflictError(
         `Cannot delete model with ${units} registered unit(s). Unlink or delete units first.`
       );
     }
 
-    const deleted = await this.modelRepo.delete(id);
+    const deleted = await this.modelRepo.delete(id, undefined, tenantId);
     if (!deleted) throw new NotFoundError("Asset model", id);
   }
 
   /**
    * Resolve model or throw. Used by AssetService bulk registration.
    */
-  async requireModel(id: string): Promise<AssetModelRow> {
-    const row = await this.modelRepo.findById(id);
+  async requireModel(id: string, tenantId?: string): Promise<AssetModelRow> {
+    const row = await this.modelRepo.findById(id, undefined, tenantId);
     if (!row) throw new NotFoundError("Asset model", id);
     return row;
   }
@@ -247,12 +250,13 @@ export class AssetModelService {
     categoryName: string
   ): Promise<AssetModelRow> {
     const code = input.modelCode || generateOperationalCode("MDL");
-    const existing = await this.modelRepo.findByModelCode(code);
+    const existing = await this.modelRepo.findByModelCode(code, undefined, actor.tenantId);
     if (existing) {
       throw new ConflictError(`Model code ${code} already exists.`);
     }
 
     return this.modelRepo.create({
+      tenantId: actor.tenantId,
       modelCode: code,
       name: input.name,
       category: categoryName,

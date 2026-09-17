@@ -2,6 +2,7 @@ import { and, count, desc, asc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   consumables,
   type ConsumableRow,
@@ -18,6 +19,7 @@ import type {
  */
 const consumableListColumns = {
   id: consumables.id,
+  tenantId: consumables.tenantId,
   itemCode: consumables.itemCode,
   name: consumables.name,
   category: consumables.category,
@@ -45,24 +47,33 @@ export class ConsumableRepository implements IConsumableRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<ConsumableRow | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<ConsumableRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumables.id, id)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(consumables)
-      .where(eq(consumables.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByIdForUpdate(
     id: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<ConsumableRow | null> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumables.id, id)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const [row] = await session
       .select()
       .from(consumables)
-      .where(eq(consumables.id, id))
+      .where(and(...conditions))
       .for("update")
       .limit(1);
     return row ?? null;
@@ -70,23 +81,34 @@ export class ConsumableRepository implements IConsumableRepository {
 
   async findByCode(
     itemCode: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ConsumableRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumables.itemCode, itemCode)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(consumables)
-      .where(eq(consumables.itemCode, itemCode))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListConsumableFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<import("@/types/filters").PaginatedResponse<ConsumableRow>> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(consumables.tenantId, resolvedTenantId));
+    }
 
     if (filters.category) {
       conditions.push(eq(consumables.category, filters.category));
@@ -141,45 +163,75 @@ export class ConsumableRepository implements IConsumableRepository {
     };
   }
 
-  async countYear(session?: DbSession): Promise<number> {
+  async countYear(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [sql`extract(year from ${consumables.createdAt}) = extract(year from now())`];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select({ value: count() })
       .from(consumables)
-      .where(
-        sql`extract(year from ${consumables.createdAt}) = extract(year from now())`
-      );
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 
-  async countLowStock(session?: DbSession): Promise<number> {
+  async countLowStock(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(consumables.isSandbox, false),
+      sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
+    ];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select({ value: count() })
       .from(consumables)
-      .where(
-        and(
-          eq(consumables.isSandbox, false),
-          sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
-        )
-      );
+      .where(and(...conditions));
     return Number(row?.value ?? 0);
   }
 
-  async getLowStockItems(limit: number, session?: DbSession): Promise<ConsumableRow[]> {
+  async getLowStockItems(limit: number, session?: DbSession, tenantId?: string): Promise<ConsumableRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      eq(consumables.isSandbox, false),
+      sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
+    ];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const rows = await db
       .select(consumableListColumns)
       .from(consumables)
-      .where(
-        and(
-          eq(consumables.isSandbox, false),
-          sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
-        )
-      )
+      .where(and(...conditions))
       .orderBy(asc(consumables.currentQty))
       .limit(limit);
     return rows.map(withEmptyHistory);
+  }
+
+  async getCategoryDistribution(
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<{ category: string; count: number }[]> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumables.isSandbox, false)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
+    const rows = await db
+      .select({
+        category: consumables.category,
+        value: sql<number>`coalesce(sum(${consumables.currentQty}), 0)`,
+      })
+      .from(consumables)
+      .where(and(...conditions))
+      .groupBy(consumables.category);
+
+    return rows.map((r) => ({
+      category: r.category,
+      count: Number(r.value),
+    }));
   }
 
   async create(
@@ -187,7 +239,15 @@ export class ConsumableRepository implements IConsumableRepository {
     session?: DbSession
   ): Promise<ConsumableRow> {
     const db = this.db(session);
-    const [row] = await db.insert(consumables).values(data).returning();
+    const resolvedTenantId =
+      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(consumables)
+      .values({
+        ...data,
+        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+      })
+      .returning();
     if (!row) throw new Error("Failed to create consumable.");
     return row;
   }
@@ -195,22 +255,31 @@ export class ConsumableRepository implements IConsumableRepository {
   async update(
     id: string,
     data: Partial<Omit<ConsumableRow, "id" | "createdAt" | "itemCode">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ConsumableRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumables.id, id)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(consumables)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(consumables.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumables.id, id)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
     const deleted = await db
       .delete(consumables)
-      .where(eq(consumables.id, id))
+      .where(and(...conditions))
       .returning({ id: consumables.id });
     return deleted.length > 0;
   }

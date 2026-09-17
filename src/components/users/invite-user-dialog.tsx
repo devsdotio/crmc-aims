@@ -13,9 +13,12 @@ export interface CreateUserDialogProps {
     email: string;
     role: UserRole;
     departmentId?: string;
+    tenantId?: string;
     password: string;
   }) => void | Promise<void>;
   departments?: DepartmentDTO[];
+  canInviteAdmin?: boolean;
+  tenants?: { id: string; name: string }[];
 }
 
 /** @deprecated Use CreateUserDialogProps */
@@ -25,17 +28,22 @@ interface CreateUserDialogFormProps {
   onClose: () => void;
   onCreateUser: CreateUserDialogProps["onCreateUser"];
   departments: DepartmentDTO[];
+  canInviteAdmin?: boolean;
+  tenants?: { id: string; name: string }[];
 }
 
 function CreateUserDialogForm({
   onClose,
   onCreateUser,
   departments,
+  canInviteAdmin,
+  tenants,
 }: CreateUserDialogFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role] = useState<UserRole>("borrower");
+  const [role, setRole] = useState<UserRole>("borrower");
   const [departmentId, setDepartmentId] = useState("");
+  const [tenantId, setTenantId] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -57,8 +65,12 @@ function CreateUserDialogForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!departmentId) {
+    if (role === "borrower" && !departmentId) {
       setError("Select a department for this login.");
+      return;
+    }
+    if (canInviteAdmin && tenants && tenants.length > 0 && !tenantId) {
+      setError("Select an institution for this user.");
       return;
     }
     if (!name.trim()) {
@@ -85,7 +97,8 @@ function CreateUserDialogForm({
         name: name.trim(),
         email: email.trim(),
         role,
-        departmentId,
+        departmentId: role === "borrower" ? departmentId : undefined,
+        tenantId: canInviteAdmin && tenantId ? tenantId : undefined,
         password,
       });
       setSuccessMessage(`Account created for ${email.trim()}`);
@@ -118,7 +131,7 @@ function CreateUserDialogForm({
                 Create Account
               </h3>
               <p className="text-xs text-text-secondary mt-0.5">
-                Department login (email + password) for one office
+                {canInviteAdmin ? "Add a new user to an institution" : "Department login (email + password) for one office"}
               </p>
             </div>
           </div>
@@ -171,7 +184,49 @@ function CreateUserDialogForm({
             </div>
           </div>
 
-          <div className="space-y-1">
+          {canInviteAdmin && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label htmlFor="create-role-select" className="block text-xs font-semibold text-text">
+                  Role <span className="text-accent">*</span>
+                </label>
+                <select
+                  id="create-role-select"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as UserRole)}
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="borrower">Department account</option>
+                  <option value="staff">Staff</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {tenants && tenants.length > 0 && (
+                <div className="space-y-1">
+                  <label htmlFor="create-tenant-select" className="block text-xs font-semibold text-text">
+                    Institution <span className="text-accent">*</span>
+                  </label>
+                  <select
+                    id="create-tenant-select"
+                    value={tenantId}
+                    onChange={(e) => setTenantId(e.target.value)}
+                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  >
+                    <option value="">Select an institution…</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          {role === "borrower" && (
+            <div className="space-y-1">
             <label htmlFor="create-dept-select" className="block text-xs font-semibold text-text">
               Department <span className="text-accent">*</span>
             </label>
@@ -201,6 +256,7 @@ function CreateUserDialogForm({
               </p>
             )}
           </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -287,6 +343,8 @@ export function CreateUserDialog({
   onClose,
   onCreateUser,
   departments = [],
+  canInviteAdmin,
+  tenants,
 }: CreateUserDialogProps) {
   if (!isOpen) return null;
 
@@ -296,6 +354,8 @@ export function CreateUserDialog({
       onClose={onClose}
       onCreateUser={onCreateUser}
       departments={departments}
+      canInviteAdmin={canInviteAdmin}
+      tenants={tenants}
     />
   );
 }

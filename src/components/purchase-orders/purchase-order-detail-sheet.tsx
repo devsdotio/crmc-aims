@@ -28,6 +28,7 @@ import {
   Calendar,
   Boxes,
   ArrowUpRight,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
@@ -37,8 +38,10 @@ import {
   useUpdatePurchaseOrderMutation,
 } from "@/features/purchase-lots/client";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
+import { useUsersQuery } from "@/features/users/client";
 import { formatDateTime, formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
 import { useToast } from "@/components/providers/toast-context";
+import { POReceiptUploader } from "./po-receipt-uploader";
 
 interface PurchaseOrderDetailSheetProps {
   lot: PurchaseLot | null;
@@ -95,11 +98,12 @@ export function PurchaseOrderDetailSheet({
 }: PurchaseOrderDetailSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [activeTab, setActiveTab] = useState<"specs" | "workflow" | "qr">("specs");
+  const [activeTab, setActiveTab] = useState<"specs" | "receipt" | "workflow" | "qr">("specs");
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("all");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState("");
   const [receivedQuantity, setReceivedQuantity] = useState("");
+  const [deliveryReceiptUrl, setDeliveryReceiptUrl] = useState<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState<PurchaseOrderStatus | null>(null);
   const [isEditingPoNumber, setIsEditingPoNumber] = useState(false);
   const [editablePoNumber, setEditablePoNumber] = useState("");
@@ -108,11 +112,25 @@ export function PurchaseOrderDetailSheet({
   const updatePOMutation = useUpdatePurchaseOrderMutation();
   const toast = useToast();
 
+  const handleRemoveReceipt = async () => {
+    if (!lot) return;
+    try {
+      await updatePOMutation.mutateAsync({
+        id: lot.id,
+        payload: { receiptUrl: null },
+      });
+      toast.success("Receipt removed from purchase order.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove receipt.");
+    }
+  };
+
   const entityCode = lot ? lot.poNumber || lot.lotCode : "";
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: entityCode,
     entityType: "purchase_order",
   });
+  const { data: users = [] } = useUsersQuery();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -166,6 +184,46 @@ export function PurchaseOrderDetailSheet({
       : `Multiple Dealers (${uniqueDealers.length})`;
 
   const currentStepIdx = WORKFLOW_STEPS.findIndex((s) => s.status === lot.status);
+  const isApproved =
+    lot.status === "approved" ||
+    lot.status === "ordered" ||
+    lot.status === "delivered";
+
+  const matchedUser =
+    users.find(
+      (u) =>
+        (lot.recordedByUserId && u.id === lot.recordedByUserId) ||
+        (lot.recordedByName && u.name.toLowerCase() === lot.recordedByName.toLowerCase())
+    ) ?? null;
+
+  const purposeDeptMatch = lot.purpose?.match(/^\[(.*?)\]/);
+  const extractedDeptFromPurpose = purposeDeptMatch ? purposeDeptMatch[1].trim() : null;
+
+  const displayRequesterName =
+    lot.recordedByName?.trim() || matchedUser?.name || "Authorized Staff";
+
+  const displayDepartment =
+    extractedDeptFromPurpose ||
+    matchedUser?.department?.trim() ||
+    "General Administration";
+
+  const displayRole = (() => {
+    const role = matchedUser?.role;
+    if (role === "superadmin") return "Superadmin";
+    if (role === "admin") return "Property Custodian / Admin";
+    if (role === "borrower") return "Department Custodian";
+    if (role === "staff") return "Staff Requester";
+    return "Staff Requester";
+  })();
+
+  const cleanPurpose = (() => {
+    if (!lot.purpose) return "General Operations Replenishment";
+    if (purposeDeptMatch) {
+      const remainder = lot.purpose.replace(/^\[(.*?)\]\s*/, "").trim();
+      return remainder || "General Operations Replenishment";
+    }
+    return lot.purpose;
+  })();
 
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
     setIsUpdatingStatus(true);
@@ -191,6 +249,7 @@ export function PurchaseOrderDetailSheet({
           status: nextStatus,
           notes: statusNote.trim() || undefined,
           receivedQuantity: parsedReceived,
+          receiptUrl: deliveryReceiptUrl || undefined,
         },
       });
       toast.success(
@@ -201,6 +260,7 @@ export function PurchaseOrderDetailSheet({
       setShowStatusModal(null);
       setStatusNote("");
       setReceivedQuantity("");
+      setDeliveryReceiptUrl(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update status.");
     } finally {
@@ -379,7 +439,7 @@ export function PurchaseOrderDetailSheet({
           </div>
 
           {/* Key Metadata Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-0.5 text-xs">
             {/* Supplier Chip */}
             <div className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-bg/80 min-w-0">
               <Building2 className="h-3.5 w-3.5 text-text-secondary shrink-0" />
@@ -387,6 +447,20 @@ export function PurchaseOrderDetailSheet({
                 <span className="text-[10px] text-text-secondary uppercase tracking-wider block font-medium">Dealer</span>
                 <span className="font-semibold text-text truncate block text-xs" title={displayDealer}>
                   {displayDealer}
+                </span>
+              </div>
+            </div>
+
+            {/* Requester & Department Chip */}
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-bg/80 min-w-0">
+              <User className="h-3.5 w-3.5 text-accent shrink-0" />
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] text-text-secondary uppercase tracking-wider block font-medium">Requester</span>
+                <span className="font-semibold text-text truncate block text-xs" title={displayRequesterName}>
+                  {displayRequesterName}
+                </span>
+                <span className="text-[10px] text-text-secondary truncate block" title={`${displayDepartment} · ${displayRole}`}>
+                  {displayDepartment}
                 </span>
               </div>
             </div>
@@ -567,7 +641,24 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <FileText className="h-4 w-4" />
-            <span>Specifications & Order</span>
+            <span>Details</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("receipt")}
+            className={cn(
+              "py-3 border-b-2 transition-colors cursor-pointer flex items-center gap-1.5",
+              activeTab === "receipt"
+                ? "border-accent text-accent font-bold"
+                : "border-transparent text-text-secondary hover:text-text"
+            )}
+          >
+            <Receipt className="h-4 w-4" />
+            <span>Receipt</span>
+            {lot.receiptUrl ? (
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block shrink-0 shadow-2xs" />
+            ) : null}
           </button>
 
           <button
@@ -581,7 +672,7 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <History className="h-4 w-4" />
-            <span>Workflow & Activity Logs</span>
+            <span>Activity</span>
           </button>
 
           <button
@@ -595,7 +686,7 @@ export function PurchaseOrderDetailSheet({
             )}
           >
             <QrCode className="h-4 w-4" />
-            <span>Tag & QR</span>
+            <span>QR Tag</span>
           </button>
         </div>
 
@@ -814,7 +905,7 @@ export function PurchaseOrderDetailSheet({
                       </div>
                       <div className="space-y-1">
                         <span className="text-[10px] uppercase font-bold text-text-secondary">Purpose / Usage</span>
-                        <p className="font-medium text-text">{lot.purpose || "General Operations Replenishment"}</p>
+                        <p className="font-medium text-text">{cleanPurpose}</p>
                       </div>
                     </div>
                   </div>
@@ -860,7 +951,7 @@ export function PurchaseOrderDetailSheet({
 
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-bold text-text-secondary">Purpose / Usage</span>
-                      <p className="font-medium text-text">{lot.purpose || "General Operations Replenishment"}</p>
+                      <p className="font-medium text-text">{cleanPurpose}</p>
                     </div>
 
                     <div className="space-y-1">
@@ -880,6 +971,68 @@ export function PurchaseOrderDetailSheet({
                     <p className="text-text leading-relaxed">{lot.notes}</p>
                   </div>
                 )}
+              </div>
+
+              {/* Requester & Department Information Card */}
+              <div className="p-4 rounded-xl border border-border bg-card space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-accent" />
+                    Requester & Department Details
+                  </span>
+                  <span className="text-[10px] font-semibold text-accent bg-accent/10 px-2.5 py-0.5 rounded-full border border-accent/20">
+                    {displayRole}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-text-secondary">
+                      Requested By
+                    </span>
+                    <p className="font-bold text-text text-sm flex items-center gap-1.5">
+                      <User className="h-4 w-4 text-accent shrink-0" />
+                      <span className="truncate">{displayRequesterName}</span>
+                    </p>
+                    {matchedUser?.email ? (
+                      <span className="text-[10px] text-text-secondary font-mono truncate block">
+                        {matchedUser.email}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-text-secondary block">
+                        CRMC-AIMS Staff Account
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-text-secondary">
+                      Department / Office
+                    </span>
+                    <p className="font-semibold text-text text-sm flex items-center gap-1.5">
+                      <Building2 className="h-4 w-4 text-accent shrink-0" />
+                      <span className="truncate">{displayDepartment}</span>
+                    </p>
+                    <span className="text-[10px] text-text-secondary block">
+                      Target Requisitioning Unit
+                    </span>
+                  </div>
+
+                  <div className="space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-text-secondary">
+                      Authorizing Officer
+                    </span>
+                    <p className="font-semibold text-text text-sm flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span className="truncate">{lot.approvedByName || "Pending Custodian Review"}</span>
+                    </p>
+                    <span className="text-[10px] text-text-secondary block">
+                      {lot.approvedAt
+                        ? `Approved ${formatDateTime(lot.approvedAt)}`
+                        : "Property Custodian Office"}
+                    </span>
+                  </div>
+                </div>
               </div>
 
               {/* Stock Availability Card (for delivered consumable lots) */}
@@ -943,6 +1096,70 @@ export function PurchaseOrderDetailSheet({
             </div>
           )}
 
+          {activeTab === "receipt" && (
+            <div className="space-y-6">
+              <div className="p-4 rounded-xl border border-border bg-card space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
+                    <Receipt className="h-3.5 w-3.5 text-accent" />
+                    Official Vendor Receipt & Proof of Purchase
+                  </span>
+                  {lot.receiptUrl ? (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Receipt Attached
+                    </span>
+                  ) : !isApproved ? (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                      Upload Disabled ({lot.status === "cancelled" ? "Cancelled" : "Pending Approval"})
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-text-secondary bg-bg-subtle px-2 py-0.5 rounded-full border border-border">
+                      Pending Upload
+                    </span>
+                  )}
+                </div>
+
+                {!isApproved && (
+                  <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                    <div className="space-y-0.5">
+                      <p className="font-semibold">Receipt Upload Disabled</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400/90 leading-relaxed">
+                        Receipt upload is disabled while this Purchase Order is {lot.status === "cancelled" ? "cancelled" : "pending approval"}. Official vendor receipts and sales invoices can only be uploaded once the purchase order is approved.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  Maintain compliance and proof of purchase by archiving the scanned receipt, delivery receipt (DR), or sales invoice issued for purchase order <strong className="text-text font-mono">{lot.poNumber || lot.lotCode}</strong>.
+                </p>
+
+                <POReceiptUploader
+                  receiptUrl={lot.receiptUrl}
+                  poNumber={lot.poNumber || lot.lotCode}
+                  lotId={lot.id}
+                  canOperate={canOperate}
+                  disabled={!isApproved}
+                  disabledReason={
+                    !isApproved
+                      ? lot.status === "cancelled"
+                        ? "Receipt upload is disabled because this Purchase Order is cancelled."
+                        : "Receipt upload is disabled until this Purchase Order is approved."
+                      : undefined
+                  }
+                  onUploadSuccess={async (url) => {
+                    await updatePOMutation.mutateAsync({
+                      id: lot.id,
+                      payload: { receiptUrl: url },
+                    });
+                  }}
+                  onRemove={handleRemoveReceipt}
+                />
+              </div>
+            </div>
+          )}
+
           {activeTab === "workflow" && (
             <div className="space-y-4">
               <div className="p-4 rounded-xl border border-border bg-card shadow-2xs space-y-4">
@@ -958,69 +1175,77 @@ export function PurchaseOrderDetailSheet({
 
                 {/* Audit Timeline */}
                 <ol className="relative border-l-2 border-border/80 ml-3 space-y-5">
-                  {/* Step 1: Created */}
-                  <li className="pl-5 relative group">
-                    <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-accent border-bg" />
-                    <div className="text-xs space-y-0.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-text">Purchase Order Created</span>
-                        <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.createdAt)}</time>
-                      </div>
-                      <p className="text-text-secondary text-[11px]">
-                        Filed by <strong className="text-text">{lot.recordedByName}</strong>
-                      </p>
-                    </div>
-                  </li>
+                  {auditLogs.length > 0 ? (
+                    auditLogs.map((log) => {
+                      let bgColor = "bg-accent";
+                      let textColor = "text-accent";
+                      let actionLabel = "Purchase Order Activity";
+                      let Icon = History;
 
-                  {/* Step 2: Approved if applicable */}
-                  {lot.approvedAt && (
-                    <li className="pl-5 relative group">
-                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-emerald-500 border-bg" />
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">PO Approved</span>
-                          <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.approvedAt)}</time>
-                        </div>
-                        <p className="text-text-secondary text-[11px]">
-                          Approved by <strong className="text-text">{lot.approvedByName || "Head Property Custodian"}</strong>
-                        </p>
-                      </div>
-                    </li>
-                  )}
+                      if (log.action === "purchase_order_created") {
+                        bgColor = "bg-blue-500";
+                        textColor = "text-blue-600 dark:text-blue-400";
+                        actionLabel = "Purchase Order Created";
+                        Icon = FileText;
+                      } else if (log.action === "purchase_order_approved") {
+                        bgColor = "bg-amber-500";
+                        textColor = "text-amber-600 dark:text-amber-400";
+                        actionLabel = "PO Approved";
+                        Icon = ShieldCheck;
+                      } else if (log.action === "purchase_order_ordered") {
+                        bgColor = "bg-blue-500";
+                        textColor = "text-blue-600 dark:text-blue-400";
+                        actionLabel = "PO Ordered / In-Transit";
+                        Icon = Truck;
+                      } else if (log.action === "purchase_order_delivered") {
+                        bgColor = "bg-emerald-600";
+                        textColor = "text-emerald-600 dark:text-emerald-400";
+                        actionLabel = "Goods Delivered & Stocked";
+                        Icon = PackageCheck;
+                      } else if (log.action === "purchase_order_cancelled") {
+                        bgColor = "bg-rose-500";
+                        textColor = "text-rose-600 dark:text-rose-400";
+                        actionLabel = "PO Cancelled";
+                        Icon = Ban;
+                      } else if (log.action === "purchase_order_updated") {
+                        bgColor = "bg-purple-500";
+                        textColor = "text-purple-600 dark:text-purple-400";
+                        actionLabel = "PO Updated";
+                        Icon = Edit3;
+                      }
 
-                  {/* Step 3: Ordered if applicable */}
-                  {lot.orderedAt && (
+                      return (
+                        <li key={log.id} className="pl-6 relative group">
+                          <span
+                            className={cn(
+                              "absolute -left-2.75 top-0.5 h-5 w-5 rounded-full border-2 border-bg flex items-center justify-center text-white",
+                              bgColor
+                            )}
+                          >
+                            <Icon className="h-3 w-3" />
+                          </span>
+                          <div className="text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className={cn("font-bold", textColor)}>{actionLabel}</span>
+                              <time className="text-[10px] text-text-secondary font-mono">
+                                {formatDateTime(log.timestamp as unknown as string)}
+                              </time>
+                            </div>
+                            <p className="text-text-secondary text-[11.5px] leading-relaxed wrap-break-word">
+                              {log.notes || `System recorded action: ${log.action}`}
+                            </p>
+                            <p className="text-text-secondary text-[10px] mt-1 pt-1 border-t border-border/40 inline-block">
+                              by <strong className="text-text">{log.actorName}</strong>
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })
+                  ) : (
                     <li className="pl-5 relative group">
-                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-blue-500 border-bg" />
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-blue-600 dark:text-blue-400">Marked as Ordered / In-Transit</span>
-                          <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.orderedAt)}</time>
-                        </div>
-                        <p className="text-text-secondary text-[11px]">
-                          Vendor: <strong className="text-text">{lot.supplierName || "Internal Supplier"}</strong>
-                        </p>
-                      </div>
-                    </li>
-                  )}
-
-                  {/* Step 4: Delivered if applicable */}
-                  {lot.deliveredAt && (
-                    <li className="pl-5 relative group">
-                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-emerald-600 border-bg" />
-                      <div className="text-xs space-y-0.5">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-emerald-600 dark:text-emerald-400">Goods Delivered & Stocked</span>
-                          <time className="text-[10px] text-text-secondary font-mono">{formatDateTime(lot.deliveredAt)}</time>
-                        </div>
-                        <p className="text-text-secondary text-[11px]">
-                          Received {lot.receivedQuantity ?? lot.quantity} units into active inventory
-                          {lot.orderedQuantity != null &&
-                          lot.orderedQuantity !== (lot.receivedQuantity ?? lot.quantity)
-                            ? ` (ordered ${lot.orderedQuantity})`
-                            : ""}
-                          .
-                        </p>
+                      <span className="absolute -left-2.5 top-1 h-4 w-4 rounded-full border-2 bg-border border-bg" />
+                      <div className="text-xs text-text-secondary italic">
+                        No activity logs recorded.
                       </div>
                     </li>
                   )}
@@ -1291,6 +1516,28 @@ export function PurchaseOrderDetailSheet({
                       Inventory will be adjusted to the received quantity, not the ordered amount.
                     </p>
                   )}
+                </div>
+              )}
+
+              {showStatusModal === "delivered" && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-text flex items-center justify-between">
+                    <span>Attach Receipt Picture (Optional)</span>
+                    {(deliveryReceiptUrl || lot.receiptUrl) && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Attached ✓
+                      </span>
+                    )}
+                  </label>
+                  <POReceiptUploader
+                    receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
+                    poNumber={lot.poNumber || lot.lotCode}
+                    lotId={lot.id}
+                    canOperate={canOperate}
+                    compact
+                    onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
+                    onRemove={() => setDeliveryReceiptUrl(null)}
+                  />
                 </div>
               )}
 

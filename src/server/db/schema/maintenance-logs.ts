@@ -1,16 +1,28 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
   index,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
 
+import { tenants } from "./tenants";
+
 import { assets } from "./assets";
+
+/** Parts/materials recorded when a repair is completed. */
+export type MaintenanceRepairPart = {
+  name: string;
+  /** PHP amount as fixed 2-decimal string, or null when cost was not recorded. */
+  cost: string | null;
+};
 
 export const maintenanceConditionEnum = pgEnum("maintenance_condition", [
   "good",
@@ -34,8 +46,9 @@ export const maintenanceLogs = pgTable(
   "maintenance_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    logCode: text("log_code").notNull().unique(),
+    logCode: text("log_code").notNull(),
 
     assetId: uuid("asset_id").references(() => assets.id, {
       onDelete: "set null",
@@ -57,8 +70,13 @@ export const maintenanceLogs = pgTable(
     resolutionNotes: text("resolution_notes"),
     resolvedByUserId: uuid("resolved_by_user_id"),
     resolvedByName: text("resolved_by_name"),
-    /** Optional cost recorded when the repair is completed (null = not recorded). */
+    /** Optional total cost recorded when the repair is completed (null = not recorded). */
     repairCost: numeric("repair_cost", { precision: 14, scale: 2 }),
+    /** Optional itemized parts; total of non-null costs feeds repairCost. */
+    repairParts: jsonb("repair_parts")
+      .$type<MaintenanceRepairPart[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
 
     relatedBorrowLogCode: text("related_borrow_log_code"),
     scheduledDate: date("scheduled_date", { mode: "string" }),

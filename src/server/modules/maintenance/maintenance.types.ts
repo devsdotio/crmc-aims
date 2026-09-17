@@ -1,4 +1,4 @@
-import type { MaintenanceLogRow } from "@/server/db/schema";
+import type { MaintenanceLogRow, MaintenanceRepairPart } from "@/server/db/schema";
 
 export type MaintenanceLogDTO = {
   id: string;
@@ -17,6 +17,8 @@ export type MaintenanceLogDTO = {
   resolvedBy?: string;
   /** Optional PHP amount recorded at resolve time (null/omit = not recorded). */
   repairCost?: string | null;
+  /** Itemized parts recorded at resolve time. */
+  repairParts?: MaintenanceRepairPart[];
   relatedBorrowLogCode?: string;
   scheduledDate?: string;
 };
@@ -29,18 +31,35 @@ export type ListMaintenanceFilters = {
 };
 
 export interface IMaintenanceRepository {
-  findById(id: string): Promise<MaintenanceLogRow | null>;
-  list(filters?: ListMaintenanceFilters): Promise<MaintenanceLogRow[]>;
-  countOpen(): Promise<number>;
-  countYear(): Promise<number>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow | null>;
+  list(
+    filters?: ListMaintenanceFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow[]>;
+  countOpen(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  countYear(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
   create(
     data: Omit<
       import("@/server/db/schema").NewMaintenanceLogRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<MaintenanceLogRow>;
   update(
     id: string,
-    data: Partial<Omit<MaintenanceLogRow, "id" | "createdAt" | "logCode">>
+    data: Partial<Omit<MaintenanceLogRow, "id" | "createdAt" | "logCode">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<MaintenanceLogRow | null>;
 }

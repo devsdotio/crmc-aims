@@ -24,6 +24,8 @@ import {
   Laptop,
   Search,
   School,
+  Receipt,
+  Lock,
 } from "lucide-react";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useSuppliersQuery } from "@/features/suppliers/client";
@@ -46,6 +48,8 @@ interface FileNewPODialogProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  defaultPoType?: POType;
+  defaultPurpose?: string;
 }
 
 export type POType = "consumable" | "asset";
@@ -106,6 +110,8 @@ export function FileNewPODialog({
   isOpen,
   onClose,
   onSuccess,
+  defaultPoType,
+  defaultPurpose,
 }: FileNewPODialogProps) {
   const { data: me } = useMeQuery();
   const { data: departments = [] } = useDepartmentsQuery();
@@ -156,20 +162,21 @@ export function FileNewPODialog({
 
   useEffect(() => {
     if (isOpen) {
+      const initialType = defaultPoType || "consumable";
       setCurrentStep("details");
-      setPoType("consumable");
+      setPoType(initialType);
       setPoNumberMode("auto");
       setCustomPoNumber("");
       setPoDate(new Date().toISOString().split("T")[0]);
-      setItems([generateInitialRow("consumable", false)]);
+      setItems([generateInitialRow(initialType, false)]);
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setErrorMessage(null);
       setTargetDepartment(me?.department || "");
-      setGeneralPurpose("");
+      setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
     }
-  }, [isOpen, me?.department]);
+  }, [isOpen, me?.department, defaultPoType, defaultPurpose]);
 
   // Safe Close Guard to prevent accidental data loss
   const handleSafeClose = () => {
@@ -1638,6 +1645,30 @@ export function FileNewPODialog({
                   <span className="text-xl font-mono font-bold text-status-active-text">
                     {formatPhp(totalEstimatedAmount)}
                   </span>
+                </div>
+              </div>
+
+              {/* Receipt Upload Information Notice */}
+              <div className="p-4 rounded-xl border border-border bg-card/60 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="h-4 w-4 text-accent" />
+                    <h3 className="font-bold text-xs text-text uppercase tracking-wider">
+                      Official Vendor Receipt Upload
+                    </h3>
+                  </div>
+                  <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25">
+                    Disabled Until Approved
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-2.5 pt-0.5">
+                  <div className="h-7 w-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                    <Lock className="h-3.5 w-3.5" />
+                  </div>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    Proof of purchase documents (scanned official receipts, delivery receipts, or sales invoices) can only be attached after this Purchase Order is reviewed and approved by the Property Custodian.
+                  </p>
                 </div>
               </div>
             </div>

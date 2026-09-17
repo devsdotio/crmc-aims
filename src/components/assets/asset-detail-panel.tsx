@@ -34,7 +34,9 @@ import {
   QrCode,
   Layers,
   StickyNote,
+  Printer,
 } from "lucide-react";
+import { IndividualAssetPrintableReport } from "@/components/reports/print/individual/IndividualAssetPrintableReport";
 import { cn } from "@/lib/utils";
 import { custodyBadgeLabel, isProjectCustody } from "@/lib/assets-custody";
 import Link from "next/link";
@@ -1122,21 +1124,22 @@ export function AssetDetailPanel({
       : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
-      {/* Backdrop */}
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+    <>
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200 print:hidden">
+        {/* Backdrop */}
+        <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      {/* Drawer Container */}
-      <aside
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="asset-detail-heading"
-        className={cn(
-          "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
-          "animate-in slide-in-from-right duration-250 ease-in-out",
-        )}
-      >
+        {/* Drawer Container */}
+        <aside
+          ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="asset-detail-heading"
+          className={cn(
+            "relative flex flex-col w-full max-w-lg h-full bg-bg border-l border-border shadow-2xl z-10 overflow-hidden",
+            "animate-in slide-in-from-right duration-250 ease-in-out",
+          )}
+        >
         {/* Panel Header */}
         <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
           <div className="min-w-0 flex-1 pr-3">
@@ -1246,6 +1249,20 @@ export function AssetDetailPanel({
                 </span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              aria-label="Print Asset Dossier Report"
+              className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+            >
+              <Printer className="h-4 w-4" />
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
+              >
+                Print Dossier (PDF)
+              </span>
+            </button>
             {onDelete && (
               <button
                 type="button"
@@ -1445,5 +1462,10 @@ export function AssetDetailPanel({
         </div>
       </aside>
     </div>
+
+    <div className="hidden print:block">
+      <IndividualAssetPrintableReport asset={asset} />
+    </div>
+    </>
   );
 }

@@ -25,16 +25,32 @@ export type ListSupplierFilters = {
 };
 
 export interface ISupplierRepository {
-  findById(id: string): Promise<SupplierRow | null>;
-  list(filters?: ListSupplierFilters): Promise<SupplierRow[]>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<SupplierRow | null>;
+  list(
+    filters?: ListSupplierFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<SupplierRow[]>;
   create(
     data: Omit<
       import("@/server/db/schema").NewSupplierRow,
       "id" | "createdAt" | "updatedAt"
-    >
+    >,
+    session?: import("@/server/db/transaction").DbSession
   ): Promise<SupplierRow>;
   update(
     id: string,
-    data: Partial<Omit<SupplierRow, "id" | "createdAt" | "supplierCode">>
+    data: Partial<Omit<SupplierRow, "id" | "createdAt" | "supplierCode">>,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<SupplierRow | null>;
+  delete(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<boolean>;
 }

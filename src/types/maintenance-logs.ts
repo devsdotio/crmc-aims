@@ -11,6 +11,11 @@ export type LogSource =
   | "manual_flag"
   | "project_assignment";
 
+export type MaintenanceRepairPart = {
+  name: string;
+  cost: string | null;
+};
+
 export interface MaintenanceLogRecord {
   id: string;
   logCode: string;
@@ -28,6 +33,8 @@ export interface MaintenanceLogRecord {
   resolvedBy?: string;
   /** Optional PHP amount recorded at resolve time (null/omit = not recorded). */
   repairCost?: string | null;
+  /** Itemized parts recorded at resolve time. */
+  repairParts?: MaintenanceRepairPart[];
   relatedBorrowLogCode?: string;
   scheduledDate?: string;
 }

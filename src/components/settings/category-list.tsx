@@ -34,9 +34,9 @@ export function CategoryList({
         <button
           type="button"
           onClick={() => onAddCategory(type)}
-          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
         >
-          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
           Add Category
         </button>
       </div>

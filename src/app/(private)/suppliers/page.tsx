@@ -125,7 +125,7 @@ export default function SuppliersPage() {
             <h1 className="text-xl font-bold tracking-tight text-text">
               Suppliers
             </h1>
-            <span className="px-2.5 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isLoading
                 ? "Loading suppliers…"
                 : `${filtered.length} of ${suppliers.length}`}
@@ -133,15 +133,14 @@ export default function SuppliersPage() {
             </span>
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Vendor registry for multi-price restocks and asset acquisition cost
-            history.
+            Vendor registry for multi-price restocks and asset acquisition cost history.
           </p>
         </div>
         {canOperate && (
           <button
             type="button"
             onClick={() => setEditTarget(null)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <Truck className="h-4 w-4" strokeWidth={2.5} />
             Add Supplier

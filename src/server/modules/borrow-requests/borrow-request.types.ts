@@ -49,11 +49,30 @@ export type ListBorrowRequestFilters = {
 };
 
 export interface IBorrowRequestRepository {
-  findById(id: string): Promise<BorrowRequestRow | null>;
-  list(filters?: ListBorrowRequestFilters): Promise<BorrowRequestRow[]>;
-  count(filters?: Omit<ListBorrowRequestFilters, "page" | "limit">): Promise<number>;
-  countByStatus(filters?: Omit<ListBorrowRequestFilters, "status" | "page" | "limit">): Promise<Record<string, number>>;
-  countAll(): Promise<number>;
+  findById(
+    id: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<BorrowRequestRow | null>;
+  list(
+    filters?: ListBorrowRequestFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<BorrowRequestRow[]>;
+  count(
+    filters?: Omit<ListBorrowRequestFilters, "page" | "limit">,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  countByStatus(
+    filters?: Omit<ListBorrowRequestFilters, "status" | "page" | "limit">,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<Record<string, number>>;
+  countAll(
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
   create(
     data: Omit<
       import("@/server/db/schema").NewBorrowRequestRow,
@@ -66,8 +85,12 @@ export interface IBorrowRequestRepository {
     data: Partial<
       Omit<BorrowRequestRow, "id" | "createdAt" | "requestCode">
     >,
-    session?: import("@/server/db/transaction").DbSession
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
   ): Promise<BorrowRequestRow | null>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  countPending(session?: any, userId?: string): Promise<number>;
+  countPending(
+    session?: import("@/server/db/transaction").DbSession,
+    userId?: string,
+    tenantId?: string
+  ): Promise<number>;
 }

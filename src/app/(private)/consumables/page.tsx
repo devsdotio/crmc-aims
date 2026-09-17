@@ -237,22 +237,23 @@ export default function ConsumablesPage() {
 
   return (
     <div
-      className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md"
+      className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:h-auto print:overflow-visible print:bg-white"
       data-theme="light"
     >
-      <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden print:hidden">
+        <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight text-text">
               Consumables Inventory
             </h1>
-            <span className="px-2.5 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isConsumablesLoading
                 ? "Loading supply items…"
                 : `${filteredItems.length} of ${items.length} supply items`}
             </span>
           </div>
-          <p className="text-xs text-text-secondary mt-0.5 max-w-xl">
+          <p className="text-xs text-text-secondary mt-0.5">
             Non-serialized stock (paper, ink, cleaning). Issue from lots; all restocks are handled via official Purchase Orders.
           </p>
         </div>
@@ -276,7 +277,7 @@ export default function ConsumablesPage() {
           <button
             type="button"
             onClick={() => setAddEditState({ isOpen: true, item: null })}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <Plus className="h-4 w-4" strokeWidth={2.5} />
             Add supply item
@@ -346,6 +347,7 @@ export default function ConsumablesPage() {
           />
         )}
       </main>
+      </div>
 
       <ConsumableDetailPanel
         item={selectedItem}
