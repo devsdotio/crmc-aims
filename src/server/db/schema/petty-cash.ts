@@ -52,7 +52,14 @@ export const pettyCashVouchers = pgTable(
      */
     category: text("category").notNull().default("supplies"),
 
-    /** Particulars / purpose / breakdown */
+    /** Narrative purpose / justification (paragraph) */
+    purpose: text("purpose").notNull().default(""),
+
+    /**
+     * Itemized particulars as JSON:
+     * [{ "description": "...", "amount": "123.45" }, ...]
+     * Legacy plain-text values are still accepted and parsed on read.
+     */
     particulars: text("particulars").notNull().default(""),
 
     /** Receipt or accounting slip reference (e.g. OR #, Sales Invoice #, Trip Ticket #, Cash Slip #) */

@@ -35,6 +35,7 @@ function toDTO(row: VoucherRow): VoucherDTO {
     assetId: row.assetId ?? null,
     assetCode: row.assetCode ?? null,
     assetName: row.assetName ?? null,
+    purpose: row.purpose ?? "",
     particulars: row.particulars,
     checkNumber: row.checkNumber ?? null,
     isLegacy: row.isLegacy,
@@ -64,7 +65,7 @@ export class VoucherService {
     const year = now.getFullYear();
     const prefix =
       type === "disbursement"
-        ? `DDR${year}-`
+        ? `DRR${year}-`
         : type === "property_transfer"
           ? `PTR${year}-`
           : `LQD${year}-`;
@@ -141,6 +142,7 @@ export class VoucherService {
       assetId: emptyToNull(input.assetId),
       assetCode: emptyToNull(input.assetCode),
       assetName: emptyToNull(input.assetName),
+      purpose: input.purpose ?? "",
       particulars: input.particulars ?? "",
       checkNumber: emptyToNull(input.checkNumber),
       isLegacy: input.isLegacy ?? false,
@@ -207,6 +209,7 @@ export class VoucherService {
       ...(input.assetId !== undefined ? { assetId: emptyToNull(input.assetId) } : {}),
       ...(input.assetCode !== undefined ? { assetCode: emptyToNull(input.assetCode) } : {}),
       ...(input.assetName !== undefined ? { assetName: emptyToNull(input.assetName) } : {}),
+      ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
       ...(input.particulars !== undefined ? { particulars: input.particulars } : {}),
       ...(input.checkNumber !== undefined ? { checkNumber: emptyToNull(input.checkNumber) } : {}),
     });

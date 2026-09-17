@@ -69,6 +69,7 @@ export class PettyCashRepository implements IPettyCashRepository {
           ilike(pettyCashVouchers.pcvNumber, q),
           ilike(pettyCashVouchers.payeeName, q),
           ilike(pettyCashVouchers.category, q),
+          ilike(pettyCashVouchers.purpose, q),
           ilike(pettyCashVouchers.particulars, q),
           ilike(pettyCashVouchers.receiptNumber, q),
           ilike(pettyCashVouchers.purchaseOrderNumber, q),

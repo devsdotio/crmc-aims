@@ -8,6 +8,7 @@ export type CreatePettyCashPayload = {
   payeeName: string;
   amount: string | number;
   category?: string;
+  purpose?: string;
   particulars?: string;
   receiptNumber?: string | null;
   purchaseOrderNumber?: string | null;

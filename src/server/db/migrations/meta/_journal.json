@@ -239,6 +239,13 @@
       "when": 1786368000000,
       "tag": "0033_consumable_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786369000000,
+      "tag": "0034_voucher_purpose",
+      "breakpoints": true
     }
   ]
 }

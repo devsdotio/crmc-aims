@@ -22,6 +22,9 @@ import {
   Save,
   RotateCcw,
   Boxes,
+  ListOrdered,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import type { PettyCashVoucher, PettyCashStatus } from "@/types/petty-cash";
 import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
@@ -35,6 +38,13 @@ import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { formatPhp } from "@/components/projects/format-money";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
+import { filterMoneyInput } from "@/lib/numeric-input";
+import {
+  parseParticulars,
+  serializeParticulars,
+  sumParticularAmounts,
+  type ParticularLineItem,
+} from "@/lib/voucher-particulars";
 
 interface PettyCashDetailSheetProps {
   voucher: PettyCashVoucher | null;
@@ -109,7 +119,10 @@ export function PettyCashDetailSheet({
   const [editReceiptNumber, setEditReceiptNumber] = useState("");
   const [editPurchaseOrderNumber, setEditPurchaseOrderNumber] = useState("");
   const [editSupplierName, setEditSupplierName] = useState("");
-  const [editParticulars, setEditParticulars] = useState("");
+  const [editPurpose, setEditPurpose] = useState("");
+  const [editListItems, setEditListItems] = useState<ParticularLineItem[]>([
+    { description: "", amount: "" },
+  ]);
 
   const updateMutation = useUpdatePettyCashMutation();
   const statusMutation = useUpdatePettyCashStatusMutation();
@@ -125,7 +138,11 @@ export function PettyCashDetailSheet({
       setEditReceiptNumber(voucher.receiptNumber || "");
       setEditPurchaseOrderNumber(voucher.purchaseOrderNumber || "");
       setEditSupplierName(voucher.supplierName || "");
-      setEditParticulars(voucher.particulars);
+      setEditPurpose(voucher.purpose || "");
+      const parsed = parseParticulars(voucher.particulars);
+      setEditListItems(
+        parsed.length > 0 ? parsed : [{ description: "", amount: "" }]
+      );
       setIsEditing(false);
     }
   }, [voucher]);
@@ -134,6 +151,39 @@ export function PettyCashDetailSheet({
 
   const statusConfig = getStatusBadge(voucher.status);
   const StatusIcon = statusConfig.icon;
+  const particularItems = parseParticulars(voucher.particulars);
+
+  const handleEditItemChange = (
+    index: number,
+    field: keyof ParticularLineItem,
+    val: string
+  ) => {
+    setEditListItems((prev) => {
+      const updated = [...prev];
+      const nextVal =
+        field === "amount" ? (filterMoneyInput(val) ?? prev[index].amount) : val;
+      updated[index] = { ...updated[index], [field]: nextVal };
+      if (field === "amount") {
+        const total = sumParticularAmounts(updated);
+        if (total > 0) setEditAmount(total.toFixed(2));
+      }
+      return updated;
+    });
+  };
+
+  const handleAddEditItem = () => {
+    setEditListItems((prev) => [...prev, { description: "", amount: "" }]);
+  };
+
+  const handleRemoveEditItem = (index: number) => {
+    setEditListItems((prev) => {
+      if (prev.length <= 1) return [{ description: "", amount: "" }];
+      const next = prev.filter((_, i) => i !== index);
+      const total = sumParticularAmounts(next);
+      if (total > 0) setEditAmount(total.toFixed(2));
+      return next;
+    });
+  };
 
   const handleSaveEdit = async () => {
     const numAmount = parseFloat(editAmount);
@@ -157,7 +207,8 @@ export function PettyCashDetailSheet({
           receiptNumber: editReceiptNumber.trim() || null,
           purchaseOrderNumber: editPurchaseOrderNumber.trim() || null,
           supplierName: editSupplierName.trim() || null,
-          particulars: editParticulars.trim(),
+          purpose: editPurpose.trim(),
+          particulars: serializeParticulars(editListItems),
         },
       });
 
@@ -545,16 +596,88 @@ export function PettyCashDetailSheet({
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-[11px] font-semibold text-text block mb-1">
-                          Particulars / Notes
-                        </label>
-                        <textarea
-                          rows={4}
-                          value={editParticulars}
-                          onChange={(e) => setEditParticulars(e.target.value)}
-                          className="w-full text-xs rounded-md border border-border bg-bg px-2.5 py-1.5 text-text leading-relaxed"
-                        />
+                      <div className="space-y-3">
+                        <div>
+                          <label className="text-[11px] font-semibold text-text block mb-1">
+                            Purpose
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={editPurpose}
+                            onChange={(e) => setEditPurpose(e.target.value)}
+                            placeholder="Brief purpose / justification..."
+                            className="w-full text-xs rounded-md border border-border bg-bg px-2.5 py-1.5 text-text leading-relaxed"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-semibold text-text mb-1 flex items-center gap-1.5">
+                            <ListOrdered className="h-3.5 w-3.5" />
+                            Particulars
+                          </label>
+                          <div className="rounded-md border border-border bg-bg-subtle/30 p-2 space-y-2">
+                            <div className="grid grid-cols-[auto_minmax(0,1fr)_5.5rem_auto] gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                              <span className="w-6 text-center">#</span>
+                              <span>Description</span>
+                              <span className="text-right">Cost</span>
+                              <span className="w-7" />
+                            </div>
+                            {editListItems.map((item, idx) => (
+                              <div
+                                key={idx}
+                                className="grid grid-cols-[auto_minmax(0,1fr)_5.5rem_auto] gap-1.5 items-center"
+                              >
+                                <span className="flex h-6 w-6 items-center justify-center rounded bg-bg border border-border text-[10px] font-mono text-text-muted">
+                                  {idx + 1}
+                                </span>
+                                <input
+                                  type="text"
+                                  value={item.description}
+                                  onChange={(e) =>
+                                    handleEditItemChange(
+                                      idx,
+                                      "description",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder={`Item #${idx + 1}`}
+                                  className="w-full text-xs rounded-md border border-border bg-bg px-2 py-1.5 text-text"
+                                />
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={item.amount}
+                                  onChange={(e) =>
+                                    handleEditItemChange(
+                                      idx,
+                                      "amount",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="0.00"
+                                  className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveEditItem(idx)}
+                                  className="p-1 text-text-muted hover:text-red-500"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                            <div className="flex justify-end pt-1 border-t border-border/50">
+                              <button
+                                type="button"
+                                onClick={handleAddEditItem}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-text px-2 py-1 rounded border border-border bg-bg hover:bg-bg-subtle"
+                              >
+                                <Plus className="h-3 w-3" />
+                                Add Item
+                              </button>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ) : null}
@@ -624,25 +747,73 @@ export function PettyCashDetailSheet({
                     </div>
                   </div>
 
-                  {/* Particulars & Purpose Card */}
-                  <div className="bg-bg rounded-lg border border-border p-4 shadow-2xs space-y-2.5">
+                  {/* Purpose & Particulars Card */}
+                  <div className="bg-bg rounded-lg border border-border p-4 shadow-2xs space-y-3">
                     <div className="flex items-center justify-between border-b border-border pb-2">
                       <h3 className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5 text-primary" />
-                        Particulars & Purpose Breakdown
+                        Purpose &amp; Particulars
                       </h3>
-                      <span className="text-[10px] text-text-muted font-mono">
-                        {voucher.particulars.length} characters
-                      </span>
+                      {particularItems.length > 0 ? (
+                        <span className="text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                          {particularItems.length} line item
+                          {particularItems.length === 1 ? "" : "s"}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-text-muted font-mono">
+                          —
+                        </span>
+                      )}
                     </div>
 
-                    {voucher.particulars ? (
-                      <div className="text-xs text-text leading-relaxed whitespace-pre-line bg-bg-subtle/30 p-3 rounded-md border border-border/50 font-sans">
-                        {voucher.particulars}
+                    {voucher.purpose?.trim() ? (
+                      <div className="space-y-1">
+                        <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">
+                          Purpose
+                        </span>
+                        <div className="text-xs text-text leading-relaxed whitespace-pre-line bg-bg-subtle/30 p-3 rounded-md border border-border/50">
+                          {voucher.purpose}
+                        </div>
                       </div>
-                    ) : (
-                      <p className="text-xs text-text-muted italic">No particulars or notes provided.</p>
-                    )}
+                    ) : null}
+
+                    {particularItems.length > 0 ? (
+                      <div className="space-y-2">
+                        <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">
+                          Particulars
+                        </span>
+                        {particularItems.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-start gap-2.5 rounded-md border border-border/60 bg-bg-subtle/20 p-2.5 text-xs"
+                          >
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[10px] font-bold text-primary">
+                              {idx + 1}
+                            </span>
+                            <span className="flex-1 font-medium text-text leading-relaxed">
+                              {item.description}
+                            </span>
+                            {item.amount ? (
+                              <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                {formatPhp(item.amount)}
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                        {sumParticularAmounts(particularItems) > 0 ? (
+                          <div className="flex justify-between text-[11px] text-text-muted px-1 pt-0.5">
+                            <span>Line items total</span>
+                            <span className="font-mono font-bold text-text">
+                              {formatPhp(sumParticularAmounts(particularItems))}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : !voucher.purpose?.trim() ? (
+                      <p className="text-xs text-text-muted italic">
+                        No purpose or particulars provided.
+                      </p>
+                    ) : null}
                   </div>
                 </>
               )}

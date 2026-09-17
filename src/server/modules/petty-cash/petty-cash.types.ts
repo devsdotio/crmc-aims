@@ -9,6 +9,7 @@ export type PettyCashDTO = {
   payeeName: string;
   amount: string;
   category: string;
+  purpose: string;
   particulars: string;
   receiptNumber: string | null;
   supplierId: string | null;

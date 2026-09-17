@@ -37,7 +37,8 @@ export const createPettyCashSchema = z.object({
     .transform((val) => String(Number(val) || 0))
     .refine((val) => Number(val) >= 0, "Amount must be a non-negative number."),
   category: z.string().trim().min(1).max(100).default("supplies"),
-  particulars: z.string().trim().max(4000).optional().default(""),
+  purpose: z.string().trim().max(4000).optional().default(""),
+  particulars: z.string().trim().max(8000).optional().default(""),
   receiptNumber: z.string().trim().max(100).optional().nullable(),
   purchaseOrderNumber: z.string().trim().max(100).optional().nullable(),
   supplierId: z.string().uuid("Invalid supplier ID").optional().nullable(),
@@ -61,7 +62,8 @@ export const updatePettyCashSchema = z
       .refine((val) => Number(val) >= 0, "Amount must be a non-negative number.")
       .optional(),
     category: z.string().trim().min(1).max(100).optional(),
-    particulars: z.string().trim().max(4000).optional(),
+    purpose: z.string().trim().max(4000).optional(),
+    particulars: z.string().trim().max(8000).optional(),
     receiptNumber: z.string().trim().max(100).optional().nullable(),
     purchaseOrderNumber: z.string().trim().max(100).optional().nullable(),
     supplierId: z.string().uuid("Invalid supplier ID").optional().nullable(),

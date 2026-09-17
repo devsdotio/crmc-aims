@@ -21,6 +21,7 @@ export interface Voucher {
   assetId: string | null;
   assetCode: string | null;
   assetName: string | null;
+  purpose: string;
   particulars: string;
   checkNumber: string | null;
   isLegacy: boolean;
