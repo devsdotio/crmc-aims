@@ -59,11 +59,11 @@ export function useChangePasswordMutation(): UseMutationResult<
   });
 }
 
-export function useUsersQuery(): UseQueryResult<UserAccount[], Error> {
+export function useUsersQuery(filters?: { tenantId?: string }): UseQueryResult<UserAccount[], Error> {
   return useQuery({
-    queryKey: userQueryKeys.list(),
+    queryKey: filters?.tenantId ? [...userQueryKeys.list(), filters.tenantId] : userQueryKeys.list(),
     queryFn: async () => {
-      const profiles = await usersApi.listUsers();
+      const profiles = await usersApi.listUsers(filters);
       return profiles.map(toUserAccount);
     },
   });

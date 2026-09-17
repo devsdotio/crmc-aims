@@ -35,6 +35,7 @@ import {
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
 import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
+import { TenantSwitcher } from "@/components/tenant/tenant-switcher";
 
 interface NavSubItem {
   name: string;
@@ -158,13 +159,42 @@ export default function Sidebar({
 
   const allSections: NavSection[] = [
     {
+      label: "Platform",
+      items: [
+        {
+          name: "Institutions & Tenants",
+          href: "/platform/tenants",
+          icon: Building2,
+          roles: ["superadmin"],
+        },
+        {
+          name: "User Governance",
+          href: "/users",
+          icon: Users,
+          roles: ["superadmin"],
+        },
+        {
+          name: "Audit & System Logs",
+          href: "/audit-logs",
+          icon: FileText,
+          roles: ["superadmin"],
+        },
+        {
+          name: "Settings",
+          href: "/settings",
+          icon: Settings,
+          roles: ["superadmin"],
+        },
+      ],
+    },
+    {
       label: "Overview",
       items: [
         {
           name: "Dashboard",
           href: "/dashboard",
           icon: LayoutDashboard,
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Requester Dashboard",
@@ -181,7 +211,7 @@ export default function Sidebar({
           name: "Assets",
           href: "/assets",
           icon: Package,
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Inventory",
@@ -189,7 +219,7 @@ export default function Sidebar({
           icon: Boxes,
           badge: lowStockCount,
           badgeTone: "warning",
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Requests",
@@ -197,13 +227,13 @@ export default function Sidebar({
           icon: ClipboardList,
           badge: pendingCount,
           badgeTone: "accent",
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Purchase Orders",
           href: "/purchase-orders",
           icon: ShoppingCart,
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
           children: [
             {
               name: "Asset",
@@ -223,7 +253,7 @@ export default function Sidebar({
           name: "Disbursements",
           href: "/disbursements/vouchers",
           icon: Receipt,
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
           children: [
             {
               name: "Vouchers",
@@ -239,13 +269,13 @@ export default function Sidebar({
           name: "Suppliers",
           href: "/suppliers",
           icon: Truck,
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Projects",
           href: "/projects",
           icon: FolderKanban,
-          roles: ["superadmin", "admin"],
+          roles: ["admin"],
         },
 
         {
@@ -273,20 +303,20 @@ export default function Sidebar({
           icon: Repeat,
           badge: overdueCount,
           badgeTone: "warning",
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Issue History",
           href: "/issue-history",
           icon: History,
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Maintenance Logs",
           href: "/maintenance-logs",
           icon: Wrench,
           badgeText: "Beta",
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Borrow History",
@@ -304,25 +334,25 @@ export default function Sidebar({
           href: "/reports",
           icon: FileText,
           badgeText: "Beta",
-          roles: ["superadmin", "admin", "staff"],
+          roles: ["admin", "staff"],
         },
         {
           name: "Users",
           href: "/users",
           icon: Users,
-          roles: ["superadmin", "admin"],
+          roles: ["admin"],
         },
         {
           name: "Categories",
           href: "/categories",
           icon: Tags,
-          roles: ["superadmin", "admin"],
+          roles: ["admin"],
         },
         {
           name: "Departments",
           href: "/departments",
           icon: Building2,
-          roles: ["superadmin", "admin"],
+          roles: ["admin"],
         },
       ],
     },
@@ -787,6 +817,13 @@ export default function Sidebar({
           </Link>
         )}
       </div>
+
+      {/* Superadmin Tenant Switcher */}
+      {userRole === "superadmin" && (
+        <div className={cn("shrink-0", isCollapsed ? "p-2" : "px-3 pt-3")}>
+          <TenantSwitcher isSidebar isCollapsed={isCollapsed} />
+        </div>
+      )}
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-3 space-y-4 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar">

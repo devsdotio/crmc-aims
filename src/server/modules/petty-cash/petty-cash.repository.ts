@@ -2,6 +2,7 @@ import { and, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   pettyCashVouchers,
   type NewPettyCashRow,
@@ -125,12 +126,23 @@ export class PettyCashRepository implements IPettyCashRepository {
     return row ?? null;
   }
 
-  async findLatestPcvCode(prefix: string, session?: DbSession): Promise<string | null> {
+  async findLatestPcvCode(
+    prefix: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<string | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+
+    const conditions = [ilike(pettyCashVouchers.pcvNumber, `${prefix}%`)];
+    if (resolvedTenantId) {
+      conditions.push(eq(pettyCashVouchers.tenantId, resolvedTenantId));
+    }
+
     const rows = await db
       .select({ pcvNumber: pettyCashVouchers.pcvNumber })
       .from(pettyCashVouchers)
-      .where(ilike(pettyCashVouchers.pcvNumber, `${prefix}%`))
+      .where(and(...conditions))
       .orderBy(desc(pettyCashVouchers.createdAt))
       .limit(100);
 

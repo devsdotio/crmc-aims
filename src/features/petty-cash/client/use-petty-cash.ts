@@ -25,7 +25,7 @@ import { pettyCashQueryKeys } from "./query-keys";
  * Subscribes to database events via Supabase Realtime for the `petty_cash_vouchers` table,
  * automatically invalidating the petty cash query cache on any change.
  */
-export function usePettyCashRealtimeSync(enabled: boolean = true) {
+export function usePettyCashRealtimeSync(enabled: boolean = true, tenantId?: string) {
   const qc = useQueryClient();
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -43,11 +43,12 @@ export function usePettyCashRealtimeSync(enabled: boolean = true) {
       }, 200);
     };
 
+    const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
     const channel = supabase
-      .channel("petty-cash-realtime-sync")
+      .channel(`petty-cash-realtime-sync${tenantId ? `-${tenantId}` : ""}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "petty_cash_vouchers" },
+        { event: "*", schema: "public", table: "petty_cash_vouchers", filter },
         () => triggerInvalidation()
       )
       .subscribe((status) => {
@@ -62,7 +63,7 @@ export function usePettyCashRealtimeSync(enabled: boolean = true) {
       }
       void supabase.removeChannel(channel);
     };
-  }, [enabled, qc]);
+  }, [enabled, qc, tenantId]);
 }
 
 export function usePettyCashListQuery(filters?: {

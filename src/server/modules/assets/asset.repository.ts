@@ -2,6 +2,7 @@ import { and, asc, count, eq, ilike, isNull, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   assets,
   assetModels,
@@ -18,6 +19,7 @@ import type { IAssetRepository, ListAssetsFilters } from "./asset.types";
  */
 const assetListColumns = {
   id: assets.id,
+  tenantId: assets.tenantId,
   assetCode: assets.assetCode,
   name: assets.name,
   category: assets.category,
@@ -56,16 +58,23 @@ export class AssetRepository implements IAssetRepository {
   }
 
   async getCategoryDistribution(
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<{ category: string; count: number }[]> {
     const db = this.db(session);
-    const rows = await db
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = resolvedTenantId ? [eq(assets.tenantId, resolvedTenantId)] : [];
+
+    const base = db
       .select({
         category: assets.category,
         value: count(),
       })
-      .from(assets)
-      .groupBy(assets.category);
+      .from(assets);
+
+    const rows = conditions.length > 0 
+      ? await base.where(and(...conditions)).groupBy(assets.category)
+      : await base.groupBy(assets.category);
 
     return rows.map((r) => ({
       category: r.category,
@@ -73,45 +82,64 @@ export class AssetRepository implements IAssetRepository {
     }));
   }
 
-  async countAssigned(session?: DbSession): Promise<number> {
+  async countAssigned(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    
+    const conditions = [
+      eq(assets.assignmentType, "assignable"),
+      or(
+        sql`${assets.currentHolder} IS NOT NULL`,
+        sql`exists (
+          select 1 from ${projectAssetAssignments}
+          where ${projectAssetAssignments.assetId} = ${assets.id}
+            and ${projectAssetAssignments.status} = 'assigned'
+        )`
+      ),
+    ];
+    if (resolvedTenantId) {
+      conditions.push(eq(assets.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select({ val: count() })
       .from(assets)
-      .where(
-        and(
-          eq(assets.assignmentType, "assignable"),
-          or(
-            sql`${assets.currentHolder} IS NOT NULL`,
-            sql`exists (
-              select 1 from ${projectAssetAssignments}
-              where ${projectAssetAssignments.assetId} = ${assets.id}
-                and ${projectAssetAssignments.status} = 'assigned'
-            )`
-          )
-        )
-      );
+      .where(and(...conditions));
     return Number(row?.val ?? 0);
   }
 
   async countByType(
     type: "borrowable" | "assignable",
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    
+    const conditions = [eq(assets.assignmentType, type)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assets.tenantId, resolvedTenantId));
+    }
+
     const [row] = await db
       .select({ val: count() })
       .from(assets)
-      .where(eq(assets.assignmentType, type));
+      .where(and(...conditions));
     return Number(row?.val ?? 0);
   }
 
   async findMany(
     filters?: ListAssetsFilters,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(assets.tenantId, resolvedTenantId));
+    }
 
     if (filters?.status) {
       conditions.push(eq(assets.status, filters.status));
@@ -176,12 +204,16 @@ export class AssetRepository implements IAssetRepository {
     return rows.map(withEmptyMaintenanceHistory);
   }
 
-  async findById(id: string, session?: DbSession): Promise<AssetRow | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<AssetRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.id, id)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(assets)
-      .where(eq(assets.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
@@ -189,12 +221,17 @@ export class AssetRepository implements IAssetRepository {
   /** Row lock for custody mutations (release/return). */
   async findByIdForUpdate(
     id: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<AssetRow | null> {
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.id, id)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
     const [row] = await session
       .select()
       .from(assets)
-      .where(eq(assets.id, id))
+      .where(and(...conditions))
       .for("update")
       .limit(1);
     return row ?? null;
@@ -202,26 +239,36 @@ export class AssetRepository implements IAssetRepository {
 
   async findByAssetCode(
     assetCode: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.assetCode, assetCode)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(assets)
-      .where(eq(assets.assetCode, assetCode))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByModelId(
     modelId: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.modelId, modelId)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
     const rows = await db
       .select(assetListColumns)
       .from(assets)
-      .where(eq(assets.modelId, modelId))
+      .where(and(...conditions))
       .orderBy(asc(assets.assetCode));
     return rows.map(withEmptyMaintenanceHistory);
   }
@@ -244,23 +291,32 @@ export class AssetRepository implements IAssetRepository {
   async update(
     id: string,
     data: Partial<Omit<AssetRow, "id" | "createdAt">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.id, id)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(assets)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(assets.id, id))
+      .where(and(...conditions))
       .returning();
 
     return row ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assets.id, id)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
     const result = await db
       .delete(assets)
-      .where(eq(assets.id, id))
+      .where(and(...conditions))
       .returning({ id: assets.id });
 
     return result.length > 0;

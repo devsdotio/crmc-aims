@@ -11,6 +11,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { tenants } from "./tenants";
+
 import { projects } from "./projects";
 
 /**
@@ -73,6 +75,7 @@ export const projectExpenseLines = pgTable(
   "project_expense_lines",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
     projectId: uuid("project_id")
       .notNull()

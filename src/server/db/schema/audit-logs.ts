@@ -7,10 +7,13 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { tenants } from "./tenants";
+
 export const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
     
     // The type of entity being audited (e.g., "borrow_transaction", "asset", "consumable", "maintenance_log")
     entityType: text("entity_type").notNull(),

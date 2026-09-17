@@ -21,6 +21,7 @@ export type CreateUserPayload = {
   email: string;
   role: Exclude<UserRole, "superadmin">;
   departmentId?: string;
+  tenantId?: string;
   password: string;
 };
 
@@ -129,11 +130,13 @@ export const usersApi = {
     role?: UserRole;
     status?: UserStatus;
     search?: string;
+    tenantId?: string;
   }): Promise<ProfileDTO[]> {
     const searchParams = new URLSearchParams();
     if (params?.role) searchParams.set("role", params.role);
     if (params?.status) searchParams.set("status", params.status);
     if (params?.search) searchParams.set("search", params.search);
+    if (params?.tenantId) searchParams.set("tenantId", params.tenantId);
     const qs = searchParams.toString();
     const path = qs ? `/api/users?${qs}` : "/api/users";
     const response = await fetchJson<ApiResponse<ProfileDTO[]>>(path, {

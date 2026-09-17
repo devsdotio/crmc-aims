@@ -2,6 +2,7 @@ import { and, count, desc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   borrowRequests,
   departments,
@@ -19,18 +20,26 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<BorrowRequestRow | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<BorrowRequestRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(borrowRequests.id, id)];
+    if (resolvedTenantId) conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(borrowRequests)
-      .where(eq(borrowRequests.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
-  private buildConditions(filters: ListBorrowRequestFilters) {
+  private buildConditions(filters: ListBorrowRequestFilters, tenantId?: string) {
     const conditions = [];
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    if (resolvedTenantId) {
+      conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
+    }
     if (filters.status) {
       conditions.push(eq(borrowRequests.status, filters.status));
     }
@@ -96,10 +105,11 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
 
   async list(
     filters: ListBorrowRequestFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<BorrowRequestRow[]> {
     const db = this.db(session);
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, tenantId);
 
     let base = db
       .select()
@@ -123,10 +133,11 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
 
   async count(
     filters: Omit<ListBorrowRequestFilters, "page" | "limit"> = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
     const db = this.db(session);
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, tenantId);
     
     let base = db.select({ value: count() }).from(borrowRequests).$dynamic();
     
@@ -140,10 +151,11 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
 
   async countByStatus(
     filters: Omit<ListBorrowRequestFilters, "status" | "page" | "limit"> = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Record<string, number>> {
     const db = this.db(session);
-    const conditions = this.buildConditions(filters);
+    const conditions = this.buildConditions(filters, tenantId);
     
     let base = db
       .select({ status: borrowRequests.status, count: count() })
@@ -164,15 +176,24 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
     return result;
   }
 
-  async countAll(session?: DbSession): Promise<number> {
+  async countAll(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
-    const [row] = await db.select({ value: count() }).from(borrowRequests);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [];
+    if (resolvedTenantId) conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
+    let base = db.select({ value: count() }).from(borrowRequests).$dynamic();
+    if (conditions.length > 0) {
+      base = base.where(and(...conditions));
+    }
+    const [row] = await base;
     return Number(row?.value ?? 0);
   }
 
-  async countPending(session?: DbSession, userId?: string): Promise<number> {
+  async countPending(session?: DbSession, userId?: string, tenantId?: string): Promise<number> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [eq(borrowRequests.status, "pending")];
+    if (resolvedTenantId) conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
     if (userId) conditions.push(eq(borrowRequests.requesterUserId, userId));
     const [row] = await db
       .select({ value: count() })
@@ -193,26 +214,37 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
 
   async update(
     id: string,
-    data: Partial<Omit<BorrowRequestRow, "id" | "createdAt" | "requestCode">>,
-    session?: DbSession
+    data: Partial<Omit<BorrowRequestRow, "id" | "createdAt" | "updatedAt">>,
+    session?: DbSession,
+    tenantId?: string
   ): Promise<BorrowRequestRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(borrowRequests.id, id)];
+    if (resolvedTenantId) conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(borrowRequests)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(borrowRequests.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 }
 
-export async function nextBorrowRequestSequence(): Promise<number> {
+export async function nextBorrowRequestSequence(tenantId?: string): Promise<number> {
   const db = getDb();
+  const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+  const conditions = [
+    sql`extract(year from ${borrowRequests.createdAt}) = extract(year from now())`
+  ];
+  if (resolvedTenantId) {
+    conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
+  }
+
   const [row] = await db
     .select({ value: count() })
     .from(borrowRequests)
-    .where(
-      sql`extract(year from ${borrowRequests.createdAt}) = extract(year from now())`
-    );
+    .where(and(...conditions));
   return Number(row?.value ?? 0) + 1;
 }

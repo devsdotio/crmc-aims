@@ -7,6 +7,8 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+import { tenants } from "./tenants";
+
 import { assets } from "./assets";
 import { projects } from "./projects";
 
@@ -23,6 +25,7 @@ export const projectAssetAssignments = pgTable(
   "project_asset_assignments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
     projectId: uuid("project_id")
       .notNull()

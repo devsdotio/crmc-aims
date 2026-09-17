@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { BadRequestError } from "@/server/shared/errors";
+import { DEFAULT_TENANT_ID, getTenantContext } from "@/server/shared/tenant-context";
 
 const RECEIPTS_BUCKET = "receipts";
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -65,7 +66,8 @@ export async function uploadReceiptFile(
   fileBuffer: Buffer | Uint8Array,
   fileName: string,
   mimeType: string,
-  poCode?: string
+  poCode?: string,
+  explicitTenantId?: string
 ): Promise<UploadReceiptResult> {
   if (fileBuffer.byteLength > MAX_FILE_SIZE_BYTES) {
     throw new BadRequestError(
@@ -83,6 +85,8 @@ export async function uploadReceiptFile(
   await ensureReceiptsBucket();
 
   const supabase = createAdminClient();
+  const tenantId =
+    explicitTenantId ?? getTenantContext()?.tenantId ?? DEFAULT_TENANT_ID;
   const sanitizedPo = (poCode || "general")
     .replace(/[^a-zA-Z0-9_-]/g, "_")
     .toLowerCase();
@@ -90,7 +94,7 @@ export async function uploadReceiptFile(
     .replace(/[^a-zA-Z0-9._-]/g, "_")
     .toLowerCase();
   const uniquePrefix = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-  const storagePath = `po-${sanitizedPo}/${uniquePrefix}-${cleanOriginalName}`;
+  const storagePath = `${tenantId}/receipts/po-${sanitizedPo}/${uniquePrefix}-${cleanOriginalName}`;
 
   const { error: uploadError } = await supabase.storage
     .from(RECEIPTS_BUCKET)
@@ -122,7 +126,10 @@ export async function uploadReceiptFile(
 /**
  * Deletes a receipt from Supabase storage given its public URL or storage path.
  */
-export async function deleteReceiptFile(urlOrPath: string): Promise<boolean> {
+export async function deleteReceiptFile(
+  urlOrPath: string,
+  explicitTenantId?: string
+): Promise<boolean> {
   if (!urlOrPath) return false;
 
   try {
@@ -131,6 +138,19 @@ export async function deleteReceiptFile(urlOrPath: string): Promise<boolean> {
       path = urlOrPath.split(
         `/storage/v1/object/public/${RECEIPTS_BUCKET}/`
       )[1];
+    }
+
+    const tenantId = explicitTenantId ?? getTenantContext()?.tenantId;
+    const isCrossTenant = getTenantContext()?.isCrossTenant;
+
+    // Enforce tenant boundary: non-cross-tenant caller cannot delete files from another tenant
+    if (tenantId && !isCrossTenant && path.includes("/")) {
+      const pathTenant = path.split("/")[0];
+      // If path has a UUID tenant prefix and does not match the active tenant, block
+      const isUuidPrefix = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pathTenant);
+      if (isUuidPrefix && pathTenant !== tenantId) {
+        throw new BadRequestError("Cross-tenant file deletion is forbidden.");
+      }
     }
 
     const supabase = createAdminClient();

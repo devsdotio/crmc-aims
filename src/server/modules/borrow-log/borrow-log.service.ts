@@ -59,6 +59,7 @@ function asDate(value: Date | string): Date {
 function custodyHistoryFromRow(row: BorrowTransactionRow): AuditLogRow[] {
   const released: AuditLogRow = {
     id: `${row.id}-released`,
+    tenantId: row.tenantId,
     entityType: "borrow_transaction",
     entityId: row.id,
     action: "released",
@@ -79,6 +80,7 @@ function custodyHistoryFromRow(row: BorrowTransactionRow): AuditLogRow[] {
     released,
     {
       id: `${row.id}-${isVoided ? "voided" : "returned"}`,
+      tenantId: row.tenantId,
       entityType: "borrow_transaction",
       entityId: row.id,
       action: isVoided ? "voided" : flagged ? "flagged_repair" : "returned",

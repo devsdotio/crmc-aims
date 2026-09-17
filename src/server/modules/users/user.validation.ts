@@ -19,6 +19,7 @@ export const createUserSchema = z
     email: z.string().trim().email("Valid email is required.").max(320),
     role: provisionableRoleSchema,
     departmentId: z.string().uuid("departmentId must be a valid UUID.").optional(),
+    tenantId: z.string().uuid("tenantId must be a valid UUID.").optional(),
     /** Admin-set initial password. Required — no invite/email signup flow. */
     password: passwordSchema,
   })
@@ -68,6 +69,7 @@ export const listUsersQuerySchema = z.object({
   role: appRoleSchema.optional(),
   status: profileStatusSchema.optional(),
   search: z.string().trim().max(200).optional(),
+  tenantId: z.union([z.literal("all"), z.string().uuid()]).optional(),
 });
 
 export const userIdSchema = z.string().uuid("User id must be a valid UUID.");

@@ -2,6 +2,7 @@ import { and, desc, eq, ilike, or } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   projects,
   type NewProjectRow,
@@ -15,22 +16,32 @@ export class ProjectRepository implements IProjectRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<ProjectRow | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<ProjectRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(projects.id, id)];
+    if (resolvedTenantId) conditions.push(eq(projects.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(projects)
-      .where(eq(projects.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListProjectFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ProjectRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(projects.tenantId, resolvedTenantId));
+    }
 
     if (filters.status) {
       conditions.push(eq(projects.status, filters.status));
@@ -68,22 +79,31 @@ export class ProjectRepository implements IProjectRepository {
   async update(
     id: string,
     data: Partial<Omit<ProjectRow, "id" | "createdAt" | "projectCode">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<ProjectRow | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(projects.id, id)];
+    if (resolvedTenantId) conditions.push(eq(projects.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(projects)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(projects.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(projects.id, id)];
+    if (resolvedTenantId) conditions.push(eq(projects.tenantId, resolvedTenantId));
+
     const deleted = await db
       .delete(projects)
-      .where(eq(projects.id, id))
+      .where(and(...conditions))
       .returning({ id: projects.id });
     return deleted.length > 0;
   }

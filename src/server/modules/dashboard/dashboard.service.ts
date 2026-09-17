@@ -18,6 +18,7 @@ import {
   purchaseLots,
 } from "@/server/db/schema";
 import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
 import { formatPhp } from "@/components/projects/format-money";
@@ -181,10 +182,14 @@ export class DashboardService {
     includeSandbox: boolean;
   }> {
     const db = getDb();
+    const resolvedTenantId = getTenantContext()?.tenantId;
+    const conditions = [eq(profiles.userId, userId)];
+    if (resolvedTenantId) conditions.push(eq(profiles.tenantId, resolvedTenantId));
+
     const [profile] = await db
       .select({ departmentId: profiles.departmentId })
       .from(profiles)
-      .where(eq(profiles.userId, userId))
+      .where(and(...conditions))
       .limit(1);
     const departmentId = profile?.departmentId ?? null;
     if (!departmentId) {
@@ -626,9 +631,14 @@ export class DashboardService {
     limit: number
   ): Promise<DashboardActivityEntry[]> {
     const db = getDb();
+    const resolvedTenantId = getTenantContext()?.tenantId;
+    const conditions = [];
+    if (resolvedTenantId) conditions.push(eq(assetLifecycleEvents.tenantId, resolvedTenantId));
+
     const rows = await db
       .select()
       .from(assetLifecycleEvents)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(assetLifecycleEvents.createdAt))
       .limit(limit);
 
@@ -740,12 +750,15 @@ export class DashboardService {
   }): Promise<void> {
     try {
       const db = getDb();
+      const resolvedTenantId = getTenantContext()?.tenantId;
+      if (!resolvedTenantId) return; // Skip daily snapshot if no tenant context
+      
       const today = new Date().toISOString().slice(0, 10);
       const rows = [
-        { metricKey: "active_ops", value: String(metrics.activeOps), snapshotDate: today },
-        { metricKey: "total_stock", value: String(metrics.totalStock), snapshotDate: today },
-        { metricKey: "overdue_assets", value: String(metrics.overdueAssets), snapshotDate: today },
-        { metricKey: "low_stock", value: String(metrics.lowStock), snapshotDate: today },
+        { tenantId: resolvedTenantId, metricKey: "active_ops", value: String(metrics.activeOps), snapshotDate: today },
+        { tenantId: resolvedTenantId, metricKey: "total_stock", value: String(metrics.totalStock), snapshotDate: today },
+        { tenantId: resolvedTenantId, metricKey: "overdue_assets", value: String(metrics.overdueAssets), snapshotDate: today },
+        { tenantId: resolvedTenantId, metricKey: "low_stock", value: String(metrics.lowStock), snapshotDate: today },
       ];
 
       for (const row of rows) {
@@ -789,30 +802,35 @@ export class DashboardService {
   }> {
     try {
       const db = getDb();
+      const resolvedTenantId = getTenantContext()?.tenantId;
       const today = new Date().toISOString().slice(0, 10);
       const targetDate = new Date(Date.now() - lookbackDays * 86400000)
         .toISOString()
         .slice(0, 10);
 
+      const lookbackConditions = [
+        lte(dashboardMetricSnapshots.snapshotDate, targetDate),
+        sql`${dashboardMetricSnapshots.snapshotDate} < ${today}`
+      ];
+      if (resolvedTenantId) lookbackConditions.push(eq(dashboardMetricSnapshots.tenantId, resolvedTenantId));
+
       // 1. Fetch the newest snapshot at or before the lookback target date
       const lookbackSnapshots = await db
         .select()
         .from(dashboardMetricSnapshots)
-        .where(
-          and(
-            lte(dashboardMetricSnapshots.snapshotDate, targetDate),
-            sql`${dashboardMetricSnapshots.snapshotDate} < ${today}`
-          )
-        )
+        .where(and(...lookbackConditions))
         .orderBy(desc(dashboardMetricSnapshots.snapshotDate));
 
       // 2. If nothing found at lookback date, fall back to oldest snapshot available
+      const fallbackConditions = [sql`${dashboardMetricSnapshots.snapshotDate} < ${today}`];
+      if (resolvedTenantId) fallbackConditions.push(eq(dashboardMetricSnapshots.tenantId, resolvedTenantId));
+      
       const fallbackSnapshots =
         lookbackSnapshots.length === 0
           ? await db
               .select()
               .from(dashboardMetricSnapshots)
-              .where(sql`${dashboardMetricSnapshots.snapshotDate} < ${today}`)
+              .where(and(...fallbackConditions))
               .orderBy(asc(dashboardMetricSnapshots.snapshotDate))
           : [];
 

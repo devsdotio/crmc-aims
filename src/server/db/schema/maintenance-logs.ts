@@ -8,7 +8,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { assets } from "./assets";
 
@@ -34,8 +37,9 @@ export const maintenanceLogs = pgTable(
   "maintenance_logs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    logCode: text("log_code").notNull().unique(),
+    logCode: text("log_code").notNull(),
 
     assetId: uuid("asset_id").references(() => assets.id, {
       onDelete: "set null",

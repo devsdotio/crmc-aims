@@ -2,6 +2,7 @@ import { and, asc, count, eq, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   assetModels,
   assets,
@@ -111,9 +112,10 @@ export class AssetModelRepository {
    */
   async firstAvailableSequenceForPrefix(
     prefix: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<number> {
-    const used = await this.collectSequencesForPrefix(prefix, session);
+    const used = await this.collectSequencesForPrefix(prefix, session, tenantId);
     let n = 1;
     while (used.has(n)) n += 1;
     return n;
@@ -121,14 +123,22 @@ export class AssetModelRepository {
 
   private async collectSequencesForPrefix(
     prefix: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Set<number>> {
     const db = this.db(session);
     const pattern = `${prefix}-%`;
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+
+    const conditions = [ilike(assets.assetCode, pattern)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assets.tenantId, resolvedTenantId));
+    }
+
     const rows = await db
       .select({ assetCode: assets.assetCode })
       .from(assets)
-      .where(ilike(assets.assetCode, pattern));
+      .where(and(...conditions));
 
     const used = new Set<number>();
     const re = new RegExp(

@@ -8,7 +8,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { assets } from "./assets";
 import { borrowRequests } from "./borrow-requests";
@@ -45,8 +48,9 @@ export const borrowTransactions = pgTable(
   "borrow_transactions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    logCode: text("log_code").notNull().unique(),
+    logCode: text("log_code").notNull(),
 
     requestId: uuid("request_id").references(() => borrowRequests.id, {
       onDelete: "set null",

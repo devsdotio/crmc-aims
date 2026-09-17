@@ -6,6 +6,7 @@ import {
   applyRememberMeToCookieOptions,
   isRememberMeEnabled,
 } from "@/lib/auth/remember-me";
+import { resolveRequestTenant } from "@/lib/tenant/resolve-request-tenant";
 
 const PUBLIC_PAGE_PATHS = ["/sign-in", "/forgot-password"] as const;
 
@@ -57,9 +58,17 @@ function isApiPath(pathname: string): boolean {
  * Used from `src/proxy.ts` (Next.js 16 network boundary).
  */
 export async function updateSession(request: NextRequest) {
-  // Pass pathname into Server Components (private layout branches staff vs borrower).
+  // Pass pathname and tenant context into Server Components and Route Handlers.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", request.nextUrl.pathname);
+
+  const resolvedTenant = resolveRequestTenant(request);
+  if (resolvedTenant.tenantId) {
+    requestHeaders.set("x-tenant-id", resolvedTenant.tenantId);
+  }
+  if (resolvedTenant.tenantSlug) {
+    requestHeaders.set("x-tenant-slug", resolvedTenant.tenantSlug);
+  }
 
   let supabaseResponse = NextResponse.next({
     request: { headers: requestHeaders },

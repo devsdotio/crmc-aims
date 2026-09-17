@@ -8,7 +8,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { departments } from "./departments";
 import { suppliers } from "./suppliers";
@@ -29,12 +32,13 @@ export const pettyCashVouchers = pgTable(
   "petty_cash_vouchers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
     /**
      * Unique code with hybrid format:
      * e.g. PCV2026-000001 (prefix 'PCV2026-' auto-generated from year, suffix '000001' sequential or custom)
      */
-    pcvNumber: text("pcv_number").notNull().unique(),
+    pcvNumber: text("pcv_number").notNull(),
     status: pettyCashStatusEnum("status").notNull().default("draft"),
 
     /** Petty Cash Voucher date / issue date */
@@ -96,6 +100,7 @@ export const pettyCashVouchers = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("petty_cash_vouchers_tenant_pcv_number_idx").on(table.tenantId, table.pcvNumber),
     index("petty_cash_pcv_number_idx").on(table.pcvNumber),
     index("petty_cash_status_idx").on(table.status),
     index("petty_cash_category_idx").on(table.category),

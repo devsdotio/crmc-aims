@@ -7,9 +7,11 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
 
 import { departments } from "./departments";
+import { tenants } from "./tenants";
 
 /**
  * Application profiles linked 1:1 to Supabase Auth users.
@@ -35,13 +37,15 @@ export const profileStatusEnum = pgEnum("profile_status", [
   "deactivated",
 ]);
 
+
 export const profiles = pgTable(
   "profiles",
   {
     /** Same UUID as auth.users.id */
     userId: uuid("user_id").primaryKey(),
+    tenantId: uuid("tenant_id").references(() => tenants.id),
 
-    email: text("email").notNull().unique(),
+    email: text("email").notNull(),
     fullName: text("full_name").notNull(),
     role: appRoleEnum("role").notNull().default("staff"),
     status: profileStatusEnum("status").notNull().default("active"),
@@ -75,7 +79,7 @@ export const profiles = pgTable(
     index("profiles_last_active_at_idx").on(table.lastActiveAt),
     index("profiles_department_id_idx").on(table.departmentId),
     uniqueIndex("profiles_one_borrower_per_department_idx")
-      .on(table.departmentId)
+      .on(table.tenantId, table.departmentId)
       .where(sql`${table.role} = 'borrower' AND ${table.departmentId} is not null`),
   ]
 );

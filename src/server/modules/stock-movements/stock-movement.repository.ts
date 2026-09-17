@@ -160,6 +160,7 @@ export class StockMovementRepository {
     const db = this.db();
     const columns = {
       id: stockMovements.id,
+      tenantId: stockMovements.tenantId,
       movementCode: stockMovements.movementCode,
       consumableId: stockMovements.consumableId,
       qty: stockMovements.qty,

@@ -2,6 +2,7 @@ import { and, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   vouchers,
   type NewVoucherRow,
@@ -121,12 +122,23 @@ export class VoucherRepository implements IVoucherRepository {
     return row ?? null;
   }
 
-  async findLatestVoucherCode(prefix: string, session?: DbSession): Promise<string | null> {
+  async findLatestVoucherCode(
+    prefix: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<string | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+
+    const conditions = [ilike(vouchers.voucherCode, `${prefix}%`)];
+    if (resolvedTenantId) {
+      conditions.push(eq(vouchers.tenantId, resolvedTenantId));
+    }
+
     const rows = await db
       .select({ voucherCode: vouchers.voucherCode })
       .from(vouchers)
-      .where(ilike(vouchers.voucherCode, `${prefix}%`))
+      .where(and(...conditions))
       .orderBy(desc(vouchers.createdAt))
       .limit(100);
 

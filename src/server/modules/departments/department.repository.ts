@@ -2,6 +2,7 @@ import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   departments,
   profiles,
@@ -19,48 +20,68 @@ export class DepartmentRepository implements IDepartmentRepository {
     return session ?? getDb();
   }
 
-  async findById(id: string, session?: DbSession): Promise<Department | null> {
+  async findById(id: string, session?: DbSession, tenantId?: string): Promise<Department | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(departments.id, id)];
+    if (resolvedTenantId) conditions.push(eq(departments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(departments)
-      .where(eq(departments.id, id))
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByCode(
     code: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Department | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [sql`upper(${departments.code}) = upper(${code.trim()})`];
+    if (resolvedTenantId) conditions.push(eq(departments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(departments)
-      .where(sql`upper(${departments.code}) = upper(${code.trim()})`)
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async findByNameLower(
     name: string,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Department | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [sql`lower(${departments.name}) = lower(${name.trim()})`];
+    if (resolvedTenantId) conditions.push(eq(departments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .select()
       .from(departments)
-      .where(sql`lower(${departments.name}) = lower(${name.trim()})`)
+      .where(and(...conditions))
       .limit(1);
     return row ?? null;
   }
 
   async list(
     filters: ListDepartmentFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<DepartmentListRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
+
+    if (resolvedTenantId) {
+      conditions.push(eq(departments.tenantId, resolvedTenantId));
+    }
 
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
@@ -80,6 +101,7 @@ export class DepartmentRepository implements IDepartmentRepository {
     const query = db
       .select({
         id: departments.id,
+        tenantId: departments.tenantId,
         code: departments.code,
         name: departments.name,
         isSandbox: departments.isSandbox,
@@ -98,7 +120,7 @@ export class DepartmentRepository implements IDepartmentRepository {
   }
 
   async create(
-    data: Omit<Department, "id" | "createdAt" | "updatedAt">,
+    data: Omit<Department, "id" | "createdAt" | "updatedAt" | "tenantId">,
     session?: DbSession
   ): Promise<Department> {
     const db = this.db(session);
@@ -110,22 +132,31 @@ export class DepartmentRepository implements IDepartmentRepository {
   async update(
     id: string,
     data: Partial<Pick<Department, "code" | "name" | "isSandbox">>,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<Department | null> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(departments.id, id)];
+    if (resolvedTenantId) conditions.push(eq(departments.tenantId, resolvedTenantId));
+
     const [row] = await db
       .update(departments)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(departments.id, id))
+      .where(and(...conditions))
       .returning();
     return row ?? null;
   }
 
-  async delete(id: string, session?: DbSession): Promise<boolean> {
+  async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(departments.id, id)];
+    if (resolvedTenantId) conditions.push(eq(departments.tenantId, resolvedTenantId));
+
     const deleted = await db
       .delete(departments)
-      .where(eq(departments.id, id))
+      .where(and(...conditions))
       .returning({ id: departments.id });
     return deleted.length > 0;
   }

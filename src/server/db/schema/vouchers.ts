@@ -8,7 +8,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { assets } from "./assets";
 import { suppliers } from "./suppliers";
@@ -41,12 +44,13 @@ export const vouchers = pgTable(
   "vouchers",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
     /**
      * Unique code with hybrid format:
      * e.g. DDR2026-000428 (prefix 'DDR2026-' auto-generated from type & year, suffix '000428' manually entered)
      */
-    voucherCode: text("voucher_code").notNull().unique(),
+    voucherCode: text("voucher_code").notNull(),
     type: voucherTypeEnum("type").notNull().default("disbursement"),
     status: voucherStatusEnum("status").notNull().default("draft"),
 

@@ -29,6 +29,7 @@ export interface CreateUserInput {
   email: string;
   role: AppRole;
   departmentId?: string | null;
+  tenantId?: string | null;
   password: string;
 }
 
@@ -45,6 +46,7 @@ export interface ListUsersFilters {
   role?: AppRole;
   status?: ProfileStatus;
   search?: string;
+  tenantId?: string;
 }
 
 export interface IProfileRepository {

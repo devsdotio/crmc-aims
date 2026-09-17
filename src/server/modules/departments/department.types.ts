@@ -31,7 +31,7 @@ export interface IDepartmentRepository {
   findByNameLower(name: string): Promise<Department | null>;
   list(filters?: ListDepartmentFilters): Promise<DepartmentListRow[]>;
   create(
-    data: Omit<Department, "id" | "createdAt" | "updatedAt">
+    data: Omit<Department, "id" | "createdAt" | "updatedAt" | "tenantId">
   ): Promise<Department>;
   update(
     id: string,

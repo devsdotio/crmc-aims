@@ -9,17 +9,20 @@ export interface UserFiltersProps {
   onFilterChange: (updated: Partial<UserFilterState>) => void;
   onResetFilters: () => void;
   totalUsersCount: number;
+  tenants?: { id: string; name: string }[];
 }
 
 export function UserFilters({
   filters,
   onFilterChange,
   onResetFilters,
+  tenants,
 }: UserFiltersProps) {
   const isFiltered =
     Boolean(filters.searchQuery) ||
     (Boolean(filters.role) && filters.role !== "all") ||
-    (Boolean(filters.status) && filters.status !== "all");
+    (Boolean(filters.status) && filters.status !== "all") ||
+    (Boolean(filters.tenantId) && filters.tenantId !== "all");
 
   return (
     <div className="flex flex-col gap-3 p-4 md:px-6 bg-bg border-b border-border shrink-0">
@@ -43,6 +46,28 @@ export function UserFilters({
 
         {/* Filter controls row */}
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Institution/Tenant Filter (Superadmin only) */}
+          {tenants && tenants.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="user-tenant-filter" className="sr-only">
+                Filter by institution
+              </label>
+              <select
+                id="user-tenant-filter"
+                value={filters.tenantId || "all"}
+                onChange={(e) => onFilterChange({ tenantId: e.target.value })}
+                className="h-9 px-3 text-xs bg-bg-subtle border border-border rounded-lg text-text font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors max-w-40"
+              >
+                <option value="all">All Institutions</option>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {/* Role Filter Select */}
           <div className="flex items-center gap-1.5">
             <label htmlFor="user-role-filter" className="sr-only">

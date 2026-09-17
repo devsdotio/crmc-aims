@@ -9,7 +9,10 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import { assets } from "./assets";
 import { departments } from "./departments";
@@ -54,8 +57,9 @@ export const borrowRequests = pgTable(
   "requests",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id").notNull().default("00000000-0000-0000-0000-000000000001").references(() => tenants.id),
 
-    requestCode: text("request_code").notNull().unique(),
+    requestCode: text("request_code").notNull(),
 
     /** Linked borrower profile when known (auth user id). */
     requesterUserId: uuid("requester_user_id"),

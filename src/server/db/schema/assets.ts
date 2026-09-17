@@ -10,7 +10,10 @@ import {
   uuid,
   date,
   index,
+  unique,
 } from "drizzle-orm/pg-core";
+
+import { tenants } from "./tenants";
 
 import type { MaintenanceLogEntry } from "@/types/assets";
 
@@ -53,8 +56,12 @@ export const assets = pgTable(
   "assets",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .default("00000000-0000-0000-0000-000000000001")
+      .references(() => tenants.id),
 
-    assetCode: text("asset_code").notNull().unique(),
+    assetCode: text("asset_code").notNull(),
     name: text("name").notNull(),
     category: text("category").notNull(),
     status: assetStatusEnum("status").notNull().default("active"),
@@ -100,6 +107,7 @@ export const assets = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("assets_tenant_code_idx").on(table.tenantId, table.assetCode),
     index("assets_status_idx").on(table.status),
     index("assets_category_idx").on(table.category),
     index("assets_location_idx").on(table.location),

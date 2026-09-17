@@ -27,12 +27,38 @@ import { useDepartmentsQuery } from "@/features/departments/client";
 
 export default function UsersPage() {
   const { data: me, error: meError } = useMeQuery();
+  const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
+
+  // We need the filters state here to pass to useUsersQuery
+  const [filters, setFilters] = useState<UserFilterState>({
+    searchQuery: "",
+    role: "all",
+    status: "all",
+    tenantId: "all",
+  });
+
+  const activeFilters = useMemo(() => {
+    return {
+      ...(filters.tenantId && filters.tenantId !== "all" ? { tenantId: filters.tenantId } : {}),
+    };
+  }, [filters.tenantId]);
+
   const {
     data: users = [],
     isLoading: usersLoading,
     error: usersError,
     isFetching,
-  } = useUsersQuery();
+  } = useUsersQuery(activeFilters);
+
+  // Fetch tenants for superadmin dropdown
+  useEffect(() => {
+    if (me?.role === "superadmin") {
+      fetch("/api/platform/tenants")
+        .then((res) => res.json())
+        .then((data) => setTenants(data.data || []))
+        .catch((err) => console.error("Failed to load tenants for filter", err));
+    }
+  }, [me?.role]);
 
   const createUser = useCreateUserMutation();
   const updateUser = useUpdateUserMutation();
@@ -45,12 +71,6 @@ export default function UsersPage() {
   const canInviteAdmin = me?.role === "superadmin";
   // Table only waits on users list; me gates invite only.
   const isLoading = usersLoading;
-
-  const [filters, setFilters] = useState<UserFilterState>({
-    searchQuery: "",
-    role: "all",
-    status: "all",
-  });
 
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -114,6 +134,7 @@ export default function UsersPage() {
       searchQuery: "",
       role: "all",
       status: "all",
+      tenantId: "all",
     });
   };
 
@@ -306,6 +327,7 @@ export default function UsersPage() {
         onFilterChange={handleFilterChange}
         onResetFilters={handleResetFilters}
         totalUsersCount={users.length}
+        tenants={tenants}
       />
 
       <main className="flex-1 overflow-y-auto min-h-0 bg-bg">
@@ -346,6 +368,8 @@ export default function UsersPage() {
         onClose={() => setInviteDialogOpen(false)}
         onCreateUser={handleCreateUser}
         departments={departments}
+        canInviteAdmin={canInviteAdmin}
+        tenants={tenants}
       />
 
       <EditUserDialog

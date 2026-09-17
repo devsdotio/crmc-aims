@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -25,14 +25,13 @@ import { voucherQueryKeys } from "./query-keys";
  * Subscribes to database events via Supabase Realtime for the `vouchers` table,
  * automatically invalidating the voucher query cache on any INSERT, UPDATE, or DELETE.
  */
-export function useVouchersRealtimeSync(enabled: boolean = true) {
+export function useVouchersRealtimeSync(enabled = true, tenantId?: string) {
   const qc = useQueryClient();
+  const supabase = useMemo(() => createClient(), []);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
-
-    const supabase = createClient();
 
     const triggerInvalidation = () => {
       if (debounceTimerRef.current) {
@@ -43,11 +42,12 @@ export function useVouchersRealtimeSync(enabled: boolean = true) {
       }, 200);
     };
 
+    const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
     const channel = supabase
-      .channel("vouchers-realtime-sync")
+      .channel(`vouchers-realtime-sync${tenantId ? `-${tenantId}` : ""}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "vouchers" },
+        { event: "*", schema: "public", table: "vouchers", filter },
         () => triggerInvalidation()
       )
       .subscribe((status) => {
@@ -62,7 +62,7 @@ export function useVouchersRealtimeSync(enabled: boolean = true) {
       }
       void supabase.removeChannel(channel);
     };
-  }, [enabled, qc]);
+  }, [enabled, qc, supabase, tenantId]);
 }
 
 export function useVouchersQuery(filters?: {
