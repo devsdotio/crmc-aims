@@ -57,6 +57,7 @@ function ResolveMaintenanceDialogForm({
   const [resolutionDate, setResolutionDate] = useState(
     () => new Date().toISOString().split("T")[0]
   );
+  const [overallCost, setOverallCost] = useState("");
   const [parts, setParts] = useState<PartLine[]>(() => [newPartLine()]);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,12 +73,19 @@ function ResolveMaintenanceDialogForm({
   }, [onClose, isSubmitting]);
 
   const filledParts = parts.filter((p) => p.name.trim());
-  const totalCost = filledParts.reduce((sum, p) => {
+  const partsSum = filledParts.reduce((sum, p) => {
     if (!p.cost.trim()) return sum;
     const n = Number(p.cost);
     return Number.isFinite(n) ? sum + n : sum;
   }, 0);
-  const hasAnyCost = filledParts.some((p) => p.cost.trim() !== "");
+  const hasAnyPartCost = filledParts.some((p) => p.cost.trim() !== "");
+  const overallBlank = !overallCost.trim();
+  const displayOverall = overallBlank
+    ? hasAnyPartCost
+      ? partsSum
+      : null
+    : Number(overallCost);
+  const isAutoCalculated = overallBlank && hasAnyPartCost;
 
   const updatePart = (id: string, patch: Partial<Omit<PartLine, "id">>) => {
     setParts((prev) =>
@@ -108,6 +116,13 @@ function ResolveMaintenanceDialogForm({
       cost: p.cost.trim() ? p.cost.trim() : null,
     }));
 
+    // Explicit overall cost wins; blank falls back to line-item sum (or null).
+    const repairCost = overallBlank
+      ? hasAnyPartCost
+        ? partsSum.toFixed(2)
+        : null
+      : overallCost.trim();
+
     setIsSubmitting(true);
     setError("");
     try {
@@ -116,7 +131,7 @@ function ResolveMaintenanceDialogForm({
         technician: assignedTo.trim(),
         resolutionDate,
         repairParts,
-        repairCost: hasAnyCost ? totalCost.toFixed(2) : null,
+        repairCost,
       });
       onClose();
     } catch (err) {
@@ -279,18 +294,67 @@ function ResolveMaintenanceDialogForm({
               ))}
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-text-secondary px-0.5">
-              <span>Cost is optional per part. Leave blank if unrecorded.</span>
-              {hasAnyCost && (
-                <span className="font-bold font-mono text-text">
-                  Total ₱
-                  {totalCost.toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
-              )}
+            <p className="text-[11px] text-text-secondary px-0.5">
+              Cost is optional per part. Leave blank if unrecorded.
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="overall-repair-cost"
+              className="block text-xs font-semibold text-text"
+            >
+              Overall repair cost{" "}
+              <span className="text-text-secondary font-normal">
+                (optional)
+              </span>
+            </label>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-text-secondary">
+                ₱
+              </span>
+              <input
+                id="overall-repair-cost"
+                type="text"
+                inputMode="decimal"
+                value={overallCost}
+                onChange={(e) => {
+                  const next = filterMoneyInput(e.target.value);
+                  if (next !== null) setOverallCost(next);
+                }}
+                placeholder={
+                  isAutoCalculated
+                    ? partsSum.toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : "0.00"
+                }
+                disabled={isSubmitting}
+                className="w-full h-9 pl-6 pr-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              />
             </div>
+            <p className="text-[11px] text-text-secondary">
+              {isAutoCalculated ? (
+                <>
+                  Auto-calculated from line items:{" "}
+                  <span className="font-mono font-bold text-text">
+                    ₱
+                    {partsSum.toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                  . Enter a value to override.
+                </>
+              ) : displayOverall != null &&
+                Number.isFinite(displayOverall) &&
+                !overallBlank ? (
+                <>Using the overall cost you entered.</>
+              ) : (
+                <>Leave blank to auto-sum costs from parts &amp; materials.</>
+              )}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

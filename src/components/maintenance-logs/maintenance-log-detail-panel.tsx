@@ -1,12 +1,20 @@
 "use client";
- 
+
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
-import { X, CheckCircle2,   Tag,   ExternalLink } from "lucide-react";
+import {
+  X,
+  CheckCircle2,
+  Tag,
+  ExternalLink,
+  Wrench,
+  Calendar,
+  User,
+  FileText,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
-
 import { ConditionTag } from "./condition-tag";
 
 export interface MaintenanceLogDetailPanelProps {
@@ -14,6 +22,39 @@ export interface MaintenanceLogDetailPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onResolve?: (record: MaintenanceLogRecord) => void;
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mb-0.5">
+        {label}
+      </dt>
+      <dd className="text-sm text-text">{children}</dd>
+    </div>
+  );
+}
+
+function formatPhp(value: string | number | null | undefined): string {
+  if (value == null || value === "") return "—";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return `₱${n.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function sourceLabel(source: MaintenanceLogRecord["source"]): string {
+  if (source === "return_checkout") return "Borrow return check-in";
+  if (source === "project_assignment") return "Project asset damage";
+  return "Manual custodian flag";
 }
 
 export function MaintenanceLogDetailPanel({
@@ -27,9 +68,7 @@ export function MaintenanceLogDetailPanel({
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
+      if (e.key === "Escape" && isOpen) onClose();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -38,13 +77,13 @@ export function MaintenanceLogDetailPanel({
   if (!isOpen || !record) return null;
 
   const categoryMeta = getCategoryStyle(record.category);
+  const effectiveCondition = record.isResolved ? "resolved" : record.condition;
+  const notesDisplay = record.notes?.trim() || "No notes provided.";
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
-      {/* Backdrop */}
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      {/* Drawer Container */}
       <aside
         ref={panelRef}
         role="dialog"
@@ -55,17 +94,23 @@ export function MaintenanceLogDetailPanel({
           "animate-in slide-in-from-right duration-250 ease-in-out"
         )}
       >
-        {/* Panel Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
           <div className="min-w-0 flex-1 pr-3">
             <div className="flex items-center gap-2.5 flex-wrap">
-              <h2 id="mnt-detail-heading" className="font-mono text-lg font-bold tracking-tight text-text">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-status-repair-bg/15 text-status-repair-text shrink-0">
+                <Wrench className="h-4 w-4" />
+              </span>
+              <h2
+                id="mnt-detail-heading"
+                className="font-mono text-lg font-bold tracking-tight text-text"
+              >
                 {record.logCode}
               </h2>
-              <ConditionTag condition={record.isResolved ? "resolved" : record.condition} />
+              <ConditionTag condition={effectiveCondition} />
             </div>
-            <p className="text-xs text-text-secondary font-medium mt-0.5 truncate">
-              Maintenance Record • Asset: <strong className="text-text font-semibold">{record.assetCode}</strong> ({record.assetName})
+            <p className="text-xs text-text-secondary font-medium mt-1 truncate">
+              {record.assetName} ·{" "}
+              <span className="font-mono text-text">{record.assetCode}</span>
             </p>
           </div>
 
@@ -79,54 +124,53 @@ export function MaintenanceLogDetailPanel({
           </button>
         </div>
 
-        {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Status & Condition Banner */}
-          <div className="flex items-center justify-between p-3.5 rounded-lg border border-border bg-bg-subtle">
-            <span className="text-xs font-semibold text-text-secondary">Logged Condition</span>
-            <ConditionTag condition={record.isResolved ? "resolved" : record.condition} />
-          </div>
-
-          {/* Asset Info */}
-          <div className="space-y-3">
+          <section className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-              Asset Record
+              Asset
             </h3>
-            <div className="p-4 rounded-lg border border-border bg-bg space-y-1.5 text-xs">
-              <p className="text-sm font-bold text-text">{record.assetName}</p>
-              <div className="flex items-center gap-2 text-text-secondary pt-1 border-t border-border">
-                <span>Asset Code: <strong className="font-mono text-text">{record.assetCode}</strong></span>
-                <span>·</span>
-                <span>Logged: <strong>{record.dateLogged}</strong></span>
-              </div>
-            </div>
-          </div>
-
-          {/* Logging Context & Cross Reference Link */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-              Logging Origin & Context
-            </h3>
-            <div className="p-4 rounded-lg border border-border bg-bg space-y-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-text-secondary">Entry Source:</span>
-                <span className="font-semibold text-text">
-                  {record.source === "return_checkout"
-                    ? "Automated via Borrow Return Check-In"
-                    : record.source === "project_assignment"
-                      ? "Project asset damage report"
-                      : "Manual Custodian Flag"}
+            <dl className="grid grid-cols-2 gap-4 p-4 rounded-xl border border-border bg-bg-subtle/40">
+              <Field label="Name">
+                <span className="font-semibold">{record.assetName}</span>
+              </Field>
+              <Field label="Asset code">
+                <span className="font-mono font-bold">{record.assetCode}</span>
+              </Field>
+              <Field label="Category">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase",
+                    categoryMeta.bg,
+                    categoryMeta.text
+                  )}
+                >
+                  <Tag className="h-2.5 w-2.5" />
+                  {categoryMeta.label}
                 </span>
-              </div>
+              </Field>
+              <Field label="Date logged">
+                <span className="inline-flex items-center gap-1">
+                  <Calendar className="h-3.5 w-3.5 text-text-secondary" />
+                  {record.dateLogged}
+                </span>
+              </Field>
+            </dl>
+          </section>
 
-              <div className="flex items-center justify-between">
-                <span className="text-text-secondary">Logged By:</span>
-                <span className="font-bold text-text">{record.loggedBy}</span>
-              </div>
-
+          <section className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+              Logging context
+            </h3>
+            <dl className="grid grid-cols-1 gap-3 p-4 rounded-xl border border-border bg-bg">
+              <Field label="Source">{sourceLabel(record.source)}</Field>
+              <Field label="Logged by">
+                <span className="inline-flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-text-secondary" />
+                  {record.loggedBy}
+                </span>
+              </Field>
               {record.relatedBorrowLogCode && (
-                <div className="pt-2 border-t border-border flex items-center justify-between">
-                  <span className="text-text-secondary">Related Checkout Log:</span>
+                <Field label="Related checkout">
                   <Link
                     href="/borrow-log"
                     className="inline-flex items-center gap-1 font-mono font-bold text-accent hover:underline"
@@ -134,96 +178,93 @@ export function MaintenanceLogDetailPanel({
                     {record.relatedBorrowLogCode}
                     <ExternalLink className="h-3 w-3" />
                   </Link>
-                </div>
+                </Field>
               )}
-            </div>
-          </div>
+              {record.scheduledDate && (
+                <Field label="Target service date">{record.scheduledDate}</Field>
+              )}
+            </dl>
+          </section>
 
-          {/* Issue Description Notes */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-              Issue Description / Flag Notes
+          <section className="space-y-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              Issue description / flag notes
             </h3>
-            <div className="p-3.5 rounded-lg border border-border bg-bg text-xs text-text leading-relaxed">
-              {record.notes}
+            <div className="p-3.5 rounded-xl border border-border bg-bg text-sm text-text leading-relaxed whitespace-pre-wrap">
+              {notesDisplay}
             </div>
-          </div>
+          </section>
 
-          {/* Resolution Audit (If resolved) */}
           {record.isResolved && (
-            <div className="space-y-3">
+            <section className="space-y-3">
               <h3 className="text-xs font-bold uppercase tracking-wider text-status-active-text flex items-center gap-1.5">
                 <CheckCircle2 className="h-4 w-4" />
-                Maintenance Resolution Audit
+                Resolution
               </h3>
-              <div className="p-4 rounded-lg border border-status-active-bg/30 bg-status-active-bg/10 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Date Resolved:</span>
-                  <span className="font-bold text-text">{record.resolutionDate}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Assigned to:</span>
-                  <span className="font-bold text-text">{record.resolvedBy}</span>
-                </div>
+              <div className="p-4 rounded-xl border border-status-active-bg/30 bg-status-active-bg/10 space-y-3 text-sm">
+                <dl className="grid grid-cols-2 gap-3">
+                  <Field label="Date resolved">
+                    {record.resolutionDate ?? "—"}
+                  </Field>
+                  <Field label="Assigned to">
+                    {record.resolvedBy ?? "—"}
+                  </Field>
+                </dl>
+
                 {record.repairParts && record.repairParts.length > 0 && (
                   <div className="pt-2 border-t border-status-active-bg/20 space-y-1.5">
-                    <span className="font-semibold block text-text-secondary">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       Parts &amp; materials
-                    </span>
+                    </p>
                     <ul className="space-y-1">
                       {record.repairParts.map((part, idx) => (
                         <li
                           key={`${part.name}-${idx}`}
-                          className="flex items-center justify-between gap-2"
+                          className="flex items-center justify-between gap-2 text-xs"
                         >
                           <span className="text-text truncate">{part.name}</span>
                           <span className="font-mono font-bold text-text shrink-0">
-                            {part.cost != null && part.cost !== ""
-                              ? `₱${Number(part.cost).toLocaleString("en-PH", {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}`
-                              : "—"}
+                            {formatPhp(part.cost)}
                           </span>
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
-                {record.repairCost != null && record.repairCost !== "" && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">
-                      {record.repairParts && record.repairParts.length > 0
-                        ? "Total repair cost:"
-                        : "Repair Cost:"}
+
+                {(record.repairCost != null && record.repairCost !== "") && (
+                  <div className="flex items-center justify-between pt-2 border-t border-status-active-bg/20 text-xs">
+                    <span className="text-text-secondary font-semibold">
+                      Overall repair cost
                     </span>
                     <span className="font-bold font-mono text-text">
-                      ₱
-                      {Number(record.repairCost).toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                      {formatPhp(record.repairCost)}
                     </span>
                   </div>
                 )}
+
                 {record.resolutionNotes && (
-                  <div className="pt-2 border-t border-status-active-bg/20 text-text leading-relaxed">
-                    <span className="font-semibold block mb-0.5">Resolution Notes:</span>
-                    {record.resolutionNotes}
+                  <div className="pt-2 border-t border-status-active-bg/20">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mb-1">
+                      Resolution notes
+                    </p>
+                    <p className="text-xs text-text leading-relaxed whitespace-pre-wrap">
+                      {record.resolutionNotes}
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            </section>
           )}
         </div>
 
-        {/* Action Footer (Only if unresolved) */}
         {!record.isResolved && onResolve && (
           <div className="p-4 border-t border-border bg-bg-subtle flex items-center justify-end shrink-0">
             <button
               type="button"
               onClick={() => onResolve(record)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
             >
               <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
               Resolve Maintenance Flag

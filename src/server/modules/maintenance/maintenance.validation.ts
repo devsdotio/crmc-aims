@@ -73,7 +73,7 @@ export const createMaintenanceSchema = z.object({
 export const resolveMaintenanceSchema = z
   .object({
     resolutionNotes: z.string().trim().min(1).max(4000),
-    /** @deprecated Prefer summing repairParts; kept for older clients. */
+    /** Optional overall cost; when blank, summed from repairParts. */
     repairCost: optionalMoneySchema,
     repairParts: z.array(repairPartSchema).max(40).optional().default([]),
     resolutionDate: z
@@ -89,15 +89,17 @@ export const resolveMaintenanceSchema = z
     const partCosts = parts
       .map((p) => p.cost)
       .filter((c): c is string => c != null && c !== "");
-    let repairCost: string | null = data.repairCost ?? null;
-    if (parts.length > 0) {
-      if (partCosts.length === 0) {
-        repairCost = null;
-      } else {
-        const sum = partCosts.reduce((acc, c) => acc + Number(c), 0);
-        repairCost = sum.toFixed(2);
-      }
-    }
+    const partsSum =
+      partCosts.length > 0
+        ? partCosts.reduce((acc, c) => acc + Number(c), 0).toFixed(2)
+        : null;
+
+    // Explicit overall cost wins; blank overall falls back to line-item sum.
+    const repairCost =
+      data.repairCost != null && data.repairCost !== ""
+        ? data.repairCost
+        : partsSum;
+
     return {
       resolutionNotes: data.resolutionNotes,
       resolutionDate: data.resolutionDate,

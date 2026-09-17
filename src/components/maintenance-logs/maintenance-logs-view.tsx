@@ -152,11 +152,7 @@ export function MaintenanceLogsView() {
         assetId: flagData.assetId,
         assetCode: flagData.assetCode,
         assetName: flagData.assetName,
-        category: flagData.category as
-          | "computing"
-          | "transport"
-          | "av"
-          | "furniture",
+        category: flagData.category,
         condition: flagData.condition,
         notes: flagData.notes,
         scheduledDate: flagData.scheduledDate,
@@ -200,12 +196,11 @@ export function MaintenanceLogsView() {
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:hidden" data-theme="light">
-      {/* ── Top Header Banner ────────────────────────────────────────── */}
       <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-bold tracking-tight text-text">
-              Condition & Maintenance Logs
+              Condition &amp; Maintenance Logs
             </h1>
             <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
               {isLoading
@@ -219,22 +214,20 @@ export function MaintenanceLogsView() {
             )}
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Open repair flags, resolutions, and optional repair costs for assets marked needs repair.
+            Track repair flags, resolutions, and repair costs across the asset registry.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          {canOperate && (
-            <button
-              type="button"
-              onClick={() => setFlagDialogOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
-            >
-              <Wrench className="h-4 w-4" strokeWidth={2.5} />
-              Flag for Maintenance
-            </button>
-          )}
-        </div>
+        {canOperate && (
+          <button
+            type="button"
+            onClick={() => setFlagDialogOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+          >
+            <Wrench className="h-4 w-4" strokeWidth={2.5} />
+            Flag for Maintenance
+          </button>
+        )}
       </div>
 
       {!canOperate && <OperatorReadOnlyBanner />}
