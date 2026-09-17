@@ -676,6 +676,7 @@ export class BorrowLogService {
                 resolvedByUserId: null,
                 resolvedByName: null,
                 repairCost: null,
+                repairParts: [],
                 relatedBorrowLogCode: existing.logCode,
                 scheduledDate: null,
               },

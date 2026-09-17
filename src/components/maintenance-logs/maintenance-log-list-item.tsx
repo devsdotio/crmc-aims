@@ -103,7 +103,7 @@ export function MaintenanceLogListItem({
               e.stopPropagation();
               onResolve(record);
             }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
           >
             <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2.5} />
             Resolve

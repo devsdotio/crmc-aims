@@ -40,6 +40,7 @@ function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
     resolutionNotes: row.resolutionNotes ?? undefined,
     resolvedBy: row.resolvedByName ?? undefined,
     repairCost: row.repairCost ?? null,
+    repairParts: row.repairParts ?? [],
     relatedBorrowLogCode: row.relatedBorrowLogCode ?? undefined,
     scheduledDate: row.scheduledDate ?? undefined,
   };
@@ -113,6 +114,7 @@ export class MaintenanceLogService {
             resolvedByUserId: null,
             resolvedByName: null,
             repairCost: null,
+            repairParts: [],
             relatedBorrowLogCode: null,
             scheduledDate: null,
           },
@@ -235,6 +237,7 @@ export class MaintenanceLogService {
           resolvedByUserId: null,
           resolvedByName: null,
           repairCost: null,
+          repairParts: [],
           relatedBorrowLogCode: input.relatedBorrowLogCode ?? null,
           scheduledDate: input.scheduledDate ?? null,
         },
@@ -321,8 +324,9 @@ export class MaintenanceLogService {
           resolutionDate: input.resolutionDate ?? todayDateString(),
           resolutionNotes: input.resolutionNotes,
           resolvedByUserId: actor.userId,
-          resolvedByName: input.technician?.trim() || actor.displayName,
+          resolvedByName: input.technician.trim(),
           repairCost: input.repairCost ?? null,
+          repairParts: input.repairParts ?? [],
         },
         tx
       );
@@ -332,8 +336,11 @@ export class MaintenanceLogService {
         via: "maintenance_resolved" as const,
         maintenanceLogCode: existing.logCode,
         resolutionNotes: input.resolutionNotes,
-        technician: input.technician?.trim() || actor.displayName,
+        technician: input.technician.trim(),
         ...(input.repairCost != null ? { repairCost: input.repairCost } : {}),
+        ...(input.repairParts.length > 0
+          ? { repairParts: input.repairParts }
+          : {}),
       };
 
       if (existing.assetId) {

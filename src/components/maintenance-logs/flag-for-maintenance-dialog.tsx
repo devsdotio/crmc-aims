@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { X, Wrench, AlertTriangle, Check } from "lucide-react";
+import { X, Wrench, AlertTriangle, Check, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConditionState } from "@/types/maintenance-logs";
 import type { AssetCategory } from "@/types/shared";
@@ -30,6 +30,27 @@ interface FlagForMaintenanceDialogFormProps {
   onConfirmFlag: FlagForMaintenanceDialogProps["onConfirmFlag"];
 }
 
+function normalizeSearchToken(value: string): string {
+  return value.toLowerCase().replace(/[\s\-_/]/g, "");
+}
+
+function assetMatchesSearch(asset: Asset, query: string): boolean {
+  const q = query.toLowerCase().trim();
+  if (!q) return true;
+  const compactQ = normalizeSearchToken(q);
+  const fields = [
+    asset.name,
+    asset.assetCode,
+    asset.location ?? "",
+    asset.serialNumber ?? "",
+  ];
+  return fields.some((field) => {
+    const lower = field.toLowerCase();
+    if (lower.includes(q)) return true;
+    return compactQ.length > 0 && normalizeSearchToken(field).includes(compactQ);
+  });
+}
+
 function FlagForMaintenanceDialogForm({
   onClose,
   assets,
@@ -50,6 +71,7 @@ function FlagForMaintenanceDialogForm({
   );
 
   const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [assetSearch, setAssetSearch] = useState("");
   const [condition, setCondition] =
     useState<ConditionState>("needs_maintenance");
   const [notes, setNotes] = useState("");
@@ -58,7 +80,8 @@ function FlagForMaintenanceDialogForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    setSelectedAssetId(selectable[0]?.id ?? "");
+    setSelectedAssetId("");
+    setAssetSearch("");
     setCondition("needs_maintenance");
     setNotes("");
     setScheduledDate("");
@@ -76,13 +99,18 @@ function FlagForMaintenanceDialogForm({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, isSubmitting]);
 
+  const filteredAssets = useMemo(
+    () => selectable.filter((a) => assetMatchesSearch(a, assetSearch)),
+    [selectable, assetSearch]
+  );
+
   const targetAsset =
     selectable.find((a) => a.id === selectedAssetId) ?? null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetAsset) {
-      setError("Select an available asset from the registry.");
+      setError("Search and select an available asset from the registry.");
       return;
     }
     if (!notes.trim()) {
@@ -152,9 +180,9 @@ function FlagForMaintenanceDialogForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
+          <div className="space-y-2">
             <label
-              htmlFor="flag-asset-select"
+              htmlFor="flag-asset-search"
               className="block text-xs font-semibold text-text"
             >
               Target Institutional Asset <span className="text-accent">*</span>
@@ -169,19 +197,81 @@ function FlagForMaintenanceDialogForm({
                 <strong>Report damage</strong> on the project.
               </p>
             ) : (
-              <select
-                id="flag-asset-select"
-                value={selectedAssetId}
-                onChange={(e) => setSelectedAssetId(e.target.value)}
-                disabled={isSubmitting}
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                {selectable.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.assetCode})
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary/60 pointer-events-none" />
+                  <input
+                    id="flag-asset-search"
+                    type="search"
+                    value={assetSearch}
+                    onChange={(e) => setAssetSearch(e.target.value)}
+                    placeholder="Search by name, asset code, serial, or location…"
+                    disabled={isSubmitting}
+                    className="w-full h-9 pl-8 pr-8 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/50 focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                  {assetSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setAssetSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-text-secondary hover:text-text rounded cursor-pointer"
+                      aria-label="Clear asset search"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+
+                {targetAsset && (
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="font-bold text-text truncate">
+                        {targetAsset.name}
+                      </p>
+                      <p className="font-mono text-[11px] text-text-secondary">
+                        {targetAsset.assetCode}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAssetId("")}
+                      className="text-[11px] font-semibold text-accent hover:underline cursor-pointer shrink-0"
+                    >
+                      Change
+                    </button>
+                  </div>
+                )}
+
+                {!targetAsset && (
+                  <div className="max-h-44 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                    {filteredAssets.length === 0 ? (
+                      <p className="p-3 text-xs text-text-secondary">
+                        No assets match &quot;{assetSearch.trim()}&quot;.
+                      </p>
+                    ) : (
+                      filteredAssets.slice(0, 40).map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedAssetId(a.id);
+                            setAssetSearch("");
+                            if (error) setError("");
+                          }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-bg-subtle transition-colors cursor-pointer"
+                        >
+                          <p className="text-xs font-bold text-text truncate">
+                            {a.name}
+                          </p>
+                          <p className="text-[11px] font-mono text-text-secondary">
+                            {a.assetCode}
+                            {a.location ? ` · ${a.location}` : ""}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -274,14 +364,14 @@ function FlagForMaintenanceDialogForm({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text rounded-md border border-border bg-bg transition-colors cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text rounded-lg border border-border bg-bg transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting || !targetAsset}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:opacity-50"
             >
               <Check className="h-4 w-4" strokeWidth={2.5} />
               {isSubmitting ? "Flagging…" : "Confirm Maintenance Flag"}

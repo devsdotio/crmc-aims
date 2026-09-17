@@ -56,13 +56,13 @@ export function MaintenanceLogList({
   if (records.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-16 px-6 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-subtle text-text-secondary border border-border">
-          <Wrench className="h-6 w-6" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent/10 text-accent border border-accent/20">
+          <Wrench className="h-7 w-7" />
         </div>
         <div>
-          <h3 className="text-base font-bold text-text">No maintenance entries match these filters.</h3>
+          <h3 className="text-base font-bold text-text">No maintenance entries match these filters</h3>
           <p className="text-xs text-text-secondary mt-1 max-w-sm">
-            Adjust your search query, category selection, or condition filter parameters.
+            Adjust your search, category, or condition filters — or flag an asset for repair.
           </p>
         </div>
       </div>
@@ -70,7 +70,7 @@ export function MaintenanceLogList({
   }
 
   return (
-    <div className="divide-y divide-border">
+    <div>
       {records.map((record) => (
         <MaintenanceLogListItem
           key={record.id}

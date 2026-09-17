@@ -162,12 +162,41 @@ export function MaintenanceLogDetailPanel({
                   <span className="font-bold text-text">{record.resolutionDate}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-text-secondary">Resolved By Tech:</span>
+                  <span className="text-text-secondary">Assigned to:</span>
                   <span className="font-bold text-text">{record.resolvedBy}</span>
                 </div>
+                {record.repairParts && record.repairParts.length > 0 && (
+                  <div className="pt-2 border-t border-status-active-bg/20 space-y-1.5">
+                    <span className="font-semibold block text-text-secondary">
+                      Parts &amp; materials
+                    </span>
+                    <ul className="space-y-1">
+                      {record.repairParts.map((part, idx) => (
+                        <li
+                          key={`${part.name}-${idx}`}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="text-text truncate">{part.name}</span>
+                          <span className="font-mono font-bold text-text shrink-0">
+                            {part.cost != null && part.cost !== ""
+                              ? `₱${Number(part.cost).toLocaleString("en-PH", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              : "—"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {record.repairCost != null && record.repairCost !== "" && (
                   <div className="flex items-center justify-between">
-                    <span className="text-text-secondary">Repair Cost:</span>
+                    <span className="text-text-secondary">
+                      {record.repairParts && record.repairParts.length > 0
+                        ? "Total repair cost:"
+                        : "Repair Cost:"}
+                    </span>
                     <span className="font-bold font-mono text-text">
                       ₱
                       {Number(record.repairCost).toLocaleString("en-PH", {
@@ -194,7 +223,7 @@ export function MaintenanceLogDetailPanel({
             <button
               type="button"
               onClick={() => onResolve(record)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
             >
               <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
               Resolve Maintenance Flag

@@ -17,6 +17,27 @@ const sourceSchema = z.enum([
   "project_assignment",
 ]);
 
+const optionalMoneySchema = z
+  .union([z.string(), z.number(), z.null()])
+  .optional()
+  .transform((v, ctx) => {
+    if (v === undefined || v === null || v === "") return null;
+    const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
+    if (!Number.isFinite(n) || n < 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Cost must be a non-negative number.",
+      });
+      return z.NEVER;
+    }
+    return n.toFixed(2);
+  });
+
+export const repairPartSchema = z.object({
+  name: z.string().trim().min(1, "Part name is required.").max(255),
+  cost: optionalMoneySchema,
+});
+
 export const listMaintenanceQuerySchema = z.object({
   openOnly: z
     .union([z.literal("true"), z.literal("false"), z.boolean()])
@@ -49,30 +70,45 @@ export const createMaintenanceSchema = z.object({
   relatedBorrowLogCode: z.string().trim().max(64).optional(),
 });
 
-export const resolveMaintenanceSchema = z.object({
-  resolutionNotes: z.string().trim().min(1).max(4000),
-  repairCost: z
-    .union([z.string(), z.number(), z.null()])
-    .optional()
-    .transform((v, ctx) => {
-      if (v === undefined || v === null || v === "") return null;
-      const n = typeof v === "number" ? v : Number(String(v).replace(/,/g, ""));
-      if (!Number.isFinite(n) || n < 0) {
-        ctx.addIssue({
-          code: "custom",
-          message: "Repair cost must be a non-negative number.",
-        });
-        return z.NEVER;
+export const resolveMaintenanceSchema = z
+  .object({
+    resolutionNotes: z.string().trim().min(1).max(4000),
+    /** @deprecated Prefer summing repairParts; kept for older clients. */
+    repairCost: optionalMoneySchema,
+    repairParts: z.array(repairPartSchema).max(40).optional().default([]),
+    resolutionDate: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "resolutionDate must be YYYY-MM-DD.")
+      .optional(),
+    /** Displayed as "Assigned to" in the UI; stored as resolvedByName. */
+    technician: z.string().trim().min(1, "Assigned to is required.").max(255),
+  })
+  .transform((data) => {
+    const parts = data.repairParts ?? [];
+    const partCosts = parts
+      .map((p) => p.cost)
+      .filter((c): c is string => c != null && c !== "");
+    let repairCost: string | null = data.repairCost ?? null;
+    if (parts.length > 0) {
+      if (partCosts.length === 0) {
+        repairCost = null;
+      } else {
+        const sum = partCosts.reduce((acc, c) => acc + Number(c), 0);
+        repairCost = sum.toFixed(2);
       }
-      return n.toFixed(2);
-    }),
-  resolutionDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "resolutionDate must be YYYY-MM-DD.")
-    .optional(),
-  technician: z.string().trim().min(1).max(255).optional(),
-});
+    }
+    return {
+      resolutionNotes: data.resolutionNotes,
+      resolutionDate: data.resolutionDate,
+      technician: data.technician,
+      repairParts: parts.map((p) => ({
+        name: p.name,
+        cost: p.cost ?? null,
+      })),
+      repairCost,
+    };
+  });
 
 export const maintenanceIdSchema = z.string().uuid("Invalid maintenance log id.");
 

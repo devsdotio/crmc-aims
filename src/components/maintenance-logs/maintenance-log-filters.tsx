@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, FilterX, Calendar, AlertCircle } from "lucide-react";
+import { Search, FilterX, Calendar, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogFilterState, ConditionState } from "@/types/maintenance-logs";
 import type { AssetCategory } from "@/types/shared";
@@ -71,10 +71,20 @@ export function MaintenanceLogFilters({
             onChange={(e) => onFilterChange({ searchQuery: e.target.value })}
             placeholder="Search by asset name, code, or MNT log ID…"
             className={cn(
-              "w-full h-9 pl-9 pr-3 text-xs bg-bg-subtle border border-border rounded-lg text-text placeholder:text-text-secondary/60",
+              "w-full h-9 pl-9 pr-8 text-xs bg-bg-subtle border border-border rounded-lg text-text placeholder:text-text-secondary/60",
               "focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
             )}
           />
+          {filters.searchQuery && (
+            <button
+              type="button"
+              onClick={() => onFilterChange({ searchQuery: "" })}
+              className="absolute inset-y-0 right-0 flex items-center pr-2.5 text-text-secondary hover:text-text cursor-pointer"
+              aria-label="Clear search"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Filter controls row */}
