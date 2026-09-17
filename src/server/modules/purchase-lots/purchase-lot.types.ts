@@ -29,6 +29,8 @@ export type PurchaseLotDTO = {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;
@@ -73,6 +75,10 @@ export type CreatePurchaseLotInput = {
   purchasedOn: string;
   reference?: string | null;
   purpose?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
   notes?: string | null;
   receiptUrl?: string | null;
   status?: PurchaseOrderStatus;
@@ -98,6 +104,8 @@ export type CreatePurchaseOrderItemInput = {
   purpose?: string;
   suggestedDealer?: string;
   supplierId?: string;
+  projectId?: string;
+  projectName?: string;
 };
 
 export type CreatePurchaseOrderInput = {
@@ -108,6 +116,8 @@ export type CreatePurchaseOrderInput = {
   supplierName?: string;
   departmentId?: string;
   departmentName?: string;
+  projectId?: string | null;
+  projectName?: string | null;
   purpose?: string;
   notes?: string;
   receiptUrl?: string | null;

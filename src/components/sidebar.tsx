@@ -95,15 +95,24 @@ export default function Sidebar({
   const { canToggle, preference, setShowSandbox } = useSandboxVisibility();
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>(() => {
-    if (typeof window !== "undefined" && window.location.pathname.startsWith("/purchase-orders")) {
-      return { "/purchase-orders": true };
+    const initial: Record<string, boolean> = { "/purchase-orders": true, "/consumables": true };
+    if (typeof window !== "undefined") {
+      if (window.location.pathname.startsWith("/purchase-orders")) {
+        initial["/purchase-orders"] = true;
+      }
+      if (window.location.pathname.startsWith("/consumables")) {
+        initial["/consumables"] = true;
+      }
     }
-    return { "/purchase-orders": true };
+    return initial;
   });
 
   useEffect(() => {
     if (pathname.startsWith("/purchase-orders")) {
       setOpenSubmenus((prev) => ({ ...prev, "/purchase-orders": true }));
+    }
+    if (pathname.startsWith("/consumables")) {
+      setOpenSubmenus((prev) => ({ ...prev, "/consumables": true }));
     }
   }, [pathname]);
 
@@ -213,6 +222,16 @@ export default function Sidebar({
           badge: lowStockCount,
           badgeTone: "warning",
           roles: ["admin", "staff"],
+          children: [
+            {
+              name: "Supplies",
+              href: "/consumables/supplies",
+            },
+            {
+              name: "Materials",
+              href: "/consumables/materials",
+            },
+          ],
         },
         {
           name: "Requests",

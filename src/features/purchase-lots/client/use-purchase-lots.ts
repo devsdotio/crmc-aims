@@ -28,6 +28,7 @@ const PO_DOMAINS = [
   "assets",
   "auditLogs",
   "dashboard",
+  "projects",
 ] as const;
 
 export function usePurchaseLotsQuery(params?: {
@@ -114,6 +115,8 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
           reference: null,
           purpose: item.purpose || newPO.purpose || null,
           notes: newPO.notes || null,
+          projectId: item.projectId || newPO.projectId || null,
+          projectName: item.projectName || newPO.projectName || null,
           recordedByUserId: "current-user",
           recordedByName: newPO.requestedBy || "Current User",
           approvedByName: null,

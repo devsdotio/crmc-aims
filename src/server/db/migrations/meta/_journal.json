@@ -260,6 +260,13 @@
       "when": 1786371000000,
       "tag": "0036_purchase_lot_department",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786372000000,
+      "tag": "0037_purchase_lot_project",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   ZoomIn,
@@ -32,6 +33,11 @@ export function ReceiptLightboxDialog({
 }: ReceiptLightboxDialogProps) {
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -60,6 +66,7 @@ export function ReceiptLightboxDialog({
   }, [isOpen, onClose]);
 
   if (!isOpen || !imageUrl) return null;
+  if (!mounted) return null;
 
   const handlePrint = () => {
     const printWindow = window.open("", "_blank");
@@ -106,7 +113,7 @@ export function ReceiptLightboxDialog({
 
   const isPdf = imageUrl.toLowerCase().includes(".pdf");
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
       {/* Backdrop click to close */}
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
@@ -256,6 +263,7 @@ export function ReceiptLightboxDialog({
           </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

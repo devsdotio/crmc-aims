@@ -45,6 +45,8 @@ export interface PurchaseLot {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  projectId?: string | null;
+  projectName?: string | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;

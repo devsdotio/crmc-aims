@@ -28,12 +28,14 @@ export type SaveConsumablePayload = Partial<ConsumableItem> & {
 export interface AddEditConsumableDialogProps {
   isOpen: boolean;
   initialItem?: ConsumableItem | null;
+  defaultClassification?: ConsumableClassification;
   onClose: () => void;
   onSave: (itemData: SaveConsumablePayload) => void | Promise<void>;
 }
 
 interface AddEditConsumableDialogFormProps {
   initialItem?: ConsumableItem | null;
+  defaultClassification?: ConsumableClassification;
   onClose: () => void;
   onSave: (itemData: SaveConsumablePayload) => void | Promise<void>;
 }
@@ -49,6 +51,7 @@ function matchSupplierId(
 
 function AddEditConsumableDialogForm({
   initialItem,
+  defaultClassification,
   onClose,
   onSave,
 }: AddEditConsumableDialogFormProps) {
@@ -84,7 +87,7 @@ function AddEditConsumableDialogForm({
     () => initialItem?.category ?? ""
   );
   const [classification, setClassification] = useState<ConsumableClassification>(
-    () => initialItem?.classification ?? DEFAULT_CONSUMABLE_CLASSIFICATION
+    () => initialItem?.classification ?? defaultClassification ?? DEFAULT_CONSUMABLE_CLASSIFICATION
   );
   const [unit, setUnit] = useState(() => initialItem?.unit ?? "reams");
   const [currentQty, setCurrentQty] = useState(() =>
@@ -594,14 +597,16 @@ function AddEditConsumableDialogForm({
 export function AddEditConsumableDialog({
   isOpen,
   initialItem,
+  defaultClassification,
   onClose,
   onSave,
 }: AddEditConsumableDialogProps) {
   if (!isOpen) return null;
   return (
     <AddEditConsumableDialogForm
-      key={initialItem?.id ?? "new"}
+      key={initialItem?.id ?? `new-${defaultClassification ?? "default"}`}
       initialItem={initialItem}
+      defaultClassification={defaultClassification}
       onClose={onClose}
       onSave={onSave}
     />

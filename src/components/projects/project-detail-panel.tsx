@@ -498,50 +498,35 @@ export function ProjectDetailPanel({
               </p>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setProgressPrintOpen(true)}
-                className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer shadow-xs"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shadow-2xs"
                 title="Export progress report"
+                aria-label="Export progress report"
               >
-                <Flag className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
-                Progress
+                <Flag className="h-4 w-4 text-teal-600 dark:text-teal-400" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setPrintOpen(true)}
-                className="inline-flex items-center gap-1.5 h-8 px-2.5 text-[11px] font-bold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer shadow-xs"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shadow-2xs"
                 title="Export expense report"
+                aria-label="Export expense report"
               >
-                <Printer className="h-3.5 w-3.5" />
-                Expenses
+                <Receipt className="h-4 w-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => window.print()}
-
+                title="Print Project Dossier Report"
                 aria-label="Print Project Dossier Report"
-                className="relative group inline-flex items-center justify-center p-1.5 rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-2xs shrink-0"
               >
                 <Printer className="h-4 w-4" />
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
-                >
-                  Print Report (PDF)
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close project detail"
-                className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0"
-              >
-                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
@@ -1218,8 +1203,9 @@ export function ProjectDetailPanel({
           )}
         </div>
       </aside>
+    </div>
 
-      <AddEditExpenseDialog
+    <AddEditExpenseDialog
         isOpen={editExpense !== undefined}
         expense={editExpense ?? null}
         onClose={() => setEditExpense(undefined)}
@@ -1304,7 +1290,6 @@ export function ProjectDetailPanel({
         onConfirm={handleConfirmDeleteExpense}
         onClose={() => setDeleteExpenseTarget(null)}
       />
-    </div>
 
     <div className="hidden print:block">
       <IndividualProjectPrintableReport

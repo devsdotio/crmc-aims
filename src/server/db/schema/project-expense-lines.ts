@@ -12,7 +12,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
-
 import { projects } from "./projects";
 
 /**
@@ -69,6 +68,12 @@ export type ProjectExpenseMetadata = {
   assetName?: string;
   maintenanceLogCode?: string;
   writeOffDisposition?: "out_of_service" | "retired";
+  /** PO direct project delivery linkage */
+  poNumber?: string;
+  purchaseLotId?: string;
+  supplierName?: string | null;
+  lotCode?: string | null;
+  directProjectDelivery?: boolean;
 };
 
 export const projectExpenseLines = pgTable(

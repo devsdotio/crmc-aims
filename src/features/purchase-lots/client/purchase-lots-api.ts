@@ -36,6 +36,8 @@ export type CreatePurchaseOrderItemPayload = {
   purpose?: string;
   suggestedDealer?: string;
   supplierId?: string;
+  projectId?: string;
+  projectName?: string;
 };
 
 export type CreatePurchaseOrderPayload = {
@@ -46,6 +48,8 @@ export type CreatePurchaseOrderPayload = {
   supplierName?: string;
   departmentId?: string;
   departmentName?: string;
+  projectId?: string;
+  projectName?: string;
   purpose?: string;
   notes?: string;
   receiptUrl?: string | null;
