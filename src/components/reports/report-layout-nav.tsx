@@ -11,6 +11,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useReportTimeframe } from "./report-timeframe-context";
 
 const REPORT_TABS = [
   {
@@ -59,6 +60,15 @@ const REPORT_TABS = [
 
 export function ReportLayoutNav() {
   const pathname = usePathname();
+  const { timeframe } = useReportTimeframe();
+
+  const queryString = (() => {
+    const sp = new URLSearchParams();
+    if (timeframe.startDate) sp.set("startDate", timeframe.startDate);
+    if (timeframe.endDate) sp.set("endDate", timeframe.endDate);
+    const s = sp.toString();
+    return s ? `?${s}` : "";
+  })();
 
   return (
     <div className="w-full rounded-t-2xl border-t border-x border-b border-border/60 bg-[#F0F1F5] dark:bg-card/90 pt-1 sm:pt-1.5 px-1 sm:px-1.5 pb-0 shadow-2xs shrink-0 select-none overflow-hidden">
@@ -79,11 +89,12 @@ export function ReportLayoutNav() {
             : false;
           const showDivider = !isActive && !isNextActive && idx < REPORT_TABS.length - 1;
           const Icon = tab.icon;
+          const tabHref = `${tab.href}${queryString}`;
 
           return (
             <div key={tab.href} className="relative flex-1 min-w-0 flex items-end">
               <Link
-                href={tab.href}
+                href={tabHref}
                 title={tab.name}
                 className={cn(
                   "group relative flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 w-full h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-[13px] font-semibold transition-all duration-150 rounded-t-xl cursor-pointer min-w-0",

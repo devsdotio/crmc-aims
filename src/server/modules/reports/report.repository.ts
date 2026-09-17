@@ -227,10 +227,10 @@ export class ReportRepository {
       conditions.push(eq(assets.department, filters.departmentId));
     }
     if (filters.startDate) {
-      conditions.push(gte(assets.purchaseDate, filters.startDate));
+      conditions.push(sql`coalesce(${assets.purchaseDate}, ${assets.createdAt}::date::text) >= ${filters.startDate}`);
     }
     if (filters.endDate) {
-      conditions.push(lte(assets.purchaseDate, filters.endDate));
+      conditions.push(sql`coalesce(${assets.purchaseDate}, ${assets.createdAt}::date::text) <= ${filters.endDate}`);
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
@@ -492,21 +492,28 @@ export class ReportRepository {
       .from(consumables)
       .where(whereClause);
 
-    // 30d usage totals
+    // Usage totals for period
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const smConditions: SQL[] = [
+      eq(stockMovements.direction, "out"),
+      ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : []),
+    ];
+    if (filters.startDate) {
+      smConditions.push(gte(sql`${stockMovements.createdAt}::date`, filters.startDate));
+    } else {
+      smConditions.push(gte(stockMovements.createdAt, thirtyDaysAgo));
+    }
+    if (filters.endDate) {
+      smConditions.push(lte(sql`${stockMovements.createdAt}::date`, filters.endDate));
+    }
+
     const [dispatchSummary] = await db
       .select({
         totalQty: sql<number>`coalesce(sum(${stockMovements.qty}), 0)::int`,
         totalVal: sql<number>`coalesce(sum(${stockMovements.lineTotal}::numeric), 0)::float`,
       })
       .from(stockMovements)
-      .where(
-        and(
-          eq(stockMovements.direction, "out"),
-          gte(stockMovements.createdAt, thirtyDaysAgo),
-          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
-        )
-      );
+      .where(and(...smConditions));
 
     // Consumable inventory valuation from active lots
     const [consumableValuation] = await db
@@ -581,13 +588,7 @@ export class ReportRepository {
       })
       .from(stockMovements)
       .leftJoin(departments, eq(stockMovements.departmentId, departments.id))
-      .where(
-        and(
-          eq(stockMovements.direction, "out"),
-          gte(stockMovements.createdAt, thirtyDaysAgo),
-          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
-        )
-      )
+      .where(and(...smConditions))
       .groupBy(departments.name)
       .orderBy(sql`sum(${stockMovements.qty}) desc`)
       .limit(5);
@@ -768,10 +769,10 @@ export class ReportRepository {
       conditions.push(eq(borrowRequests.departmentId, filters.departmentId));
     }
     if (filters.startDate) {
-      conditions.push(gte(borrowRequests.requestedAt, new Date(filters.startDate)));
+      conditions.push(gte(sql`${borrowRequests.requestedAt}::date`, filters.startDate));
     }
     if (filters.endDate) {
-      conditions.push(lte(borrowRequests.requestedAt, new Date(filters.endDate)));
+      conditions.push(lte(sql`${borrowRequests.requestedAt}::date`, filters.endDate));
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
@@ -1015,10 +1016,14 @@ export class ReportRepository {
       );
     }
     if (filters.startDate) {
-      conditions.push(gte(projects.startDate, filters.startDate));
+      conditions.push(
+        sql`coalesce(${projects.startDate}, ${projects.createdAt}::date::text) >= ${filters.startDate}`
+      );
     }
     if (filters.endDate) {
-      conditions.push(lte(projects.startDate, filters.endDate));
+      conditions.push(
+        sql`coalesce(${projects.startDate}, ${projects.createdAt}::date::text) <= ${filters.endDate}`
+      );
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
@@ -1385,10 +1390,14 @@ export class ReportRepository {
       assetConditions.push(eq(assets.isSandbox, false));
     }
     if (filters.startDate) {
-      assetConditions.push(gte(assets.purchaseDate, filters.startDate));
+      assetConditions.push(
+        sql`coalesce(${assets.purchaseDate}, ${assets.createdAt}::date::text) >= ${filters.startDate}`
+      );
     }
     if (filters.endDate) {
-      assetConditions.push(lte(assets.purchaseDate, filters.endDate));
+      assetConditions.push(
+        sql`coalesce(${assets.purchaseDate}, ${assets.createdAt}::date::text) <= ${filters.endDate}`
+      );
     }
 
     const assetList = await db
