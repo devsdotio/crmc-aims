@@ -1102,6 +1102,7 @@ export class AssetService {
           resolvedByUserId: null,
           resolvedByName: null,
           repairCost: null,
+          repairParts: [],
           relatedBorrowLogCode: null,
           scheduledDate: null,
         },
@@ -1174,7 +1175,8 @@ export class AssetService {
         );
       }
 
-      const description =
+      const notes =
+        input.notes?.trim() ||
         input.description?.trim() ||
         "Flagged for maintenance inspection by Property Custodian.";
 
@@ -1201,13 +1203,14 @@ export class AssetService {
           dateLogged: todayDateString(),
           loggedByUserId: actor.userId,
           loggedByName: actor.displayName,
-          notes: [description, input.notes].filter(Boolean).join(" — "),
+          notes,
           isResolved: false,
           resolutionDate: null,
           resolutionNotes: null,
           resolvedByUserId: null,
           resolvedByName: null,
           repairCost: null,
+          repairParts: [],
           relatedBorrowLogCode: null,
           scheduledDate: null,
         },
@@ -1226,8 +1229,7 @@ export class AssetService {
           toHolder: next.currentHolder,
           payload: {
             via: "manual_flag",
-            description,
-            notes: input.notes ?? null,
+            notes,
             maintenanceLogCode: mntCode,
           },
         },

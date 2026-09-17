@@ -19,6 +19,7 @@ export type CreateMaintenancePayload = {
 export type ResolveMaintenancePayload = {
   resolutionNotes: string;
   repairCost?: string | number | null;
+  repairParts?: Array<{ name: string; cost?: string | number | null }>;
   resolutionDate?: string;
   technician?: string;
 };

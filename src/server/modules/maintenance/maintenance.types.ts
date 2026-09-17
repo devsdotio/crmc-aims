@@ -1,4 +1,4 @@
-import type { MaintenanceLogRow } from "@/server/db/schema";
+import type { MaintenanceLogRow, MaintenanceRepairPart } from "@/server/db/schema";
 
 export type MaintenanceLogDTO = {
   id: string;
@@ -17,6 +17,8 @@ export type MaintenanceLogDTO = {
   resolvedBy?: string;
   /** Optional PHP amount recorded at resolve time (null/omit = not recorded). */
   repairCost?: string | null;
+  /** Itemized parts recorded at resolve time. */
+  repairParts?: MaintenanceRepairPart[];
   relatedBorrowLogCode?: string;
   scheduledDate?: string;
 };

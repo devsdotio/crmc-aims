@@ -308,7 +308,6 @@ export default function Sidebar({
           name: "Maintenance Logs",
           href: "/maintenance-logs",
           icon: Wrench,
-          badgeText: "Beta",
           roles: ["admin", "staff"],
         },
         {

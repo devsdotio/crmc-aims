@@ -18,12 +18,19 @@ import { FlagForMaintenanceDialog } from "@/components/maintenance-logs/flag-for
 import { ResolveMaintenanceDialog } from "@/components/maintenance-logs/resolve-maintenance-dialog";
 import { useToast } from "@/components/providers/toast-context";
 import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-banner";
+import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 
 export function MaintenanceLogsView() {
   const searchParams = useSearchParams();
   const assetCodeParam = searchParams.get("assetCode")?.trim() ?? "";
-  const { data: records = [], isLoading } = useMaintenanceLogsQuery();
+  const {
+    data: records = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useMaintenanceLogsQuery();
   const { data: assets = [], isLoading: assetsLoading } = useAssetsQuery();
   const flagMutation = useCreateMaintenanceLogMutation();
   const resolveMutation = useResolveMaintenanceLogMutation();
@@ -145,11 +152,7 @@ export function MaintenanceLogsView() {
         assetId: flagData.assetId,
         assetCode: flagData.assetCode,
         assetName: flagData.assetName,
-        category: flagData.category as
-          | "computing"
-          | "transport"
-          | "av"
-          | "furniture",
+        category: flagData.category,
         condition: flagData.condition,
         notes: flagData.notes,
         scheduledDate: flagData.scheduledDate,
@@ -168,6 +171,7 @@ export function MaintenanceLogsView() {
       technician: string;
       resolutionDate: string;
       repairCost?: string | null;
+      repairParts?: Array<{ name: string; cost: string | null }>;
     }
   ) => {
     try {
@@ -177,6 +181,7 @@ export function MaintenanceLogsView() {
         technician: payload.technician,
         resolutionDate: payload.resolutionDate,
         repairCost: payload.repairCost,
+        repairParts: payload.repairParts,
       });
       toast.success("Maintenance log resolved.");
 
@@ -190,36 +195,30 @@ export function MaintenanceLogsView() {
   };
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md" data-theme="light">
-      {/* ── Top Header Banner ────────────────────────────────────────── */}
+    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:hidden" data-theme="light">
       <div className="px-4 md:px-6 pt-5 pb-3 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-4 border-b border-border">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-bold tracking-tight text-text">
-              Condition & Maintenance Logs
+              Condition &amp; Maintenance Logs
             </h1>
-            {isLoading ? (
-              <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
-                Loading flags…
-              </span>
-            ) : openCount > 0 ? (
-              <span className="px-2 py-0.5 text-xs font-bold bg-status-repair-bg/20 text-status-repair-text rounded-full border border-status-repair-bg/30">
-                {openCount} open attention items
-              </span>
-            ) : (
-              <span className="px-2 py-0.5 text-xs font-bold bg-status-active-bg/20 text-status-active-text rounded-full border border-status-active-bg/30">
-                All maintenance flags resolved
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+              {isLoading
+                ? "Loading…"
+                : `${filteredRecords.length} of ${records.length} logs`}
+            </span>
+            {!isLoading && openCount > 0 && (
+              <span className="px-2 py-0.5 text-xs font-bold bg-status-repair-bg/15 text-status-repair-text rounded-full border border-status-repair-bg/25">
+                {openCount} open
               </span>
             )}
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
-            Open repair flags, resolutions, and optional repair costs for assets marked needs repair.
+            Track repair flags, resolutions, and repair costs across the asset registry.
           </p>
         </div>
 
-        {/* Top Header Actions */}
-        <div className="flex items-center gap-2.5">
-          {canOperate && (
+        {canOperate && (
           <button
             type="button"
             onClick={() => setFlagDialogOpen(true)}
@@ -228,13 +227,22 @@ export function MaintenanceLogsView() {
             <Wrench className="h-4 w-4" strokeWidth={2.5} />
             Flag for Maintenance
           </button>
-          )}
-        </div>
+        )}
       </div>
 
       {!canOperate && <OperatorReadOnlyBanner />}
 
-      {/* ── Search & Filter Controls ──────────────────────────────────── */}
+      {isError && (
+        <QueryErrorBanner
+          message={
+            error instanceof Error
+              ? error.message
+              : "Failed to load maintenance logs."
+          }
+          onRetry={() => void refetch()}
+        />
+      )}
+
       <MaintenanceLogFilters
         filters={filters}
         onFilterChange={handleFilterChange}
@@ -242,7 +250,6 @@ export function MaintenanceLogsView() {
         openCount={openCount}
       />
 
-      {/* ── Internal Scrollable Log List Region ──────────────────────── */}
       <main className="flex-1 overflow-y-auto min-h-0 bg-bg">
         <MaintenanceLogList
           records={filteredRecords}

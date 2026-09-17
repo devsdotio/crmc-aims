@@ -15,26 +15,26 @@ const CONDITION_META: Record<
   { bg: string; text: string; label: string; icon: typeof CheckCircle2 }
 > = {
   good: {
-    bg: "bg-status-active-bg/20",
-    text: "text-status-active-text font-bold",
-    label: "Good Condition",
+    bg: "bg-status-active-bg",
+    text: "text-white font-bold",
+    label: "Good",
     icon: CheckCircle2,
   },
   needs_maintenance: {
-    bg: "bg-status-repair-bg/20",
-    text: "text-status-repair-text font-bold",
+    bg: "bg-status-repair-bg",
+    text: "text-white font-bold",
     label: "Needs Maintenance",
     icon: Wrench,
   },
   damaged: {
-    bg: "bg-status-outofservice-bg/20",
-    text: "text-status-outofservice-text font-bold",
-    label: "Damaged / Out of Service",
+    bg: "bg-status-outofservice-bg",
+    text: "text-white font-bold",
+    label: "Damaged",
     icon: AlertOctagon,
   },
   resolved: {
-    bg: "bg-status-retired-bg/20",
-    text: "text-status-retired-text font-bold",
+    bg: "bg-status-retired-bg",
+    text: "text-white font-bold",
     label: "Resolved",
     icon: CheckCheck,
   },
@@ -51,13 +51,13 @@ export function ConditionTag({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap",
+        "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] whitespace-nowrap",
         meta.bg,
         meta.text,
         className
       )}
     >
-      {showIcon && <Icon className="h-3.5 w-3.5 shrink-0" />}
+      {showIcon && <Icon className="h-3 w-3 shrink-0" />}
       <span>{meta.label}</span>
     </span>
   );
