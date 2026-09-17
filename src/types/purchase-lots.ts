@@ -59,4 +59,14 @@ export interface PurchaseLot {
   items?: POLineItemDetail[];
   /** Canonical QR payload for physical batch tags: `CRMC-AIMS-LOT:{lotCode}` */
   qrPayload?: string;
+  /**
+   * Active disbursement claim (non-cancelled voucher or petty cash).
+   * When set, this PO cannot be linked again.
+   */
+  disbursement?: {
+    kind: "voucher" | "petty_cash";
+    id: string;
+    code: string;
+    status: string;
+  } | null;
 }

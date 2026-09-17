@@ -19,6 +19,7 @@ import {
   type PettyCashListResponse,
 } from "./petty-cash-api";
 import { pettyCashQueryKeys } from "./query-keys";
+import { invalidateDomains } from "@/features/shared/cache-invalidation";
 
 /**
  * Real-time synchronization hook for petty cash vouchers.
@@ -117,6 +118,7 @@ export function useCreatePettyCashMutation(): UseMutationResult<
     mutationFn: (payload) => pettyCashApi.create(payload),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.all });
+      void invalidateDomains(qc, ["purchaseLots"]);
     },
   });
 }
@@ -132,6 +134,7 @@ export function useUpdatePettyCashMutation(): UseMutationResult<
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.all });
+      void invalidateDomains(qc, ["purchaseLots"]);
     },
   });
 }
@@ -147,6 +150,7 @@ export function useUpdatePettyCashStatusMutation(): UseMutationResult<
     onSuccess: (_data, { id }) => {
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.detail(id) });
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.all });
+      void invalidateDomains(qc, ["purchaseLots"]);
     },
   });
 }
@@ -161,6 +165,7 @@ export function useDeletePettyCashMutation(): UseMutationResult<
     mutationFn: (id: string) => pettyCashApi.delete(id),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.all });
+      void invalidateDomains(qc, ["purchaseLots"]);
     },
   });
 }

@@ -3,6 +3,7 @@ import type { ActorContext } from "@/server/shared/auth";
 import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 
+import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
 import { PettyCashRepository } from "./petty-cash.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import type { PettyCashDTO, ListPettyCashFilters } from "./petty-cash.types";
@@ -118,6 +119,11 @@ export class PettyCashService {
       }
     }
 
+    await assertPoAvailableForDisbursement(
+      input.purchaseOrderNumber,
+      actor.tenantId
+    );
+
     const row = await this.repo.create({
       tenantId: actor.tenantId,
       pcvNumber,
@@ -182,6 +188,14 @@ export class PettyCashService {
       if (conflict) {
         throw new ConflictError(`Petty cash voucher with code "${input.pcvNumber}" already exists.`);
       }
+    }
+
+    if (input.purchaseOrderNumber !== undefined) {
+      await assertPoAvailableForDisbursement(
+        input.purchaseOrderNumber,
+        actor?.tenantId,
+        { excludePettyCashId: id }
+      );
     }
 
     const updated = await this.repo.update(id, {

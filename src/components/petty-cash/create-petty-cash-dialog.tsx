@@ -98,7 +98,8 @@ export function CreatePettyCashDialog({
   } = useNextPcvCodeQuery(isOpen);
 
   const groupedPOs = useMemo(() => {
-    return groupLotsByPO(lots);
+    // Only POs that are not yet linked to an active voucher or petty cash.
+    return groupLotsByPO(lots).filter((po) => !po.representative.disbursement);
   }, [lots]);
 
   // Filtered PO list based on user search in the second column
@@ -965,7 +966,9 @@ export function CreatePettyCashDialog({
                       })
                     ) : (
                       <div className="p-8 text-center text-xs text-text-secondary">
-                        No purchase orders match your search.
+                        {poSearch.trim()
+                          ? "No available purchase orders match your search."
+                          : "No available purchase orders. POs already linked to a voucher or petty cash are hidden."}
                       </div>
                     )}
                   </div>

@@ -20,6 +20,7 @@ import type { ActorContext } from "@/server/shared/auth";
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
+import { listActivePoDisbursements } from "./po-disbursement";
 import type {
   CreatePurchaseLotInput,
   CreatePurchaseOrderInput,
@@ -222,7 +223,30 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     qrPayload: encodeLotQr(lotCode),
+    disbursement: null,
   };
+}
+
+async function withDisbursementClaims(
+  dtos: PurchaseLotDTO[],
+  tenantId?: string
+): Promise<PurchaseLotDTO[]> {
+  if (dtos.length === 0) return dtos;
+  const claims = await listActivePoDisbursements(tenantId);
+  return dtos.map((dto) => {
+    const claim = claims.get(dto.poNumber.trim().toLowerCase()) ?? null;
+    return {
+      ...dto,
+      disbursement: claim
+        ? {
+            kind: claim.kind,
+            id: claim.id,
+            code: claim.code,
+            status: claim.status,
+          }
+        : null,
+    };
+  });
 }
 
 export class PurchaseLotService {
@@ -234,19 +258,23 @@ export class PurchaseLotService {
   async list(rawQuery: unknown, actorTenantId?: string): Promise<PurchaseLotDTO[]> {
     const filters = listPurchaseLotsQuerySchema.parse(rawQuery ?? {});
     const rows = await this.repo.list(filters, undefined, actorTenantId);
-    const dtos = rows.map(toPurchaseLotDTO);
+    let dtos = rows.map(toPurchaseLotDTO);
 
     if (filters.status) {
-      return dtos.filter((d) => d.status === filters.status);
+      dtos = dtos.filter((d) => d.status === filters.status);
     }
-    return dtos;
+    return withDisbursementClaims(dtos, actorTenantId);
   }
 
   async getById(rawId: string, actorTenantId?: string): Promise<PurchaseLotDTO> {
     const id = purchaseLotIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", id);
-    return toPurchaseLotDTO(row);
+    const [dto] = await withDisbursementClaims(
+      [toPurchaseLotDTO(row)],
+      actorTenantId
+    );
+    return dto;
   }
 
   async getByCode(rawCode: string, actorTenantId?: string): Promise<PurchaseLotDTO> {
@@ -256,7 +284,11 @@ export class PurchaseLotService {
     }
     const row = await this.repo.findByLotCode(parsed.code, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", parsed.code);
-    return toPurchaseLotDTO(row);
+    const [dto] = await withDisbursementClaims(
+      [toPurchaseLotDTO(row)],
+      actorTenantId
+    );
+    return dto;
   }
 
   /**

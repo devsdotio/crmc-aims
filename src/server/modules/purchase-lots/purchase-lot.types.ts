@@ -42,6 +42,12 @@ export type PurchaseLotDTO = {
   items?: POLineItemDetail[];
   /** Print/scan payload: `CRMC-AIMS-LOT:{lotCode}` */
   qrPayload: string;
+  disbursement?: {
+    kind: "voucher" | "petty_cash";
+    id: string;
+    code: string;
+    status: string;
+  } | null;
 };
 
 export type ListPurchaseLotFilters = {

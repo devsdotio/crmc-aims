@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 import type { VoucherType } from "@/types/vouchers";
 
+import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
 import { VoucherRepository } from "./voucher.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import type { VoucherDTO, ListVoucherFilters } from "./voucher.types";
@@ -136,6 +137,11 @@ export class VoucherService {
       }
     }
 
+    await assertPoAvailableForDisbursement(
+      input.purchaseOrderNumber,
+      actor.tenantId
+    );
+
     const row = await this.repo.create({
       tenantId: actor.tenantId,
       voucherCode,
@@ -207,6 +213,14 @@ export class VoucherService {
           `Voucher with code "${input.voucherCode}" already exists.`
         );
       }
+    }
+
+    if (input.purchaseOrderNumber !== undefined) {
+      await assertPoAvailableForDisbursement(
+        input.purchaseOrderNumber,
+        actor?.tenantId,
+        { excludeVoucherId: id }
+      );
     }
 
     const updated = await this.repo.update(id, {

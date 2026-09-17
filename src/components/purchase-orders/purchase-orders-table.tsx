@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import {
   formatRelativeTime,
 } from "@/components/audit-logs/audit-log-utils";
+import { PoDisbursementBadge } from "./po-disbursement-badge";
 
 type SortField =
   | "createdAt"
@@ -453,7 +454,10 @@ export function PurchaseOrdersTable({
 
                 {/* Status Badge */}
                 <td className="px-3 sm:px-4 py-3.5 whitespace-nowrap align-middle w-[24%] sm:w-[18%] md:w-[14%] lg:w-[12%]">
-                  <StatusBadge status={lot.status} />
+                  <div className="flex flex-col items-start gap-1">
+                    <StatusBadge status={lot.status} />
+                    <PoDisbursementBadge disbursement={lot.disbursement} />
+                  </div>
                   {/* On small mobile screens (< sm), show inline quantity badge here */}
                   <div className="sm:hidden mt-1 font-mono text-[11px] text-text-secondary font-medium">
                     {group.totalQuantity}{" "}
