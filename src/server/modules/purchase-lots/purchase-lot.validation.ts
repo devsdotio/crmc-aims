@@ -52,24 +52,38 @@ export const createPurchaseOrderItemSchema = z.object({
   projectName: z.string().trim().max(255).optional(),
 });
 
-export const createPurchaseOrderSchema = z.object({
-  poNumber: z.string().trim().max(100).optional(),
-  poDate: z.string().min(1, "Order date is required."),
-  requestedBy: z.string().trim().min(1, "Requested by is required."),
-  supplierId: z.string().uuid().optional(),
-  supplierName: z.string().trim().optional(),
-  departmentId: z.string().uuid().optional(),
-  departmentName: z.string().trim().max(255).optional(),
-  projectId: z.string().uuid().optional(),
-  projectName: z.string().trim().max(255).optional(),
-  purpose: z.string().trim().optional(),
-  notes: z.string().trim().optional(),
-  receiptUrl: z.string().trim().nullable().optional(),
-  status: purchaseOrderStatusSchema.default("pending_approval"),
-  items: z
-    .array(createPurchaseOrderItemSchema)
-    .min(1, "Please provide at least one line item."),
-});
+export const createPurchaseOrderSchema = z
+  .object({
+    poNumber: z.string().trim().max(100).optional(),
+    poDate: z.string().min(1, "Order date is required."),
+    requestedBy: z.string().trim().min(1, "Requested by is required."),
+    supplierId: z.string().uuid().optional(),
+    supplierName: z.string().trim().optional(),
+    departmentId: z.string().uuid().optional(),
+    departmentName: z.string().trim().max(255).optional(),
+    projectId: z.string().uuid().optional(),
+    projectName: z.string().trim().max(255).optional(),
+    purpose: z.string().trim().optional(),
+    notes: z.string().trim().optional(),
+    receiptUrl: z.string().trim().nullable().optional(),
+    status: purchaseOrderStatusSchema.default("pending_approval"),
+    items: z
+      .array(createPurchaseOrderItemSchema)
+      .min(1, "Please provide at least one line item."),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.projectId) return;
+    data.items.forEach((item, index) => {
+      if (item.itemType !== "consumable") {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Direct project procurement supports consumable materials only.",
+          path: ["items", index, "itemType"],
+        });
+      }
+    });
+  });
 
 export const updatePurchaseOrderStatusSchema = z.object({
   status: purchaseOrderStatusSchema,

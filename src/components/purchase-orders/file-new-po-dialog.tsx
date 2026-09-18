@@ -38,6 +38,7 @@ import { useAssetsQuery } from "@/features/assets/client";
 import { useProjectsQuery } from "@/features/projects/client";
 import { useCreatePurchaseOrderMutation } from "@/features/purchase-lots/client";
 import { useToast } from "@/components/providers/toast-context";
+import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
 import {
   filterMoneyInput,
@@ -52,6 +53,7 @@ import {
   DEFAULT_CONSUMABLE_CLASSIFICATION,
   type ConsumableClassification,
 } from "@/lib/consumable-classification";
+import type { POLockedScope } from "@/app/(private)/purchase-orders/types";
 
 interface FileNewPODialogProps {
   isOpen: boolean;
@@ -60,6 +62,9 @@ interface FileNewPODialogProps {
   defaultPoType?: POType;
   defaultPurpose?: string;
   defaultProjectId?: string;
+  defaultClassification?: ConsumableClassification;
+  /** When set (from a PO subpage), locks type / destination / classification. */
+  lockedScope?: POLockedScope;
 }
 
 export type POType = "consumable" | "asset";
@@ -84,12 +89,38 @@ interface POLineItemForm {
   purpose: string;
 }
 
-type WizardStep = "details" | "items" | "review";
+type WizardStep = "routing" | "metadata" | "items" | "review";
 
-const STEPS: Array<{ id: WizardStep; label: string; description: string; icon: React.ElementType }> = [
-  { id: "details", label: "PO Details", description: "Type, department & purpose", icon: FileText },
-  { id: "items", label: "Line Items", description: "Items, suppliers & costs", icon: Boxes },
-  { id: "review", label: "Final Review", description: "Verify order specifications", icon: CheckCircle2 },
+const STEPS: Array<{
+  id: WizardStep;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+}> = [
+  {
+    id: "routing",
+    label: "Classification",
+    description: "Type & destination",
+    icon: Tag,
+  },
+  {
+    id: "metadata",
+    label: "Order Info",
+    description: "Number, dept & purpose",
+    icon: FileText,
+  },
+  {
+    id: "items",
+    label: "Line Items",
+    description: "Catalog, qty & costs",
+    icon: Boxes,
+  },
+  {
+    id: "review",
+    label: "Review",
+    description: "Confirm & file",
+    icon: CheckCircle2,
+  },
 ];
 
 let poLineRowIdSeq = 0;
@@ -102,14 +133,14 @@ function createPoLineRowId(): string {
 function generateInitialRow(
   poType: POType = "consumable",
   isNew = false,
-  isProject = false
+  classification: ConsumableClassification = DEFAULT_CONSUMABLE_CLASSIFICATION
 ): POLineItemForm {
   return {
     id: createPoLineRowId(),
     isNew,
     name: "",
     category: "",
-    classification: isProject ? "material" : DEFAULT_CONSUMABLE_CLASSIFICATION,
+    classification,
     unit: poType === "asset" ? "unit" : "pcs",
     minThreshold: 5,
     location: "Main Property Supply",
@@ -129,6 +160,8 @@ export function FileNewPODialog({
   defaultPoType,
   defaultPurpose,
   defaultProjectId,
+  defaultClassification,
+  lockedScope,
 }: FileNewPODialogProps) {
   const { data: me } = useMeQuery();
   // Prefetch while the PO page is mounted so the department select is warm
@@ -162,6 +195,7 @@ export function FileNewPODialog({
 
   const createPOMutation = useCreatePurchaseOrderMutation();
   const toast = useToast();
+  const { confirm } = useConfirm();
 
   const consumableCategories = useMemo(
     () => allCategories.filter((c) => c.type === "consumable"),
@@ -176,11 +210,14 @@ export function FileNewPODialog({
   const defaultAssetCategory = assetCategories[0]?.name ?? "Equipment";
 
   // Wizard state
-  const [currentStep, setCurrentStep] = useState<WizardStep>("details");
+  const [currentStep, setCurrentStep] = useState<WizardStep>("routing");
 
   // Step 1 states
   const [poType, setPoType] = useState<POType>("consumable");
   const [destinationKind, setDestinationKind] = useState<"department" | "project">("department");
+  const [poClassification, setPoClassification] = useState<ConsumableClassification>(
+    DEFAULT_CONSUMABLE_CLASSIFICATION
+  );
   const [targetProjectId, setTargetProjectId] = useState("");
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === targetProjectId),
@@ -194,9 +231,16 @@ export function FileNewPODialog({
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
 
+  const effectiveClassification: ConsumableClassification =
+    destinationKind === "project" ? "material" : poClassification;
+
   // Step 2 Line items & catalog quick-add states
   const [items, setItems] = useState<POLineItemForm[]>([
-    generateInitialRow("consumable", false, Boolean(defaultProjectId)),
+    generateInitialRow(
+      "consumable",
+      false,
+      defaultProjectId ? "material" : DEFAULT_CONSUMABLE_CLASSIFICATION
+    ),
   ]);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [catalogCategoryFilter, setCatalogCategoryFilter] = useState("all");
@@ -206,16 +250,35 @@ export function FileNewPODialog({
 
   useEffect(() => {
     if (isOpen) {
-      const initialType = defaultPoType || "consumable";
-      const isProj = Boolean(defaultProjectId);
-      setCurrentStep("details");
+      const isProj = Boolean(defaultProjectId) || lockedScope === "project";
+      const initialType: POType =
+        lockedScope === "asset"
+          ? "asset"
+          : lockedScope === "supply" ||
+            lockedScope === "material" ||
+            lockedScope === "project"
+          ? "consumable"
+          : isProj
+          ? "consumable"
+          : defaultPoType || "consumable";
+      const initialClassification: ConsumableClassification =
+        lockedScope === "supply"
+          ? "supply"
+          : lockedScope === "material" || lockedScope === "project" || isProj
+          ? "material"
+          : defaultClassification || DEFAULT_CONSUMABLE_CLASSIFICATION;
+      const initialDestination: "department" | "project" =
+        lockedScope === "project" || isProj ? "project" : "department";
+
+      setCurrentStep("routing");
       setPoType(initialType);
-      setDestinationKind(isProj ? "project" : "department");
+      setDestinationKind(initialDestination);
+      setPoClassification(initialClassification);
       setTargetProjectId(defaultProjectId || "");
       setPoNumberMode("auto");
       setCustomPoNumber("");
       setPoDate(new Date().toISOString().split("T")[0]);
-      setItems([generateInitialRow(initialType, false, isProj)]);
+      setItems([generateInitialRow(initialType, false, initialClassification)]);
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setErrorMessage(null);
@@ -233,10 +296,37 @@ export function FileNewPODialog({
       setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
     }
-  }, [isOpen, me?.departmentId, defaultPoType, defaultPurpose, defaultProjectId, projects, departments]);
+  }, [
+    isOpen,
+    me?.departmentId,
+    defaultPoType,
+    defaultPurpose,
+    defaultProjectId,
+    defaultClassification,
+    lockedScope,
+    projects,
+    departments,
+  ]);
+
+  const isScopeLocked = Boolean(lockedScope);
+  const isTypeLocked =
+    lockedScope === "asset" ||
+    lockedScope === "supply" ||
+    lockedScope === "material" ||
+    lockedScope === "project";
+  const isDestinationLocked =
+    lockedScope === "supply" ||
+    lockedScope === "material" ||
+    lockedScope === "asset" ||
+    lockedScope === "project";
+  const isClassificationLocked =
+    lockedScope === "supply" ||
+    lockedScope === "material" ||
+    lockedScope === "project";
 
   // Safe Close Guard to prevent accidental data loss
-  const handleSafeClose = () => {
+  const handleSafeClose = async () => {
+    if (isSubmitting) return;
     const hasData =
       Boolean(customPoNumber.trim()) ||
       Boolean(generalPurpose.trim()) ||
@@ -245,9 +335,14 @@ export function FileNewPODialog({
       items.some((i) => Boolean(i.name.trim()) || Boolean(i.consumableId) || Boolean(i.assetId));
 
     if (hasData) {
-      const confirmed = window.confirm(
-        "Are you sure you want to discard this Purchase Order? All entered details and line items will be lost."
-      );
+      const confirmed = await confirm({
+        title: "Discard this Purchase Order?",
+        description:
+          "You have unsaved changes. Closing will discard all entered details and line items and cannot be undone.",
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        variant: "destructive",
+      });
       if (!confirmed) return;
     }
     onClose();
@@ -255,28 +350,60 @@ export function FileNewPODialog({
 
   // Handle change of PO Type in Step 1 (resets items accordingly)
   const handlePoTypeChange = (newType: POType) => {
+    if (isTypeLocked) return;
     if (newType === poType) return;
+    if (destinationKind === "project" && newType === "asset") {
+      setErrorMessage(
+        "Direct project procurement supports consumable materials only. Switch destination to Warehouse Inventory to file an asset PO."
+      );
+      return;
+    }
+    setErrorMessage(null);
     setPoType(newType);
     setCatalogSearch("");
     setCatalogCategoryFilter("all");
-    setItems([generateInitialRow(newType, false, destinationKind === "project")]);
+    const classification =
+      newType === "asset"
+        ? DEFAULT_CONSUMABLE_CLASSIFICATION
+        : effectiveClassification;
+    setItems([generateInitialRow(newType, false, classification)]);
   };
 
   const handleDestinationKindChange = (newKind: "department" | "project") => {
+    if (isDestinationLocked) return;
     if (newKind === destinationKind) return;
     setDestinationKind(newKind);
+    setErrorMessage(null);
     if (newKind === "project") {
-      setItems((prev) =>
-        prev.map((it) => ({
-          ...it,
-          classification: "material",
-        }))
-      );
+      setPoType("consumable");
+      setCatalogSearch("");
+      setCatalogCategoryFilter("all");
+      setItems([generateInitialRow("consumable", false, "material")]);
+    } else {
+      setTargetProjectId("");
+      if (poType === "asset") {
+        setItems([generateInitialRow("asset", false, poClassification)]);
+      } else {
+        setItems((prev) =>
+          prev.map((it) => ({
+            ...it,
+            classification: poClassification,
+          }))
+        );
+      }
     }
   };
 
+  const handlePoClassificationChange = (next: ConsumableClassification) => {
+    if (isClassificationLocked || destinationKind === "project") return;
+    if (next === poClassification) return;
+    setPoClassification(next);
+    setCatalogSearch("");
+    setItems([generateInitialRow(poType, false, next)]);
+  };
+
   const handleAddItem = (isNew = false) => {
-    const newRow = generateInitialRow(poType, isNew, destinationKind === "project");
+    const newRow = generateInitialRow(poType, isNew, effectiveClassification);
     if (isNew) {
       newRow.category = poType === "asset" ? defaultAssetCategory : defaultConsumableCategory;
     }
@@ -287,7 +414,7 @@ export function FileNewPODialog({
     if (items.length > 1) {
       setItems((prev) => prev.filter((item) => item.id !== id));
     } else {
-      setItems([generateInitialRow(poType, false)]);
+      setItems([generateInitialRow(poType, false, effectiveClassification)]);
       toast.info("Cleared line item inputs");
     }
   };
@@ -296,7 +423,7 @@ export function FileNewPODialog({
     if (items.length > 1) {
       setItems((prev) => prev.filter((it) => it.id !== id));
     } else {
-      setItems([generateInitialRow(poType, false)]);
+      setItems([generateInitialRow(poType, false, effectiveClassification)]);
     }
     toast.info("Unselected item and erased inputs");
   };
@@ -316,7 +443,7 @@ export function FileNewPODialog({
               ? defaultAssetCategory
               : defaultConsumableCategory
             : "",
-          classification: DEFAULT_CONSUMABLE_CLASSIFICATION,
+          classification: effectiveClassification,
           unit: poType === "asset" ? "unit" : "pcs",
         };
       })
@@ -325,6 +452,16 @@ export function FileNewPODialog({
 
   // Quick-Add & Quick-Unselect from Catalog Cards
   const handleQuickAddConsumable = (c: (typeof consumables)[number]) => {
+    const itemClass =
+      (c.classification as ConsumableClassification | undefined) ??
+      DEFAULT_CONSUMABLE_CLASSIFICATION;
+    if (itemClass !== effectiveClassification) {
+      toast.error(
+        `"${c.name}" is ${CONSUMABLE_CLASSIFICATION_LABELS[itemClass]}. This PO is locked to ${CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]}.`
+      );
+      return;
+    }
+
     const matchedSup = suppliers.find(
       (s) =>
         s.name.toLowerCase() === (c.supplier || "").toLowerCase() ||
@@ -336,7 +473,7 @@ export function FileNewPODialog({
       if (items.length > 1) {
         setItems((prev) => prev.filter((_, idx) => idx !== existingIdx));
       } else {
-        setItems([generateInitialRow(poType, false)]);
+        setItems([generateInitialRow(poType, false, effectiveClassification)]);
       }
       toast.info(`Unselected "${c.name}" and erased inputs`);
       return;
@@ -354,7 +491,7 @@ export function FileNewPODialog({
       consumableId: c.id,
       name: c.name,
       category: c.category,
-      classification: c.classification ?? DEFAULT_CONSUMABLE_CLASSIFICATION,
+      classification: effectiveClassification,
       unit: c.unit || "pcs",
       minThreshold: c.minThreshold || 5,
       location: c.location || "Main Property Storage",
@@ -381,7 +518,7 @@ export function FileNewPODialog({
       if (items.length > 1) {
         setItems((prev) => prev.filter((_, idx) => idx !== existingIdx));
       } else {
-        setItems([generateInitialRow(poType, false)]);
+        setItems([generateInitialRow(poType, false, effectiveClassification)]);
       }
       toast.info(`Unselected "${a.name}" and erased inputs`);
       return;
@@ -399,7 +536,7 @@ export function FileNewPODialog({
       assetId: a.id,
       name: a.name,
       category: a.category,
-      classification: DEFAULT_CONSUMABLE_CLASSIFICATION,
+      classification: effectiveClassification,
       unit: "unit",
       minThreshold: 5,
       location: a.location || "Main Property Storage",
@@ -423,6 +560,15 @@ export function FileNewPODialog({
   const handleSelectExistingConsumable = (id: string, consumableId: string) => {
     const matched = consumables.find((c) => c.id === consumableId);
     if (!matched) return;
+    const matchedClassification =
+      (matched.classification as ConsumableClassification | undefined) ??
+      DEFAULT_CONSUMABLE_CLASSIFICATION;
+    if (matchedClassification !== effectiveClassification) {
+      toast.error(
+        `"${matched.name}" is classified as ${CONSUMABLE_CLASSIFICATION_LABELS[matchedClassification]}. This PO is locked to ${CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]}.`
+      );
+      return;
+    }
     const supObj = suppliers.find(
       (s) =>
         s.name.toLowerCase() === (matched.supplier || "").toLowerCase() ||
@@ -436,8 +582,7 @@ export function FileNewPODialog({
           consumableId: matched.id,
           name: matched.name,
           category: matched.category,
-          classification:
-            matched.classification ?? DEFAULT_CONSUMABLE_CLASSIFICATION,
+          classification: effectiveClassification,
           unit: matched.unit,
           location: matched.location,
           suggestedDealer: matched.supplier || item.suggestedDealer || supObj?.name || "",
@@ -519,6 +664,11 @@ export function FileNewPODialog({
   // Filtered Catalog Items for Click-to-Add
   const filteredConsumableCatalog = useMemo(() => {
     return consumables.filter((c) => {
+      const itemClass =
+        (c.classification as ConsumableClassification | undefined) ??
+        DEFAULT_CONSUMABLE_CLASSIFICATION;
+      if (itemClass !== effectiveClassification) return false;
+
       const q = catalogSearch.toLowerCase().trim();
       const matchQuery =
         !q ||
@@ -532,7 +682,12 @@ export function FileNewPODialog({
 
       return matchQuery && matchCategory;
     });
-  }, [consumables, catalogSearch, catalogCategoryFilter]);
+  }, [
+    consumables,
+    catalogSearch,
+    catalogCategoryFilter,
+    effectiveClassification,
+  ]);
 
   const filteredAssetCatalog = useMemo(() => {
     return assetsList.filter((a) => {
@@ -551,13 +706,31 @@ export function FileNewPODialog({
     });
   }, [assetsList, catalogSearch, catalogCategoryFilter]);
 
-  // Step 1 Validation
-  const validateStep1 = (): boolean => {
+  // Step 1 — classification / destination
+  const validateRouting = (): boolean => {
     setErrorMessage(null);
-    if (destinationKind === "project" && !targetProjectId.trim()) {
-      setErrorMessage("Please select a target project for this Project Purchase Order.");
+    if (destinationKind === "project") {
+      if (poType !== "consumable") {
+        setErrorMessage(
+          "Direct project procurement supports consumable materials only."
+        );
+        return false;
+      }
+      if (!targetProjectId.trim()) {
+        setErrorMessage("Please select a target project for this Project Purchase Order.");
+        return false;
+      }
+    }
+    if (poType === "consumable" && destinationKind === "department" && !poClassification) {
+      setErrorMessage("Select whether this PO is for Supplies or Materials.");
       return false;
     }
+    return true;
+  };
+
+  // Step 2 — order metadata
+  const validateMetadata = (): boolean => {
+    setErrorMessage(null);
     if (poNumberMode === "manual" && !customPoNumber.trim()) {
       setErrorMessage("Please enter a manual PO Number or switch to Auto-generate.");
       return false;
@@ -577,8 +750,8 @@ export function FileNewPODialog({
     return true;
   };
 
-  // Step 2 Validation
-  const validateStep2 = (): boolean => {
+  // Step 3 — line items
+  const validateItems = (): boolean => {
     setErrorMessage(null);
     if (items.length === 0) {
       setErrorMessage("Please add at least one line item.");
@@ -606,23 +779,39 @@ export function FileNewPODialog({
     return true;
   };
 
-  const handleNextFromDetails = () => {
-    if (validateStep1()) {
-      setCurrentStep("items");
-    }
+  const canJumpToStep = (target: WizardStep): boolean => {
+    const targetIdx = STEPS.findIndex((s) => s.id === target);
+    if (targetIdx <= 0) return true;
+    if (targetIdx >= 1 && !validateRouting()) return false;
+    if (targetIdx >= 2 && !validateMetadata()) return false;
+    if (targetIdx >= 3 && !validateItems()) return false;
+    return true;
+  };
+
+  const handleNextFromRouting = () => {
+    if (validateRouting()) setCurrentStep("metadata");
+  };
+
+  const handleNextFromMetadata = () => {
+    if (validateMetadata()) setCurrentStep("items");
   };
 
   const handleNextFromItems = () => {
-    if (validateStep2()) {
-      setCurrentStep("review");
-    }
+    if (validateItems()) setCurrentStep("review");
+  };
+
+  const handleBack = () => {
+    setErrorMessage(null);
+    if (currentStep === "review") setCurrentStep("items");
+    else if (currentStep === "items") setCurrentStep("metadata");
+    else if (currentStep === "metadata") setCurrentStep("routing");
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
 
-    if (!validateStep1() || !validateStep2()) {
+    if (!validateRouting() || !validateMetadata() || !validateItems()) {
       return;
     }
 
@@ -645,11 +834,7 @@ export function FileNewPODialog({
           isNewItem: item.isNew,
           name: item.name.trim(),
           category: item.category.trim() || (isAsset ? defaultAssetCategory : defaultConsumableCategory),
-          classification: !isAsset
-            ? destinationKind === "project"
-              ? "material"
-              : item.classification || DEFAULT_CONSUMABLE_CLASSIFICATION
-            : undefined,
+          classification: !isAsset ? effectiveClassification : undefined,
           unit: item.unit || (isAsset ? "unit" : "pcs"),
           minThreshold: item.minThreshold || 5,
           location: item.location || "Main Property Storage",
@@ -733,7 +918,7 @@ export function FileNewPODialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-po-title"
-        className="relative w-full max-w-4xl h-[92vh] max-h-205 min-h-160 rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-5xl h-[88vh] max-h-200 min-h-140 rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
       >
         {/* Header with Title */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-bg-subtle/50 shrink-0">
@@ -752,7 +937,7 @@ export function FileNewPODialog({
           </div>
           <button
             type="button"
-            onClick={handleSafeClose}
+            onClick={() => void handleSafeClose()}
             aria-label="Close dialog"
             className="p-1 rounded-lg text-text-secondary hover:text-text hover:bg-border/60 transition-colors cursor-pointer"
           >
@@ -760,68 +945,97 @@ export function FileNewPODialog({
           </button>
         </div>
 
-        {/* 3-Step Wizard Navigation Stepper */}
-        <div className="px-6 py-3 bg-card border-b border-border shrink-0">
-          <div className="flex items-center justify-between max-w-2xl mx-auto relative">
-            {STEPS.map((step, idx) => {
-              const Icon = step.icon;
-              const isPassed = currentStepIdx > idx;
-              const isCurrent = currentStepIdx === idx;
+        {/* 4-Step Wizard Timeline */}
+        <div className="px-5 sm:px-8 py-4 bg-card border-b border-border shrink-0">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
+              Step {currentStepIdx + 1} of {STEPS.length}
+            </p>
+            <p className="text-[11px] text-text-secondary truncate">
+              {STEPS[currentStepIdx]?.label}
+              <span className="hidden sm:inline text-text-secondary/80">
+                {" "}
+                · {STEPS[currentStepIdx]?.description}
+              </span>
+            </p>
+          </div>
 
-              return (
-                <React.Fragment key={step.id}>
-                  {/* Step Button */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (idx === 0) setCurrentStep("details");
-                      else if (idx === 1 && validateStep1()) setCurrentStep("items");
-                      else if (idx === 2 && validateStep1() && validateStep2()) setCurrentStep("review");
-                    }}
-                    className={cn(
-                      "flex items-center gap-2.5 group cursor-pointer transition-all text-left",
-                      isCurrent ? "opacity-100" : isPassed ? "opacity-90" : "opacity-50"
-                    )}
-                  >
-                    <div
+          <div className="relative">
+            {/* Track — inset to align with step circle centers */}
+            <div
+              className="absolute left-[12.5%] right-[12.5%] top-5 h-1 rounded-full bg-border"
+              aria-hidden="true"
+            />
+            {/* Progress fill */}
+            <div
+              className="absolute left-[12.5%] top-5 h-1 rounded-full bg-accent transition-all duration-300 ease-out"
+              style={{
+                width:
+                  STEPS.length <= 1
+                    ? "0%"
+                    : `calc(${(currentStepIdx / (STEPS.length - 1)) * 75}%)`,
+              }}
+              aria-hidden="true"
+            />
+
+            <ol className="relative grid grid-cols-4 gap-2">
+              {STEPS.map((step, idx) => {
+                const Icon = step.icon;
+                const isPassed = currentStepIdx > idx;
+                const isCurrent = currentStepIdx === idx;
+
+                return (
+                  <li key={step.id} className="flex flex-col items-center text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (idx <= currentStepIdx) {
+                          setErrorMessage(null);
+                          setCurrentStep(step.id);
+                          return;
+                        }
+                        if (canJumpToStep(step.id)) setCurrentStep(step.id);
+                      }}
+                      aria-current={isCurrent ? "step" : undefined}
                       className={cn(
-                        "h-8 w-8 rounded-full flex items-center justify-center border font-bold text-xs transition-all",
-                        isPassed
-                          ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/40"
-                          : isCurrent
-                          ? "bg-accent text-accent-foreground border-accent shadow-xs scale-105"
-                          : "bg-bg-subtle text-text-secondary border-border"
+                        "group flex flex-col items-center gap-1.5 cursor-pointer transition-all",
+                        isCurrent ? "opacity-100" : isPassed ? "opacity-95" : "opacity-55 hover:opacity-80"
                       )}
                     >
-                      {isPassed ? <Check className="h-4 w-4 stroke-3" /> : <Icon className="h-4 w-4" />}
-                    </div>
-                    <div className="hidden sm:block">
                       <span
                         className={cn(
-                          "text-xs font-bold block leading-none",
-                          isCurrent ? "text-text" : "text-text-secondary"
+                          "relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-2 font-bold text-xs transition-all",
+                          isPassed
+                            ? "bg-emerald-500 text-white border-emerald-500 shadow-xs"
+                            : isCurrent
+                            ? "bg-accent text-accent-foreground border-accent shadow-md ring-4 ring-accent/20 scale-105"
+                            : "bg-card text-text-secondary border-border"
                         )}
                       >
-                        {step.label}
+                        {isPassed ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <Icon className="h-4 w-4" />
+                        )}
                       </span>
-                      <span className="text-[10px] text-text-secondary mt-0.5 block leading-none">
-                        {step.description}
+                      <span className="min-w-0 px-0.5">
+                        <span
+                          className={cn(
+                            "block text-[11px] font-bold leading-tight",
+                            isCurrent ? "text-text" : "text-text-secondary"
+                          )}
+                        >
+                          {step.label}
+                        </span>
+                        <span className="hidden md:block text-[10px] text-text-secondary leading-tight mt-0.5">
+                          {step.description}
+                        </span>
                       </span>
-                    </div>
-                  </button>
-
-                  {/* Connector Line */}
-                  {idx < STEPS.length - 1 && (
-                    <div
-                      className={cn(
-                        "flex-1 h-0.5 mx-3 sm:mx-4 transition-colors",
-                        currentStepIdx > idx ? "bg-accent" : "bg-border"
-                      )}
-                    />
-                  )}
-                </React.Fragment>
-              );
-            })}
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </div>
 
@@ -834,18 +1048,48 @@ export function FileNewPODialog({
             </div>
           )}
 
-          {/* ================= STEP 1: PO DETAILS & ITEM TYPE ================= */}
-          {currentStep === "details" && (
+          {/* ================= STEP 1: CLASSIFICATION & DESTINATION ================= */}
+          {currentStep === "routing" && (
             <div className="space-y-3 animate-in fade-in duration-200">
-              {/* 1. Item Classification Selector (Consumables vs Assets) */}
+              {isScopeLocked && (
+                <div className="p-3 rounded-xl border border-accent/30 bg-accent/10 text-text flex items-start gap-2.5 shadow-2xs">
+                  <Lock className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
+                  <div>
+                    <span className="font-bold text-xs block">
+                      Scoped from{" "}
+                      {lockedScope === "supply"
+                        ? "Supplies"
+                        : lockedScope === "material"
+                        ? "Materials"
+                        : lockedScope === "asset"
+                        ? "Assets"
+                        : "Projects"}{" "}
+                      page
+                    </span>
+                    <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
+                      {lockedScope === "supply"
+                        ? "This PO will stock warehouse Consumable Supplies. Type and classification are locked."
+                        : lockedScope === "material"
+                        ? "This PO will stock warehouse Consumable Materials. Type and classification are locked."
+                        : lockedScope === "asset"
+                        ? "This PO will register fixed assets in inventory. Item type is locked."
+                        : "This PO will credit project materials on delivery (not warehouse stock). Destination and classification are locked."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* 1. What are you buying? */}
               <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                     <Tag className="h-3.5 w-3.5 text-accent" />
-                    1. Select Purchase Order Item Classification
+                    1. What are you buying?
                   </span>
                   <span className="text-[10px] text-text-secondary">
-                    All items in this PO will be of this type
+                    {isTypeLocked
+                      ? "Locked by page scope"
+                      : "All items in this PO will be of this type"}
                   </span>
                 </div>
 
@@ -853,8 +1097,12 @@ export function FileNewPODialog({
                   <button
                     type="button"
                     onClick={() => handlePoTypeChange("consumable")}
+                    disabled={isTypeLocked && poType !== "consumable"}
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5",
+                      "p-3 rounded-xl border text-left transition-all flex items-start gap-2.5",
+                      isTypeLocked && poType !== "consumable"
+                        ? "opacity-40 cursor-not-allowed"
+                        : "cursor-pointer",
                       poType === "consumable"
                         ? "border-emerald-500/60 bg-emerald-500/10 shadow-xs ring-2 ring-emerald-500/20"
                         : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
@@ -865,13 +1113,13 @@ export function FileNewPODialog({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-text">Consumable Supplies</span>
+                        <span className="font-bold text-xs text-text">Consumables</span>
                         {poType === "consumable" && (
                           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                         )}
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
-                        Office supplies, paper, printer ink, cleaning supplies, and recurring stock batches.
+                        Supplies or materials tracked by quantity — office stock, lab items, and recurring batches.
                       </p>
                     </div>
                   </button>
@@ -879,11 +1127,31 @@ export function FileNewPODialog({
                   <button
                     type="button"
                     onClick={() => handlePoTypeChange("asset")}
+                    disabled={
+                      (isTypeLocked && poType !== "asset") ||
+                      destinationKind === "project"
+                    }
+                    title={
+                      destinationKind === "project"
+                        ? "Project POs support consumable materials only"
+                        : isTypeLocked
+                        ? "Locked by page scope"
+                        : undefined
+                    }
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5",
-                      poType === "asset"
+                      "p-3 rounded-xl border text-left transition-all flex items-start gap-2.5",
+                      (isTypeLocked && poType !== "asset") ||
+                        destinationKind === "project"
+                        ? "opacity-50 cursor-not-allowed border-border bg-bg-subtle/40"
+                        : "cursor-pointer",
+                      poType === "asset" &&
+                        destinationKind !== "project" &&
+                        !(isTypeLocked && poType !== "asset")
                         ? "border-blue-500/60 bg-blue-500/10 shadow-xs ring-2 ring-blue-500/20"
-                        : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
+                        : destinationKind !== "project" &&
+                          !(isTypeLocked && poType !== "asset")
+                        ? "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
+                        : ""
                     )}
                   >
                     <div className="p-2 rounded-lg bg-blue-500/15 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0">
@@ -892,27 +1160,29 @@ export function FileNewPODialog({
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-xs text-text">Fixed Assets & Equipment</span>
-                        {poType === "asset" && (
+                        {poType === "asset" && destinationKind !== "project" && (
                           <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                         )}
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
-                        Laptops, projectors, machinery, lab equipment, and trackable institutional assets.
+                        {destinationKind === "project"
+                          ? "Not available for direct project procurement. Use Warehouse Inventory for asset POs."
+                          : "Laptops, projectors, machinery, lab equipment, and trackable institutional assets."}
                       </p>
                     </div>
                   </button>
                 </div>
               </div>
 
-              {/* Destination Selector (General Inventory vs Project Procurement) */}
+              {/* 2. Destination */}
               <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                     <FolderKanban className="h-3.5 w-3.5 text-accent" />
-                    2. Procurement Destination & Allocation
+                    2. Where does it go?
                   </span>
                   <span className="text-[10px] text-text-secondary">
-                    Select where these items will be credited
+                    Inventory tracking vs project credit
                   </span>
                 </div>
 
@@ -920,8 +1190,12 @@ export function FileNewPODialog({
                   <button
                     type="button"
                     onClick={() => handleDestinationKindChange("department")}
+                    disabled={isDestinationLocked && destinationKind !== "department"}
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5",
+                      "p-3 rounded-xl border text-left transition-all flex items-start gap-2.5",
+                      isDestinationLocked && destinationKind !== "department"
+                        ? "opacity-40 cursor-not-allowed"
+                        : "cursor-pointer",
                       destinationKind === "department"
                         ? "border-accent/60 bg-accent/10 shadow-xs ring-2 ring-accent/20"
                         : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
@@ -932,13 +1206,13 @@ export function FileNewPODialog({
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-xs text-text">General Warehouse Inventory</span>
+                        <span className="font-bold text-xs text-text">Warehouse Inventory</span>
                         {destinationKind === "department" && (
                           <CheckCircle2 className="h-3.5 w-3.5 text-accent" />
                         )}
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
-                        Items enter warehouse inventory stock. Available for general department requisitions and withdrawals.
+                        On delivery, items enter warehouse stock for tracking (FIFO lots for consumables). Available for department requisitions.
                       </p>
                     </div>
                   </button>
@@ -946,8 +1220,12 @@ export function FileNewPODialog({
                   <button
                     type="button"
                     onClick={() => handleDestinationKindChange("project")}
+                    disabled={isDestinationLocked && destinationKind !== "project"}
                     className={cn(
-                      "p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5",
+                      "p-3 rounded-xl border text-left transition-all flex items-start gap-2.5",
+                      isDestinationLocked && destinationKind !== "project"
+                        ? "opacity-40 cursor-not-allowed"
+                        : "cursor-pointer",
                       destinationKind === "project"
                         ? "border-amber-500/60 bg-amber-500/10 shadow-xs ring-2 ring-amber-500/20"
                         : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
@@ -964,7 +1242,7 @@ export function FileNewPODialog({
                         )}
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
-                        Items are categorized as Project Materials and directly credited to the project spend ledger upon delivery.
+                        Consumable materials only — credited to the project spend ledger on delivery. Does not enter warehouse stock.
                       </p>
                     </div>
                   </button>
@@ -1020,12 +1298,104 @@ export function FileNewPODialog({
                 )}
               </div>
 
-              {/* 3. Master Metadata Form */}
+              {/* 3. Supplies vs Materials (warehouse consumables only) */}
+              {poType === "consumable" && destinationKind === "department" && (
+                <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between border-b border-border pb-2">
+                    <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Boxes className="h-3.5 w-3.5 text-accent" />
+                      3. Consumable classification
+                    </span>
+                    <span className="text-[10px] text-text-secondary">
+                      {isClassificationLocked
+                        ? "Locked by page scope"
+                        : "Locks this PO and filters the catalog"}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {CONSUMABLE_CLASSIFICATIONS.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => handlePoClassificationChange(id)}
+                        disabled={isClassificationLocked && poClassification !== id}
+                        className={cn(
+                          "p-3 rounded-xl border text-left transition-all flex items-start gap-2.5",
+                          isClassificationLocked && poClassification !== id
+                            ? "opacity-40 cursor-not-allowed"
+                            : "cursor-pointer",
+                          poClassification === id
+                            ? id === "supply"
+                              ? "border-emerald-500/60 bg-emerald-500/10 shadow-xs ring-2 ring-emerald-500/20"
+                              : "border-violet-500/60 bg-violet-500/10 shadow-xs ring-2 ring-violet-500/20"
+                            : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "p-2 rounded-lg mt-0.5 shrink-0",
+                            id === "supply"
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                              : "bg-violet-500/15 text-violet-600 dark:text-violet-400"
+                          )}
+                        >
+                          {id === "supply" ? (
+                            <Boxes className="h-5 w-5" />
+                          ) : (
+                            <HardHat className="h-5 w-5" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-xs text-text">
+                              {CONSUMABLE_CLASSIFICATION_LABELS[id]}
+                            </span>
+                            {poClassification === id && (
+                              <CheckCircle2
+                                className={cn(
+                                  "h-3.5 w-3.5",
+                                  id === "supply"
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : "text-violet-600 dark:text-violet-400"
+                                )}
+                              />
+                            )}
+                          </div>
+                          <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
+                            {id === "supply"
+                              ? "Office supplies, stationery, and recurring warehouse stock (Supplies inventory)."
+                              : "Construction / operational materials held in Materials inventory until issued."}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {poType === "consumable" && destinationKind === "project" && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 flex items-start gap-2.5 shadow-2xs">
+                  <HardHat className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <span className="font-bold text-xs block">Classification locked: Consumable Materials</span>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-300/90 mt-0.5 leading-relaxed">
+                      Project POs always use materials and credit the project on delivery — they are not stocked in the warehouse.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ================= STEP 2: ORDER METADATA ================= */}
+          {currentStep === "metadata" && (
+            <div className="space-y-3 animate-in fade-in duration-200">
               <div className="p-3.5 sm:p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
                     <Building2 className="h-3.5 w-3.5 text-accent" />
-                    3. Order Metadata & Authorization
+                    Order Metadata & Authorization
                   </span>
                   <span className="text-[10px] text-text-secondary">
                     Cebu Roosevelt Memorial Colleges, Inc.
@@ -1068,7 +1438,7 @@ export function FileNewPODialog({
                   </div>
 
                   {poNumberMode === "auto" ? (
-                    <div className="flex items-center justify-between text-xs text-text-secondary bg-bg px-3 py-2 rounded-lg border border-dashed border-border">
+                    <div className="flex items-center justify-between text-xs text-text-secondary bg-bg px-3 py-2 rounded-lg border border-dashed border-border gap-3 flex-wrap">
                       <span>System will auto-generate an official operational tracking code:</span>
                       <span className="font-mono font-bold text-text bg-bg-subtle px-2 py-0.5 rounded border border-border">
                         PO-{new Date().getFullYear()}-XXXX
@@ -1191,8 +1561,8 @@ export function FileNewPODialog({
                       onChange={(e) => setGeneralPurpose(e.target.value)}
                       placeholder="e.g. Replenishment of registrar office stocks, paper reams, and semester exam supplies..."
                       required
-                      rows={2}
-                      className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed"
+                      rows={4}
+                      className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed min-h-24"
                     />
                   </div>
 
@@ -1205,8 +1575,8 @@ export function FileNewPODialog({
                       value={generalNotes}
                       onChange={(e) => setGeneralNotes(e.target.value)}
                       placeholder="e.g. Approved under Semester 1 Supply Budget Allocation / Urgently required for midterm examinations..."
-                      rows={2}
-                      className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed"
+                      rows={4}
+                      className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed min-h-24"
                     />
                   </div>
                 </div>
@@ -1225,7 +1595,9 @@ export function FileNewPODialog({
                       <Search className="h-4 w-4" />
                     </div>
                     <h3 className="font-bold text-xs text-text">
-                      {poType === "asset" ? "Asset Catalog" : "Consumables Catalog"}
+                      {poType === "asset"
+                        ? "Asset Catalog"
+                        : `${CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]} Catalog`}
                     </h3>
                   </div>
 
@@ -1241,7 +1613,7 @@ export function FileNewPODialog({
                       )}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
-                      <span>+ Custom / New {poType === "asset" ? "Asset" : "Consumable"}</span>
+                      <span>+ Custom / New {poType === "asset" ? "Asset" : effectiveClassification === "material" ? "Material" : "Supply"}</span>
                     </button>
                   </div>
                 </div>
@@ -1330,8 +1702,18 @@ export function FileNewPODialog({
                                 {c.name}
                               </span>
 
-                              <div className="flex items-center justify-between text-[9px] text-text-secondary pt-0.5 border-t border-border/40">
-                                <span className="truncate max-w-16">{c.category}</span>
+                              <div className="flex items-center justify-between text-[9px] text-text-secondary pt-0.5 border-t border-border/40 gap-1">
+                                <span
+                                  className={cn(
+                                    "px-1 py-0.5 rounded font-bold shrink-0 border",
+                                    (c.classification ?? "supply") === "material"
+                                      ? "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/25"
+                                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+                                  )}
+                                >
+                                  {(c.classification ?? "supply") === "material" ? "Mat" : "Sup"}
+                                </span>
+                                <span className="truncate max-w-12">{c.category}</span>
                                 <span className="font-medium text-text shrink-0">
                                   {c.currentQty} {c.unit}
                                 </span>
@@ -1342,15 +1724,17 @@ export function FileNewPODialog({
                       </div>
                     ) : (
                       <div className="py-3 text-center text-text-secondary space-y-1">
-                        <p className="font-medium text-xs">No matching consumable stock found</p>
+                        <p className="font-medium text-xs">
+                          No matching {CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification].toLowerCase()} found
+                        </p>
                         <p className="text-[10px]">
-                          Try adjusting your search query or click{" "}
+                          Try adjusting your search, or register a{" "}
                           <button
                             type="button"
                             onClick={() => handleAddItem(true)}
                             className="text-accent underline font-semibold cursor-pointer"
                           >
-                            + Custom Consumable
+                            + Custom {effectiveClassification === "material" ? "Material" : "Supply"}
                           </button>
                         </p>
                       </div>
@@ -1608,7 +1992,7 @@ export function FileNewPODialog({
                         <div
                           className={cn(
                             "grid grid-cols-2 gap-3 pt-1 border-t border-border/40",
-                            poType === "consumable" && item.isNew
+                            poType === "consumable"
                               ? "sm:grid-cols-3 lg:grid-cols-5"
                               : "sm:grid-cols-4"
                           )}
@@ -1650,36 +2034,31 @@ export function FileNewPODialog({
                             />
                           </div>
 
-                          {/* 3. Classification (new consumable) / Category */}
-                          {poType === "consumable" && item.isNew && (
+                          {/* Classification (locked to PO) / Category */}
+                          {poType === "consumable" && (
                             <div className="space-y-1">
                               <label className="font-semibold text-text">
                                 Classification
                               </label>
-                              {destinationKind === "project" ? (
-                                <div className="h-8.5 px-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 font-semibold text-xs flex items-center gap-1.5 select-none">
+                              <div
+                                className={cn(
+                                  "h-8.5 px-2 rounded-lg border font-semibold text-xs flex items-center gap-1.5 select-none",
+                                  destinationKind === "project" || effectiveClassification === "material"
+                                    ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                                )}
+                              >
+                                {destinationKind === "project" ? (
                                   <HardHat className="h-3.5 w-3.5 shrink-0" />
-                                  <span className="truncate">Material (Project)</span>
-                                </div>
-                              ) : (
-                                <select
-                                  value={item.classification}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(
-                                      item.id,
-                                      "classification",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden cursor-pointer"
-                                >
-                                  {CONSUMABLE_CLASSIFICATIONS.map((id) => (
-                                    <option key={id} value={id}>
-                                      {CONSUMABLE_CLASSIFICATION_LABELS[id]}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
+                                ) : (
+                                  <Boxes className="h-3.5 w-3.5 shrink-0" />
+                                )}
+                                <span className="truncate">
+                                  {destinationKind === "project"
+                                    ? "Material (Project)"
+                                    : CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]}
+                                </span>
+                              </div>
                             </div>
                           )}
 
@@ -1702,11 +2081,7 @@ export function FileNewPODialog({
                             ) : (
                               <input
                                 type="text"
-                                value={
-                                  poType === "consumable"
-                                    ? `${CONSUMABLE_CLASSIFICATION_LABELS[item.classification] || "Consumable Supplies"} · ${item.category || "General Supply"}`
-                                    : item.category || "Equipment"
-                                }
+                                value={item.category || (poType === "asset" ? "Equipment" : "General Supply")}
                                 readOnly
                                 className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"
                               />
@@ -1777,14 +2152,24 @@ export function FileNewPODialog({
                       Purchase Order Header Details
                     </h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep("details")}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                    Edit Details
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep("routing")}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      Edit Classification
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep("metadata")}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      Edit Order Info
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -1799,7 +2184,7 @@ export function FileNewPODialog({
                     </span>
                   </div>
                   <div>
-                    <span className="text-[10px] text-text-secondary font-medium block">Order Classification</span>
+                    <span className="text-[10px] text-text-secondary font-medium block">Order Type</span>
                     <span
                       className={cn(
                         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border mt-0.5",
@@ -1808,7 +2193,9 @@ export function FileNewPODialog({
                           : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
                       )}
                     >
-                      {poType === "asset" ? "Fixed Assets & Equipment" : "Consumable Supplies"}
+                      {poType === "asset"
+                        ? "Fixed Assets & Equipment"
+                        : CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]}
                     </span>
                   </div>
                   <div>
@@ -1818,6 +2205,33 @@ export function FileNewPODialog({
                   <div>
                     <span className="text-[10px] text-text-secondary font-medium block">Requested By</span>
                     <span className="font-bold text-text">{accountRequesterName}</span>
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "mt-3 p-3 rounded-xl border text-xs flex items-start gap-2.5",
+                    destinationKind === "project"
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
+                      : "bg-accent/10 border-accent/25 text-text"
+                  )}
+                >
+                  {destinationKind === "project" ? (
+                    <HardHat className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                  ) : (
+                    <Building2 className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
+                  )}
+                  <div>
+                    <span className="font-bold uppercase tracking-wider text-[10px] block">
+                      Destination outcome
+                    </span>
+                    <p className="mt-0.5 leading-relaxed font-medium">
+                      {destinationKind === "project"
+                        ? "Will credit the project on delivery — not warehouse stock. Lot remaining will be zero; materials cannot be drawn from inventory."
+                        : poType === "consumable"
+                        ? "Will stock warehouse inventory on delivery (FIFO lot tracking). Available for department requisitions and releases."
+                        : "Will register / activate assets in inventory on delivery for institutional tracking."}
+                    </p>
                   </div>
                 </div>
 
@@ -1917,10 +2331,14 @@ export function FileNewPODialog({
                                   "px-2 py-0.5 rounded-full text-[10px] font-bold border",
                                   poType === "asset"
                                     ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30"
+                                    : effectiveClassification === "material"
+                                    ? "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30"
                                     : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
                                 )}
                               >
-                                {poType === "asset" ? "Asset" : "Consumable"}
+                                {poType === "asset"
+                                  ? "Asset"
+                                  : CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]}
                               </span>
                             </td>
                             <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
@@ -1993,13 +2411,10 @@ export function FileNewPODialog({
         {/* Modal Footer Controls (Step Transitions & Submission) */}
         <div className="p-4 border-t border-border bg-bg-subtle flex items-center justify-between gap-3 shrink-0">
           <div>
-            {currentStep !== "details" ? (
+            {currentStep !== "routing" ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (currentStep === "review") setCurrentStep("items");
-                  else if (currentStep === "items") setCurrentStep("details");
-                }}
+                onClick={handleBack}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-border bg-card hover:bg-bg text-text transition-colors cursor-pointer"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
@@ -2008,7 +2423,7 @@ export function FileNewPODialog({
             ) : (
               <button
                 type="button"
-                onClick={handleSafeClose}
+                onClick={() => void handleSafeClose()}
                 className="px-4 py-2 text-xs font-semibold rounded-lg border border-border bg-card hover:bg-bg text-text transition-colors cursor-pointer"
               >
                 Cancel
@@ -2017,10 +2432,21 @@ export function FileNewPODialog({
           </div>
 
           <div className="flex items-center gap-2">
-            {currentStep === "details" && (
+            {currentStep === "routing" && (
               <button
                 type="button"
-                onClick={handleNextFromDetails}
+                onClick={handleNextFromRouting}
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+              >
+                <span>Continue to Order Info</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {currentStep === "metadata" && (
+              <button
+                type="button"
+                onClick={handleNextFromMetadata}
                 className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <span>Continue to Line Items</span>

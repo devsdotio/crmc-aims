@@ -30,7 +30,7 @@ export default function RootLayout({
       lang="en"
       className={`${quicksand.variable} h-full antialiased`}
     >
-      <body className="h-full flex flex-col bg-[#F2F3F7] text-[#1B2140] overflow-hidden">
+      <body className="h-full flex flex-col bg-bg-subtle text-text overflow-hidden">
         <ToastProvider>
           <ConfirmProvider>
             <LoadingProvider>

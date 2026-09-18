@@ -262,8 +262,12 @@ export default function Sidebar({
               href: "/purchase-orders/asset",
             },
             {
-              name: "Consumables",
-              href: "/purchase-orders/consumables",
+              name: "Supplies",
+              href: "/purchase-orders/supplies",
+            },
+            {
+              name: "Materials",
+              href: "/purchase-orders/materials",
             },
             {
               name: "Projects",
