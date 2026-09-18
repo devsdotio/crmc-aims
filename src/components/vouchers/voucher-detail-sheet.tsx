@@ -38,6 +38,7 @@ import { useUsersQuery } from "@/features/users/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useToast } from "@/components/providers/toast-context";
+import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
 import {
   parseParticulars,
@@ -152,6 +153,7 @@ export function VoucherDetailSheet({
   onRefresh,
 }: VoucherDetailSheetProps) {
   const toast = useToast();
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState<
     "details" | "references" | "workflow"
   >("details");
@@ -264,10 +266,6 @@ export function VoucherDetailSheet({
   const typeInfo = getTypeBadge(voucher.type);
   const StatusIcon = statusInfo.icon;
 
-  const canDelete =
-    voucher.status === "draft" ||
-    voucher.status === "pending_approval" ||
-    voucher.status === "cancelled";
   const canEdit = voucher.status !== "completed";
 
   const handleCopyCode = () => {
@@ -296,27 +294,33 @@ export function VoucherDetailSheet({
   };
 
   const handleDelete = async () => {
-    if (
-      !window.confirm(
-        `Delete voucher ${voucher.voucherCode}? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+    const code = voucher.voucherCode;
+    const id = voucher.id;
 
-    setActionLoading(true);
-    try {
-      await deleteMutation.mutateAsync(voucher.id);
-      toast.success(`Voucher ${voucher.voucherCode} was removed.`);
-      onRefresh?.();
-      onClose();
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to delete voucher.";
-      toast.error(msg);
-    } finally {
-      setActionLoading(false);
-    }
+    await confirm({
+      title: "Delete this voucher?",
+      description: (
+        <>
+          <strong className="font-mono">{code}</strong> will be permanently
+          removed from the disbursement records. This cannot be undone.
+        </>
+      ),
+      confirmLabel: "Delete voucher",
+      cancelLabel: "Keep voucher",
+      variant: "destructive",
+      action: async () => {
+        onClose();
+        try {
+          await deleteMutation.mutateAsync(id);
+          toast.success(`Voucher ${code} was removed.`);
+          onRefresh?.();
+        } catch (err: unknown) {
+          const msg =
+            err instanceof Error ? err.message : "Failed to delete voucher.";
+          toast.error(msg);
+        }
+      },
+    });
   };
 
   return (
@@ -376,19 +380,6 @@ export function VoucherDetailSheet({
                 >
                   <Edit3 className="h-3.5 w-3.5" />
                   <span>Edit</span>
-                </button>
-              )}
-
-              {canDelete && (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={actionLoading}
-                  title="Delete voucher"
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Delete</span>
                 </button>
               )}
             </div>
@@ -1235,17 +1226,15 @@ export function VoucherDetailSheet({
         {/* Panel Footer Action Bar */}
         <div className="p-4 border-t border-border bg-bg-subtle/60 flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            {canDelete && (
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleDelete}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>Delete</span>
-              </button>
-            )}
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={handleDelete}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50/50 dark:bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete</span>
+            </button>
           </div>
 
           {/* Workflow status progression buttons */}

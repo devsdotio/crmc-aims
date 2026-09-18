@@ -32,11 +32,13 @@ import {
   usePettyCashQuery,
   useUpdatePettyCashMutation,
   useUpdatePettyCashStatusMutation,
+  useDeletePettyCashMutation,
 } from "@/features/petty-cash/client";
 import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { formatPhp } from "@/components/projects/format-money";
 import { useToast } from "@/components/providers/toast-context";
+import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
 import { filterMoneyInput } from "@/lib/numeric-input";
 import {
@@ -96,6 +98,7 @@ export function PettyCashDetailSheet({
   onClose,
 }: PettyCashDetailSheetProps) {
   const toast = useToast();
+  const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState<TabType>("details");
 
   // Fetch live voucher
@@ -128,6 +131,7 @@ export function PettyCashDetailSheet({
 
   const updateMutation = useUpdatePettyCashMutation();
   const statusMutation = useUpdatePettyCashStatusMutation();
+  const deleteMutation = useDeletePettyCashMutation();
 
   // Reset or initialize edit states when voucher changes
   useEffect(() => {
@@ -235,6 +239,35 @@ export function PettyCashDetailSheet({
     }
   };
 
+  const handleDelete = async () => {
+    const code = voucher.pcvNumber;
+    const id = voucher.id;
+
+    await confirm({
+      title: "Delete this petty cash voucher?",
+      description: (
+        <>
+          <strong className="font-mono">{code}</strong> will be permanently
+          removed from petty cash records. This cannot be undone.
+        </>
+      ),
+      confirmLabel: "Delete voucher",
+      cancelLabel: "Keep voucher",
+      variant: "destructive",
+      action: async () => {
+        onClose();
+        try {
+          await deleteMutation.mutateAsync(id);
+          toast.success(`Voucher ${code} was removed.`);
+        } catch (err: unknown) {
+          const msg =
+            err instanceof Error ? err.message : "Failed to delete voucher.";
+          toast.error(msg);
+        }
+      },
+    });
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -299,6 +332,16 @@ export function PettyCashDetailSheet({
                     <span>{isEditing ? "Cancel Edit" : "Edit"}</span>
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                  title="Delete voucher"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-destructive text-white hover:bg-destructive/90 rounded-lg transition-colors shadow-xs disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
                 <button
                   type="button"
                   onClick={onClose}

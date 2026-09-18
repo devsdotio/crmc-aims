@@ -162,8 +162,43 @@ export function useDeleteVoucherMutation(): UseMutationResult<
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id) => vouchersApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: voucherQueryKeys.all });
+
+      const previousLists = queryClient.getQueriesData<VoucherListResponse>({
+        queryKey: voucherQueryKeys.lists(),
+      });
+      const previousDetail = queryClient.getQueryData<Voucher>(
+        voucherQueryKeys.detail(id)
+      );
+
+      queryClient.setQueriesData<VoucherListResponse>(
+        { queryKey: voucherQueryKeys.lists() },
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            total: Math.max(0, old.total - 1),
+            vouchers: old.vouchers.filter((item) => item.id !== id),
+          };
+        }
+      );
+      queryClient.removeQueries({ queryKey: voucherQueryKeys.detail(id) });
+
+      return { previousLists, previousDetail };
+    },
+    onError: (_err, id, context) => {
+      if (context?.previousLists) {
+        for (const [queryKey, data] of context.previousLists) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
+      if (context?.previousDetail) {
+        queryClient.setQueryData(voucherQueryKeys.detail(id), context.previousDetail);
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: voucherQueryKeys.all });
       void invalidateDomains(queryClient, VOUCHER_MUTATION_DOMAINS);
     },
   });

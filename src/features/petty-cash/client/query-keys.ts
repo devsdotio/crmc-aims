@@ -1,5 +1,6 @@
 export const pettyCashQueryKeys = {
   all: ["petty-cash"] as const,
+  lists: () => [...pettyCashQueryKeys.all, "list"] as const,
   list: (filters?: {
     search?: string;
     status?: string;
@@ -7,6 +8,6 @@ export const pettyCashQueryKeys = {
     departmentId?: string;
     startDate?: string;
     endDate?: string;
-  }) => [...pettyCashQueryKeys.all, "list", filters ?? {}] as const,
+  }) => [...pettyCashQueryKeys.lists(), filters ?? {}] as const,
   detail: (id: string) => [...pettyCashQueryKeys.all, "detail", id] as const,
 };
