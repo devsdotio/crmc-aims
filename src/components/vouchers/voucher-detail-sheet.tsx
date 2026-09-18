@@ -188,10 +188,9 @@ export function VoucherDetailSheet({
   }, [isOpen, isEditOpen, onClose]);
 
   useEffect(() => {
-    if (voucher) {
-      setIsEditOpen(false);
-      setActiveTab("details");
-    }
+    if (!voucher?.id) return;
+    setIsEditOpen(false);
+    setActiveTab("details");
   }, [voucher?.id]);
 
   const matchedUser = useMemo(() => {

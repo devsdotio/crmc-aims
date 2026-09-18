@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Boxes,
@@ -91,19 +91,20 @@ export function PurchaseOrdersView({
     return map;
   }, [consumablePage?.data]);
 
-  const resolveLotClassification = (
-    lot: PurchaseLot
-  ): ConsumableClassification | null => {
-    if (lot.itemType !== "consumable") return null;
-    if (lot.projectId) return "material";
-    if (lot.consumableId) {
-      return (
-        classificationByConsumableId.get(lot.consumableId) ??
-        DEFAULT_CONSUMABLE_CLASSIFICATION
-      );
-    }
-    return DEFAULT_CONSUMABLE_CLASSIFICATION;
-  };
+  const resolveLotClassification = useCallback(
+    (lot: PurchaseLot): ConsumableClassification | null => {
+      if (lot.itemType !== "consumable") return null;
+      if (lot.projectId) return "material";
+      if (lot.consumableId) {
+        return (
+          classificationByConsumableId.get(lot.consumableId) ??
+          DEFAULT_CONSUMABLE_CLASSIFICATION
+        );
+      }
+      return DEFAULT_CONSUMABLE_CLASSIFICATION;
+    },
+    [classificationByConsumableId],
+  );
 
   const { canOperate } = useAssetOperator();
   const deleteMutation = useDeletePurchaseOrderMutation();
@@ -197,7 +198,7 @@ export function PurchaseOrdersView({
       );
     }
     return groupedPOs;
-  }, [groupedPOs, categoryScope, classificationByConsumableId]);
+  }, [groupedPOs, categoryScope, resolveLotClassification]);
 
   const selectedLotSynced = useMemo(() => {
     if (!selectedLot) return null;
