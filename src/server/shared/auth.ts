@@ -118,7 +118,7 @@ export async function resolveDepartmentSnapshot(opts: {
 
   // Operators always use submitted id when provided. Borrowers may override their
   // linked department via submitted id or free-text name.
-  let departmentId: string | null =
+  const departmentId: string | null =
     opts.actor.role === "borrower" && !submittedId && !submittedName
       ? opts.actor.departmentId
       : submittedId;
