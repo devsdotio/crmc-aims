@@ -23,10 +23,17 @@ Use Obsidian MCP tools, not the filesystem:
 
 Confirm ready after those reads.
 
+## Cost / context rules
+
+- Prefer `vault_get_document_map` + targeted `vault_read` / `vault_patch` — never dump full `Tasks.md` or `Sessions.md`.
+- Write vault notes at **meaningful milestones or session end**, not every tiny prompt.
+- `sessionStart` hook may inject sprint + last-session from `_Card` (cheap); do not re-read those notes unless updating them.
+
 ## During the session
 
 | Need | MCP tool |
 |------|----------|
+| Structure / version | `vault_get_document_map` |
 | Read a note | `vault_read` |
 | List a folder | `vault_list` |
 | Find notes | `search_simple` / `search_query` |
@@ -45,11 +52,12 @@ Use vault-relative paths with extension, e.g. `Projects/CRMC-Aims/Features/borro
 - Load `agents/*.examples.md` unless explicitly asked
 - Use bare wikilinks like `[[Architecture]]` — use full paths under `Projects/CRMC-Aims/…`
 - Bypass MCP to dump large vault trees into context
+- Mandatory per-prompt Tasks write-back (too expensive)
 
 ## Session end
 
-1. Update `_Card.md` last-session / sprint via `vault_patch` (or `vault_write` section) if it moved.
-2. From vault root (shell is fine for scripts):
+1. Update `_Card.md` last-session / sprint via `vault_patch` if it moved; sync Tasks checkboxes if you changed sprint state.
+2. From vault root:
 
 ```bash
 node Meta/scripts/vault-track.mjs session --project crmc-aims --write
