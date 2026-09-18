@@ -648,7 +648,7 @@ export function PurchaseOrderDetailSheet({
                   )}
                 >
                   <FileText className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Print Slip</span>
+                  <span className="hidden sm:inline">Export Slip</span>
                 </button>
               </div>
             </div>
