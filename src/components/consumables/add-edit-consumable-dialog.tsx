@@ -40,6 +40,13 @@ interface AddEditConsumableDialogFormProps {
   onSave: (itemData: SaveConsumablePayload) => void | Promise<void>;
 }
 
+type ErrorField =
+  | "name"
+  | "category"
+  | "minThreshold"
+  | "supplier"
+  | "unitCost";
+
 function matchSupplierId(
   suppliers: { id: string; name: string }[],
   preferredName?: string | null
@@ -47,6 +54,11 @@ function matchSupplierId(
   if (!preferredName?.trim()) return "";
   const name = preferredName.trim().toLowerCase();
   return suppliers.find((s) => s.name.toLowerCase() === name)?.id ?? "";
+}
+
+function describedBy(...ids: Array<string | false | undefined>) {
+  const joined = ids.filter((id): id is string => Boolean(id)).join(" ");
+  return joined || undefined;
 }
 
 function AddEditConsumableDialogForm({
@@ -89,7 +101,7 @@ function AddEditConsumableDialogForm({
   const [classification, setClassification] = useState<ConsumableClassification>(
     () => initialItem?.classification ?? defaultClassification ?? DEFAULT_CONSUMABLE_CLASSIFICATION
   );
-  const [unit, setUnit] = useState(() => initialItem?.unit ?? "reams");
+  const [unit, setUnit] = useState(() => initialItem?.unit ?? "");
   const [currentQty, setCurrentQty] = useState(() =>
     initialItem ? String(initialItem.currentQty) : "0"
   );
@@ -97,14 +109,12 @@ function AddEditConsumableDialogForm({
     String(initialItem?.minThreshold ?? 15)
   );
   const [unitCost, setUnitCost] = useState("");
-  const [location, setLocation] = useState(
-    () => initialItem?.location ?? "Supply Storage Bay A1"
-  );
+  const [location, setLocation] = useState(() => initialItem?.location ?? "");
   /** Prefer registry id; free-text legacy names resolve on supplier list load. */
   const [supplierId, setSupplierId] = useState("");
   const [notes, setNotes] = useState(() => initialItem?.notes ?? "");
-  const [isSandbox, setIsSandbox] = useState(() => initialItem?.isSandbox ?? false);
   const [error, setError] = useState("");
+  const [errorField, setErrorField] = useState<ErrorField | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const qtyValue = parseUnsignedInt(currentQty, 0);
@@ -114,6 +124,16 @@ function AddEditConsumableDialogForm({
     needsOpeningLot && costValue !== null && costValue > 0
       ? qtyValue * costValue
       : 0;
+
+  const hasLegacySupplier =
+    Boolean(initialItem?.supplier) &&
+    !matchSupplierId(suppliers, initialItem?.supplier) &&
+    !supplierId;
+
+  const isTypeLocked = Boolean(defaultClassification) && !isEditing;
+  const lockedClassificationLabel = defaultClassification
+    ? CONSUMABLE_CLASSIFICATION_LABELS[defaultClassification]
+    : null;
 
   // Map legacy free-text preferred supplier → registry option when list loads.
   useEffect(() => {
@@ -137,14 +157,20 @@ function AddEditConsumableDialogForm({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, isSubmitting]);
 
+  const setFieldError = (field: ErrorField, message: string) => {
+    setErrorField(field);
+    setError(message);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError("Please enter the consumable item name.");
+      setFieldError("name", "Please enter the consumable item name.");
       return;
     }
     if (!category) {
-      setError(
+      setFieldError(
+        "category",
         consumableCategories.length === 0
           ? "No consumable categories yet. Add them under Settings → Categories."
           : "Please select a category."
@@ -154,19 +180,22 @@ function AddEditConsumableDialogForm({
 
     const threshold = parseUnsignedInt(minThreshold, 0);
     if (threshold < 1) {
-      setError("Minimum reorder threshold must be at least 1.");
+      setFieldError("minThreshold", "Minimum reorder threshold must be at least 1.");
       return;
     }
 
     const qty = parseUnsignedInt(currentQty, 0);
     if (!isEditing && qty > 0) {
       if (!supplierId) {
-        setError("Select a supplier when adding initial stock.");
+        setFieldError("supplier", "Select a supplier when adding initial stock.");
         return;
       }
       const cost = parseMoney(unitCost);
       if (cost === null || cost <= 0) {
-        setError("Unit cost must be greater than zero when adding initial stock.");
+        setFieldError(
+          "unitCost",
+          "Unit cost must be greater than zero when adding initial stock."
+        );
         return;
       }
     }
@@ -177,6 +206,7 @@ function AddEditConsumableDialogForm({
     try {
       setIsSubmitting(true);
       setError("");
+      setErrorField(null);
       await onSave({
         id: initialItem ? initialItem.id : undefined,
         itemCode: initialItem
@@ -184,7 +214,9 @@ function AddEditConsumableDialogForm({
           : `CON-${Math.floor(1000 + Math.random() * 9000)}`,
         name: name.trim(),
         category: category as ConsumableCategory,
-        classification,
+        classification: isTypeLocked
+          ? (defaultClassification as ConsumableClassification)
+          : classification,
         unit: unit.trim() || "units",
         currentQty: qty,
         minThreshold: threshold,
@@ -193,11 +225,12 @@ function AddEditConsumableDialogForm({
         supplierId: needsOpeningLot ? supplierId : supplierId || null,
         unitCost: needsOpeningLot ? unitCost : undefined,
         notes: notes.trim() || undefined,
-        isSandbox,
+        isSandbox: initialItem?.isSandbox ?? false,
         lastRestocked: new Date().toISOString().split("T")[0],
       });
       onClose();
     } catch (err) {
+      setErrorField(null);
       setError(
         err instanceof Error ? err.message : "Failed to save consumable."
       );
@@ -205,6 +238,14 @@ function AddEditConsumableDialogForm({
       setIsSubmitting(false);
     }
   };
+
+  const editSubtitle = initialItem?.itemCode
+    ? `Update details for ${initialItem.itemCode}. On-hand quantity changes through Restock or Adjust.`
+    : "Update details for this item. On-hand quantity changes through Restock or Adjust.";
+
+  const addSubtitle = isTypeLocked && lockedClassificationLabel
+    ? `This item will be registered as ${lockedClassificationLabel}. Leave opening quantity at 0 to register the item without stock.`
+    : "Add a Supplies or Materials SKU. Leave opening quantity at 0 to register the item without stock.";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs transition-opacity overflow-y-auto">
@@ -218,7 +259,8 @@ function AddEditConsumableDialogForm({
         role="dialog"
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className="relative w-full max-w-lg rounded-2xl border border-border bg-bg p-6 shadow-2xl z-10 my-8"
+        aria-describedby="dialog-subtitle"
+        className="relative w-full max-w-2xl rounded-2xl border border-border bg-bg p-6 shadow-2xl z-10 my-8"
       >
         <div className="flex items-center justify-between gap-3 mb-5 border-b border-border pb-4">
           <div className="flex items-center gap-2.5">
@@ -234,12 +276,25 @@ function AddEditConsumableDialogForm({
                 id="dialog-title"
                 className="text-base font-bold text-text leading-tight"
               >
-                {isEditing
-                  ? "Edit Consumable Item"
-                  : "Register New Consumable Item"}
+                {isTypeLocked ? (
+                  <>
+                    {isEditing ? "Edit Consumable" : "Register Consumable"}{" "}
+                    <span className="text-accent">
+                      {defaultClassification === "material"
+                        ? "Materials"
+                        : "Supplies"}
+                    </span>
+                  </>
+                ) : isEditing ? (
+                  "Edit consumable"
+                ) : (
+                  "Register consumable"
+                )}
               </h3>
-              <p className="text-xs text-text-secondary mt-0.5">
-                Choose Supplies or Materials, then a category from Settings.
+              <p id="dialog-subtitle" className="text-xs text-text-secondary mt-0.5">
+                {isEditing
+                  ? editSubtitle
+                  : addSubtitle}
               </p>
             </div>
           </div>
@@ -255,317 +310,396 @@ function AddEditConsumableDialogForm({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <p className="text-xs font-bold text-status-outofservice-text">
+            <p
+              id="form-error"
+              role="alert"
+              className="text-xs font-bold text-status-outofservice-text"
+            >
               {error}
             </p>
           )}
 
-          <div className="space-y-1">
-            <label
-              htmlFor="consumable-name-input"
-              className="block text-xs font-semibold text-text"
-            >
-              Item Name <span className="text-accent">*</span>
-            </label>
-            <input
-              id="consumable-name-input"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="e.g. A4 Multipurpose Copy Paper 80gsm"
-              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+          <fieldset className="space-y-3 border-0 p-0 m-0">
+            <legend className="text-[11px] font-bold uppercase tracking-wide text-text-secondary mb-1">
+              Item details
+            </legend>
 
-          <div className="space-y-1">
-            <label
-              htmlFor="classification-select"
-              className="block text-xs font-semibold text-text"
-            >
-              Classification <span className="text-accent">*</span>
-            </label>
-            <select
-              id="classification-select"
-              value={classification}
-              onChange={(e) =>
-                setClassification(e.target.value as ConsumableClassification)
-              }
-              disabled={isSubmitting}
-              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              {CONSUMABLE_CLASSIFICATIONS.map((id) => (
-                <option key={id} value={id}>
-                  {CONSUMABLE_CLASSIFICATION_LABELS[id]}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="consumable-name-input"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Item name <span className="text-accent">*</span>
+                </label>
+                <input
+                  id="consumable-name-input"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={isSubmitting}
+                  aria-required="true"
+                  aria-invalid={errorField === "name"}
+                  aria-describedby={describedBy(errorField === "name" && "form-error")}
+                  placeholder="e.g. A4 Multipurpose Copy Paper 80gsm"
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label
-                htmlFor="category-select"
-                className="block text-xs font-semibold text-text"
-              >
-                Category <span className="text-accent">*</span>
-              </label>
-              <select
-                id="category-select"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                disabled={isSubmitting || categoriesLoading}
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                {categoriesLoading ? (
-                  <option value="">Loading…</option>
-                ) : consumableCategories.length === 0 ? (
-                  <option value="">No categories — add in Settings</option>
-                ) : (
-                  <>
-                    <option value="" disabled>
-                      Select a category…
-                    </option>
-                    {consumableCategories.map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label
-                htmlFor="unit-input"
-                className="block text-xs font-semibold text-text"
-              >
-                Unit of Measure <span className="text-accent">*</span>
-              </label>
-              <input
-                id="unit-input"
-                type="text"
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                disabled={isSubmitting}
-                placeholder="e.g. reams, bottles, cartridges"
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label
-                htmlFor="qty-input"
-                className="block text-xs font-semibold text-text"
-              >
-                Current Qty
-              </label>
-              <input
-                id="qty-input"
-                type="text"
-                inputMode="numeric"
-                value={currentQty}
-                onChange={(e) => {
-                  const next = filterUnsignedIntInput(e.target.value);
-                  if (next !== null) setCurrentQty(next);
-                }}
-                disabled={isSubmitting || isEditing}
-                placeholder="0"
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-mono focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-70"
-              />
-              {!isEditing && (
-                <p className="text-[11px] text-text-secondary">
-                  Leave 0 to register the SKU only. Any positive qty creates an
-                  opening purchase lot.
-                </p>
-              )}
-            </div>
-            <div className="space-y-1">
-              <label
-                htmlFor="min-input"
-                className="block text-xs font-semibold text-text"
-              >
-                Min Threshold
-              </label>
-              <input
-                id="min-input"
-                type="text"
-                inputMode="numeric"
-                value={minThreshold}
-                onChange={(e) => {
-                  const next = filterUnsignedIntInput(e.target.value);
-                  if (next !== null) setMinThreshold(next);
-                }}
-                disabled={isSubmitting}
-                placeholder="15"
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-mono focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-          </div>
-
-          {needsOpeningLot && (
-            <div className="space-y-3 rounded-xl border border-border bg-bg-subtle/40 p-3">
-              <p className="text-[11px] font-semibold text-text">
-                Opening stock details{" "}
-                <span className="text-accent">*</span>
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label
-                    htmlFor="unit-cost-input"
-                    className="block text-xs font-semibold text-text"
-                  >
-                    Unit cost (₱) <span className="text-accent">*</span>
-                  </label>
-                  <input
-                    id="unit-cost-input"
-                    type="text"
-                    inputMode="decimal"
-                    value={unitCost}
-                    onChange={(e) => {
-                      const next = filterMoneyInput(e.target.value);
-                      if (next !== null) setUnitCost(next);
-                    }}
-                    disabled={isSubmitting}
-                    placeholder="0.00"
-                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-mono focus:outline-none focus:ring-2 focus:ring-accent"
-                  />
-                </div>
+              {isTypeLocked ? (
                 <div className="space-y-1">
                   <span className="block text-xs font-semibold text-text">
-                    Line total
+                    Type
                   </span>
-                  <div className="flex h-9 items-center px-3 rounded-lg border border-border bg-bg text-xs font-mono font-bold text-text">
-                    {formatPhp(openingTotal)}
+                  <div
+                    className="flex h-9 items-center px-3 rounded-lg border border-border bg-bg-subtle text-xs font-medium text-text"
+                    aria-describedby="classification-hint"
+                  >
+                    {lockedClassificationLabel}
+                  </div>
+                  <p id="classification-hint" className="text-[11px] text-text-secondary">
+                    {defaultClassification === "material"
+                      ? "Set by this page. Use Supplies to register day-to-day office stock."
+                      : "Set by this page. Use Materials to register a project consumable."}
+                  </p>
+                </div>
+              ) : (
+              <div className="space-y-1">
+                <label
+                  htmlFor="classification-select"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Type <span className="text-accent">*</span>
+                </label>
+                <select
+                  id="classification-select"
+                  value={classification}
+                  onChange={(e) =>
+                    setClassification(e.target.value as ConsumableClassification)
+                  }
+                  disabled={isSubmitting}
+                  aria-required="true"
+                  aria-describedby="classification-hint"
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  {CONSUMABLE_CLASSIFICATIONS.map((id) => (
+                    <option key={id} value={id}>
+                      {CONSUMABLE_CLASSIFICATION_LABELS[id]}
+                    </option>
+                  ))}
+                </select>
+                <p id="classification-hint" className="text-[11px] text-text-secondary">
+                  Supplies = day-to-day office stock; Materials = project / construction-style consumables
+                </p>
+              </div>
+              )}
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="category-select"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Category <span className="text-accent">*</span>
+                </label>
+                <select
+                  id="category-select"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  disabled={isSubmitting || categoriesLoading}
+                  aria-required="true"
+                  aria-invalid={errorField === "category"}
+                  aria-describedby={describedBy(
+                    "category-hint",
+                    errorField === "category" && "form-error"
+                  )}
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  {categoriesLoading ? (
+                    <option value="">Loading…</option>
+                  ) : consumableCategories.length === 0 ? (
+                    <option value="">No categories — add in Settings</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>
+                        Select a category…
+                      </option>
+                      {consumableCategories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+                <p id="category-hint" className="text-[11px] text-text-secondary">
+                  Managed under Settings → Categories
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="unit-input"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Unit <span className="text-accent">*</span>
+                </label>
+                <input
+                  id="unit-input"
+                  type="text"
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  disabled={isSubmitting}
+                  aria-required="true"
+                  aria-describedby="unit-hint"
+                  placeholder="e.g. reams, bottles, boxes"
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <p id="unit-hint" className="text-[11px] text-text-secondary">
+                  How this item is counted on the shelf
+                </p>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="space-y-3 border-0 p-0 m-0">
+            <legend className="text-[11px] font-bold uppercase tracking-wide text-text-secondary mb-1">
+              Stock
+            </legend>
+
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="qty-input"
+                  className="block text-xs font-semibold text-text"
+                >
+                  {isEditing ? "On-hand quantity" : "Opening quantity"}
+                </label>
+                <input
+                  id="qty-input"
+                  type="text"
+                  inputMode="numeric"
+                  value={currentQty}
+                  onChange={(e) => {
+                    const next = filterUnsignedIntInput(e.target.value);
+                    if (next !== null) setCurrentQty(next);
+                  }}
+                  disabled={isSubmitting || isEditing}
+                  placeholder="0"
+                  aria-describedby="qty-hint"
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-mono focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-70"
+                />
+                <p id="qty-hint" className="text-[11px] text-text-secondary">
+                  {isEditing
+                    ? "Read-only. Use Restock or Adjust stock to change quantity."
+                    : "Leave 0 to register the SKU only. Any amount above 0 creates an opening purchase lot."}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <label
+                  htmlFor="min-input"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Reorder when below <span className="text-accent">*</span>
+                </label>
+                <input
+                  id="min-input"
+                  type="text"
+                  inputMode="numeric"
+                  value={minThreshold}
+                  onChange={(e) => {
+                    const next = filterUnsignedIntInput(e.target.value);
+                    if (next !== null) setMinThreshold(next);
+                  }}
+                  disabled={isSubmitting}
+                  aria-required="true"
+                  aria-invalid={errorField === "minThreshold"}
+                  aria-describedby={describedBy(
+                    "min-hint",
+                    errorField === "minThreshold" && "form-error"
+                  )}
+                  placeholder="e.g. 15"
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-mono focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <p id="min-hint" className="text-[11px] text-text-secondary">
+                  Low-stock alert when quantity reaches this level
+                </p>
+              </div>
+            </div>
+
+            {needsOpeningLot && (
+              <div className="space-y-3 rounded-xl border border-border bg-bg-subtle/40 p-3">
+                <p className="text-[11px] font-semibold text-text">
+                  Opening stock details{" "}
+                  <span className="text-accent">*</span>
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="unit-cost-input"
+                      className="block text-xs font-semibold text-text"
+                    >
+                      Cost per unit (₱) <span className="text-accent">*</span>
+                    </label>
+                    <input
+                      id="unit-cost-input"
+                      type="text"
+                      inputMode="decimal"
+                      value={unitCost}
+                      onChange={(e) => {
+                        const next = filterMoneyInput(e.target.value);
+                        if (next !== null) setUnitCost(next);
+                      }}
+                      disabled={isSubmitting}
+                      aria-required="true"
+                      aria-invalid={errorField === "unitCost"}
+                      aria-describedby={describedBy(
+                        "unit-cost-hint",
+                        errorField === "unitCost" && "form-error"
+                      )}
+                      placeholder="0.00"
+                      className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-mono focus:outline-none focus:ring-2 focus:ring-accent"
+                    />
+                    <p id="unit-cost-hint" className="text-[11px] text-text-secondary">
+                      Required when opening quantity is above 0
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="block text-xs font-semibold text-text">
+                      Line total
+                    </span>
+                    <div className="flex h-9 items-center px-3 rounded-lg border border-border bg-bg text-xs font-mono font-bold text-text">
+                      {formatPhp(openingTotal)}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <p className="text-[11px] text-text-secondary">
-                Supplier is required below so the opening lot is cost-tracked
-                like a normal restock.
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            <label
-              htmlFor="location-input"
-              className="block text-xs font-semibold text-text"
-            >
-              Storage Location
-            </label>
-            <input
-              id="location-input"
-              type="text"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              disabled={isSubmitting}
-              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label
-              htmlFor="supplier-select"
-              className="block text-xs font-semibold text-text"
-            >
-              {needsOpeningLot ? (
-                <>
-                  Supplier <span className="text-accent">*</span>
-                </>
-              ) : (
-                "Preferred supplier"
-              )}
-            </label>
-            <select
-              id="supplier-select"
-              value={supplierId}
-              onChange={(e) => setSupplierId(e.target.value)}
-              disabled={isSubmitting || suppliersLoading}
-              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">
-                {needsOpeningLot
-                  ? "Select a supplier…"
-                  : "None / unspecified"}
-              </option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.supplierCode ? ` (${s.supplierCode})` : ""}
-                </option>
-              ))}
-            </select>
-            {initialItem?.supplier &&
-              !matchSupplierId(suppliers, initialItem.supplier) &&
-              !supplierId && (
                 <p className="text-[11px] text-text-secondary">
-                  Previous free-text value: “{initialItem.supplier}”. Pick a
-                  registry supplier to replace it, or leave none.
+                  Supplier is required below so the opening lot is cost-tracked
+                  like a normal restock.
                 </p>
-              )}
-            {suppliers.length === 0 && !suppliersLoading && (
-              <p className="text-[11px] text-text-secondary">
-                No active suppliers.{" "}
-                <Link
-                  href="/suppliers"
-                  className="text-accent font-semibold underline-offset-2 hover:underline"
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="space-y-3 border-0 p-0 m-0 sm:col-span-2">
+            <legend className="text-[11px] font-bold uppercase tracking-wide text-text-secondary mb-1">
+              Storage & vendor
+            </legend>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="location-input"
+                  className="block text-xs font-semibold text-text"
                 >
-                  Add suppliers
-                </Link>{" "}
-                first
-                {needsOpeningLot
-                  ? " before registering opening stock."
-                  : ". Multi-supplier cost tracking happens on Restock."}
-              </p>
-            )}
-            {suppliers.length > 0 && !needsOpeningLot && (
-              <p className="text-[11px] text-text-secondary">
-                Preferred vendor for this item. Each restock can still use a
-                different supplier with its own unit cost (purchase lot).
-              </p>
-            )}
-          </div>
+                  Storage location
+                </label>
+                <input
+                  id="location-input"
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  disabled={isSubmitting}
+                  aria-describedby="location-hint"
+                  placeholder="e.g. Supply Room — Shelf A1"
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+                <p id="location-hint" className="text-[11px] text-text-secondary">
+                  Where staff should look first
+                </p>
+              </div>
 
-          <div className="space-y-1">
-            <label
-              htmlFor="notes-input"
-              className="block text-xs font-semibold text-text"
-            >
-              Notes
-            </label>
-            <textarea
-              id="notes-input"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              disabled={isSubmitting}
-              className="w-full p-2.5 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            />
-          </div>
+              <div className="space-y-1">
+                <label
+                  htmlFor="supplier-select"
+                  className="block text-xs font-semibold text-text"
+                >
+                  {needsOpeningLot ? (
+                    <>
+                      Supplier <span className="text-accent">*</span>
+                    </>
+                  ) : (
+                    "Preferred supplier"
+                  )}
+                </label>
+                <select
+                  id="supplier-select"
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  disabled={isSubmitting || suppliersLoading}
+                  aria-required={needsOpeningLot || undefined}
+                  aria-invalid={errorField === "supplier"}
+                  aria-describedby={describedBy(
+                    hasLegacySupplier && "supplier-legacy-hint",
+                    suppliers.length === 0 && !suppliersLoading && "supplier-empty-hint",
+                    suppliers.length > 0 && !needsOpeningLot && "supplier-hint",
+                    errorField === "supplier" && "form-error"
+                  )}
+                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">
+                    {needsOpeningLot
+                      ? "Select a supplier…"
+                      : "None / unspecified"}
+                  </option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                      {s.supplierCode ? ` (${s.supplierCode})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {hasLegacySupplier && (
+                  <p id="supplier-legacy-hint" className="text-[11px] text-text-secondary">
+                    Previous free-text value: “{initialItem?.supplier}”. Pick a
+                    registry supplier to replace it, or leave none.
+                  </p>
+                )}
+                {suppliers.length === 0 && !suppliersLoading && (
+                  <p id="supplier-empty-hint" className="text-[11px] text-text-secondary">
+                    No active suppliers.{" "}
+                    <Link
+                      href="/suppliers"
+                      className="text-accent font-semibold underline-offset-2 hover:underline"
+                    >
+                      Add suppliers
+                    </Link>{" "}
+                    first
+                    {needsOpeningLot
+                      ? " before registering opening stock."
+                      : ". Multi-supplier cost tracking happens on Restock."}
+                  </p>
+                )}
+                {suppliers.length > 0 && !needsOpeningLot && (
+                  <p id="supplier-hint" className="text-[11px] text-text-secondary">
+                    Preferred vendor for this item. Each restock can still use a
+                    different supplier with its own unit cost (purchase lot).
+                  </p>
+                )}
+              </div>
 
-          <label className="flex items-start gap-2.5 rounded-lg border border-border bg-bg-subtle/50 p-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isSandbox}
-              onChange={(e) => setIsSandbox(e.target.checked)}
-              disabled={isSubmitting}
-              className="mt-0.5 h-4 w-4 rounded border-border"
-            />
-            <span>
-              <span className="block text-xs font-semibold text-text">
-                Sandbox (testing only)
-              </span>
-              <span className="block text-[11px] text-text-secondary mt-0.5">
-                Hidden from normal users unless a superadmin turns on sandbox visibility.
-              </span>
-            </span>
-          </label>
+              <div className="space-y-1 sm:col-span-2">
+                <label
+                  htmlFor="notes-input"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Notes
+                </label>
+                <textarea
+                  id="notes-input"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  disabled={isSubmitting}
+                  placeholder="Optional notes for staff (brand, specs, handling)"
+                  className="w-full p-2.5 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            </div>
+          </fieldset>
+          </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <button
