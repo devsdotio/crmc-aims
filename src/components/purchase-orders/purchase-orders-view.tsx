@@ -15,6 +15,7 @@ import {
   Truck,
   CheckCircle2,
   Banknote,
+  HardHat,
 } from "lucide-react";
 import {
   usePurchaseLotsQuery,
@@ -23,7 +24,7 @@ import {
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-banner";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useConfirm } from "@/components/providers/confirm-context";
 import { useToast } from "@/components/providers/toast-context";
 import type { PurchaseLot } from "@/types/purchase-lots";
 import {
@@ -42,7 +43,16 @@ import { POPrintSlipDialog } from "@/components/purchase-orders/po-print-slip-di
 import { LotPrintTagDialog } from "@/components/purchase-orders/lot-print-tag-dialog";
 import { LotReleaseDialog } from "@/components/purchase-orders/lot-release-dialog";
 import { FileNewPODialog } from "@/components/purchase-orders/file-new-po-dialog";
-import type { POCategoryScope, POType } from "@/app/(private)/purchase-orders/types";
+import { useConsumablesQuery } from "@/features/consumables/client";
+import type {
+  POCategoryScope,
+  POLockedScope,
+  POType,
+} from "@/app/(private)/purchase-orders/types";
+import {
+  DEFAULT_CONSUMABLE_CLASSIFICATION,
+  type ConsumableClassification,
+} from "@/lib/consumable-classification";
 import { formatPhp } from "@/components/projects/format-money";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
@@ -68,16 +78,48 @@ export function PurchaseOrdersView({
     isFetching,
     refetch,
   } = usePurchaseLotsQuery();
+  const { data: consumablePage } = useConsumablesQuery({ limit: 100 });
+  const classificationByConsumableId = useMemo(() => {
+    const map = new Map<string, ConsumableClassification>();
+    for (const item of consumablePage?.data ?? []) {
+      map.set(
+        item.id,
+        (item.classification as ConsumableClassification | undefined) ??
+          DEFAULT_CONSUMABLE_CLASSIFICATION
+      );
+    }
+    return map;
+  }, [consumablePage?.data]);
+
+  const resolveLotClassification = (
+    lot: PurchaseLot
+  ): ConsumableClassification | null => {
+    if (lot.itemType !== "consumable") return null;
+    if (lot.projectId) return "material";
+    if (lot.consumableId) {
+      return (
+        classificationByConsumableId.get(lot.consumableId) ??
+        DEFAULT_CONSUMABLE_CLASSIFICATION
+      );
+    }
+    return DEFAULT_CONSUMABLE_CLASSIFICATION;
+  };
+
   const { canOperate } = useAssetOperator();
   const deleteMutation = useDeletePurchaseOrderMutation();
   const toast = useToast();
+  const { confirm } = useConfirm();
 
   const [filters, setFilters] = useState<PurchaseOrderFilterState>({
     search: searchParamQuery,
     itemType:
       categoryScope === "asset"
         ? "asset"
-        : categoryScope === "consumable"
+        : categoryScope === "consumable" ||
+          categoryScope === "consumables" ||
+          categoryScope === "supplies" ||
+          categoryScope === "materials" ||
+          categoryScope === "projects"
         ? "consumable"
         : "all",
     status: "all",
@@ -93,7 +135,6 @@ export function PurchaseOrdersView({
   const [printSlipLot, setPrintSlipLot] = useState<PurchaseLot | null>(null);
   const [printTagLot, setPrintTagLot] = useState<PurchaseLot | null>(null);
   const [releaseLot, setReleaseLot] = useState<PurchaseLot | null>(null);
-  const [groupToDelete, setGroupToDelete] = useState<GroupedPurchaseOrder | null>(null);
   const [isFileNewPOOpen, setIsFileNewPOOpen] = useState(false);
 
   // Sync search parameter from URL if redirected from Vouchers or other links
@@ -128,41 +169,35 @@ export function PurchaseOrdersView({
         g.lineItems.some((li) => li.itemType === "asset")
       );
     }
-    if (categoryScope === "consumable") {
+    if (categoryScope === "supplies") {
+      return groupedPOs.filter((g) =>
+        g.lineItems.some((li) => {
+          if (li.itemType !== "consumable" || li.projectId) return false;
+          return resolveLotClassification(li) === "supply";
+        })
+      );
+    }
+    if (categoryScope === "materials") {
+      return groupedPOs.filter((g) =>
+        g.lineItems.some((li) => {
+          if (li.itemType !== "consumable" || li.projectId) return false;
+          return resolveLotClassification(li) === "material";
+        })
+      );
+    }
+    if (categoryScope === "consumable" || categoryScope === "consumables") {
       return groupedPOs.filter((g) =>
         g.lineItems.some((li) => li.itemType === "consumable")
       );
     }
     if (categoryScope === "projects") {
-      return groupedPOs.filter((g) => {
-        if (
-          Boolean(g.representative.projectId) ||
-          g.lineItems.some((li) => Boolean(li.projectId))
-        ) {
-          return true;
-        }
-
-        const text = [
-          g.poNumber,
-          g.representative.purpose || "",
-          g.representative.notes || "",
-          ...g.lineItems.map((li) => li.purpose || ""),
-        ]
-          .join(" ")
-          .toLowerCase();
-
-        return (
-          text.includes("project") ||
-          text.includes("prj-") ||
-          text.includes("development") ||
-          text.includes("renovation") ||
-          text.includes("expansion") ||
-          text.includes("infrastructure")
-        );
-      });
+      return groupedPOs.filter((g) =>
+        Boolean(g.representative.projectId) ||
+        g.lineItems.some((li) => Boolean(li.projectId))
+      );
     }
     return groupedPOs;
-  }, [groupedPOs, categoryScope]);
+  }, [groupedPOs, categoryScope, classificationByConsumableId]);
 
   const selectedLotSynced = useMemo(() => {
     if (!selectedLot) return null;
@@ -359,10 +394,21 @@ export function PurchaseOrdersView({
 
   const categoryScopeLabel = useMemo(() => {
     if (categoryScope === "asset") return "Asset Purchases";
-    if (categoryScope === "consumable") return "Consumables & Supplies";
+    if (categoryScope === "supplies") return "Consumable Supplies";
+    if (categoryScope === "materials") return "Consumable Materials";
+    if (categoryScope === "consumable" || categoryScope === "consumables") {
+      return "Consumables";
+    }
     if (categoryScope === "projects") return "Project Procurement";
     return "All Purchase Orders";
   }, [categoryScope]);
+
+  const isConsumableScoped =
+    categoryScope === "consumable" ||
+    categoryScope === "consumables" ||
+    categoryScope === "supplies" ||
+    categoryScope === "materials" ||
+    categoryScope === "projects";
 
   const activePipelineValue = Math.max(
     0,
@@ -389,7 +435,7 @@ export function PurchaseOrdersView({
       itemType:
         categoryScope === "asset"
           ? "asset"
-          : categoryScope === "consumable"
+          : isConsumableScoped
           ? "consumable"
           : "all",
       status: "all",
@@ -402,24 +448,37 @@ export function PurchaseOrdersView({
     });
   };
 
-  const handleConfirmDelete = async () => {
-    if (!groupToDelete) return;
-    try {
-      await Promise.all(
-        groupToDelete.lineItems.map((li) => deleteMutation.mutateAsync(li.id))
-      );
-      toast.success(
-        `Purchase Order "${groupToDelete.poNumber}" and all ${groupToDelete.itemCount} line item(s) deleted.`
-      );
-      setGroupToDelete(null);
-      if (selectedLot && groupToDelete.lineItems.some((li) => li.id === selectedLot.id)) {
-        setSelectedLot(null);
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to delete Purchase Order."
-      );
-    }
+  const requestDeleteGroup = async (group: GroupedPurchaseOrder) => {
+    const description =
+      group.itemCount > 1
+        ? `Are you sure you want to delete purchase order "${group.poNumber}" and all ${group.itemCount} line items? This will cancel the order and cannot be undone.`
+        : `Are you sure you want to delete purchase order "${group.poNumber}" (${group.representative.itemName})? This will cancel the order and cannot be undone.`;
+
+    await confirm({
+      title: "Delete Purchase Order?",
+      description,
+      confirmLabel: "Delete Order",
+      cancelLabel: "Keep order",
+      variant: "destructive",
+      action: async () => {
+        try {
+          await Promise.all(
+            group.lineItems.map((li) => deleteMutation.mutateAsync(li.id))
+          );
+          toast.success(
+            `Purchase Order "${group.poNumber}" and all ${group.itemCount} line item(s) deleted.`
+          );
+          if (selectedLot && group.lineItems.some((li) => li.id === selectedLot.id)) {
+            setSelectedLot(null);
+          }
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : "Failed to delete Purchase Order."
+          );
+          throw err;
+        }
+      },
+    });
   };
 
   // Header Icon and Titles
@@ -434,18 +493,50 @@ export function PurchaseOrdersView({
         newPoLabel: "File Asset PO",
         defaultType: "asset" as POType,
         defaultPurpose: "[Asset Procurement]",
+        lockedScope: "asset" as POLockedScope | undefined,
+        defaultClassification: undefined as ConsumableClassification | undefined,
       };
     }
-    if (categoryScope === "consumable") {
+    if (categoryScope === "supplies") {
+      return {
+        icon: Boxes,
+        title: "Supplies Purchase Orders",
+        subtitle:
+          "Warehouse restocking for office supplies, stationery, and recurring stock batches.",
+        badgeText: "Consumable Supplies",
+        newPoLabel: "File Supplies PO",
+        defaultType: "consumable" as POType,
+        defaultPurpose: "[Supplies Restock]",
+        lockedScope: "supply" as POLockedScope | undefined,
+        defaultClassification: "supply" as ConsumableClassification | undefined,
+      };
+    }
+    if (categoryScope === "materials") {
+      return {
+        icon: HardHat,
+        title: "Materials Purchase Orders",
+        subtitle:
+          "Warehouse procurement for operational and construction materials held in Materials inventory.",
+        badgeText: "Consumable Materials",
+        newPoLabel: "File Materials PO",
+        defaultType: "consumable" as POType,
+        defaultPurpose: "[Materials Restock]",
+        lockedScope: "material" as POLockedScope | undefined,
+        defaultClassification: "material" as ConsumableClassification | undefined,
+      };
+    }
+    if (categoryScope === "consumable" || categoryScope === "consumables") {
       return {
         icon: Boxes,
         title: "Consumables Purchase Orders",
         subtitle:
           "Inventory restocking orders for office supplies, stationery, laboratory items, and materials.",
-        badgeText: "Consumables & Supplies",
+        badgeText: "Consumables",
         newPoLabel: "File Consumable PO",
         defaultType: "consumable" as POType,
         defaultPurpose: "[Inventory Restock]",
+        lockedScope: undefined as POLockedScope | undefined,
+        defaultClassification: undefined as ConsumableClassification | undefined,
       };
     }
     if (categoryScope === "projects") {
@@ -453,11 +544,13 @@ export function PurchaseOrdersView({
         icon: FolderKanban,
         title: "Project Purchase Orders",
         subtitle:
-          "Procurement orders and material acquisitions dedicated to institutional campus and departmental projects.",
+          "Direct project material procurement — credited to project spend on delivery, not warehouse stock.",
         badgeText: "Project Procurement",
         newPoLabel: "File Project PO",
         defaultType: "consumable" as POType,
         defaultPurpose: "[Project Procurement]",
+        lockedScope: "project" as POLockedScope | undefined,
+        defaultClassification: "material" as ConsumableClassification | undefined,
       };
     }
     return {
@@ -469,6 +562,8 @@ export function PurchaseOrdersView({
       newPoLabel: "File New PO",
       defaultType: "consumable" as POType,
       defaultPurpose: "",
+      lockedScope: undefined as POLockedScope | undefined,
+      defaultClassification: undefined as ConsumableClassification | undefined,
     };
   }, [categoryScope]);
 
@@ -708,7 +803,7 @@ export function PurchaseOrdersView({
             loading={isLoading}
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
-            onDeleteGroup={canOperate ? setGroupToDelete : undefined}
+            onDeleteGroup={canOperate ? (g) => void requestDeleteGroup(g) : undefined}
           />
         ) : (
           <PurchaseOrdersGrid
@@ -716,7 +811,7 @@ export function PurchaseOrdersView({
             loading={isLoading}
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
-            onDeleteGroup={canOperate ? setGroupToDelete : undefined}
+            onDeleteGroup={canOperate ? (g) => void requestDeleteGroup(g) : undefined}
           />
         )}
       </div>
@@ -737,7 +832,7 @@ export function PurchaseOrdersView({
                     g.poNumber === (lot.poNumber || lot.lotCode) ||
                     g.lineItems.some((l) => l.id === lot.id)
                 );
-                if (grp) setGroupToDelete(grp);
+                if (grp) void requestDeleteGroup(grp);
               }
             : undefined
         }
@@ -775,26 +870,11 @@ export function PurchaseOrdersView({
             onClose={() => setIsFileNewPOOpen(false)}
             defaultPoType={defaultHeader.defaultType}
             defaultPurpose={defaultHeader.defaultPurpose}
+            defaultClassification={defaultHeader.defaultClassification}
+            lockedScope={defaultHeader.lockedScope}
             onSuccess={() => {
               void refetch();
             }}
-          />
-
-          <ConfirmDialog
-            isOpen={Boolean(groupToDelete)}
-            title="Delete Purchase Order?"
-            description={
-              groupToDelete
-                ? groupToDelete.itemCount > 1
-                  ? `Are you sure you want to delete purchase order "${groupToDelete.poNumber}" and all ${groupToDelete.itemCount} line items? This will cancel the order and cannot be undone.`
-                  : `Are you sure you want to delete purchase order "${groupToDelete.poNumber}" (${groupToDelete.representative.itemName})? This will cancel the order and cannot be undone.`
-                : ""
-            }
-            confirmLabel="Delete Order"
-            variant="destructive"
-            isLoading={deleteMutation.isPending}
-            onConfirm={handleConfirmDelete}
-            onClose={() => setGroupToDelete(null)}
           />
         </>
       )}
