@@ -54,21 +54,21 @@ export function ConfirmDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="relative w-full max-w-sm rounded-xl border border-border bg-bg p-4 shadow-xl z-10 animate-in fade-in zoom-in-95 duration-150 overflow-hidden"
+        className="relative w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-xl z-10 animate-in fade-in zoom-in-95 duration-150 overflow-hidden"
       >
-        <div className="px-1">
+        <div className="space-y-2">
           <h3
             id="confirm-dialog-title"
-            className="text-base font-bold text-text text-center leading-snug"
+            className="text-base font-bold text-text leading-snug"
           >
             {title}
           </h3>
-          <p className="text-xs text-text-secondary text-justify mt-1.5 leading-relaxed">
+          <div className="text-xs text-text-secondary leading-relaxed [&_strong]:text-text [&_strong]:font-semibold">
             {description}
-          </p>
+          </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-border/70 mt-2.5">
+        <div className="flex items-center justify-end gap-2 pt-4 border-t border-border/70 mt-4">
           <button
             type="button"
             onClick={onClose}
@@ -82,7 +82,7 @@ export function ConfirmDialog({
             onClick={() => void onConfirm()}
             disabled={isLoading}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 h-8 px-3.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-xs active:scale-[0.98]",
+              "inline-flex items-center justify-center gap-1.5 h-8 min-w-24 px-3.5 text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-50 shadow-xs active:scale-[0.98]",
               isDestructive
                 ? "bg-destructive text-white hover:bg-destructive/90"
                 : "bg-accent text-accent-foreground hover:opacity-90"

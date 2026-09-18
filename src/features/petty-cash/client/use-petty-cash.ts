@@ -165,7 +165,42 @@ export function useDeletePettyCashMutation(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => pettyCashApi.delete(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: pettyCashQueryKeys.all });
+
+      const previousLists = qc.getQueriesData<PettyCashListResponse>({
+        queryKey: pettyCashQueryKeys.lists(),
+      });
+      const previousDetail = qc.getQueryData<PettyCashVoucher>(
+        pettyCashQueryKeys.detail(id)
+      );
+
+      qc.setQueriesData<PettyCashListResponse>(
+        { queryKey: pettyCashQueryKeys.lists() },
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            total: Math.max(0, old.total - 1),
+            vouchers: old.vouchers.filter((item) => item.id !== id),
+          };
+        }
+      );
+      qc.removeQueries({ queryKey: pettyCashQueryKeys.detail(id) });
+
+      return { previousLists, previousDetail };
+    },
+    onError: (_err, id, context) => {
+      if (context?.previousLists) {
+        for (const [queryKey, data] of context.previousLists) {
+          qc.setQueryData(queryKey, data);
+        }
+      }
+      if (context?.previousDetail) {
+        qc.setQueryData(pettyCashQueryKeys.detail(id), context.previousDetail);
+      }
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: pettyCashQueryKeys.all });
       void invalidateDomains(qc, PETTY_CASH_MUTATION_DOMAINS);
     },
