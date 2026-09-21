@@ -40,6 +40,7 @@ import { formatPhp } from "@/components/projects/format-money";
 import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
 import { cn } from "@/lib/utils";
 import { filterMoneyInput } from "@/lib/numeric-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   serializeParticulars,
   sumParticularAmounts,
@@ -90,6 +91,25 @@ export function CreatePettyCashDialog({
   const { data: lots = [] } = usePurchaseLotsQuery({ enabled: isOpen });
   const { data: suppliers = [] } = useSuppliersQuery({ enabled: isOpen, activeOnly: true });
   const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+
+  const categoryOptions = useMemo(
+    () =>
+      PETTY_CASH_CATEGORIES.map((cat) => ({
+        value: cat.id,
+        label: cat.label,
+      })),
+    []
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.code})`,
+        keywords: d.code,
+      })),
+    [departments]
+  );
   const { data: users = [] } = useUsersQuery();
   const {
     data: nextCodeData,
@@ -467,18 +487,14 @@ export function CreatePettyCashDialog({
                           Petty Cash
                         </span>
                       </div>
-                      <select
+                      <SearchableSelect
                         value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        required
-                        className="w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
-                      >
-                        {PETTY_CASH_CATEGORIES.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.label}
-                          </option>
-                        ))}
-                      </select>
+                        onValueChange={setCategory}
+                        options={categoryOptions}
+                        placeholder="Type to find a category…"
+                        aria-required="true"
+                        inputClassName="text-sm py-2"
+                      />
                       <p className="mt-1 text-[11px] text-text-secondary">
                         Classification of micro-disbursement expense.
                       </p>
@@ -676,28 +692,23 @@ export function CreatePettyCashDialog({
                         </span>
                       )}
                     </div>
-                    <select
+                    <SearchableSelect
                       value={departmentId || ""}
-                      onChange={(e) => setDepartmentId(e.target.value || null)}
+                      onValueChange={(next) => setDepartmentId(next || null)}
+                      options={departmentOptions}
                       disabled={isPoLinked}
-                      className={cn(
-                        "w-full rounded-lg border border-border bg-bg px-3.5 py-2 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                      placeholder="Type to find a department…"
+                      clearLabel={
                         isPoLinked
-                          ? "cursor-not-allowed opacity-75 bg-bg-subtle"
-                          : "cursor-pointer"
-                      )}
-                    >
-                      <option value="">
-                        {isPoLinked
                           ? "No department on linked PO"
-                          : "None / General Custodian Fund"}
-                      </option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
-                        </option>
-                      ))}
-                    </select>
+                          : "None / General Custodian Fund"
+                      }
+                      emptyMessage="No departments available"
+                      inputClassName={cn(
+                        "text-sm py-2",
+                        isPoLinked && "opacity-75 bg-bg-subtle"
+                      )}
+                    />
                     {isPoLinked ? (
                       <p className="mt-1 text-[11px] text-text-secondary">
                         Department is taken from the linked purchase order and cannot be changed until the PO link is cleared.

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   X,
   Send,
@@ -18,6 +18,7 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type DestinationKind = "department" | "project";
 
@@ -42,7 +43,30 @@ export function LotReleaseDialog({
     error: departmentsError,
   } = useDepartmentsQuery({ enabled: isOpen });
   const { data: projects = [] } = useProjectsQuery();
-  const mutableProjects = projects.filter((p) => p.status !== "completed");
+  const mutableProjects = useMemo(
+    () => projects.filter((p) => p.status !== "completed"),
+    [projects]
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.code})`,
+        keywords: d.code,
+      })),
+    [departments]
+  );
+
+  const projectOptions = useMemo(
+    () =>
+      mutableProjects.map((p) => ({
+        value: p.id,
+        label: `${p.name} (${p.projectCode})`,
+        keywords: p.projectCode,
+      })),
+    [mutableProjects]
+  );
 
   const [quantity, setQuantity] = useState("1");
   const [destinationKind, setDestinationKind] =
@@ -261,26 +285,24 @@ export function LotReleaseDialog({
                   Failed to load departments. Check Settings → Departments.
                 </p>
               ) : (
-                <select
+                <SearchableSelect
                   id="release-dept"
                   value={departmentId}
-                  onChange={(e) => setDepartmentId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-bg-subtle text-text text-xs focus:bg-bg focus:ring-1 focus:ring-ring focus:outline-hidden"
-                  required
-                >
-                  {departments.length === 0 ? (
-                    <option value="">No departments configured</option>
-                  ) : (
-                    <>
-                      <option value="">Select a department…</option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
+                  onValueChange={setDepartmentId}
+                  options={departmentOptions}
+                  placeholder={
+                    departments.length === 0
+                      ? "No departments configured"
+                      : "Select a department…"
+                  }
+                  clearLabel={
+                    departments.length === 0
+                      ? undefined
+                      : "Select a department…"
+                  }
+                  emptyMessage="No departments configured"
+                  aria-required="true"
+                />
               )}
             </div>
           ) : (
@@ -291,26 +313,24 @@ export function LotReleaseDialog({
               >
                 Project <span className="text-accent">*</span>
               </label>
-              <select
+              <SearchableSelect
                 id="release-project"
                 value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border bg-bg-subtle text-text text-xs focus:bg-bg focus:ring-1 focus:ring-ring focus:outline-hidden"
-                required
-              >
-                {mutableProjects.length === 0 ? (
-                  <option value="">No active projects available</option>
-                ) : (
-                  <>
-                    <option value="">Select a project…</option>
-                    {mutableProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.projectCode})
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
+                onValueChange={setProjectId}
+                options={projectOptions}
+                placeholder={
+                  mutableProjects.length === 0
+                    ? "No active projects available"
+                    : "Select a project…"
+                }
+                clearLabel={
+                  mutableProjects.length === 0
+                    ? undefined
+                    : "Select a project…"
+                }
+                emptyMessage="No active projects available"
+                aria-required="true"
+              />
             </div>
           )}
 

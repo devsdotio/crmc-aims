@@ -19,6 +19,7 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type SaveConsumablePayload = Partial<ConsumableItem> & {
   unitCost?: string | number;
@@ -93,6 +94,30 @@ function AddEditConsumableDialogForm({
     }
     return fromSettings;
   }, [allCategories, initialItem?.category]);
+
+  const classificationOptions = useMemo(
+    () =>
+      CONSUMABLE_CLASSIFICATIONS.map((id) => ({
+        value: id,
+        label: CONSUMABLE_CLASSIFICATION_LABELS[id],
+      })),
+    []
+  );
+
+  const categoryOptions = useMemo(
+    () => consumableCategories.map((c) => ({ value: c.name, label: c.name })),
+    [consumableCategories]
+  );
+
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        value: s.id,
+        label: s.supplierCode ? `${s.name} (${s.supplierCode})` : s.name,
+        keywords: s.supplierCode ?? "",
+      })),
+    [suppliers]
+  );
 
   const [name, setName] = useState(() => initialItem?.name ?? "");
   const [category, setCategory] = useState(
@@ -369,28 +394,23 @@ function AddEditConsumableDialogForm({
               ) : (
               <div className="space-y-1">
                 <label
-                  htmlFor="classification-select"
+                  htmlFor="classification-input"
                   className="block text-xs font-semibold text-text"
                 >
                   Type <span className="text-accent">*</span>
                 </label>
-                <select
-                  id="classification-select"
+                <SearchableSelect
+                  id="classification-input"
                   value={classification}
-                  onChange={(e) =>
-                    setClassification(e.target.value as ConsumableClassification)
+                  onValueChange={(next) =>
+                    setClassification(next as ConsumableClassification)
                   }
+                  options={classificationOptions}
                   disabled={isSubmitting}
+                  placeholder="Type to find a type…"
                   aria-required="true"
                   aria-describedby="classification-hint"
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  {CONSUMABLE_CLASSIFICATIONS.map((id) => (
-                    <option key={id} value={id}>
-                      {CONSUMABLE_CLASSIFICATION_LABELS[id]}
-                    </option>
-                  ))}
-                </select>
+                />
                 <p id="classification-hint" className="text-[11px] text-text-secondary">
                   Supplies = day-to-day office stock; Materials = project / construction-style consumables
                 </p>
@@ -399,41 +419,32 @@ function AddEditConsumableDialogForm({
 
               <div className="space-y-1">
                 <label
-                  htmlFor="category-select"
+                  htmlFor="category-input"
                   className="block text-xs font-semibold text-text"
                 >
                   Category <span className="text-accent">*</span>
                 </label>
-                <select
-                  id="category-select"
+                <SearchableSelect
+                  id="category-input"
                   value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  onValueChange={setCategory}
+                  options={categoryOptions}
                   disabled={isSubmitting || categoriesLoading}
+                  placeholder={
+                    categoriesLoading
+                      ? "Loading…"
+                      : consumableCategories.length === 0
+                        ? "No categories — add in Settings"
+                        : "Type to find a category…"
+                  }
+                  emptyMessage="No categories — add in Settings"
                   aria-required="true"
                   aria-invalid={errorField === "category"}
                   aria-describedby={describedBy(
                     "category-hint",
                     errorField === "category" && "form-error"
                   )}
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  {categoriesLoading ? (
-                    <option value="">Loading…</option>
-                  ) : consumableCategories.length === 0 ? (
-                    <option value="">No categories — add in Settings</option>
-                  ) : (
-                    <>
-                      <option value="" disabled>
-                        Select a category…
-                      </option>
-                      {consumableCategories.map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
+                />
                 <p id="category-hint" className="text-[11px] text-text-secondary">
                   Managed under Settings → Categories
                 </p>
@@ -624,10 +635,11 @@ function AddEditConsumableDialogForm({
                     "Preferred supplier"
                   )}
                 </label>
-                <select
+                <SearchableSelect
                   id="supplier-select"
                   value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
+                  onValueChange={setSupplierId}
+                  options={supplierOptions}
                   disabled={isSubmitting || suppliersLoading}
                   aria-required={needsOpeningLot || undefined}
                   aria-invalid={errorField === "supplier"}
@@ -637,20 +649,20 @@ function AddEditConsumableDialogForm({
                     suppliers.length > 0 && !needsOpeningLot && "supplier-hint",
                     errorField === "supplier" && "form-error"
                   )}
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option value="">
-                    {needsOpeningLot
+                  placeholder={
+                    suppliersLoading
+                      ? "Loading…"
+                      : needsOpeningLot
+                        ? "Select a supplier…"
+                        : "Type to find a supplier…"
+                  }
+                  clearLabel={
+                    needsOpeningLot
                       ? "Select a supplier…"
-                      : "None / unspecified"}
-                  </option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.supplierCode ? ` (${s.supplierCode})` : ""}
-                    </option>
-                  ))}
-                </select>
+                      : "None / unspecified"
+                  }
+                  emptyMessage="No active suppliers"
+                />
                 {hasLegacySupplier && (
                   <p id="supplier-legacy-hint" className="text-[11px] text-text-secondary">
                     Previous free-text value: “{initialItem?.supplier}”. Pick a

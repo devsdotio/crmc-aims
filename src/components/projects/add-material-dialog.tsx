@@ -16,6 +16,7 @@ import type { ConsumableItem } from "@/types/inventory";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
 import { formatPhp } from "./format-money";
 import { availableQty } from "@/components/consumables/utils";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type MaterialFormInput = {
   consumableId: string;
@@ -61,6 +62,16 @@ export function AddMaterialDialog({
     );
   }, [available, search]);
 
+  const consumableOptions = useMemo(
+    () =>
+      filteredItems.map((i) => ({
+        value: i.id,
+        label: `${i.name} (${i.itemCode}) — ${availableQty(i)} ${i.unit} available`,
+        keywords: `${i.itemCode} ${i.name} ${i.category}`,
+      })),
+    [filteredItems]
+  );
+
   useEffect(() => {
     if (!isOpen) return;
     if (consumableId && !filteredItems.some((i) => i.id === consumableId)) {
@@ -79,6 +90,16 @@ export function AddMaterialDialog({
   const availableLots = useMemo(
     () => lots.filter((lot) => lot.quantityRemaining > 0),
     [lots]
+  );
+
+  const lotOptions = useMemo(
+    () =>
+      availableLots.map((lot) => ({
+        value: lot.id,
+        label: `${lot.lotCode} · ${lot.quantityRemaining} remaining (${formatPhp(Number(lot.unitCost))}/unit)`,
+        keywords: lot.lotCode,
+      })),
+    [availableLots]
   );
 
   const selectedLot = availableLots.find((l) => l.id === purchaseLotId) ?? null;
@@ -238,22 +259,19 @@ export function AddMaterialDialog({
             {loadingItems ? (
               <div className="h-9 rounded-lg bg-border animate-pulse" />
             ) : (
-              <select
+              <SearchableSelect
                 id="mat-item"
                 value={consumableId}
-                onChange={(e) => setConsumableId(e.target.value)}
+                onValueChange={setConsumableId}
+                options={consumableOptions}
                 disabled={filteredItems.length === 0}
-                className={cn(fieldClass, "cursor-pointer")}
-              >
-                {filteredItems.length === 0 && (
-                  <option value="">No stocked items match your search</option>
-                )}
-                {filteredItems.map((i) => (
-                  <option key={i.id} value={i.id}>
-                    {i.name} ({i.itemCode}) — {availableQty(i)} {i.unit} available
-                  </option>
-                ))}
-              </select>
+                placeholder={
+                  filteredItems.length === 0
+                    ? "No stocked items match your search"
+                    : "Type to find a material…"
+                }
+                emptyMessage="No stocked items match your search"
+              />
             )}
           </div>
 
@@ -283,19 +301,14 @@ export function AddMaterialDialog({
                 No active lots with remaining stock. Restock this item first.
               </p>
             ) : (
-              <select
+              <SearchableSelect
                 id="mat-lot"
                 value={purchaseLotId}
-                onChange={(e) => setPurchaseLotId(e.target.value)}
-                className={cn(fieldClass, "cursor-pointer")}
-              >
-                {availableLots.map((lot) => (
-                  <option key={lot.id} value={lot.id}>
-                    {lot.lotCode} · {lot.quantityRemaining} remaining (
-                    {formatPhp(Number(lot.unitCost))}/unit)
-                  </option>
-                ))}
-              </select>
+                onValueChange={setPurchaseLotId}
+                options={lotOptions}
+                placeholder="Type to find a lot…"
+                emptyMessage="No active lots with remaining stock"
+              />
             )}
             {selectedLot && quantity > selectedLot.quantityRemaining && (
               <p className="mt-1.5 text-[11px] text-status-repair-text">

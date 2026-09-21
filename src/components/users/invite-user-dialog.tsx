@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { X, UserPlus, EyeOff, Eye, Check } from "lucide-react";
 import type { UserRole } from "@/types/users";
 import type { DepartmentDTO } from "@/features/departments/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface CreateUserDialogProps {
   isOpen: boolean;
@@ -61,7 +62,34 @@ function CreateUserDialogForm({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, isSubmitting]);
 
-  const availableDepartments = departments.filter((d) => !d.accountUserId);
+  const availableDepartments = useMemo(
+    () => departments.filter((d) => !d.accountUserId),
+    [departments]
+  );
+
+  const roleOptions = useMemo(
+    () => [
+      { value: "borrower", label: "Department account" },
+      { value: "staff", label: "Staff" },
+      { value: "admin", label: "Admin" },
+    ],
+    []
+  );
+
+  const tenantOptions = useMemo(
+    () => (tenants ?? []).map((t) => ({ value: t.id, label: t.name })),
+    [tenants]
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      availableDepartments.map((dept) => ({
+        value: dept.id,
+        label: `${dept.name} (${dept.code})`,
+        keywords: dept.code,
+      })),
+    [availableDepartments]
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,16 +218,14 @@ function CreateUserDialogForm({
                 <label htmlFor="create-role-select" className="block text-xs font-semibold text-text">
                   Role <span className="text-accent">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   id="create-role-select"
                   value={role}
-                  onChange={(e) => setRole(e.target.value as UserRole)}
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option value="borrower">Department account</option>
-                  <option value="staff">Staff</option>
-                  <option value="admin">Admin</option>
-                </select>
+                  onValueChange={(next) => setRole(next as UserRole)}
+                  options={roleOptions}
+                  placeholder="Type to find a role…"
+                  aria-required="true"
+                />
               </div>
 
               {tenants && tenants.length > 0 && (
@@ -207,19 +233,15 @@ function CreateUserDialogForm({
                   <label htmlFor="create-tenant-select" className="block text-xs font-semibold text-text">
                     Institution <span className="text-accent">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     id="create-tenant-select"
                     value={tenantId}
-                    onChange={(e) => setTenantId(e.target.value)}
-                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    <option value="">Select an institution…</option>
-                    {tenants.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setTenantId}
+                    options={tenantOptions}
+                    placeholder="Select an institution…"
+                    clearLabel="Select an institution…"
+                    aria-required="true"
+                  />
                 </div>
               )}
             </div>
@@ -230,25 +252,21 @@ function CreateUserDialogForm({
             <label htmlFor="create-dept-select" className="block text-xs font-semibold text-text">
               Department <span className="text-accent">*</span>
             </label>
-            <select
+            <SearchableSelect
               id="create-dept-select"
               value={departmentId}
-              onChange={(e) => {
-                const nextId = e.target.value;
+              onValueChange={(nextId) => {
                 setDepartmentId(nextId);
                 const next = departments.find((d) => d.id === nextId);
                 if (next) setName(next.name);
                 if (error) setError("");
               }}
-              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="">Select a department…</option>
-              {availableDepartments.map((dept) => (
-                <option key={dept.id} value={dept.id}>
-                  {dept.name} ({dept.code})
-                </option>
-              ))}
-            </select>
+              options={departmentOptions}
+              placeholder="Select a department…"
+              clearLabel="Select a department…"
+              emptyMessage="No departments available"
+              aria-required="true"
+            />
             {availableDepartments.length === 0 && (
               <p className="text-[11px] text-text-secondary">
                 Every department already has a login, or none exist yet. Add

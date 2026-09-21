@@ -21,6 +21,7 @@ import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purcha
 import { cn } from "@/lib/utils";
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
 import type { ReleaseConsumableRequestPayload } from "@/features/consumable-requests/client/consumable-requests-api";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface ReleaseConsumableRequestDialogProps {
   request: ConsumableRequest | null;
@@ -52,6 +53,19 @@ function ReleaseLineLotRow({
   const availableLots = useMemo(
     () => lots.filter((lot) => lot.quantityRemaining > 0),
     [lots]
+  );
+
+  const lotOptions = useMemo(
+    () =>
+      availableLots.map((lot) => {
+        const isSuff = lot.quantityRemaining >= line.quantityRequested;
+        return {
+          value: lot.id,
+          label: `${lot.lotCode || "Lot"} — ${lot.quantityRemaining} remaining (${formatPhp(Number(lot.unitCost))}/unit)${isSuff ? "" : " [INSUFFICIENT STOCK]"}`,
+          keywords: lot.lotCode || "",
+        };
+      }),
+    [availableLots, line.quantityRequested]
   );
 
   // Auto-select if only 1 lot is available with sufficient quantity
@@ -149,27 +163,19 @@ function ReleaseLineLotRow({
           </div>
         ) : (
           <div className="space-y-2">
-            <select
+            <SearchableSelect
               id={`lot-select-${line.id}`}
               value={selectedLotId || ""}
-              onChange={(e) => onChange(e.target.value)}
-              className={cn(
-                "w-full px-3 py-2 bg-bg border rounded-lg text-xs text-text focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent cursor-pointer transition-shadow",
-                !selectedLotId ? "border-amber-500/40" : "border-border"
+              onValueChange={onChange}
+              options={lotOptions}
+              placeholder="Choose a purchase lot to deduct from…"
+              clearLabel="Choose a purchase lot to deduct from…"
+              emptyMessage="No active purchase lots"
+              inputClassName={cn(
+                "py-2",
+                !selectedLotId ? "border-amber-500/40" : undefined
               )}
-            >
-              <option value="">Choose a purchase lot to deduct from…</option>
-              {availableLots.map((lot) => {
-                const isSuff = lot.quantityRemaining >= line.quantityRequested;
-                return (
-                  <option key={lot.id} value={lot.id}>
-                    {lot.lotCode || "Lot"} — {lot.quantityRemaining} remaining (
-                    {formatPhp(Number(lot.unitCost))}/unit)
-                    {isSuff ? "" : " [INSUFFICIENT STOCK]"}
-                  </option>
-                );
-              })}
-            </select>
+            />
 
             {/* Selected Lot Overview Card */}
             {selectedLot && !isShortfall && (

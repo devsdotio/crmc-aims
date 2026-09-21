@@ -13,7 +13,16 @@ import { useCategoriesQuery } from "@/features/categories/client/use-categories"
 import { useSuppliersQuery } from "@/features/suppliers/client";
 import { assetsApi } from "@/features/assets/client";
 import Link from "next/link";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { QRCodeDisplay } from "./qr-code-display";
+
+const STATUS_OPTIONS: Array<{ value: AssetStatus; label: string }> = [
+  { value: "active", label: "Active (Serviceable)" },
+  { value: "needs_repair", label: "Needs Repair" },
+  { value: "out_of_service", label: "Out of Service" },
+  { value: "retired", label: "Retired" },
+  { value: "missing", label: "Missing" },
+];
 
 export interface AddEditAssetDialogProps {
   isOpen: boolean;
@@ -56,6 +65,31 @@ function AddEditAssetDialogForm({
     return fromSettings;
   }, [allCategories, initialAsset?.category]);
 
+  const categoryOptions = useMemo(
+    () => assetCategories.map((c) => ({ value: c.name, label: c.name })),
+    [assetCategories]
+  );
+
+  const statusOptions = useMemo(
+    () =>
+      STATUS_OPTIONS.map((o) => ({
+        ...o,
+        disabled:
+          o.value === "needs_repair" && Boolean(initialAsset?.currentHolder),
+      })),
+    [initialAsset?.currentHolder]
+  );
+
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        value: s.id,
+        label: s.supplierCode ? `${s.name} (${s.supplierCode})` : s.name,
+        keywords: s.supplierCode ?? "",
+      })),
+    [suppliers]
+  );
+
   const [name, setName] = useState(() => initialAsset?.name ?? "");
   const [category, setCategory] = useState(
     () => initialAsset?.category ?? ""
@@ -91,12 +125,6 @@ function AddEditAssetDialogForm({
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Default select to first taxonomy option when loaded (create only).
-  useEffect(() => {
-    if (isEditing || category || assetCategories.length === 0) return;
-    setCategory(assetCategories[0].name);
-  }, [assetCategories, category, isEditing]);
-
   // Server-allocated preview so the code is unique against current inventory.
   useEffect(() => {
     if (isEditing || !category) return;
@@ -118,13 +146,6 @@ function AddEditAssetDialogForm({
     };
   }, [category, isEditing]);
 
-  const handleCategoryChange = (newCat: string) => {
-    setCategory(newCat);
-    if (!isEditing) {
-      setAssetCode("");
-    }
-  };
-
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && !isSubmitting) onClose();
@@ -132,6 +153,11 @@ function AddEditAssetDialogForm({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, isSubmitting]);
+
+  const handleCategoryChange = (next: string) => {
+    setCategory(next);
+    if (!isEditing) setAssetCode("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,7 +169,7 @@ function AddEditAssetDialogForm({
       setError(
         assetCategories.length === 0
           ? "No asset categories yet. Add them under Settings → Categories."
-          : "Please select an asset category."
+          : "Please enter an asset category."
       );
       return;
     }
@@ -280,64 +306,45 @@ function AddEditAssetDialogForm({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label
-                    htmlFor="category-select"
+                    htmlFor="category-input"
                     className="block text-xs font-semibold text-text"
                   >
                     Asset Category <span className="text-accent">*</span>
                   </label>
-                  <select
-                    id="category-select"
+                  <SearchableSelect
+                    id="category-input"
                     value={category}
-                    onChange={(e) => handleCategoryChange(e.target.value)}
+                    onValueChange={handleCategoryChange}
+                    options={categoryOptions}
                     disabled={isSubmitting || categoriesLoading}
-                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    {categoriesLoading ? (
-                      <option value="">Loading…</option>
-                    ) : assetCategories.length === 0 ? (
-                      <option value="">No categories — add in Settings</option>
-                    ) : (
-                      <>
-                        <option value="" disabled>
-                          Select a category…
-                        </option>
-                        {assetCategories.map((c) => (
-                          <option key={c.id} value={c.name}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </>
-                    )}
-                  </select>
+                    placeholder={
+                      categoriesLoading
+                        ? "Loading…"
+                        : assetCategories.length === 0
+                          ? "No categories — add in Settings"
+                          : "Type to find a category…"
+                    }
+                    emptyMessage="No categories — add in Settings"
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label
-                    htmlFor="status-select"
+                    htmlFor="status-input"
                     className="block text-xs font-semibold text-text"
                   >
                     Condition <span className="text-accent">*</span>
                   </label>
-                  <select
-                    id="status-select"
+                  <SearchableSelect
+                    id="status-input"
                     value={status}
-                    onChange={(e) =>
-                      setStatus(e.target.value as AssetStatus | "")
+                    onValueChange={(next) =>
+                      setStatus(next as AssetStatus | "")
                     }
+                    options={statusOptions}
                     disabled={isSubmitting}
-                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent"
-                  >
-                    <option value="active">Active (Serviceable)</option>
-                    <option
-                      value="needs_repair"
-                      disabled={Boolean(initialAsset?.currentHolder)}
-                    >
-                      Needs Repair
-                    </option>
-                    <option value="out_of_service">Out of Service</option>
-                    <option value="retired">Retired</option>
-                    <option value="missing">Missing</option>
-                  </select>
+                    placeholder="Type to find a condition…"
+                  />
                   {status === "needs_repair" && (
                     <p className="text-[11px] text-text-secondary leading-relaxed">
                       {initialAsset?.currentHolder
@@ -460,26 +467,25 @@ function AddEditAssetDialogForm({
 
               <div className="space-y-1">
                 <label
-                  htmlFor="supplier-select"
+                  htmlFor="supplier-input"
                   className="block text-xs font-semibold text-text"
                 >
                   Supplier
                 </label>
-                <select
-                  id="supplier-select"
+                <SearchableSelect
+                  id="supplier-input"
                   value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
+                  onValueChange={setSupplierId}
+                  options={supplierOptions}
                   disabled={isSubmitting || suppliersLoading}
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option value="">None / unspecified</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                      {s.supplierCode ? ` (${s.supplierCode})` : ""}
-                    </option>
-                  ))}
-                </select>
+                  placeholder={
+                    suppliersLoading
+                      ? "Loading…"
+                      : "Type to find a supplier…"
+                  }
+                  clearLabel="None / unspecified"
+                  emptyMessage="No active suppliers"
+                />
                 {suppliers.length === 0 && !suppliersLoading ? (
                   <p className="text-[11px] text-text-secondary">
                     No active suppliers.{" "}

@@ -23,6 +23,7 @@ import { useUpdateConsumableRequestMutation } from "@/features/consumable-reques
 import { useToast } from "@/components/providers/toast-context";
 import type { PortalBorrowRequest } from "./types";
 import type { BorrowRequest } from "@/types/borrow-requests";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface EditRequestDialogProps {
   request: PortalBorrowRequest | BorrowRequest | null;
@@ -69,6 +70,21 @@ export function EditRequestDialog({
   const toast = useToast();
 
   const consumablesCatalog = useMemo(() => consumableData?.data ?? [], [consumableData]);
+
+  const supplyOptions = useMemo(
+    () =>
+      consumablesCatalog.map((c) => ({
+        value: c.id,
+        label: `${c.name} (${c.itemCode}) — Available: ${c.availableQty ?? c.currentQty ?? 0} ${c.unit}`,
+        keywords: `${c.itemCode} ${c.name}`,
+      })),
+    [consumablesCatalog]
+  );
+
+  const assetCategoryOptions = useMemo(
+    () => assetCategories.map((c) => ({ value: c.name, label: c.name })),
+    [assetCategories]
+  );
 
   const isSupply = useMemo(() => {
     if (!request) return false;
@@ -417,10 +433,9 @@ export function EditRequestDialog({
 
                           {/* Product selector */}
                           <div className="flex-1 min-w-0">
-                            <select
+                            <SearchableSelect
                               value={line.consumableId}
-                              onChange={(e) => {
-                                const newId = e.target.value;
+                              onValueChange={(newId) => {
                                 const item = consumablesCatalog.find((c) => c.id === newId);
                                 setSupplyLines((prev) =>
                                   prev.map((l, i) =>
@@ -435,15 +450,12 @@ export function EditRequestDialog({
                                   )
                                 );
                               }}
-                              className="w-full h-8 px-2.5 text-xs bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer"
-                            >
-                              <option value="">Select supply item...</option>
-                              {consumablesCatalog.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name} ({c.itemCode}) — Available: {c.availableQty ?? c.currentQty ?? 0} {c.unit}
-                                </option>
-                              ))}
-                            </select>
+                              options={supplyOptions}
+                              placeholder="Select supply item..."
+                              clearLabel="Select supply item..."
+                              emptyMessage="No supplies available"
+                              inputClassName="h-8 text-xs bg-bg-subtle"
+                            />
                           </div>
 
                           {/* Qty */}
@@ -516,22 +528,18 @@ export function EditRequestDialog({
 
                           {/* Category */}
                           <div className="w-36 shrink-0">
-                            <select
+                            <SearchableSelect
                               value={item.category}
-                              onChange={(e) => {
-                                const cat = e.target.value;
+                              onValueChange={(cat) => {
                                 setAssetItems((prev) =>
                                   prev.map((it, i) => (i === idx ? { ...it, category: cat } : it))
                                 );
                               }}
-                              className="w-full h-8 px-2 text-xs bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent capitalize cursor-pointer"
-                            >
-                              {assetCategories.map((c) => (
-                                <option key={c.id} value={c.name}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
+                              options={assetCategoryOptions}
+                              placeholder="Type to find a category…"
+                              emptyMessage="No categories available"
+                              inputClassName="h-8 text-xs bg-bg-subtle capitalize"
+                            />
                           </div>
 
                           {/* Category color dot */}

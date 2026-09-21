@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X, PackageCheck, Check, AlertCircle, Loader2, Package, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/types/assets";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type AssignAssetFormInput = {
   assetId: string;
@@ -32,6 +33,16 @@ export function AssignAssetDialog({
           a.assignmentType === "assignable"
       ),
     [assets]
+  );
+
+  const assetOptions = useMemo(
+    () =>
+      assignable.map((a) => ({
+        value: a.id,
+        label: `${a.assetCode} — ${a.name}`,
+        keywords: `${a.assetCode} ${a.category ?? ""} ${a.serialNumber ?? ""}`,
+      })),
+    [assignable]
   );
 
   const [assetId, setAssetId] = useState("");
@@ -147,19 +158,16 @@ export function AssignAssetDialog({
                 </div>
               </div>
             ) : (
-              <select
+              <SearchableSelect
                 id="assign-asset"
                 value={assetId}
-                onChange={(e) => setAssetId(e.target.value)}
-                className={cn(fieldClass, "cursor-pointer")}
+                onValueChange={setAssetId}
+                options={assetOptions}
                 disabled={isSubmitting}
-              >
-                {assignable.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.assetCode} — {a.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Type to find an asset…"
+                emptyMessage="No assignable assets available"
+                inputClassName="bg-bg-subtle"
+              />
             )}
           </div>
 

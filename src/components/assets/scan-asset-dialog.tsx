@@ -11,6 +11,7 @@ import {
 import type { ScanResolveResult } from "@/features/assets/client/assets-api";
 import { useDepartmentsQuery } from "@/features/departments/client";
 import { useProjectsQuery } from "@/features/projects/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 function nextWeek(): string {
   const d = new Date();
@@ -46,6 +47,35 @@ export function ScanAssetDialog({
   const returnMutation = useScanReturnMutation();
   const { data: departments = [] } = useDepartmentsQuery();
   const { data: projects = [] } = useProjectsQuery();
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((dept) => ({
+        value: dept.id,
+        label: dept.name,
+        keywords: dept.code,
+      })),
+    [departments]
+  );
+
+  const projectOptions = useMemo(
+    () =>
+      projects.map((project) => ({
+        value: project.id,
+        label: `${project.projectCode} · ${project.name}`,
+        keywords: project.projectCode,
+      })),
+    [projects]
+  );
+
+  const conditionOptions = useMemo(
+    () => [
+      { value: "good", label: "Good condition" },
+      { value: "damaged", label: "Damaged" },
+      { value: "needs_repair", label: "Needs repair" },
+    ],
+    []
+  );
 
   const busy =
     resolveMutation.isPending ||
@@ -250,29 +280,21 @@ export function ScanAssetDialog({
                     </button>
                   </div>
                   {destinationKind === "department" ? (
-                    <select
+                    <SearchableSelect
                       value={departmentId}
-                      onChange={(e) => setDepartmentId(e.target.value)}
-                      className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg"
-                    >
-                      {departments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.name}
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={setDepartmentId}
+                      options={departmentOptions}
+                      placeholder="Type to find a department…"
+                      emptyMessage="No departments available"
+                    />
                   ) : (
-                    <select
+                    <SearchableSelect
                       value={projectId}
-                      onChange={(e) => setProjectId(e.target.value)}
-                      className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg"
-                    >
-                      {projects.map((project) => (
-                        <option key={project.id} value={project.id}>
-                          {project.projectCode} · {project.name}
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={setProjectId}
+                      options={projectOptions}
+                      placeholder="Type to find a project…"
+                      emptyMessage="No projects available"
+                    />
                   )}
                   <input
                     value={receivedBy}
@@ -303,15 +325,12 @@ export function ScanAssetDialog({
 
               {resolved.suggestedAction === "return" && (
                 <form onSubmit={handleReturn} className="space-y-2">
-                  <select
+                  <SearchableSelect
                     value={condition}
-                    onChange={(e) => setCondition(e.target.value)}
-                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg"
-                  >
-                    <option value="good">Good condition</option>
-                    <option value="damaged">Damaged</option>
-                    <option value="needs_repair">Needs repair</option>
-                  </select>
+                    onValueChange={setCondition}
+                    options={conditionOptions}
+                    placeholder="Type to find a condition…"
+                  />
                   <label className="flex items-center gap-2 text-xs text-text">
                     <input
                       type="checkbox"
