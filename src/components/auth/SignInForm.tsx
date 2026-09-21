@@ -286,14 +286,17 @@ export function SignInForm() {
 
   return (
     <AuthCard>
-      <div className="space-y-6">
+      <div className="space-y-7">
         {/* Title */}
-        <div className="space-y-1.5">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
-            Sign In
+        <div className="space-y-2">
+          <div className="inline-flex items-center rounded-full border border-[#FF4E45]/20 bg-[#FF4E45]/6 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#D83D35]">
+            Staff access
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground">
+            Welcome back
           </h2>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            Access the Enterprise Asset Management workspace
+          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
+            Sign in to continue to your AIMS workspace.
           </p>
         </div>
 
@@ -312,17 +315,17 @@ export function SignInForm() {
         <form
           onSubmit={handleSubmit}
           noValidate
-          className="space-y-4 relative"
+          className="relative space-y-5"
           aria-describedby={displayErrorMessage ? 'sign-in-status' : undefined}
         >
           
           {/* Inputs Container */}
-          <div className="space-y-4">
+          <div className="space-y-5">
             {/* Email Field */}
             <div className="space-y-1.5">
               <label
                 htmlFor="email"
-                className="block text-xs font-semibold uppercase tracking-wider text-foreground"
+                className="block text-xs font-semibold tracking-wide text-foreground"
               >
                 Email Address
               </label>
@@ -340,7 +343,7 @@ export function SignInForm() {
                 aria-describedby={
                   errors.email && touched.email ? 'email-error' : undefined
                 }
-                className={`flex h-11 w-full rounded-xl border bg-background px-3.5 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${
+                className={`flex h-12 w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45]/25 disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${
                   errors.email && touched.email
                     ? 'border-red-500'
                     : 'border-border'
@@ -361,13 +364,13 @@ export function SignInForm() {
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="password"
-                  className="block text-xs font-semibold uppercase tracking-wider text-foreground"
+                  className="block text-xs font-semibold tracking-wide text-foreground"
                 >
                   Password
                 </label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs font-medium text-[#FF4E45] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  className="rounded-sm text-xs font-semibold text-[#D83D35] hover:text-[#FF4E45] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Forgot your password?
                 </Link>
@@ -398,7 +401,7 @@ export function SignInForm() {
             </div>
 
             {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between pt-1">
+            <div className="flex items-center justify-between pt-0.5">
               <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
                 <input
                   type="checkbox"
@@ -416,7 +419,7 @@ export function SignInForm() {
           <button
             type="submit"
             disabled={formState.isLoading}
-            className="w-full h-11 inline-flex items-center justify-center gap-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm shadow-md shadow-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.99]"
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#f15a29] text-sm font-semibold text-white shadow-lg shadow-[#2A3260]/20 transition-all hover:bg-[#f15a45] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]"
           >
             {formState.isLoading ? (
               <>
@@ -433,8 +436,8 @@ export function SignInForm() {
         </form>
 
         {/* Footer Support Info */}
-        <div className="pt-4 border-t border-border text-center space-y-1">
-          <p className="text-xs text-muted-foreground">
+        <div className="space-y-1.5 border-t border-border pt-5 text-center">
+          <p className="text-xs font-semibold text-foreground/70">
             AIMS &bull; Asset & Inventory Management System
           </p>
           <p className="text-[11px] text-muted-foreground/80">

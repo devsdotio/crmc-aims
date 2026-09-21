@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Menu, ChevronRight, User } from "lucide-react";
+import { Menu, ChevronRight } from "lucide-react";
 import { HeaderBibleVerse } from "@/components/header-bible-verse";
 
 // ─── Route Metadata Map ──────────────────────────────────────────────────────
@@ -177,21 +177,13 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
 
 interface GlobalHeaderProps {
   onMobileMenuOpen: () => void;
-  /** Display name from the signed-in profile (sidebar/header identity). */
-  userName?: string;
-  /** Role title label, e.g. "Admin", "Staff", "Superadmin". */
-  userRoleLabel?: string;
 }
 
-export default function GlobalHeader({
-  onMobileMenuOpen,
-  userName,
-  userRoleLabel = "—",
-}: GlobalHeaderProps) {
+export default function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
   const pathname = usePathname();
 
   const currentRoute = ROUTE_MAP[pathname] || {
-    title: "CRMC AIMS",
+    title: "AIMS",
     subtitle: "Asset & Inventory Management System",
     category: "System",
   };
@@ -221,28 +213,8 @@ export default function GlobalHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-3 shrink-0">
-        {/* Dynamic Bible Verse Section */}
+      <div className="flex items-center shrink-0 min-w-0 pl-4">
         <HeaderBibleVerse />
-
-        <div
-          className="hidden sm:flex items-center gap-2 px-2 py-1 rounded-full bg-bg-subtle border border-[#E3E5EC] max-w-56"
-          title={userName ? `${userName} · ${userRoleLabel}` : userRoleLabel}
-        >
-          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-[#2A3260] text-white text-[10px] font-bold shrink-0">
-            <User className="w-3.5 h-3.5" />
-          </div>
-          <div className="min-w-0 pr-1">
-            <span className="block text-xs font-semibold text-text truncate leading-tight">
-              {userName ?? userRoleLabel}
-            </span>
-            {userName ? (
-              <span className="block text-[10px] font-medium text-[#6B7280] truncate leading-tight">
-                {userRoleLabel}
-              </span>
-            ) : null}
-          </div>
-        </div>
       </div>
     </header>
   );

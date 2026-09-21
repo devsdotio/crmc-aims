@@ -6,7 +6,6 @@ import GlobalHeader from "@/components/global-header";
 import { cn } from "@/lib/utils";
 import { useMeQuery } from "@/features/users/client";
 import { useDashboardSidebarSummaryQuery } from "@/features/dashboard/client/use-dashboard";
-import { ROLE_DEFINITIONS } from "@/constants/roles";
 
 import type { UserRole } from "@/types/users";
 
@@ -47,11 +46,6 @@ export default function DashboardLayout({
   const userEmail = me?.email ?? initialProfile?.email ?? "";
 
   const currentRole = me?.role ?? initialProfile?.role;
-  const userRoleLabel = currentRole
-    ? ROLE_DEFINITIONS[currentRole].title
-    : meLoading
-      ? "…"
-      : "—";
 
   const pendingCount = summary?.pendingApprovals ?? 0;
   const pendingAssignCount = summary?.pendingAssignRequests ?? 0;
@@ -115,11 +109,7 @@ export default function DashboardLayout({
         data-theme="light"
       >
         <div className="print:hidden no-print">
-          <GlobalHeader
-            onMobileMenuOpen={() => setIsMobileOpen(true)}
-            userName={userName}
-            userRoleLabel={userRoleLabel}
-          />
+          <GlobalHeader onMobileMenuOpen={() => setIsMobileOpen(true)} />
         </div>
 
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 bg-bg-subtle focus:outline-hidden print:overflow-visible print:h-auto print:p-0 print:bg-white">
