@@ -1,3 +1,4 @@
 # Used by Wrangler / OpenNext local preview.
 # Copy to .dev.vars for local Workers runtime testing (do not commit .dev.vars).
 NEXTJS_ENV=development
+# DATABASE_URL=postgresql://...   # local next dev / preview without Hyperdrive

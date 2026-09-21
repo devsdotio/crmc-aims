@@ -19,5 +19,11 @@
   },
   "vars": {
     "NEXT_PUBLIC_SITE_URL": "https://crmc-aims.rendyllcabardo11.workers.dev/"
-  } 
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "f4a7ef26c79e450ebc778ef11ef5bf86"
+    }
+  ]
 }
