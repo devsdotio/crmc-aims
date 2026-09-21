@@ -4,7 +4,7 @@ import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
 import { requireActor } from "@/server/shared/auth";
 import { CategoryRepository } from "@/server/modules/categories/category.repository";
-import { okWithEtag } from "@/server/shared/http";
+import { handleError, okWithEtag } from "@/server/shared/http";
 import { serverCache } from "@/server/shared/cache";
 
 /**
@@ -34,11 +34,7 @@ export async function GET(request: Request) {
       cacheControl: { maxAge: 60, staleWhileRevalidate: 300 },
     });
   } catch (error) {
-    console.error("GET /api/categories Error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch categories" },
-      { status: 500 }
-    );
+    return handleError(error);
   }
 }
 
@@ -111,10 +107,6 @@ export async function POST(request: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("POST /api/categories Error:", error);
-    return NextResponse.json(
-      { error: "Failed to create category" },
-      { status: 500 }
-    );
+    return handleError(error);
   }
 }
