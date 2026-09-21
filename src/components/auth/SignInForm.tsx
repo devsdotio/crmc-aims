@@ -27,6 +27,8 @@ const REDIRECT_ERROR_MESSAGES: Record<string, string> = {
     'Department accounts use the requester portal. Sign in there, or ask an administrator for staff access.',
   session_expired:
     'Your previous session ended. Enter your email and password to continue.',
+  unavailable:
+    'The database was unreachable just now. Wait a moment, then sign in again.',
 };
 
 const STAY_ON_SIGN_IN_ERRORS = new Set([
@@ -34,6 +36,7 @@ const STAY_ON_SIGN_IN_ERRORS = new Set([
   'deactivated',
   'borrower_portal',
   'session_expired',
+  'unavailable',
 ]);
 
 function getRedirectErrorMessage(errorKey: string | null): string | null {

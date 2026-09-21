@@ -98,7 +98,6 @@ export default function Sidebar({
     const initial: Record<string, boolean> = {
       "/purchase-orders": true,
       "/consumables": true,
-      "/borrower-db/requests": true,
     };
     if (typeof window !== "undefined") {
       if (window.location.pathname.startsWith("/purchase-orders")) {
@@ -106,9 +105,6 @@ export default function Sidebar({
       }
       if (window.location.pathname.startsWith("/consumables")) {
         initial["/consumables"] = true;
-      }
-      if (window.location.pathname.startsWith("/borrower-db/requests")) {
-        initial["/borrower-db/requests"] = true;
       }
     }
     return initial;
@@ -120,9 +116,6 @@ export default function Sidebar({
     }
     if (pathname.startsWith("/consumables")) {
       setOpenSubmenus((prev) => ({ ...prev, "/consumables": true }));
-    }
-    if (pathname.startsWith("/borrower-db/requests")) {
-      setOpenSubmenus((prev) => ({ ...prev, "/borrower-db/requests": true }));
     }
   }, [pathname]);
 
@@ -217,6 +210,31 @@ export default function Sidebar({
       ],
     },
     {
+      label: "Request",
+      items: [
+        {
+          name: "Assign",
+          href: "/borrower-db/requests/assignment",
+          icon: ClipboardList,
+          badge: pendingCount,
+          badgeTone: "accent",
+          roles: ["borrower"],
+        },
+        {
+          name: "Borrow",
+          href: "/borrower-db/requests/borrow",
+          icon: Repeat,
+          roles: ["borrower"],
+        },
+        {
+          name: "Supplies",
+          href: "/borrower-db/requests/supplies",
+          icon: Boxes,
+          roles: ["borrower"],
+        },
+      ],
+    },
+    {
       label: "Operations",
       items: [
         {
@@ -224,6 +242,18 @@ export default function Sidebar({
           href: "/assets",
           icon: Package,
           roles: ["admin", "staff"],
+        },
+        {
+          name: "Assets",
+          href: "/borrower-db/inventory",
+          icon: Package,
+          roles: ["borrower"],
+        },
+        {
+          name: "Supplies",
+          href: "/borrower-db",
+          icon: Boxes,
+          roles: ["borrower"],
         },
         {
           name: "Inventory",
@@ -302,35 +332,6 @@ export default function Sidebar({
           href: "/projects",
           icon: FolderKanban,
           roles: ["admin"],
-        },
-
-        {
-          name: "Requests",
-          href: "/borrower-db/requests",
-          icon: ClipboardList,
-          badge: pendingCount,
-          badgeTone: "accent",
-          roles: ["borrower"],
-          children: [
-            {
-              name: "Borrow",
-              href: "/borrower-db/requests/borrow",
-            },
-            {
-              name: "Assignment",
-              href: "/borrower-db/requests/assignment",
-            },
-            {
-              name: "Supplies",
-              href: "/borrower-db/requests/supplies",
-            },
-          ],
-        },
-        {
-          name: "Inventory",
-          href: "/borrower-db/inventory",
-          icon: Package,
-          roles: ["borrower"],
         },
       ],
     },

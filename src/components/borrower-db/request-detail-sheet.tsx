@@ -246,7 +246,7 @@ export function RequestDetailSheet({
       className="fixed inset-0 z-50 flex justify-end"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="request-code-highlight"
+      aria-labelledby="request-detail-title"
     >
       {/* Backdrop (Click to close) */}
       <div
@@ -259,36 +259,47 @@ export function RequestDetailSheet({
       <div className="relative z-10 w-full max-w-xl h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-250">
         {/* Highlighted Header - Code & Badge as Heroes */}
         <div className="p-5 border-b border-border bg-card shrink-0 space-y-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Highlighted Request Code */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent/10 border border-accent/25 shadow-xs">
-                <span id="request-code-highlight" className="font-mono text-base font-extrabold text-accent tracking-wide">
-                  {request.requestCode}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  aria-label="Copy request code"
-                  className="p-1 rounded-md text-accent hover:bg-accent/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  {copied ? (
-                    <Check className="h-3.5 w-3.5 text-status-active-text" />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" />
-                  )}
-                </button>
-              </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 space-y-2">
+              <h2
+                id="request-detail-title"
+                className="text-sm font-bold text-text"
+              >
+                Request details
+              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Highlighted Request Code */}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent/10 border border-accent/25 shadow-xs">
+                  <span
+                    id="request-code-highlight"
+                    className="font-mono text-base font-extrabold text-accent tracking-wide"
+                  >
+                    {request.requestCode}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    aria-label="Copy request code"
+                    className="p-1 rounded-md text-accent hover:bg-accent/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-status-active-text" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
 
-              {copied && (
-                <span className="text-[11px] font-bold text-status-active-text animate-in fade-in duration-150">
-                  Copied!
-                </span>
-              )}
+                {copied && (
+                  <span className="text-[11px] font-bold text-status-active-text animate-in fade-in duration-150">
+                    Copied!
+                  </span>
+                )}
+              </div>
             </div>
 
-            {/* Highlighted Status Badge & Edit Action */}
-            <div className="flex items-center gap-2">
+            {/* Status, Edit, Close */}
+            <div className="flex items-center gap-2 shrink-0">
               {onEdit && request.status === "pending" && (
                 <button
                   type="button"
@@ -310,6 +321,15 @@ export function RequestDetailSheet({
                 <StatusIcon className="h-3.5 w-3.5 shrink-0" />
                 {statusConfig.label}
               </span>
+
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                aria-label="Close"
+                className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
 

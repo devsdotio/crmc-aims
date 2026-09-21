@@ -99,12 +99,10 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
     limit: 100,
     requestType: kind === "borrow" ? "borrowable" : kind === "assign" ? "assignable" : undefined,
     enabled: fetchAssets,
-    refetchInterval: 15_000,
   });
   const { data: supplyResponse, isLoading: loadingSupplies } = useConsumableRequests({
     limit: 100,
     enabled: fetchSupplies,
-    refetchInterval: 15_000,
   });
   const assetRequests = useMemo(() => response?.data ?? [], [response?.data]);
   const supplyRequests = useMemo(

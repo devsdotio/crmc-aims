@@ -10,6 +10,7 @@ export type ProfileDTO = {
   department: string | null;
   departmentId: string | null;
   departmentCode: string | null;
+  tenantId: string | null;
   dateAdded: string;
   lastActive: string | null;
   lastActiveAt: string | null;

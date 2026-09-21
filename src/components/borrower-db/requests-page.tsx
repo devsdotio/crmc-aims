@@ -13,7 +13,7 @@ const COPY: Record<RequestKindFilter, { title: string; subtitle: string }> = {
     subtitle: "Temporary equipment loans with a return due date.",
   },
   assign: {
-    title: "Assignment Requests",
+    title: "Assign Requests",
     subtitle: "Long-term department equipment with open custody (no due date).",
   },
   supply: {

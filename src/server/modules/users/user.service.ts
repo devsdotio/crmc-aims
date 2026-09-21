@@ -55,6 +55,7 @@ export function toProfileDTO(row: ProfileWithDepartment): ProfileDTO {
     department: departmentName,
     departmentId: row.departmentId ?? null,
     departmentCode: row.linkedDepartmentCode ?? null,
+    tenantId: row.tenantId ?? null,
     dateAdded: toDateString(row.createdAt),
     lastActive:
       row.status === "deactivated"
