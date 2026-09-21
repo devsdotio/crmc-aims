@@ -1,5 +1,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import { cache } from "react";
 import postgres from "postgres";
 
 import * as schema from "./schema";
@@ -11,8 +12,6 @@ type HyperdriveBinding = { connectionString: string };
 const globalForDb = globalThis as unknown as {
   __crmcDb?: Database;
   __crmcPg?: ReturnType<typeof postgres>;
-  /** Workers isolate: one Hyperdrive-backed client (Hyperdrive pools upstream). */
-  __crmcHyperdriveDb?: Database;
 };
 
 function getHyperdriveConnectionString(): string | undefined {
@@ -27,6 +26,28 @@ function getHyperdriveConnectionString(): string | undefined {
 }
 
 /**
+ * Per-request Hyperdrive client. Workers throw
+ * "Cannot perform I/O on behalf of a different request" (Error 1101) if a
+ * TCP-backed postgres client is reused across invocations — so never cache
+ * it on globalThis. React `cache()` dedupes within a single request only.
+ */
+const getHyperdriveDb = cache((): Database => {
+  const hyperdriveUrl = getHyperdriveConnectionString();
+  if (!hyperdriveUrl) {
+    throw new Error("Hyperdrive binding is not available in this runtime.");
+  }
+
+  const client = postgres(hyperdriveUrl, {
+    max: 1,
+    fetch_types: false,
+    prepare: false,
+    connect_timeout: 30,
+  });
+
+  return drizzle(client, { schema });
+});
+
+/**
  * Lazy Drizzle client. Avoids crashing module evaluation during Next.js
  * builds that import route handlers without a live DATABASE_URL.
  *
@@ -34,26 +55,8 @@ function getHyperdriveConnectionString(): string | undefined {
  * Locally, use DATABASE_URL with a shared process pool.
  */
 export function getDb(): Database {
-  const hyperdriveUrl = getHyperdriveConnectionString();
-
-  if (hyperdriveUrl) {
-    if (globalForDb.__crmcHyperdriveDb) {
-      return globalForDb.__crmcHyperdriveDb;
-    }
-
-    // Reuse one Worker-side client per isolate. Creating a new `postgres()` on
-    // every getDb() (dashboard fires many parallel APIs) exhausts outbound
-    // connections and surfaces as 500s after a successful sign-in.
-    // Hyperdrive owns the real pool; keep prepare:false for Drizzle.
-    const client = postgres(hyperdriveUrl, {
-      max: 1,
-      fetch_types: false,
-      prepare: false,
-      connect_timeout: 30,
-    });
-    const db = drizzle(client, { schema });
-    globalForDb.__crmcHyperdriveDb = db;
-    return db;
+  if (getHyperdriveConnectionString()) {
+    return getHyperdriveDb();
   }
 
   if (globalForDb.__crmcDb) {
