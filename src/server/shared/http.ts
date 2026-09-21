@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError, type ZodIssue } from "zod";
 
-import { isAppError } from "./errors";
+import { isAppError, isConnectivityError, ServiceUnavailableError } from "./errors";
 
 export interface CacheControlOptions {
   maxAge?: number;
@@ -130,6 +130,17 @@ export function handleError(error: unknown) {
 
   if (isAppError(error)) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode });
+  }
+
+  if (isConnectivityError(error)) {
+    console.error("Connectivity error:", error);
+    const unavailable = new ServiceUnavailableError(
+      "We couldn’t reach the database. Check your connection and try again shortly."
+    );
+    return NextResponse.json(
+      { error: unavailable.message },
+      { status: unavailable.statusCode }
+    );
   }
 
   console.error("Unhandled error:", error);

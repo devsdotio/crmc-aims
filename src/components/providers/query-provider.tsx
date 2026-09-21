@@ -1,14 +1,18 @@
 "use client";
 
-import {
-  QueryClient,
-  QueryClientProvider,
-  QueryCache,
-  MutationCache,
-} from "@tanstack/react-query";
-import { useState, useEffect, useRef } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import { useToast } from "@/components/providers/toast-context";
-import { formatFriendlyNetworkError } from "@/lib/network-error";
+import {
+  formatFriendlyNetworkError,
+  isAuthNetworkError,
+} from "@/lib/network-error";
+
+const NETWORK_TOAST_DEBOUNCE_MS = 2_500;
+const AUTH_TOAST_DEBOUNCE_MS = 30_000;
+
+const AUTH_SESSION_MESSAGE =
+  "Your session has ended. Sign in again to continue.";
 
 function createQueryClient() {
   return new QueryClient({
@@ -27,6 +31,16 @@ function createQueryClient() {
   });
 }
 
+function signInHref(): string {
+  if (typeof window === "undefined") return "/sign-in?error=session_expired";
+  const next = window.location.pathname + window.location.search;
+  const params = new URLSearchParams({ error: "session_expired" });
+  if (next && next !== "/" && !next.startsWith("/sign-in")) {
+    params.set("next", next);
+  }
+  return `/sign-in?${params.toString()}`;
+}
+
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   const toast = useToast();
 
@@ -36,51 +50,66 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let lastError = { message: "", timestamp: 0 };
 
-    const unsubscribeQuery = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "error") {
-        const error = event.action.error;
-        const friendly = formatFriendlyNetworkError(
-          error,
-          "Failed to load data. Please check your connection."
-        );
-        const now = Date.now();
-        if (lastError.message === friendly && now - lastError.timestamp < 2500) {
+    function notifyQueryError(error: unknown, networkFallback: string) {
+      const now = Date.now();
+
+      if (isAuthNetworkError(error)) {
+        if (
+          lastError.message === AUTH_SESSION_MESSAGE &&
+          now - lastError.timestamp < AUTH_TOAST_DEBOUNCE_MS
+        ) {
           return;
         }
-        lastError = { message: friendly, timestamp: now };
-        toast.warning(friendly, {
+        lastError = { message: AUTH_SESSION_MESSAGE, timestamp: now };
+        toast.warning(AUTH_SESSION_MESSAGE, {
+          duration: 12_000,
           action: {
-            label: "Retry Connection",
+            label: "Sign In",
             onClick: () => {
-              void queryClient.refetchQueries({ type: "active" });
+              window.location.assign(signInHref());
             },
           },
         });
+        return;
+      }
+
+      const friendly = formatFriendlyNetworkError(error, networkFallback);
+      if (
+        lastError.message === friendly &&
+        now - lastError.timestamp < NETWORK_TOAST_DEBOUNCE_MS
+      ) {
+        return;
+      }
+      lastError = { message: friendly, timestamp: now };
+      toast.warning(friendly, {
+        action: {
+          label: "Retry Connection",
+          onClick: () => {
+            void queryClient.refetchQueries({ type: "active" });
+          },
+        },
+      });
+    }
+
+    const unsubscribeQuery = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        notifyQueryError(
+          event.action.error,
+          "Failed to load data. Please check your connection."
+        );
       }
     });
 
-    const unsubscribeMutation = queryClient.getMutationCache().subscribe((event) => {
-      if (event.type === "updated" && event.action.type === "error") {
-        const error = event.action.error;
-        const friendly = formatFriendlyNetworkError(
-          error,
-          "Operation could not be completed. Please try again."
-        );
-        const now = Date.now();
-        if (lastError.message === friendly && now - lastError.timestamp < 2500) {
-          return;
+    const unsubscribeMutation = queryClient
+      .getMutationCache()
+      .subscribe((event) => {
+        if (event.type === "updated" && event.action.type === "error") {
+          notifyQueryError(
+            event.action.error,
+            "Operation could not be completed. Please try again."
+          );
         }
-        lastError = { message: friendly, timestamp: now };
-        toast.warning(friendly, {
-          action: {
-            label: "Retry Connection",
-            onClick: () => {
-              void queryClient.refetchQueries({ type: "active" });
-            },
-          },
-        });
-      }
-    });
+      });
 
     return () => {
       unsubscribeQuery();

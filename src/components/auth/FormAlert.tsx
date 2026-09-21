@@ -8,6 +8,7 @@ interface FormAlertProps {
   message: string | null;
   onDismiss?: () => void;
   className?: string;
+  id?: string;
 }
 
 export function FormAlert({
@@ -15,6 +16,7 @@ export function FormAlert({
   message,
   onDismiss,
   className = '',
+  id,
 }: FormAlertProps) {
   useEffect(() => {
     if (!message || !onDismiss) return;
@@ -35,8 +37,9 @@ export function FormAlert({
 
   return (
     <div
+      id={id}
       role="alert"
-      aria-live="polite"
+      aria-live={isError ? 'assertive' : 'polite'}
       className={`relative flex items-start gap-3 p-3.5 rounded-xl border text-xs sm:text-sm font-medium transition-all animate-in fade-in-50 duration-200 ${
         isError
           ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'

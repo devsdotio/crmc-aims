@@ -1,6 +1,15 @@
 /**
  * Formats low-level HTTP/fetch/network errors into clear, friendly, and actionable user notices.
  */
+
+const AUTH_ERROR_PATTERN =
+  /authentication required|unauthorized|session expired|jwt expired|\b401\b/i;
+
+export function isAuthNetworkError(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error || "");
+  return AUTH_ERROR_PATTERN.test(raw);
+}
+
 export function formatFriendlyNetworkError(
   error: unknown,
   fallbackMessage?: string
@@ -27,8 +36,8 @@ export function formatFriendlyNetworkError(
     return "Unable to connect to the server. Please check your internet connection or try again shortly.";
   }
 
-  if (/unauthorized|session expired|jwt expired|401/i.test(raw)) {
-    return "Your session has expired. Please sign in again to continue.";
+  if (AUTH_ERROR_PATTERN.test(raw)) {
+    return "Your session has ended. Sign in again to continue.";
   }
 
   if (/forbidden|permission denied|403/i.test(raw)) {
