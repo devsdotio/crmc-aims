@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   FolderPlus,
@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { Project, ProjectStatus } from "@/types/projects";
 import { PROJECT_STATUS_LABELS } from "@/types/projects";
 import { useDepartmentsQuery } from "@/features/departments/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type ProjectFormInput = {
   name: string;
@@ -80,6 +81,16 @@ export function AddEditProjectDialog({
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((dept) => ({
+        value: dept.name,
+        label: `${dept.code} — ${dept.name}`,
+        keywords: dept.code,
+      })),
+    [departments]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -278,22 +289,18 @@ export function AddEditProjectDialog({
               Department <span className="font-normal text-text-secondary">(optional)</span>
             </label>
             <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary z-10">
                 <Building2 className="h-3.5 w-3.5" />
               </span>
-              <select
+              <SearchableSelect
                 id="project-department"
                 value={form.department}
-                onChange={(e) => handleChange("department", e.target.value)}
-                className={cn(fieldClass, "pl-8.5 cursor-pointer")}
-              >
-                <option value="">No department</option>
-                {departments.map((dept) => (
-                  <option key={dept.id} value={dept.name}>
-                    {dept.code} — {dept.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={(next) => handleChange("department", next)}
+                options={departmentOptions}
+                clearLabel="No department"
+                placeholder="Type to find a department…"
+                inputClassName="pl-8.5"
+              />
             </div>
           </div>
 

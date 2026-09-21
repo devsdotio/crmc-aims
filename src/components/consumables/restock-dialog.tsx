@@ -27,6 +27,7 @@ import {
   parseMoney,
   parseUnsignedInt,
 } from "@/lib/numeric-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type RestockConfirmInput = {
   itemId: string;
@@ -69,6 +70,16 @@ function RestockDialogForm({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        value: s.id,
+        label: `${s.name} (${s.supplierCode})`,
+        keywords: s.supplierCode,
+      })),
+    [suppliers]
+  );
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -535,19 +546,15 @@ function RestockDialogForm({
                 >
                   Supplier
                 </label>
-                <select
+                <SearchableSelect
                   id="restock-supplier"
                   value={supplierId}
-                  onChange={(e) => setSupplierId(e.target.value)}
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  <option value="">No supplier / not listed</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.supplierCode})
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setSupplierId}
+                  options={supplierOptions}
+                  placeholder="Type to find a supplier…"
+                  clearLabel="No supplier / not listed"
+                  emptyMessage="No active suppliers"
+                />
                 {suppliers.length === 0 && (
                   <p className="text-[10px] text-text-secondary">
                     No active suppliers — add one under Suppliers to track vendor pricing.

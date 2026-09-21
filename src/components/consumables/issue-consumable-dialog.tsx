@@ -19,6 +19,7 @@ import {
   filterUnsignedIntInput,
   parseUnsignedInt,
 } from "@/lib/numeric-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const ISSUE_TIMEOUT_MS = 60_000;
 
@@ -86,6 +87,36 @@ export function IssueConsumableDialog({
     );
   }, [stockedItems, supplySearch]);
 
+  const supplyOptions = useMemo(
+    () =>
+      filteredSupplies.map((i) => ({
+        value: i.id,
+        label: `${i.name} (${i.itemCode}) — ${availableQty(i)} ${i.unit}`,
+        keywords: `${i.itemCode} ${i.name}`,
+      })),
+    [filteredSupplies]
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.code})`,
+        keywords: d.code,
+      })),
+    [departments]
+  );
+
+  const projectOptions = useMemo(
+    () =>
+      mutableProjects.map((p) => ({
+        value: p.id,
+        label: `${p.name} (${p.projectCode})`,
+        keywords: p.projectCode,
+      })),
+    [mutableProjects]
+  );
+
   const selectedItem = useMemo(() => {
     if (lockedItem) return lockedItem;
     return (
@@ -104,6 +135,17 @@ export function IssueConsumableDialog({
     () => lots.filter((lot) => lot.quantityRemaining > 0),
     [lots]
   );
+
+  const lotOptions = useMemo(
+    () =>
+      availableLots.map((lot) => ({
+        value: lot.id,
+        label: `${lot.lotCode} · ${lot.quantityRemaining} remaining (${formatPhp(Number(lot.unitCost))}/unit)`,
+        keywords: lot.lotCode,
+      })),
+    [availableLots]
+  );
+
   const selectedLot = availableLots.find((lot) => lot.id === lotId) ?? null;
 
   useEffect(() => {
@@ -334,19 +376,16 @@ export function IssueConsumableDialog({
                   No supplies with available stock. Restock first.
                 </p>
               ) : (
-                <select
+                <SearchableSelect
                   value={selectedItemId}
-                  onChange={(e) => setSelectedItemId(e.target.value)}
-                  className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg cursor-pointer"
-                  required
-                >
-                  <option value="">Select a supply…</option>
-                  {filteredSupplies.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} ({i.itemCode}) — {availableQty(i)} {i.unit}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setSelectedItemId}
+                  options={supplyOptions}
+                  placeholder="Select a supply…"
+                  clearLabel="Select a supply…"
+                  emptyMessage="No supplies match your search"
+                  inputClassName="text-sm font-normal"
+                  aria-required="true"
+                />
               )}
             </div>
           )}
@@ -401,25 +440,24 @@ export function IssueConsumableDialog({
                   Failed to load departments. Check Settings → Departments, then retry.
                 </p>
               ) : (
-                <select
+                <SearchableSelect
                   value={departmentId}
-                  onChange={(e) => setDepartmentId(e.target.value)}
-                  className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-                  required
-                >
-                  {departments.length === 0 ? (
-                    <option value="">No departments configured</option>
-                  ) : (
-                    <>
-                      <option value="">Select a department…</option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
+                  onValueChange={setDepartmentId}
+                  options={departmentOptions}
+                  placeholder={
+                    departments.length === 0
+                      ? "No departments configured"
+                      : "Select a department…"
+                  }
+                  clearLabel={
+                    departments.length === 0
+                      ? undefined
+                      : "Select a department…"
+                  }
+                  emptyMessage="No departments configured"
+                  inputClassName="text-sm font-normal"
+                  aria-required="true"
+                />
               )}
             </label>
           ) : (
@@ -427,25 +465,24 @@ export function IssueConsumableDialog({
               <span className="text-[11px] font-bold uppercase text-text-secondary">
                 Project <span className="text-accent">*</span>
               </span>
-              <select
+              <SearchableSelect
                 value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-                required
-              >
-                {mutableProjects.length === 0 ? (
-                  <option value="">No active projects available</option>
-                ) : (
-                  <>
-                    <option value="">Select a project…</option>
-                    {mutableProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.projectCode})
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
+                onValueChange={setProjectId}
+                options={projectOptions}
+                placeholder={
+                  mutableProjects.length === 0
+                    ? "No active projects available"
+                    : "Select a project…"
+                }
+                clearLabel={
+                  mutableProjects.length === 0
+                    ? undefined
+                    : "Select a project…"
+                }
+                emptyMessage="No active projects available"
+                inputClassName="text-sm font-normal"
+                aria-required="true"
+              />
             </label>
           )}
 
@@ -462,20 +499,16 @@ export function IssueConsumableDialog({
                 Loading lots…
               </p>
             ) : (
-              <select
+              <SearchableSelect
                 value={lotId}
-                onChange={(e) => setLotId(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-                required
-              >
-                <option value="">Select a lot…</option>
-                {availableLots.map((lot) => (
-                  <option key={lot.id} value={lot.id}>
-                    {lot.lotCode} · {lot.quantityRemaining} remaining (
-                    {formatPhp(Number(lot.unitCost))}/unit)
-                  </option>
-                ))}
-              </select>
+                onValueChange={setLotId}
+                options={lotOptions}
+                placeholder="Select a lot…"
+                clearLabel="Select a lot…"
+                emptyMessage="No lots with remaining stock"
+                inputClassName="text-sm font-normal"
+                aria-required="true"
+              />
             )}
             {selectedItem && !lotsLoading && availableLots.length === 0 && (
               <p className="text-[11px] text-status-repair-text">

@@ -7,6 +7,8 @@ import type { ConditionState } from "@/types/maintenance-logs";
 import type { AssetCategory } from "@/types/shared";
 import type { Asset } from "@/types/assets";
 
+import { SearchableSelect } from "@/components/ui/searchable-select";
+
 export interface FlagForMaintenanceDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -78,6 +80,20 @@ function FlagForMaintenanceDialogForm({
   const [scheduledDate, setScheduledDate] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const conditionOptions = useMemo(
+    () => [
+      {
+        value: "needs_maintenance",
+        label: "Needs Maintenance / Repair",
+      },
+      {
+        value: "damaged",
+        label: "Damaged / Out of Service",
+      },
+    ],
+    []
+  );
 
   useEffect(() => {
     setSelectedAssetId("");
@@ -282,20 +298,17 @@ function FlagForMaintenanceDialogForm({
             >
               Flagged Condition Status <span className="text-accent">*</span>
             </label>
-            <select
+            <SearchableSelect
               id="flag-condition-select"
               value={condition}
-              onChange={(e) =>
-                setCondition(e.target.value as ConditionState)
+              onValueChange={(next) =>
+                setCondition(next as ConditionState)
               }
+              options={conditionOptions}
               disabled={isSubmitting}
-              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
-            >
-              <option value="needs_maintenance">
-                Needs Maintenance / Repair
-              </option>
-              <option value="damaged">Damaged / Out of Service</option>
-            </select>
+              placeholder="Type to find a condition…"
+              aria-required="true"
+            />
           </div>
 
           <div className="space-y-1">

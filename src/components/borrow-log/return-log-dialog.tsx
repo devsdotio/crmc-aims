@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BorrowLogRecord } from "@/features/borrow-log/client/borrow-log-api";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export function ReturnLogDialog({
   record,
@@ -25,6 +26,15 @@ export function ReturnLogDialog({
   const [flagMaintenance, setFlagMaintenance] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const conditionOptions = useMemo(
+    () => [
+      { value: "good", label: "Good" },
+      { value: "damaged", label: "Damaged" },
+      { value: "needs_repair", label: "Needs repair" },
+    ],
+    []
+  );
 
   useEffect(() => {
     if (isOpen) {
@@ -80,17 +90,15 @@ export function ReturnLogDialog({
         <div className="p-5 space-y-3">
           <label className="block text-xs font-bold text-text">
             Condition on return
-            <select
+            <SearchableSelect
               value={condition}
-              onChange={(e) =>
-                setCondition(e.target.value as "good" | "damaged" | "needs_repair")
+              onValueChange={(next) =>
+                setCondition(next as "good" | "damaged" | "needs_repair")
               }
-              className="mt-1 w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg"
-            >
-              <option value="good">Good</option>
-              <option value="damaged">Damaged</option>
-              <option value="needs_repair">Needs repair</option>
-            </select>
+              options={conditionOptions}
+              placeholder="Type to find a condition…"
+              className="mt-1"
+            />
           </label>
           <label className="block text-xs font-bold text-text">
             Notes

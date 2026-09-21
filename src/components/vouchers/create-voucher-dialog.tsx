@@ -33,6 +33,7 @@ import { formatPhp } from "@/components/projects/format-money";
 import type { VoucherType } from "@/types/vouchers";
 import { cn } from "@/lib/utils";
 import { filterMoneyInput } from "@/lib/numeric-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   serializeParticulars,
   sumParticularAmounts,
@@ -87,6 +88,16 @@ export function CreateVoucherDialog({
   const { data: lots = [] } = usePurchaseLotsQuery({ enabled: isOpen });
   const { data: suppliers = [] } = useSuppliersQuery({ enabled: isOpen, activeOnly: true });
   const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.code})`,
+        keywords: d.code,
+      })),
+    [departments]
+  );
   const { data: users = [] } = useUsersQuery();
   const {
     data: nextCodeData,
@@ -833,30 +844,25 @@ export function CreateVoucherDialog({
                         </span>
                       )}
                     </div>
-                    <select
+                    <SearchableSelect
                       id="voucher-department"
                       value={departmentId || ""}
-                      onChange={(e) => setDepartmentId(e.target.value || null)}
+                      onValueChange={(next) => setDepartmentId(next || null)}
+                      options={departmentOptions}
                       disabled={isPoLinked || createMutation.isPending}
                       aria-describedby="voucher-department-hint"
-                      className={cn(
-                        "w-full h-9 rounded-lg border border-border bg-bg px-3 text-sm text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                      placeholder="Type to find a department…"
+                      clearLabel={
                         isPoLinked
-                          ? "cursor-not-allowed opacity-75 bg-bg-subtle"
-                          : "cursor-pointer"
-                      )}
-                    >
-                      <option value="">
-                        {isPoLinked
                           ? "No department on linked PO"
-                          : "None / General Custodian Fund"}
-                      </option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name} ({d.code})
-                        </option>
-                      ))}
-                    </select>
+                          : "None / General Custodian Fund"
+                      }
+                      emptyMessage="No departments available"
+                      inputClassName={cn(
+                        "text-sm",
+                        isPoLinked && "opacity-75 bg-bg-subtle"
+                      )}
+                    />
                     <p id="voucher-department-hint" className="text-[11px] text-text-secondary">
                       {isPoLinked
                         ? "Taken from the linked purchase order until the PO link is cleared."

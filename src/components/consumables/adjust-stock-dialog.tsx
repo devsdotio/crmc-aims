@@ -15,6 +15,7 @@ import type { StockAdjustPayload } from "@/features/consumables/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
 import { formatPhp } from "@/components/projects/format-money";
 import { filterMoneyInput } from "@/lib/numeric-input";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface AdjustStockDialogProps {
   item: ConsumableItem | null;
@@ -54,6 +55,11 @@ function AdjustStockDialogForm({
       ? 0
       : parsedDelta;
   const [reason, setReason] = useState(ADJUSTMENT_REASONS[0]);
+
+  const reasonOptions = useMemo(
+    () => ADJUSTMENT_REASONS.map((r) => ({ value: r, label: r })),
+    []
+  );
   const [notes, setNotes] = useState("");
   const [allocationMode, setAllocationMode] = useState<"specific" | "fifo">(
     "specific"
@@ -381,21 +387,17 @@ function AdjustStockDialogForm({
                 <label htmlFor="adjustment-reason-select" className="block text-xs font-bold text-text">
                   Accountability Reason <span className="text-accent">*</span>
                 </label>
-                <select
+                <SearchableSelect
                   id="adjustment-reason-select"
                   value={reason}
-                  onChange={(e) => {
-                    setReason(e.target.value);
+                  onValueChange={(next) => {
+                    setReason(next);
                     if (error) setError("");
                   }}
-                  className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-semibold focus:outline-none focus:ring-2 focus:ring-accent"
-                >
-                  {ADJUSTMENT_REASONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
+                  options={reasonOptions}
+                  placeholder="Type to find a reason…"
+                  aria-required="true"
+                />
               </div>
 
               {/* Notes */}

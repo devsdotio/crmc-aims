@@ -6,6 +6,7 @@ import type { Asset } from "@/types/assets";
 import { useReleaseAssetMutation } from "@/features/assets/client/use-assets";
 import { useDepartmentsQuery } from "@/features/departments/client";
 import { useProjectsQuery } from "@/features/projects/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface IssueAssetDialogProps {
   asset: Asset | null;
@@ -39,6 +40,26 @@ export function IssueAssetDialog({
     if (!asset) return "borrow" as const;
     return asset.assignmentType === "assignable" ? "assignment" : "borrow";
   }, [asset]);
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.code})`,
+        keywords: d.code,
+      })),
+    [departments]
+  );
+
+  const projectOptions = useMemo(
+    () =>
+      projects.map((p) => ({
+        value: p.id,
+        label: `${p.name} (${p.projectCode})`,
+        keywords: p.projectCode,
+      })),
+    [projects]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -153,34 +174,30 @@ export function IssueAssetDialog({
               <span className="text-[11px] font-bold uppercase text-text-secondary">
                 Department
               </span>
-              <select
+              <SearchableSelect
+                id="issue-department"
                 value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-              >
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </select>
+                onValueChange={setDepartmentId}
+                options={departmentOptions}
+                placeholder="Type to find a department…"
+                emptyMessage="No departments available"
+                inputClassName="text-sm font-normal"
+              />
             </label>
           ) : (
             <label className="block space-y-1">
               <span className="text-[11px] font-bold uppercase text-text-secondary">
                 Project
               </span>
-              <select
+              <SearchableSelect
+                id="issue-project"
                 value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-              >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.projectCode})
-                  </option>
-                ))}
-              </select>
+                onValueChange={setProjectId}
+                options={projectOptions}
+                placeholder="Type to find a project…"
+                emptyMessage="No projects available"
+                inputClassName="text-sm font-normal"
+              />
             </label>
           )}
 

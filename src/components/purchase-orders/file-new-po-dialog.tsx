@@ -47,6 +47,7 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   CONSUMABLE_CLASSIFICATIONS,
   CONSUMABLE_CLASSIFICATION_LABELS,
@@ -206,6 +207,62 @@ export function FileNewPODialog({
     [allCategories]
   );
 
+  const activeProjectOptions = useMemo(
+    () =>
+      activeProjects.map((p) => ({
+        value: p.id,
+        label: `${p.projectCode ? `[${p.projectCode}] ` : ""}${p.name}${p.status ? ` (${p.status})` : ""}`,
+        keywords: [p.projectCode, p.status].filter(Boolean).join(" "),
+      })),
+    [activeProjects]
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((dept) => ({
+        value: dept.id,
+        label: `${dept.name}${dept.code ? ` (${dept.code})` : ""}`,
+        keywords: dept.code,
+      })),
+    [departments]
+  );
+
+  const consumableCategoryOptions = useMemo(
+    () =>
+      consumableCategories.map((c) => ({
+        value: c.name,
+        label: c.name,
+      })),
+    [consumableCategories]
+  );
+
+  const assetCategoryOptions = useMemo(
+    () =>
+      assetCategories.map((c) => ({
+        value: c.name,
+        label: c.name,
+      })),
+    [assetCategories]
+  );
+
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map((s) => ({
+        value: s.id,
+        label: `${s.name} (${s.supplierCode})`,
+        keywords: s.supplierCode,
+      })),
+    [suppliers]
+  );
+
+  const assignmentTypeOptions = useMemo(
+    () => [
+      { value: "borrowable", label: "Borrowable" },
+      { value: "assignable", label: "Assignable" },
+    ],
+    []
+  );
+
   const defaultConsumableCategory = consumableCategories[0]?.name ?? "General Supply";
   const defaultAssetCategory = assetCategories[0]?.name ?? "Equipment";
 
@@ -230,6 +287,16 @@ export function FileNewPODialog({
   const [targetDepartmentId, setTargetDepartmentId] = useState("");
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
+
+  const catalogCategoryOptions = useMemo(() => {
+    const cats = poType === "asset" ? assetCategoryOptions : consumableCategoryOptions;
+    return [{ value: "all", label: "All Categories" }, ...cats];
+  }, [poType, assetCategoryOptions, consumableCategoryOptions]);
+
+  const itemCategoryOptions = useMemo(
+    () => (poType === "asset" ? assetCategoryOptions : consumableCategoryOptions),
+    [poType, assetCategoryOptions, consumableCategoryOptions]
+  );
 
   const effectiveClassification: ConsumableClassification =
     destinationKind === "project" ? "material" : poClassification;
@@ -1257,10 +1324,9 @@ export function FileNewPODialog({
                       </span>
                       <span className="text-[10px] text-rose-500 font-bold">* Required for Project PO</span>
                     </label>
-                    <select
+                    <SearchableSelect
                       value={targetProjectId}
-                      onChange={(e) => {
-                        const projId = e.target.value;
+                      onValueChange={(projId) => {
                         setTargetProjectId(projId);
                         const matched = projects.find((p) => p.id === projId);
                         const matchedDept = matched?.department
@@ -1275,15 +1341,12 @@ export function FileNewPODialog({
                           setTargetDepartmentId(matchedDept.id);
                         }
                       }}
-                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 focus:outline-hidden cursor-pointer font-medium"
-                    >
-                      <option value="">-- Choose Active Project --</option>
-                      {activeProjects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.projectCode ? `[${p.projectCode}] ` : ""}{p.name} {p.status ? `(${p.status})` : ""}
-                        </option>
-                      ))}
-                    </select>
+                      options={activeProjectOptions}
+                      clearLabel="-- Choose Active Project --"
+                      placeholder="-- Choose Active Project --"
+                      emptyMessage="No active projects available"
+                      inputClassName="focus:ring-amber-500/20 focus:border-amber-500"
+                    />
                     {selectedProject && (
                       <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 flex items-center justify-between text-[11px]">
                         <span>
@@ -1507,26 +1570,33 @@ export function FileNewPODialog({
                       </span>
                       <span className="text-[10px] text-rose-500 font-bold">* Required</span>
                     </label>
-                    <select
+                    <SearchableSelect
                       value={targetDepartmentId}
-                      onChange={(e) => setTargetDepartmentId(e.target.value)}
-                      required
-                      disabled={departmentsLoading}
-                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer font-medium disabled:opacity-60"
-                    >
-                      <option value="">
-                        {departmentsLoading
+                      onValueChange={setTargetDepartmentId}
+                      options={departmentOptions}
+                      clearLabel={
+                        departmentsLoading
                           ? "Loading departments…"
                           : departmentsError
                             ? "Failed to load departments"
-                            : "-- Choose Department --"}
-                      </option>
-                      {departments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.name} {dept.code ? `(${dept.code})` : ""}
-                        </option>
-                      ))}
-                    </select>
+                            : "-- Choose Department --"
+                      }
+                      placeholder={
+                        departmentsLoading
+                          ? "Loading departments…"
+                          : departmentsError
+                            ? "Failed to load departments"
+                            : "-- Choose Department --"
+                      }
+                      emptyMessage={
+                        departmentsError
+                          ? "Failed to load departments"
+                          : "No departments found"
+                      }
+                      disabled={departmentsLoading}
+                      aria-required="true"
+                      inputClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                    />
                     {departmentsError && (
                       <button
                         type="button"
@@ -1641,18 +1711,14 @@ export function FileNewPODialog({
                   </div>
 
                   <div>
-                    <select
+                    <SearchableSelect
                       value={catalogCategoryFilter}
-                      onChange={(e) => setCatalogCategoryFilter(e.target.value)}
-                      className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden cursor-pointer"
-                    >
-                      <option value="all">All Categories</option>
-                      {(poType === "asset" ? assetCategories : consumableCategories).map((c) => (
-                        <option key={c.id} value={c.name}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                      onValueChange={setCatalogCategoryFilter}
+                      options={catalogCategoryOptions}
+                      placeholder="All Categories"
+                      emptyMessage="No categories available"
+                      inputClassName="h-8.5 px-2.5"
+                    />
                   </div>
                 </div>
 
@@ -1969,23 +2035,19 @@ export function FileNewPODialog({
                               <Building2 className="h-3.5 w-3.5 text-text-secondary" />
                               <span>Supplier / Vendor</span>
                             </label>
-                            <select
+                            <SearchableSelect
                               value={item.supplierId || item.suggestedDealer || ""}
-                              onChange={(e) => {
-                                const val = e.target.value;
+                              onValueChange={(val) => {
                                 const matched = suppliers.find((s) => s.id === val || s.name === val);
                                 handleItemFieldChange(item.id, "supplierId", matched?.id || "");
                                 handleItemFieldChange(item.id, "suggestedDealer", matched?.name || val);
                               }}
-                              className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-ring focus:outline-hidden cursor-pointer"
-                            >
-                              <option value="">-- Direct / Default Supplier --</option>
-                              {suppliers.map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name} ({s.supplierCode})
-                                </option>
-                              ))}
-                            </select>
+                              options={supplierOptions}
+                              clearLabel="-- Direct / Default Supplier --"
+                              placeholder="-- Direct / Default Supplier --"
+                              emptyMessage="No suppliers available"
+                              inputClassName="h-8.5 px-2.5 focus:ring-1 focus:ring-ring"
+                            />
                           </div>
                         </div>
 
@@ -2065,19 +2127,16 @@ export function FileNewPODialog({
                           <div className="space-y-1">
                             <label className="font-semibold text-text">Category</label>
                             {item.isNew ? (
-                              <select
+                              <SearchableSelect
                                 value={item.category}
-                                onChange={(e) =>
-                                  handleItemFieldChange(item.id, "category", e.target.value)
+                                onValueChange={(val) =>
+                                  handleItemFieldChange(item.id, "category", val)
                                 }
-                                className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden cursor-pointer"
-                              >
-                                {(poType === "asset" ? assetCategories : consumableCategories).map((c) => (
-                                  <option key={c.id} value={c.name}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                              </select>
+                                options={itemCategoryOptions}
+                                placeholder="Select category…"
+                                emptyMessage="No categories available"
+                                inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-accent"
+                              />
                             ) : (
                               <input
                                 type="text"
@@ -2105,16 +2164,15 @@ export function FileNewPODialog({
                                   className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden"
                                 />
                               ) : (
-                                <select
+                                <SearchableSelect
                                   value={item.assignmentType}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(item.id, "assignmentType", e.target.value)
+                                  onValueChange={(val) =>
+                                    handleItemFieldChange(item.id, "assignmentType", val)
                                   }
-                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden cursor-pointer"
-                                >
-                                  <option value="borrowable">Borrowable</option>
-                                  <option value="assignable">Assignable</option>
-                                </select>
+                                  options={assignmentTypeOptions}
+                                  placeholder="Select assignment type…"
+                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-accent"
+                                />
                               )
                             ) : (
                               <input

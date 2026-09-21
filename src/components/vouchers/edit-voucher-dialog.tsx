@@ -23,6 +23,7 @@ import {
   type ParticularLineItem,
 } from "@/lib/voucher-particulars";
 import { cn } from "@/lib/utils";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface EditVoucherDialogProps {
   voucher: Voucher | null;
@@ -69,6 +70,16 @@ export function EditVoucherDialog({
   const { confirm } = useConfirm();
   const updateMutation = useUpdateVoucherMutation();
   const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+
+  const departmentOptions = useMemo(
+    () =>
+      departments.map((d) => ({
+        value: d.id,
+        label: `${d.name} (${d.code})`,
+        keywords: d.code,
+      })),
+    [departments]
+  );
 
   const [form, setForm] = useState<FormState>({
     voucherCode: "",
@@ -505,26 +516,21 @@ export function EditVoucherDialog({
               >
                 Requesting department
               </label>
-              <select
+              <SearchableSelect
                 id="edit-voucher-department"
                 value={form.departmentId}
-                onChange={(e) =>
+                onValueChange={(next) =>
                   setForm((prev) => ({
                     ...prev,
-                    departmentId: e.target.value,
+                    departmentId: next,
                   }))
                 }
+                options={departmentOptions}
                 disabled={saving}
+                clearLabel="None / General Custodian Fund"
+                placeholder="Type to find a department…"
                 aria-describedby="edit-department-hint"
-                className="w-full h-9 rounded-lg border border-border bg-bg px-3 text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer disabled:opacity-70"
-              >
-                <option value="">None / General Custodian Fund</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </select>
+              />
               <p id="edit-department-hint" className="text-[11px] text-text-secondary">
                 Department or office this disbursement is charged to.
               </p>

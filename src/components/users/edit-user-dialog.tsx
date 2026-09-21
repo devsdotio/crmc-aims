@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { X, Edit, AlertTriangle, Check, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserAccount, UserRole, UserStatus } from "@/types/users";
 import { ROLE_DEFINITIONS, INVITABLE_ROLES } from "@/constants/roles";
 import type { DepartmentDTO } from "@/features/departments/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface EditUserSaveInput {
   id: string;
@@ -72,8 +73,22 @@ function EditUserDialogForm({
     role !== user.role;
 
   const isDepartmentAccount = role === "borrower";
-  const availableDepartments = departments.filter(
-    (d) => !d.accountUserId || d.id === user.departmentId
+  const availableDepartments = useMemo(
+    () =>
+      departments.filter(
+        (d) => !d.accountUserId || d.id === user.departmentId
+      ),
+    [departments, user.departmentId]
+  );
+
+  const departmentOptions = useMemo(
+    () =>
+      availableDepartments.map((dept) => ({
+        value: dept.id,
+        label: `${dept.name} (${dept.code})`,
+        keywords: dept.code,
+      })),
+    [availableDepartments]
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -190,26 +205,22 @@ function EditUserDialogForm({
               Department {isDepartmentAccount && <span className="text-accent">*</span>}
             </label>
             {isDepartmentAccount ? (
-              <select
+              <SearchableSelect
                 id="edit-dept-select"
                 value={departmentId}
-                onChange={(e) => {
-                  const nextId = e.target.value;
+                onValueChange={(nextId) => {
                   setDepartmentId(nextId);
                   const next = departments.find((d) => d.id === nextId);
                   if (next && (!name.trim() || name === user.department)) {
                     setName(next.name);
                   }
                 }}
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="">Select a department…</option>
-                {availableDepartments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name} ({dept.code})
-                  </option>
-                ))}
-              </select>
+                options={departmentOptions}
+                placeholder="Select a department…"
+                clearLabel="Select a department…"
+                emptyMessage="No departments available"
+                aria-required="true"
+              />
             ) : (
               <p className="text-[11px] text-text-secondary pt-1">
                 Staff and admin accounts are not tied to a department login.

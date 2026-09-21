@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ProjectAssetAssignment } from "@/types/projects";
 import { formatPhp } from "./format-money";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type ReportDamageFormInput = {
   mode: "maintenance" | "write_off";
@@ -41,6 +42,14 @@ export function ReportDamageDialog({
   const [amount, setAmount] = useState("");
   const [assetStatus, setAssetStatus] = useState<"out_of_service" | "retired">(
     "out_of_service"
+  );
+
+  const assetStatusOptions = useMemo(
+    () => [
+      { value: "out_of_service", label: "Out of service" },
+      { value: "retired", label: "Retired" },
+    ],
+    []
   );
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
@@ -267,20 +276,16 @@ export function ReportDamageDialog({
                 <label htmlFor="wo-status" className={labelClass}>
                   Asset status post write-off
                 </label>
-                <select
+                <SearchableSelect
                   id="wo-status"
                   value={assetStatus}
-                  onChange={(e) =>
-                    setAssetStatus(
-                      e.target.value as "out_of_service" | "retired"
-                    )
+                  onValueChange={(next) =>
+                    setAssetStatus(next as "out_of_service" | "retired")
                   }
+                  options={assetStatusOptions}
                   disabled={isSubmitting}
-                  className={cn(fieldClass, "cursor-pointer")}
-                >
-                  <option value="out_of_service">Out of service</option>
-                  <option value="retired">Retired</option>
-                </select>
+                  placeholder="Type to find a status…"
+                />
               </div>
             </div>
           )}

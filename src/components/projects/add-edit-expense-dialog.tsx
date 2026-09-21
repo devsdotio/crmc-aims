@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   Receipt,
@@ -18,6 +18,7 @@ import type {
   ProjectExpenseLine,
 } from "@/types/projects";
 import { PROJECT_EXPENSE_CATEGORY_LABELS } from "@/types/projects";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export type ExpenseFormInput = {
   lineType: "miscellaneous" | "adjustment";
@@ -128,9 +129,18 @@ export function AddEditExpenseDialog({
     }
   };
 
-  const categoryOptions = (
-    Object.keys(PROJECT_EXPENSE_CATEGORY_LABELS) as ProjectExpenseCategory[]
-  ).filter((c) => c !== "adjustment");
+  const categoryOptions = useMemo(
+    () =>
+      (
+        Object.keys(PROJECT_EXPENSE_CATEGORY_LABELS) as ProjectExpenseCategory[]
+      )
+        .filter((c) => c !== "adjustment")
+        .map((c) => ({
+          value: c,
+          label: PROJECT_EXPENSE_CATEGORY_LABELS[c],
+        })),
+    []
+  );
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
@@ -232,23 +242,18 @@ export function AddEditExpenseDialog({
                       : PROJECT_EXPENSE_CATEGORY_LABELS[form.category]}
                   </span>
                 </div>
-                <select
+                <SearchableSelect
                   id="exp-cat"
                   value={form.category}
-                  onChange={(e) =>
+                  onValueChange={(next) =>
                     setForm((f) => ({
                       ...f,
-                      category: e.target.value as ProjectExpenseCategory,
+                      category: next as ProjectExpenseCategory,
                     }))
                   }
-                  className={cn(fieldClass, "cursor-pointer")}
-                >
-                  {categoryOptions.map((c) => (
-                    <option key={c} value={c}>
-                      {PROJECT_EXPENSE_CATEGORY_LABELS[c]}
-                    </option>
-                  ))}
-                </select>
+                  options={categoryOptions}
+                  placeholder="Type to find a category…"
+                />
               </div>
               {form.category === "other" && (
                 <div>
