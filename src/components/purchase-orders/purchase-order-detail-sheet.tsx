@@ -155,11 +155,36 @@ export function PurchaseOrderDetailSheet({
     lineItems && lineItems.length > 0 ? lineItems : [lot];
   const isMultiLotPo = lotsToUpdate.length > 1;
 
+  const STATUS_RANK: Record<PurchaseOrderStatus, number> = {
+    pending_approval: 0,
+    approved: 1,
+    ordered: 2,
+    delivered: 3,
+    cancelled: -1,
+  };
+
+  /** Least-advanced non-cancelled line drives workflow buttons (fixes partial multi-item receive). */
+  const effectiveStatus: PurchaseOrderStatus = (() => {
+    const active = lotsToUpdate.filter((li) => li.status !== "cancelled");
+    if (active.length === 0) return lot.status;
+    return active.reduce((least, li) =>
+      STATUS_RANK[li.status] < STATUS_RANK[least.status] ? li : least
+    ).status;
+  })();
+
+  const receivableLots = lotsToUpdate.filter(
+    (li) =>
+      li.status !== "delivered" &&
+      li.status !== "cancelled" &&
+      (li.status === "approved" || li.status === "ordered")
+  );
+
   const openDeliveredModal = () => {
+    const targets = receivableLots.length > 0 ? receivableLots : lotsToUpdate;
     const initial: Record<string, string> = {};
-    for (const li of lotsToUpdate) {
+    for (const li of targets) {
       if (li.itemType === "consumable") {
-        initial[li.id] = String(li.quantity);
+        initial[li.id] = String(li.orderedQuantity ?? li.quantity);
       }
     }
     setReceivedQuantities(initial);
@@ -217,11 +242,11 @@ export function PurchaseOrderDetailSheet({
       ? uniqueDealers[0]
       : `Multiple Dealers (${uniqueDealers.length})`;
 
-  const currentStepIdx = WORKFLOW_STEPS.findIndex((s) => s.status === lot.status);
+  const currentStepIdx = WORKFLOW_STEPS.findIndex((s) => s.status === effectiveStatus);
   const isApproved =
-    lot.status === "approved" ||
-    lot.status === "ordered" ||
-    lot.status === "delivered";
+    effectiveStatus === "approved" ||
+    effectiveStatus === "ordered" ||
+    effectiveStatus === "delivered";
 
   const matchedUser =
     users.find(
@@ -263,18 +288,40 @@ export function PurchaseOrderDetailSheet({
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
     setIsUpdatingStatus(true);
     try {
-      const consumableLines = lotsToUpdate.filter((li) => li.itemType === "consumable");
+      const targets =
+        nextStatus === "delivered"
+          ? receivableLots.length > 0
+            ? receivableLots
+            : lotsToUpdate.filter((li) => li.status !== "delivered" && li.status !== "cancelled")
+          : lotsToUpdate.filter((li) => {
+              if (li.status === "cancelled") return false;
+              if (nextStatus === "cancelled") return li.status !== "delivered";
+              return STATUS_RANK[li.status] < STATUS_RANK[nextStatus];
+            });
+
+      if (targets.length === 0) {
+        toast.error(
+          nextStatus === "delivered"
+            ? "All line items on this PO are already received."
+            : "Nothing to update on this purchase order."
+        );
+        setIsUpdatingStatus(false);
+        return;
+      }
+
+      const consumableLines = targets.filter((li) => li.itemType === "consumable");
       const parsedByLotId = new Map<string, number>();
 
       if (nextStatus === "delivered") {
         for (const li of consumableLines) {
+          const ordered = li.orderedQuantity ?? li.quantity;
           const parsed = Number.parseInt(
-            receivedQuantities[li.id] || String(li.quantity),
+            receivedQuantities[li.id] || String(ordered),
             10
           );
           if (!Number.isFinite(parsed) || parsed < 1) {
             toast.error(
-              lotsToUpdate.length > 1
+              targets.length > 1
                 ? `Enter a valid received quantity (at least 1) for "${li.itemName}".`
                 : "Enter a valid received quantity (at least 1)."
             );
@@ -286,7 +333,7 @@ export function PurchaseOrderDetailSheet({
       }
 
       // Sequential: avoids races when multiple lines restock the same consumable.
-      for (const li of lotsToUpdate) {
+      for (const li of targets) {
         await updateStatusMutation.mutateAsync({
           id: li.id,
           payload: {
@@ -295,7 +342,9 @@ export function PurchaseOrderDetailSheet({
             receivedQuantity:
               nextStatus === "delivered" && li.itemType === "consumable"
                 ? parsedByLotId.get(li.id)
-                : undefined,
+                : nextStatus === "delivered" && li.itemType === "asset"
+                  ? li.quantity
+                  : undefined,
             receiptUrl: deliveryReceiptUrl || undefined,
           },
         });
@@ -305,19 +354,22 @@ export function PurchaseOrderDetailSheet({
         (sum, q) => sum + q,
         0
       );
+      const assetUnits = targets
+        .filter((li) => li.itemType === "asset")
+        .reduce((sum, li) => sum + li.quantity, 0);
       const poLabel = lot.poNumber || lot.lotCode;
 
       toast.success(
         nextStatus === "delivered"
-          ? lotsToUpdate.length > 1
+          ? targets.length > 1
             ? lot.projectId
-              ? `PO ${poLabel} delivered · ${lotsToUpdate.length} line items · ${totalReceived} material unit(s) credited to ${lot.projectName || "project"}.`
-              : `PO ${poLabel} delivered · ${lotsToUpdate.length} line items received into inventory.`
+              ? `PO ${poLabel} delivered · ${targets.length} line items · ${totalReceived} material unit(s) credited to ${lot.projectName || "project"}.`
+              : `PO ${poLabel} delivered · ${targets.length} line items received into inventory.`
             : consumableLines.length > 0
               ? lot.projectId
                 ? `PO ${poLabel} delivered · ${totalReceived} material unit(s) credited directly to ${lot.projectName || "project"}.`
                 : `PO ${poLabel} delivered · ${totalReceived} unit(s) added to inventory.`
-              : `PO ${poLabel} delivered · asset activated in inventory.`
+              : `PO ${poLabel} delivered · ${assetUnits || 1} asset unit(s) activated in inventory.`
           : `PO ${poLabel} updated to ${nextStatus.replace("_", " ")}.`
       );
       resetStatusModal();
@@ -651,7 +703,7 @@ export function PurchaseOrderDetailSheet({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                {lot.status === "pending_approval" && (
+                {effectiveStatus === "pending_approval" && (
                   <button
                     type="button"
                     onClick={() => setShowStatusModal("approved")}
@@ -661,7 +713,7 @@ export function PurchaseOrderDetailSheet({
                     <span>Approve</span>
                   </button>
                 )}
-                {lot.status === "approved" && (
+                {effectiveStatus === "approved" && (
                   <button
                     type="button"
                     onClick={() => setShowStatusModal("ordered")}
@@ -671,7 +723,8 @@ export function PurchaseOrderDetailSheet({
                     <span>Mark Ordered</span>
                   </button>
                 )}
-                {lot.status === "ordered" && (
+                {(effectiveStatus === "ordered" || receivableLots.length > 0) &&
+                  effectiveStatus !== "pending_approval" && (
                   <button
                     type="button"
                     onClick={openDeliveredModal}
@@ -696,7 +749,7 @@ export function PurchaseOrderDetailSheet({
                   onClick={() => onPrintSlip(lot)}
                   className={cn(
                     "inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer shadow-2xs",
-                    lot.status === "delivered"
+                    effectiveStatus === "delivered"
                       ? "border-emerald-500/30 bg-bg hover:bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 hover:border-emerald-500/50"
                       : "border-border bg-bg hover:bg-bg-subtle text-text hover:border-accent/40"
                   )}
@@ -822,7 +875,7 @@ export function PurchaseOrderDetailSheet({
             {/* Action Buttons Toolbar for Operators */}
             {canOperate && (
               <div className="pt-3 border-t border-border flex items-center gap-2 flex-wrap">
-                {lot.status === "pending_approval" && (
+                {effectiveStatus === "pending_approval" && (
                   <>
                     <button
                       type="button"
@@ -843,7 +896,7 @@ export function PurchaseOrderDetailSheet({
                   </>
                 )}
 
-                {lot.status === "approved" && (
+                {effectiveStatus === "approved" && (
                   <>
                     <button
                       type="button"
@@ -873,7 +926,8 @@ export function PurchaseOrderDetailSheet({
                   </>
                 )}
 
-                {lot.status === "ordered" && (
+                {(effectiveStatus === "ordered" ||
+                  (receivableLots.length > 0 && effectiveStatus !== "pending_approval" && effectiveStatus !== "approved")) && (
                   <>
                     <button
                       type="button"
@@ -1568,11 +1622,16 @@ export function PurchaseOrderDetailSheet({
 
           <p className="text-xs text-text-secondary">
             {showStatusModal === "delivered"
-              ? isMultiLotPo
-                ? `Confirm the actual quantity received for each of the ${lotsToUpdate.length} line items. Consumable amounts are added to inventory (they can differ from ordered qty); assets are activated.`
-                : lotsToUpdate[0]?.itemType === "consumable"
-                  ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
-                  : "Marking this PO as delivered will activate the asset in inventory."
+              ? (() => {
+                  const deliverTargets =
+                    receivableLots.length > 0 ? receivableLots : lotsToUpdate;
+                  if (deliverTargets.length > 1) {
+                    return `Confirm the actual quantity received for each of the ${deliverTargets.length} line items. Supplies/materials are stocked into inventory; assets are activated as physical units.`;
+                  }
+                  return deliverTargets[0]?.itemType === "consumable"
+                    ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
+                    : "Marking this PO as delivered will activate the asset unit(s) in inventory.";
+                })()
               : showStatusModal === "approved"
               ? "Approve this purchase order to authorize supplier issuance and procurement."
               : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
@@ -1580,21 +1639,28 @@ export function PurchaseOrderDetailSheet({
 
           {showStatusModal === "delivered" && (
             <div className="space-y-2">
+              {(() => {
+                const deliverTargets =
+                  receivableLots.length > 0 ? receivableLots : lotsToUpdate;
+                const multi = deliverTargets.length > 1;
+                return (
+                  <>
               <label className="text-[11px] font-semibold text-text">
-                {isMultiLotPo ? "Line Items to Receive" : "Actual Quantity Received"}
-                {lotsToUpdate.some((li) => li.itemType === "consumable") && (
+                {multi ? "Line Items to Receive" : "Actual Quantity Received"}
+                {deliverTargets.some((li) => li.itemType === "consumable") && (
                   <span className="text-accent"> *</span>
                 )}
               </label>
               <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
-                {lotsToUpdate.map((li, idx) => {
+                {deliverTargets.map((li, idx) => {
+                  const orderedQty = li.orderedQuantity ?? li.quantity;
                   const qtyValue =
-                    receivedQuantities[li.id] ?? String(li.quantity);
+                    receivedQuantities[li.id] ?? String(orderedQty);
                   const parsedQty = Number.parseInt(qtyValue, 10);
                   const differsFromOrdered =
                     li.itemType === "consumable" &&
                     Number.isFinite(parsedQty) &&
-                    parsedQty !== li.quantity;
+                    parsedQty !== orderedQty;
 
                   return (
                     <div
@@ -1604,7 +1670,7 @@ export function PurchaseOrderDetailSheet({
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {isMultiLotPo && (
+                            {multi && (
                               <span className="text-[10px] font-mono text-text-secondary shrink-0">
                                 #{idx + 1}
                               </span>
@@ -1649,7 +1715,7 @@ export function PurchaseOrderDetailSheet({
                               className="w-full max-w-28 p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
                             />
                             <span className="text-[11px] text-text-secondary shrink-0">
-                              of {li.quantity} ordered
+                              of {orderedQty} ordered
                             </span>
                           </div>
                           {differsFromOrdered && (
@@ -1660,14 +1726,18 @@ export function PurchaseOrderDetailSheet({
                         </div>
                       ) : (
                         <p className="text-[11px] text-text-secondary">
-                          Asset will be activated in inventory
-                          {li.quantity > 1 ? ` (${li.quantity} units)` : ""}.
+                          {li.quantity > 1
+                            ? `${li.quantity} physical units will be activated in /assets.`
+                            : "Asset will be activated in /assets."}
                         </p>
                       )}
                     </div>
                   );
                 })}
               </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -1726,8 +1796,8 @@ export function PurchaseOrderDetailSheet({
               ) : (
                 <span>
                   {showStatusModal === "delivered"
-                    ? isMultiLotPo
-                      ? `Confirm Receive · ${lotsToUpdate.length} Items`
+                    ? (receivableLots.length > 1 || lotsToUpdate.length > 1)
+                      ? `Confirm Receive · ${receivableLots.length || lotsToUpdate.length} Items`
                       : "Confirm Receive & Stock"
                     : "Confirm"}
                 </span>

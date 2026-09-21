@@ -67,7 +67,24 @@ export function groupLotsByPO(
   const groups: GroupedPurchaseOrder[] = [];
 
   for (const [poNumber, lineItems] of map) {
-    const representative = lineItems[0];
+    // Prefer the least-advanced non-cancelled line as representative so partial
+    // multi-item receives still show actionable workflow status in the list.
+    const STATUS_RANK: Record<string, number> = {
+      pending_approval: 0,
+      approved: 1,
+      ordered: 2,
+      delivered: 3,
+      cancelled: 99,
+    };
+    const activeLines = lineItems.filter((li) => li.status !== "cancelled");
+    const representative =
+      (activeLines.length > 0
+        ? activeLines.reduce((least, li) =>
+            (STATUS_RANK[li.status] ?? 99) < (STATUS_RANK[least.status] ?? 99)
+              ? li
+              : least
+          )
+        : lineItems[0]) ?? lineItems[0];
     let totalCost = 0;
     let totalQuantity = 0;
 
