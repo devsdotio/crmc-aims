@@ -333,6 +333,9 @@ export class ConsumableRequestService {
     const dto = await withTransaction(async (tx) => {
       const created = await this.repo.create(
         {
+          // Explicit actor tenant — do not rely on ALS inside withTransaction
+          // (lost context falls back to schema default and hides rows on list).
+          tenantId: actor.tenantId,
           requestCode,
           requesterUserId,
           requesterName: input.requesterName,
