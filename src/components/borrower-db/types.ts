@@ -16,6 +16,8 @@ export interface PortalBorrowRequest extends BorrowRequest {
   releasedStatus?: PortalRequestReleasedStatus;
   requestedDateFrom: string;
   requestedDateTo: string;
+  /** Set when mapped from a consumable requisition (Supplies). */
+  portalKind?: "supply";
 }
 
 export type PortalBorrowLogRecord = BorrowLogRecord;

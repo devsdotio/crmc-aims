@@ -45,8 +45,8 @@ export function ScanAssetDialog({
   const resolveMutation = useResolveScanMutation();
   const releaseMutation = useScanReleaseMutation();
   const returnMutation = useScanReturnMutation();
-  const { data: departments = [] } = useDepartmentsQuery();
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+  const { data: projects = [] } = useProjectsQuery({ enabled: isOpen });
 
   const departmentOptions = useMemo(
     () =>

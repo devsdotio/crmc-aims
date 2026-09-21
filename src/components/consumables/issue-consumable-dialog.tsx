@@ -50,7 +50,7 @@ export function IssueConsumableDialog({
     isLoading: departmentsLoading,
     isError: departmentsError,
   } = useDepartmentsQuery({ enabled: isOpen });
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: projects = [] } = useProjectsQuery({ enabled: isOpen });
   const mutableProjects = useMemo(
     () => projects.filter((p) => p.status !== "completed" && p.status !== "cancelled"),
     [projects]

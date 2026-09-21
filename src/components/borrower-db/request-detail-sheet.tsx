@@ -298,7 +298,7 @@ export function RequestDetailSheet({
               </div>
             </div>
 
-            {/* Status, Edit, Close */}
+            {/* Status & Edit */}
             <div className="flex items-center gap-2 shrink-0">
               {onEdit && request.status === "pending" && (
                 <button
@@ -321,15 +321,6 @@ export function RequestDetailSheet({
                 <StatusIcon className="h-3.5 w-3.5 shrink-0" />
                 {statusConfig.label}
               </span>
-
-              <button
-                type="button"
-                onClick={() => onOpenChange(false)}
-                aria-label="Close"
-                className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
             </div>
           </div>
 

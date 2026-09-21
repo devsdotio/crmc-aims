@@ -2,6 +2,6 @@
 
 import { AssetsView } from "@/components/assets/assets-view";
 
-export default function AssetsPage() {
+export default function BorrowerAssetsPage() {
   return <AssetsView />;
 }

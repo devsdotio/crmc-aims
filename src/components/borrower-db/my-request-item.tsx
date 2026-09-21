@@ -7,6 +7,7 @@ import {
   FileText,
   Package,
   X,
+  Edit3,
 } from "lucide-react";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { cn } from "@/lib/utils";
@@ -195,6 +196,20 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
 
       {/* Right Column: Cancel Action, Status Badge & Chevron */}
       <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
+        {onEdit && request.status === "pending" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(request);
+            }}
+            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-border text-text hover:bg-accent/10 hover:text-accent hover:border-accent/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
+            title="Edit this request"
+          >
+            <Edit3 className="h-3 w-3" />
+            <span>Edit</span>
+          </button>
+        )}
         {onCancel && (request.status === "pending" || request.status === "approved") && (
           <button
             type="button"

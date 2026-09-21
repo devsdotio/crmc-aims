@@ -7,14 +7,12 @@ import { cn } from "@/lib/utils";
 import { MyRequestItem, MyRequestItemSkeleton } from "./my-request-item";
 import { CancelRequestDialog } from "./cancel-request-dialog";
 import { RequestDetailSheet } from "./request-detail-sheet";
-import { EditRequestDialog } from "./edit-request-dialog";
 import type { PortalBorrowRequest, RequestStatusFilter } from "./types";
 import {
   mapBorrowRequestToPortal,
   mapConsumableRequestToPortal,
   portalRequestKindLabel,
 } from "./map-portal-request";
-import { useAssetOperator } from "@/hooks/use-asset-operator";
 
 import { useBorrowRequests, useCancelBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
 import { useConsumableRequests, useCancelConsumableRequestMutation } from "@/features/consumable-requests/client";
@@ -27,13 +25,6 @@ const STATUS_FILTERS: {
   badge: string;
   activeBadge: string;
 }[] = [
-  {
-    key: "all",
-    label: "All Requests",
-    dot: "bg-text-secondary/70",
-    badge: "bg-bg-subtle text-text-secondary border border-border",
-    activeBadge: "bg-bg-subtle text-text font-bold border border-border/80",
-  },
   {
     key: "pending",
     label: "Pending",
@@ -71,6 +62,14 @@ const STATUS_FILTERS: {
   },
 ];
 
+const ALL_REQUESTS_FILTER = {
+  key: "all" as const,
+  label: "All Requests",
+  dot: "bg-text-secondary/70",
+  badge: "bg-bg-subtle text-text-secondary border border-border",
+  activeBadge: "bg-bg-subtle text-text font-bold border border-border/80",
+};
+
 const REQUESTS_PAGE_SIZE = 10;
 
 export type RequestKindFilter = "all" | "borrow" | "assign" | "supply";
@@ -84,13 +83,11 @@ function matchesKind(request: PortalBorrowRequest, kind: RequestKindFilter) {
 }
 
 export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
-  const [statusFilter, setStatusFilter] = useState<RequestStatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<RequestStatusFilter>("pending");
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<PortalBorrowRequest | null>(null);
-  const [editTarget, setEditTarget] = useState<PortalBorrowRequest | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<PortalBorrowRequest | null>(null);
   const [page, setPage] = useState(1);
-  const { canOperate } = useAssetOperator();
 
   const fetchAssets = kind !== "supply";
   const fetchSupplies = kind !== "borrow" && kind !== "assign";
@@ -182,20 +179,16 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
 
   return (
     <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col min-h-0">
-      {/* Toolbar: Segmented Tabs on Left, Search on Right */}
+      {/* Toolbar: status chips left, All Requests + search right */}
       <div className="px-4 md:px-6 py-3 bg-bg border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
         {/* Status Tabs */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 min-w-0">
           <span className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
             Status:
           </span>
           <div className="flex gap-1 rounded-xl border border-border p-1 bg-bg-subtle shrink-0 overflow-x-auto scrollbar-none relative">
             {STATUS_FILTERS.map((f) => {
-              const count =
-                f.key === "all"
-                  ? requests.length
-                  : requests.filter((r) => matchesFilter(r, f.key)).length;
-
+              const count = requests.filter((r) => matchesFilter(r, f.key)).length;
               const isSelected = statusFilter === f.key;
 
               return (
@@ -236,21 +229,49 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
           </div>
         </div>
 
-        {/* Search Field */}
-        <div className="relative flex-1 min-w-48 max-w-sm">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
-            <Search className="h-3.5 w-3.5" />
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search request code, item, or purpose…"
+        {/* All Requests (opposite side) + Search */}
+        <div className="flex items-center gap-2 flex-1 min-w-48 justify-end">
+          <button
+            type="button"
+            onClick={() => setStatusFilter(ALL_REQUESTS_FILTER.key)}
             className={cn(
-              "w-full h-9 pl-8.5 pr-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
-              "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+              "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors duration-150 cursor-pointer whitespace-nowrap select-none shrink-0",
+              statusFilter === "all"
+                ? "text-text bg-bg shadow-xs border-border/80"
+                : "text-text-secondary hover:text-text border-border bg-bg-subtle"
             )}
-          />
+          >
+            <span
+              className={cn("h-1.5 w-1.5 rounded-full shrink-0", ALL_REQUESTS_FILTER.dot)}
+              aria-hidden="true"
+            />
+            <span>{ALL_REQUESTS_FILTER.label}</span>
+            <span
+              className={cn(
+                "px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold",
+                statusFilter === "all"
+                  ? ALL_REQUESTS_FILTER.activeBadge
+                  : ALL_REQUESTS_FILTER.badge
+              )}
+            >
+              {requests.length}
+            </span>
+          </button>
+          <div className="relative flex-1 min-w-40 max-w-sm">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
+              <Search className="h-3.5 w-3.5" />
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search request code, item, or purpose…"
+              className={cn(
+                "w-full h-9 pl-8.5 pr-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
+                "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+              )}
+            />
+          </div>
         </div>
       </div>
 
@@ -307,8 +328,6 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
               onViewDetails={(r) => setSelectedRequest(r as any)}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onCancel={(r) => setCancelTarget(r as any)}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onEdit={canOperate ? (r) => setEditTarget(r as any) : undefined}
             />
           ))
         )}
@@ -361,21 +380,6 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
         />
       )}
 
-      {/* Edit Request Dialog */}
-      {editTarget && (
-        <EditRequestDialog
-          request={editTarget}
-          open={Boolean(editTarget)}
-          onOpenChange={(open) => {
-            if (!open) setEditTarget(null);
-          }}
-          onSuccess={() => {
-            setEditTarget(null);
-            setSelectedRequest(null);
-          }}
-        />
-      )}
-
       {/* Request Detail Sheet */}
       {selectedRequest && (
         <RequestDetailSheet
@@ -388,14 +392,6 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
             setSelectedRequest(null);
             setCancelTarget(req);
           }}
-          onEdit={
-            canOperate
-              ? (req) => {
-                  setSelectedRequest(null);
-                  setEditTarget(req);
-                }
-              : undefined
-          }
         />
       )}
     </div>

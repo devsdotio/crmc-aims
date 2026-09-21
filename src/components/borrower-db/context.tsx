@@ -13,7 +13,10 @@ interface BorrowerPortalContextValue {
   cart: BrowseItem[];
   toggleCartItem: (item: BrowseItem) => void;
   clearCart: () => void;
-  openWizard: (items?: BrowseItem[] | null, type?: "borrow" | "requisition") => void;
+  openWizard: (
+    items?: BrowseItem[] | null,
+    type?: "borrow" | "assign" | "requisition"
+  ) => void;
   closeWizard: () => void;
 }
 
@@ -22,7 +25,7 @@ const BorrowerPortalContext = createContext<BorrowerPortalContextValue | undefin
 export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardItems, setWizardItems] = useState<BrowseItem[]>([]);
-  const [wizardType, setWizardType] = useState<"borrow" | "requisition" | null>(null);
+  const [wizardType, setWizardType] = useState<"borrow" | "assign" | "requisition" | null>(null);
   const [cart, setCart] = useState<BrowseItem[]>([]);
 
   const toggleCartItem = (item: BrowseItem) => {
@@ -35,7 +38,10 @@ export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
 
   const clearCart = () => setCart([]);
 
-  const openWizard = (items?: BrowseItem[] | null, type?: "borrow" | "requisition") => {
+  const openWizard = (
+    items?: BrowseItem[] | null,
+    type?: "borrow" | "assign" | "requisition"
+  ) => {
     setWizardItems(items || []);
     if (type) {
       setWizardType(type);

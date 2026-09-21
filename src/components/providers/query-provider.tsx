@@ -74,6 +74,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       }
 
       const friendly = formatFriendlyNetworkError(error, networkFallback);
+      // Expected authz failures (e.g. staff-only lists) should not spam Retry toasts.
+      if (
+        /forbidden|permission denied|you do not have permission|only admins|staff workspace access is limited|only administrators/i.test(
+          friendly
+        )
+      ) {
+        return;
+      }
       if (
         lastError.message === friendly &&
         now - lastError.timestamp < NETWORK_TOAST_DEBOUNCE_MS

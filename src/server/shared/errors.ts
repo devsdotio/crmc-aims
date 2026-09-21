@@ -101,10 +101,10 @@ export function isConnectivityError(error: unknown): boolean {
           : "";
 
     if (
-      /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH)$/i.test(
+      /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)$/i.test(
         code
       ) ||
-      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Failed query/i.test(
+      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Connect Timeout|Failed query|fetch failed/i.test(
         message
       )
     ) {

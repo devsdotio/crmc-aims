@@ -22,8 +22,9 @@ export function mapConsumableRequestToPortal(
     requestCode: row.requestCode,
     requesterName: row.requesterName,
     requesterEmail: row.requesterEmail,
-    requesterPhone: row.requesterPhone,
+    requesterPhone: row.requesterPhone ?? "",
     department: row.department,
+    requestType: null,
     requestedByName: row.requestedByName,
     submissionGroupId: row.submissionGroupId,
     relatedRequests: row.relatedRequests,
@@ -59,13 +60,16 @@ export function mapConsumableRequestToPortal(
     })),
     requestedDateFrom: requestedAt.slice(0, 10),
     requestedDateTo: requestedAt.slice(0, 10),
+    portalKind: "supply",
   };
 }
 
 export function portalRequestKindLabel(request: {
   requestType?: "borrowable" | "assignable" | null;
   items?: Array<{ itemType?: "asset" | "consumable" }>;
+  portalKind?: "supply" | "borrow" | "assign";
 }): "Supplies" | "Assignment" | "Borrow" {
+  if (request.portalKind === "supply") return "Supplies";
   const items = request.items ?? [];
   const allConsumable =
     items.length > 0 && items.every((item) => item.itemType === "consumable");

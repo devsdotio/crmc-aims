@@ -456,7 +456,7 @@ export function BorrowerDashboard() {
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
           >
             <Package className="h-4 w-4" aria-hidden />
-            New Request
+            Multi-type Request
           </button>
         </div>
       </div>
