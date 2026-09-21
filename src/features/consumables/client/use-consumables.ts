@@ -8,7 +8,6 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import {
   STOCK_DOMAINS,
   invalidateDomains,
@@ -46,13 +45,11 @@ export function useConsumablesQuery(filters?: {
   PaginatedResponse<ConsumableItem>,
   Error
 > {
-  const { includeSandbox } = useSandboxVisibility();
-  const listFilters = { ...filters, includeSandbox };
   return useQuery({
     // Stock levels move with every issue and restock, so this rides the global
     // 30s stale window instead of holding a five-minute snapshot.
-    queryKey: consumableQueryKeys.list(listFilters),
-    queryFn: () => consumablesApi.list(listFilters),
+    queryKey: consumableQueryKeys.list(filters),
+    queryFn: () => consumablesApi.list(filters),
   });
 }
 

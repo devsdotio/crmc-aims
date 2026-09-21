@@ -30,7 +30,6 @@ export default function DepartmentsPage() {
     id?: string;
     code: string;
     name: string;
-    isSandbox?: boolean;
   }) => {
     if (input.id) {
       await updateDepartmentMutation.mutateAsync({
@@ -38,7 +37,6 @@ export default function DepartmentsPage() {
         payload: {
           code: input.code,
           name: input.name,
-          isSandbox: input.isSandbox,
         },
       });
       toast.success("Department updated.");
@@ -46,7 +44,6 @@ export default function DepartmentsPage() {
       await createDepartmentMutation.mutateAsync({
         code: input.code,
         name: input.name,
-        isSandbox: input.isSandbox,
       });
       toast.success("Department created.");
     }

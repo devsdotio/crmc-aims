@@ -18,7 +18,6 @@ import {
 import { cn } from "@/lib/utils";
 import type { DepartmentDTO } from "@/features/departments/client";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
-import { SandboxBadge } from "@/components/shared/sandbox-badge";
 import { IndividualDepartmentPrintableReport } from "@/components/reports/print/individual/IndividualDepartmentPrintableReport";
 
 export interface DepartmentsSectionProps {
@@ -27,7 +26,6 @@ export interface DepartmentsSectionProps {
     id?: string;
     code: string;
     name: string;
-    isSandbox?: boolean;
   }) => Promise<void>;
   onDelete: (department: DepartmentDTO) => Promise<void>;
 }
@@ -267,7 +265,6 @@ export function DepartmentsSection({
                         <span className="text-sm font-bold text-text truncate">
                           {dept.name}
                         </span>
-                        {dept.isSandbox && <SandboxBadge />}
                         <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-bg-subtle text-text-secondary border border-border shrink-0">
                           {dept.code}
                         </span>
@@ -413,12 +410,11 @@ function DepartmentDialog({
   isOpen: boolean;
   department: DepartmentDTO | null;
   onClose: () => void;
-  onSave: (input: { id?: string; code: string; name: string; isSandbox?: boolean }) => Promise<void>;
+  onSave: (input: { id?: string; code: string; name: string }) => Promise<void>;
 }) {
   const isEditing = Boolean(department);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [isSandbox, setIsSandbox] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -426,7 +422,6 @@ function DepartmentDialog({
     if (!isOpen) return;
     setCode(department?.code ?? "");
     setName(department?.name ?? "");
-    setIsSandbox(department?.isSandbox ?? false);
     setError("");
     setIsSubmitting(false);
   }, [isOpen, department]);
@@ -458,7 +453,6 @@ function DepartmentDialog({
         id: department?.id,
         code: code.trim().toUpperCase(),
         name: name.trim(),
-        isSandbox,
       });
       onClose();
     } catch (err) {
@@ -553,23 +547,6 @@ function DepartmentDialog({
               Short abbreviation used in requisition numbers and asset logs.
             </p>
           </div>
-
-          <label className="flex items-start gap-2.5 rounded-xl border border-border bg-bg-subtle/50 p-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isSandbox}
-              onChange={(e) => setIsSandbox(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border"
-            />
-            <span>
-              <span className="block text-xs font-semibold text-text">
-                Sandbox (testing only)
-              </span>
-              <span className="block text-[11px] text-text-secondary mt-0.5">
-                Hidden from normal users. Only visible to superadmin when “Show sandbox data” is on.
-              </span>
-            </span>
-          </label>
 
           {error && (
             <p className="text-xs font-bold text-red-600 bg-red-50 p-2.5 rounded-lg border border-red-200">

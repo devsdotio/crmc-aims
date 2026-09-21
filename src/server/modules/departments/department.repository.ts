@@ -89,10 +89,6 @@ export class DepartmentRepository implements IDepartmentRepository {
         or(ilike(departments.name, q), ilike(departments.code, q))!
       );
     }
-    if (!filters.includeSandbox) {
-      conditions.push(eq(departments.isSandbox, false));
-    }
-
     const borrowerJoin = and(
       eq(profiles.departmentId, departments.id),
       eq(profiles.role, "borrower")

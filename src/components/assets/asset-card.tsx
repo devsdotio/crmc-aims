@@ -8,7 +8,6 @@ import {
 } from "@/lib/assets-custody";
 import type { Asset, AssetStatus } from "@/types/assets";
 import { AssignmentTypeBadge } from "./assignment-type-badge";
-import { SandboxBadge } from "@/components/shared/sandbox-badge";
 
 export interface AssetCardProps {
   asset: Asset;
@@ -110,11 +109,6 @@ export function AssetCard({ asset, onSelect }: AssetCardProps) {
         {/* Asset Name */}
         <h3 className="text-sm font-bold text-text leading-snug line-clamp-2 group-hover:text-accent transition-colors">
           {asset.name}
-          {asset.isSandbox ? (
-            <span className="ml-2 align-middle">
-              <SandboxBadge />
-            </span>
-          ) : null}
         </h3>
 
         {/* Location & Holder Info */}

@@ -250,7 +250,6 @@ function AddEditConsumableDialogForm({
         supplierId: needsOpeningLot ? supplierId : supplierId || null,
         unitCost: needsOpeningLot ? unitCost : undefined,
         notes: notes.trim() || undefined,
-        isSandbox: initialItem?.isSandbox ?? false,
         lastRestocked: new Date().toISOString().split("T")[0],
       });
       onClose();

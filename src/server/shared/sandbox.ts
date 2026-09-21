@@ -1,32 +1,29 @@
-import { eq, type Column, type SQL } from "drizzle-orm";
+import type { Column, SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import type { AppRole } from "@/server/shared/roles";
 
-/** Query/body flag: only honored for superadmin. */
+/** Query/body flag — kept for callers; sandbox filtering is disabled. */
 export const includeSandboxQuerySchema = z
   .union([z.literal("true"), z.literal("false"), z.boolean()])
   .optional()
   .transform((v) => v === true || v === "true");
 
 /**
- * Returns true only when the client asked for sandbox rows AND the actor is superadmin.
- * All other roles always get false (sandbox hidden).
+ * Always returns true so list queries no longer hide sandbox rows.
+ * Signature kept for existing controllers.
  */
 export function parseIncludeSandbox(
-  raw: unknown,
-  actorRole: AppRole | string | undefined | null
+  _raw: unknown,
+  _actorRole?: AppRole | string | undefined | null
 ): boolean {
-  if (actorRole !== "superadmin") return false;
-  if (raw === true || raw === "true" || raw === "1") return true;
-  return false;
+  return true;
 }
 
-/** When not including sandbox, require the column to be false. */
+/** No-op: sandbox rows are never excluded by list filters. */
 export function sandboxExcluded(
-  column: Column,
-  includeSandbox: boolean
+  _column: Column,
+  _includeSandbox: boolean
 ): SQL | undefined {
-  if (includeSandbox) return undefined;
-  return eq(column, false);
+  return undefined;
 }

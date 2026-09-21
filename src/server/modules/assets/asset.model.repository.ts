@@ -88,10 +88,6 @@ export class AssetModelRepository {
         )!
       );
     }
-    if (!filters.includeSandbox) {
-      conditions.push(eq(assetModels.isSandbox, false));
-    }
-
     const base = db
       .select()
       .from(assetModels)

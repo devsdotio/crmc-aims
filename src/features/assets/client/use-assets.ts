@@ -8,7 +8,6 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import {
   assetsApi,
   type AssetLifecycleEvent,
@@ -82,10 +81,9 @@ function restoreCachedAssetLists(
 }
 
 export function useAssetsQuery(status?: AssetStatus): UseQueryResult<Asset[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
   return useQuery({
-    queryKey: assetQueryKeys.list({ status, includeSandbox }),
-    queryFn: () => assetsApi.listAssets(status, { includeSandbox }),
+    queryKey: assetQueryKeys.list({ status }),
+    queryFn: () => assetsApi.listAssets(status),
     // Custody changes constantly, so fall back to the global 30s stale window
     // and let the cached list render while the refresh runs behind it.
     // Surface timeouts quickly — default multi-retry looked like infinite skeleton

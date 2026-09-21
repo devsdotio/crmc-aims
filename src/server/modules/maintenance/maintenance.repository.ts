@@ -64,16 +64,6 @@ export class MaintenanceRepository implements IMaintenanceRepository {
         )!
       );
     }
-    if (!filters.includeSandbox) {
-      conditions.push(
-        sql`(${maintenanceLogs.assetId} is null OR not exists (
-          select 1 from ${assets}
-          where ${assets.id} = ${maintenanceLogs.assetId}
-            and ${assets.isSandbox} = true
-        ))`
-      );
-    }
-
     const base = db
       .select()
       .from(maintenanceLogs)
@@ -146,10 +136,6 @@ export class MaintenanceRepository implements IMaintenanceRepository {
       )`,
     ];
     if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
-    
-    if (!options.includeSandbox) {
-      conditions.push(eq(assets.isSandbox, false));
-    }
 
     return db
       .select({

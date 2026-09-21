@@ -166,10 +166,6 @@ export class BorrowLogService {
     };
 
     if (actor && !isAssetOperatorRole(actor.role)) {
-      const includeSandboxForDept = await this.departmentAllowsSandbox(
-        actor.departmentId
-      );
-
       if (parsed.scope === "department") {
         if (!actor.departmentId) {
           throw new BadRequestError(
@@ -181,7 +177,6 @@ export class BorrowLogService {
         filters.excludeProjects = true;
         filters.custodyKind = "all";
         filters.heldOnly = true;
-        filters.includeSandbox = includeSandboxForDept;
         delete filters.status;
         delete filters.borrowerUserId;
         delete filters.borrowerEmail;
@@ -190,10 +185,6 @@ export class BorrowLogService {
         filters.borrowerUserId = actor.userId;
         if (actor.email) {
           filters.borrowerEmail = actor.email;
-        }
-        // Sandbox department accounts must see sandbox assets in personal history too.
-        if (includeSandboxForDept) {
-          filters.includeSandbox = true;
         }
       }
     }
@@ -217,15 +208,6 @@ export class BorrowLogService {
       }
     }
     return toBorrowLogDTO(row);
-  }
-
-  /** Sandbox departments may see sandbox assets/logs tied to them. */
-  private async departmentAllowsSandbox(
-    departmentId: string | null | undefined
-  ): Promise<boolean> {
-    if (!departmentId) return false;
-    const dept = await this.departments.findById(departmentId);
-    return Boolean(dept?.isSandbox);
   }
 
   /**

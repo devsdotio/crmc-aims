@@ -187,7 +187,6 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
     supplierId?: string | null;
     unitCost?: string | number;
     notes?: string;
-    isSandbox?: boolean;
   }) => {
     try {
       if (addEditState.item) {
@@ -205,7 +204,6 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
                 ? undefined
                 : itemData.supplier || null,
             notes: itemData.notes,
-            isSandbox: itemData.isSandbox,
           },
         });
         toast.success("Item updated successfully.");
@@ -223,7 +221,6 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
           supplierId: itemData.supplierId ?? undefined,
           unitCost: itemData.unitCost,
           notes: itemData.notes,
-          isSandbox: itemData.isSandbox,
         });
         setSelectedId(created.id);
         toast.success("Item created successfully.");

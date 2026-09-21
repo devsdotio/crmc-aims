@@ -112,7 +112,6 @@ function AddEditAssetDialogForm({
   );
   const [department] = useState(() => initialAsset?.department ?? "");
   const [notes, setNotes] = useState(() => initialAsset?.notes ?? "");
-  const [isSandbox, setIsSandbox] = useState(() => initialAsset?.isSandbox ?? false);
   const [value, setValue] = useState(() =>
     initialAsset?.value != null ? String(initialAsset.value) : ""
   );
@@ -213,7 +212,6 @@ function AddEditAssetDialogForm({
         location: location.trim(),
         department: department.trim() || undefined,
         notes: notes.trim() || undefined,
-        isSandbox,
         value: value.trim() !== "" ? Number(value) : undefined,
         purchaseDate: purchaseDate || undefined,
         supplierId: supplierId || null,
@@ -523,23 +521,6 @@ function AddEditAssetDialogForm({
                 />
               </div>
 
-              <label className="flex items-start gap-2.5 rounded-lg border border-border bg-bg-subtle/50 p-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isSandbox}
-                  onChange={(e) => setIsSandbox(e.target.checked)}
-                  disabled={isSubmitting}
-                  className="mt-0.5 h-4 w-4 rounded border-border"
-                />
-                <span>
-                  <span className="block text-xs font-semibold text-text">
-                    Sandbox (testing only)
-                  </span>
-                  <span className="block text-[11px] text-text-secondary mt-0.5">
-                    Hidden from normal users unless a superadmin turns on sandbox visibility.
-                  </span>
-                </span>
-              </label>
             </div>
 
             <div className="space-y-3">

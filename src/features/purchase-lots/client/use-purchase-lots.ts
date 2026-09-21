@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-query";
 
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import {
   STOCK_DOMAINS,
   invalidateDomains,
@@ -40,12 +39,10 @@ export function usePurchaseLotsQuery(params?: {
   search?: string;
   enabled?: boolean;
 }): UseQueryResult<PurchaseLot[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
   const { enabled = true, ...filters } = params ?? {};
-  const listFilters = { ...filters, includeSandbox };
   return useQuery({
-    queryKey: purchaseLotQueryKeys.list(listFilters),
-    queryFn: () => purchaseLotsApi.list(listFilters),
+    queryKey: purchaseLotQueryKeys.list(filters),
+    queryFn: () => purchaseLotsApi.list(filters),
     enabled,
   });
 }

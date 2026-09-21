@@ -7,8 +7,6 @@ import {
   consumableRequestLines,
   consumableRequestReleaseAllocations,
   consumableRequests,
-  consumables,
-  departments,
   type ConsumableRequestLineRow,
   type ConsumableRequestReleaseAllocationRow,
   type ConsumableRequestRow,
@@ -88,24 +86,6 @@ export class ConsumableRequestRepository
     if (filters.endDate) {
       conditions.push(
         sql`date(${consumableRequests.requestedAt}) <= ${filters.endDate}`
-      );
-    }
-    if (!filters.includeSandbox) {
-      conditions.push(
-        sql`(${consumableRequests.departmentId} is null OR not exists (
-          select 1 from ${departments}
-          where ${departments.id} = ${consumableRequests.departmentId}
-            and ${departments.isSandbox} = true
-        ))`
-      );
-      conditions.push(
-        sql`not exists (
-          select 1 from ${consumableRequestLines}
-          inner join ${consumables}
-            on ${consumables.id} = ${consumableRequestLines.consumableId}
-          where ${consumableRequestLines.requestId} = ${consumableRequests.id}
-            and ${consumables.isSandbox} = true
-        )`
       );
     }
     return conditions;

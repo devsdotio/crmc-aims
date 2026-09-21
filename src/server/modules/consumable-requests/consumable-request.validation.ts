@@ -139,7 +139,7 @@ export const updateConsumableRequestSchema = z
     editReason: z
       .string()
       .trim()
-      .min(1, "Edit reason / note is required for accountability.")
+      .min(5, "Edit reason is required (min 5 characters) for accountability.")
       .max(1000),
   })
   .superRefine((data, ctx) => {

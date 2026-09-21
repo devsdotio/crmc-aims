@@ -62,7 +62,7 @@ export class ReportRepository {
         totalValue: sql<number>`coalesce(sum(${assets.value}::numeric), 0)::float`,
       })
       .from(assets)
-      .where(and(eq(assets.isSandbox, false), ...(tenantId ? [eq(assets.tenantId, tenantId)] : [])));
+      .where(tenantId ? eq(assets.tenantId, tenantId) : undefined);
 
     // Consumables rollups
     const [consumableStats] = await db
@@ -71,7 +71,7 @@ export class ReportRepository {
         lowStockCount: sql<number>`count(case when ${consumables.currentQty} <= ${consumables.minThreshold} then 1 end)::int`,
       })
       .from(consumables)
-      .where(and(eq(consumables.isSandbox, false), ...(tenantId ? [eq(consumables.tenantId, tenantId)] : [])));
+      .where(tenantId ? eq(consumables.tenantId, tenantId) : undefined);
 
     // Consumable inventory valuation & 30d usage from purchase lots & movements
     const [consumableValuation] = await db
@@ -144,7 +144,7 @@ export class ReportRepository {
         value: sql<number>`coalesce(sum(${assets.value}::numeric), 0)::float`,
       })
       .from(assets)
-      .where(and(eq(assets.isSandbox, false), ...(tenantId ? [eq(assets.tenantId, tenantId)] : [])))
+      .where(tenantId ? eq(assets.tenantId, tenantId) : undefined)
       .groupBy(assets.category);
 
     return {
@@ -208,9 +208,6 @@ export class ReportRepository {
 
     if (tenantId) {
       conditions.push(eq(assets.tenantId, tenantId));
-    }
-    if (!filters.includeSandbox) {
-      conditions.push(eq(assets.isSandbox, false));
     }
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(assets.category, filters.category));
@@ -459,9 +456,6 @@ export class ReportRepository {
 
     if (tenantId) {
       conditions.push(eq(consumables.tenantId, tenantId));
-    }
-    if (!filters.includeSandbox) {
-      conditions.push(eq(consumables.isSandbox, false));
     }
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(consumables.category, filters.category));
@@ -1359,9 +1353,6 @@ export class ReportRepository {
     if (tenantId) {
       conditions.push(eq(departments.tenantId, tenantId));
     }
-    if (!filters.includeSandbox) {
-      conditions.push(eq(departments.isSandbox, false));
-    }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(or(ilike(departments.name, q), ilike(departments.code, q))!);
@@ -1385,9 +1376,6 @@ export class ReportRepository {
     const assetConditions: SQL[] = [];
     if (tenantId) {
       assetConditions.push(eq(assets.tenantId, tenantId));
-    }
-    if (!filters.includeSandbox) {
-      assetConditions.push(eq(assets.isSandbox, false));
     }
     if (filters.startDate) {
       assetConditions.push(
