@@ -104,7 +104,7 @@ export function isConnectivityError(error: unknown): boolean {
       /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)$/i.test(
         code
       ) ||
-      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Connect Timeout|Failed query|fetch failed/i.test(
+      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Connect Timeout|Failed query|fetch failed|Cannot perform I\/O on behalf of a different request|HYPERDRIVE binding is missing/i.test(
         message
       )
     ) {

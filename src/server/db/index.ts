@@ -13,24 +13,18 @@ const globalForDb = globalThis as unknown as {
   __crmcPg?: ReturnType<typeof postgres>;
 };
 
-/** Per-request only — keyed by Workers ExecutionContext (not shared across invocations). */
-const hyperdriveDbByCtx = new WeakMap<object, Database>();
-
-function getHyperdriveConnectionString(): string | undefined {
+function getWorkersEnv(): { HYPERDRIVE?: HyperdriveBinding } | null {
   try {
-    const { env } = getCloudflareContext();
-    const hyperdrive = (env as { HYPERDRIVE?: HyperdriveBinding }).HYPERDRIVE;
-    return hyperdrive?.connectionString;
+    return getCloudflareContext().env as { HYPERDRIVE?: HyperdriveBinding };
   } catch {
-    // Outside the Workers runtime (local `next dev`, scripts, build).
-    return undefined;
+    // Outside the Workers request context (local `next dev`, scripts, build).
+    return null;
   }
 }
 
 function createHyperdriveDb(connectionString: string): Database {
-  // Hyperdrive pools upstream. Do not reuse this client across requests —
+  // Hyperdrive pools upstream. Never reuse this client across requests —
   // Workers throw "Cannot perform I/O on behalf of a different request".
-  // Do not use React.cache() — Workers lack asyncLocalStorage.enterWith().
   const client = postgres(connectionString, {
     max: 1,
     fetch_types: false,
@@ -44,26 +38,23 @@ function createHyperdriveDb(connectionString: string): Database {
  * Lazy Drizzle client. Avoids crashing module evaluation during Next.js
  * builds that import route handlers without a live DATABASE_URL.
  *
- * On Cloudflare Workers, prefer Hyperdrive (required for reliable Postgres TCP).
+ * On Cloudflare Workers, Hyperdrive is required (no shared/global Postgres client).
  * Locally, use DATABASE_URL with a shared process pool.
  */
 export function getDb(): Database {
-  const hyperdriveUrl = getHyperdriveConnectionString();
+  const workersEnv = getWorkersEnv();
 
-  if (hyperdriveUrl) {
-    try {
-      const { ctx } = getCloudflareContext();
-      if (ctx) {
-        const existing = hyperdriveDbByCtx.get(ctx);
-        if (existing) return existing;
-        const db = createHyperdriveDb(hyperdriveUrl);
-        hyperdriveDbByCtx.set(ctx, db);
-        return db;
-      }
-    } catch {
-      // Fall through to one-off client.
+  if (workersEnv) {
+    const connectionString = workersEnv.HYPERDRIVE?.connectionString;
+
+    if (!connectionString) {
+      throw new Error(
+        "HYPERDRIVE binding is missing in the Workers runtime. Check wrangler.jsonc hyperdrive config and redeploy."
+      );
     }
-    return createHyperdriveDb(hyperdriveUrl);
+
+    // Fresh client per getDb() call — request-safe on Workers.
+    return createHyperdriveDb(connectionString);
   }
 
   if (globalForDb.__crmcDb) {
@@ -79,11 +70,8 @@ export function getDb(): Database {
   }
 
   /**
-   * Shared process pool. Slow remote DB + many parallel APIs exhaust small pools
-   * and leave list pages spinning on skeletons.
-   *
-   * `options` sets Postgres GUCs for every session (statement_timeout aborts
-   * hung statements so pool slots free up).
+   * Shared process pool for Node (`next dev` / scripts) only.
+   * Never used on Workers — a global pool causes cross-request I/O failures.
    */
   const client = postgres(connectionString, {
     max: process.env.NODE_ENV === "development" ? 20 : 25,
