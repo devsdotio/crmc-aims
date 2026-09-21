@@ -1,6 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import { cache } from "react";
 import postgres from "postgres";
 
 import * as schema from "./schema";
@@ -14,6 +13,9 @@ const globalForDb = globalThis as unknown as {
   __crmcPg?: ReturnType<typeof postgres>;
 };
 
+/** Per-request only — keyed by Workers ExecutionContext (not shared across invocations). */
+const hyperdriveDbByCtx = new WeakMap<object, Database>();
+
 function getHyperdriveConnectionString(): string | undefined {
   try {
     const { env } = getCloudflareContext();
@@ -25,27 +27,18 @@ function getHyperdriveConnectionString(): string | undefined {
   }
 }
 
-/**
- * Per-request Hyperdrive client. Workers throw
- * "Cannot perform I/O on behalf of a different request" (Error 1101) if a
- * TCP-backed postgres client is reused across invocations — so never cache
- * it on globalThis. React `cache()` dedupes within a single request only.
- */
-const getHyperdriveDb = cache((): Database => {
-  const hyperdriveUrl = getHyperdriveConnectionString();
-  if (!hyperdriveUrl) {
-    throw new Error("Hyperdrive binding is not available in this runtime.");
-  }
-
-  const client = postgres(hyperdriveUrl, {
+function createHyperdriveDb(connectionString: string): Database {
+  // Hyperdrive pools upstream. Do not reuse this client across requests —
+  // Workers throw "Cannot perform I/O on behalf of a different request".
+  // Do not use React.cache() — Workers lack asyncLocalStorage.enterWith().
+  const client = postgres(connectionString, {
     max: 1,
     fetch_types: false,
     prepare: false,
     connect_timeout: 30,
   });
-
   return drizzle(client, { schema });
-});
+}
 
 /**
  * Lazy Drizzle client. Avoids crashing module evaluation during Next.js
@@ -55,8 +48,22 @@ const getHyperdriveDb = cache((): Database => {
  * Locally, use DATABASE_URL with a shared process pool.
  */
 export function getDb(): Database {
-  if (getHyperdriveConnectionString()) {
-    return getHyperdriveDb();
+  const hyperdriveUrl = getHyperdriveConnectionString();
+
+  if (hyperdriveUrl) {
+    try {
+      const { ctx } = getCloudflareContext();
+      if (ctx) {
+        const existing = hyperdriveDbByCtx.get(ctx);
+        if (existing) return existing;
+        const db = createHyperdriveDb(hyperdriveUrl);
+        hyperdriveDbByCtx.set(ctx, db);
+        return db;
+      }
+    } catch {
+      // Fall through to one-off client.
+    }
+    return createHyperdriveDb(hyperdriveUrl);
   }
 
   if (globalForDb.__crmcDb) {
