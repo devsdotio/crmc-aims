@@ -5,7 +5,6 @@ import type {
   ReturnAssetInput,
   UpdateAssetInput,
 } from "@/types/assets";
-import { appendIncludeSandbox } from "@/components/providers/sandbox-visibility-context";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 
 export interface AssetFieldChange<T = unknown> {
@@ -98,7 +97,6 @@ export const assetsApi = {
       search?: string;
       availableOnly?: boolean;
       assignmentType?: "borrowable" | "assignable";
-      includeSandbox?: boolean;
     }
   ): Promise<Asset[]> {
     const searchParams = new URLSearchParams();
@@ -111,7 +109,6 @@ export const assetsApi = {
     if (filters?.search) searchParams.set("search", filters.search);
     if (filters?.availableOnly) searchParams.set("availableOnly", "true");
     if (filters?.assignmentType) searchParams.set("assignmentType", filters.assignmentType);
-    appendIncludeSandbox(searchParams, filters?.includeSandbox);
 
     const queryString = searchParams.toString();
     const path =

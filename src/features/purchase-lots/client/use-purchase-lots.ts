@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-query";
 
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import {
   STOCK_DOMAINS,
   invalidateDomains,
@@ -40,12 +39,10 @@ export function usePurchaseLotsQuery(params?: {
   search?: string;
   enabled?: boolean;
 }): UseQueryResult<PurchaseLot[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
   const { enabled = true, ...filters } = params ?? {};
-  const listFilters = { ...filters, includeSandbox };
   return useQuery({
-    queryKey: purchaseLotQueryKeys.list(listFilters),
-    queryFn: () => purchaseLotsApi.list(listFilters),
+    queryKey: purchaseLotQueryKeys.list(filters),
+    queryFn: () => purchaseLotsApi.list(filters),
     enabled,
   });
 }
@@ -105,8 +102,11 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
           supplierId: item.supplierId || newPO.supplierId || null,
           supplierName:
             item.suggestedDealer ||
-            newPO.supplierName ||
-            "Direct / Default Supplier",
+            (newPO.supplierName &&
+            newPO.supplierName.trim().toLowerCase() !== "multiple suppliers"
+              ? newPO.supplierName
+              : null) ||
+            null,
           quantity: qty,
           quantityRemaining: qty,
           unitCost: uCost.toFixed(2),
@@ -142,7 +142,12 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
               unitCost: iCost.toFixed(2),
               totalCost: (iQty * iCost).toFixed(2),
               purpose: it.purpose || newPO.purpose || null,
-              suggestedDealer: it.suggestedDealer || newPO.supplierName || null,
+              suggestedDealer:
+                it.suggestedDealer ||
+                (newPO.supplierName &&
+                newPO.supplierName.trim().toLowerCase() !== "multiple suppliers"
+                  ? newPO.supplierName
+                  : null),
             };
           }),
         };

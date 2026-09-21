@@ -1,15 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { BrowseTab } from "../../../components/borrower-db/browse-tab";
-import { useBorrowerPortal } from "../../../components/borrower-db/context";
-import type { BrowseItem } from "../../../components/borrower-db/types";
-
-export default function BrowsePage() {
-  const { openWizard } = useBorrowerPortal();
-
-  return (
-    <section id="tabpanel-browse" role="tabpanel" aria-labelledby="tab-browse">
-      <BrowseTab />
-    </section>
-  );
+/** Legacy browse catalog — Operations now uses admin-parity Assets/Supplies. */
+export default function BorrowerBrowseRedirectPage() {
+  redirect("/borrower-db/dashboard");
 }

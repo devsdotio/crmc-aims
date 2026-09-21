@@ -209,6 +209,16 @@ export function PurchaseOrdersView({
     return selectedLot;
   }, [groupedPOs, selectedLot]);
 
+  const selectedLineItems = useMemo(() => {
+    if (!selectedLot) return undefined;
+    for (const g of groupedPOs) {
+      if (g.lineItems.some((l) => l.id === selectedLot.id)) {
+        return g.lineItems;
+      }
+    }
+    return [selectedLot];
+  }, [groupedPOs, selectedLot]);
+
   const printSlipLotSynced = useMemo(() => {
     if (!printSlipLot) return null;
     for (const g of groupedPOs) {
@@ -820,6 +830,7 @@ export function PurchaseOrdersView({
       {/* Slide-over Inspection Sheet */}
       <PurchaseOrderDetailSheet
         lot={selectedLotSynced}
+        lineItems={selectedLineItems}
         isOpen={Boolean(selectedLotSynced)}
         onClose={() => setSelectedLot(null)}
         onPrintSlip={(lot) => setPrintSlipLot(lot)}

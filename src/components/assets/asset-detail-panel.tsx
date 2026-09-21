@@ -64,6 +64,7 @@ import { useCategoryStyleMap } from "@/features/categories/client/use-categories
 import { useBorrowRequests } from "@/features/borrow-requests/client";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { LoadingState } from "@/components/providers/loading-context";
+import { useAssetOperator } from "@/hooks/use-asset-operator";
 
 function getTimelineIcon(status: string) {
   switch (status.toLowerCase()) {
@@ -1089,6 +1090,8 @@ export function AssetDetailPanel({
 }: AssetDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const { getCategoryStyle } = useCategoryStyleMap();
+  const { role } = useAssetOperator();
+  const isBorrower = role === "borrower";
   // Suppliers only needed when panel is open with a linked vendor — never on list paint.
   const { data: suppliers = [] } = useSuppliersQuery({
     enabled: Boolean(isOpen && asset?.supplierId),
@@ -1183,35 +1186,81 @@ export function AssetDetailPanel({
           )}
         >
         {/* Panel Header */}
-        <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
-          <div className="min-w-0 flex-1 pr-3">
-            <h2
-              id="asset-detail-heading"
-              className="font-mono text-base font-bold tracking-tight text-text truncate leading-tight"
-            >
-              {asset.assetCode}
-            </h2>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs",
-                  categoryMeta.bg,
-                  categoryMeta.text
-                )}
-              >
-                <Tag className="h-2.5 w-2.5 shrink-0" />
-                {categoryMeta.label}
-              </span>
-              <span className="text-text-secondary/40">•</span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 shadow-2xs">
-                <Box className="h-2.5 w-2.5 shrink-0" />
-                <span className="truncate max-w-45">{asset.name}</span>
-              </span>
-            </div>
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
+          <div className="min-w-0 flex-1 pr-2">
+            {isBorrower ? (
+              <>
+                <p className="font-mono text-[11px] font-bold tracking-wide text-primary mb-1">
+                  {asset.assetCode}
+                </p>
+                <h2
+                  id="asset-detail-heading"
+                  className="text-base font-bold tracking-tight text-text leading-snug"
+                >
+                  {asset.name}
+                </h2>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+                      categoryMeta.bg,
+                      categoryMeta.text
+                    )}
+                  >
+                    <Tag className="h-2.5 w-2.5 shrink-0" />
+                    {categoryMeta.label}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
+                      statusMeta.bg,
+                      statusMeta.text
+                    )}
+                  >
+                    {statusMeta.label}
+                  </span>
+                  {asset.currentHolder ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+                      In use
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25">
+                      Available
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <h2
+                  id="asset-detail-heading"
+                  className="font-mono text-base font-bold tracking-tight text-text truncate leading-tight"
+                >
+                  {asset.assetCode}
+                </h2>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs",
+                      categoryMeta.bg,
+                      categoryMeta.text
+                    )}
+                  >
+                    <Tag className="h-2.5 w-2.5 shrink-0" />
+                    {categoryMeta.label}
+                  </span>
+                  <span className="text-text-secondary/40">•</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 shadow-2xs">
+                    <Box className="h-2.5 w-2.5 shrink-0" />
+                    <span className="truncate max-w-45">{asset.name}</span>
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="flex items-center justify-end gap-2.5 shrink-0">
-            {showMaintenanceAction &&
+          <div className="flex items-center justify-end gap-2 shrink-0">
+            {!isBorrower && showMaintenanceAction &&
               (asset.status === "needs_repair" ? (
                 <Link
                   href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
@@ -1291,20 +1340,22 @@ export function AssetDetailPanel({
                 </span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => window.print()}
-              aria-label="Print Asset Dossier Report"
-              className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
-            >
-              <Printer className="h-4 w-4" />
-              <span
-                role="tooltip"
-                className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
+            {!isBorrower && (
+              <button
+                type="button"
+                onClick={() => window.print()}
+                aria-label="Print Asset Dossier Report"
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
               >
-                Print Dossier (PDF)
-              </span>
-            </button>
+                <Printer className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
+                >
+                  Print Dossier (PDF)
+                </span>
+              </button>
+            )}
             {onDelete && (
               <button
                 type="button"
@@ -1321,193 +1372,277 @@ export function AssetDetailPanel({
                 </span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="inline-flex items-center justify-center p-1.5 rounded-md text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
         {/* Body */}
-        <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
-          {/* QR Code Tag Card */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-              <QrCode className="h-3.5 w-3.5 text-primary" />
-              Physical QR Tag
-            </h3>
-            <QRCodeDisplay assetCode={asset.assetCode} assetName={asset.name} />
-          </div>
-
-          {/* Asset Record Card */}
-          <div className="space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-              <Layers className="h-3.5 w-3.5 text-indigo-500" />
-              Asset Record & Condition
-            </h3>
-
-            <div className="bg-bg rounded-xl border border-indigo-500/25 shadow-xs overflow-hidden">
-              {/* Status Header */}
-              <div className="p-4 border-b border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-950/20 flex items-center justify-between">
-                <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
-                  Current Condition & Custody
-                </span>
-                <div className="flex gap-2">
-                  {asset.currentHolder ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary text-white uppercase tracking-wider">
-                      {custodyBadgeLabel(asset.currentHolder, asset.assignmentType)}
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 uppercase tracking-wider">
-                      Available
-                    </span>
-                  )}
-                  <span
-                    className={cn(
-                      "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                      statusMeta.bg,
-                      statusMeta.text,
-                    )}
-                  >
-                    {statusMeta.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                      asset.assignmentType === "assignable"
-                        ? "bg-amber-600/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
-                        : "bg-bg-subtle text-text-secondary border border-border",
-                    )}
-                  >
-                    {asset.assignmentType === "assignable"
-                      ? "Assignable"
-                      : "General"}
-                  </span>
+        <div className="flex-1 p-5 flex flex-col gap-5 overflow-y-auto">
+          {isBorrower ? (
+            <>
+              <section className="rounded-xl border border-border bg-bg overflow-hidden">
+                <div className="px-4 py-3 border-b border-border bg-bg-subtle/40">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    Details
+                  </h3>
                 </div>
-              </div>
-
-              {asset.status === "needs_repair" && (
-                <div className="px-4 py-3 border-b border-status-repair-bg/25 bg-status-repair-bg/10 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-xs text-status-repair-text">
-                    Open repair flag — resolve via Maintenance Logs to mark serviceable again.
-                  </p>
-                  <Link
-                    href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-status-repair-text hover:underline shrink-0"
-                  >
-                    <Wrench className="h-3.5 w-3.5" />
-                    Open maintenance log
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Link>
-                </div>
-              )}
-
-              {/* Grid Properties */}
-              <div className="p-5 grid grid-cols-2 gap-4 text-xs">
-                <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
-                  <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
-                    Serial Number
-                  </p>
-                  <p className="text-sm font-mono font-bold text-text">
-                    {asset.serialNumber || "N/A"}
-                  </p>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
-                  <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5 text-indigo-500" /> Location
-                  </p>
-                  <p
-                    className="text-sm font-medium text-text truncate"
-                    title={asset.location}
-                  >
-                    {asset.location}
-                  </p>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
-                  <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <User className="h-3.5 w-3.5 text-indigo-500" /> Custody
-                  </p>
-                  <p className="text-sm font-medium text-text truncate">
-                    {asset.currentHolder ? (
-                      <span
-                        title={`${asset.currentHolder} ${asset.department ? `(${asset.department})` : ""}`}
-                        className="font-semibold text-text"
+                <dl className="divide-y divide-border">
+                  {[
+                    {
+                      label: "Asset ID",
+                      value: asset.assetCode,
+                      mono: true,
+                    },
+                    {
+                      label: "Type",
+                      value:
+                        asset.assignmentType === "assignable"
+                          ? "Assignable"
+                          : "Borrowable",
+                    },
+                    {
+                      label: "Serial",
+                      value: asset.serialNumber || "—",
+                      mono: Boolean(asset.serialNumber),
+                    },
+                    {
+                      label: "Location",
+                      value: asset.location || "—",
+                    },
+                    {
+                      label: "Custody",
+                      value: asset.currentHolder
+                        ? `${asset.currentHolder}${asset.department ? ` · ${asset.department}` : ""}`
+                        : "Available in stock",
+                    },
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      className="px-4 py-3 flex items-start justify-between gap-4"
+                    >
+                      <dt className="text-[11px] font-semibold text-text-secondary shrink-0 pt-0.5">
+                        {row.label}
+                      </dt>
+                      <dd
+                        className={cn(
+                          "text-sm text-text text-right min-w-0",
+                          row.mono && "font-mono font-semibold tracking-tight"
+                        )}
                       >
-                        {asset.currentHolder}
-                      </span>
-                    ) : (
-                      <span className="text-status-active-text font-semibold">
-                        Available In Stock
-                      </span>
-                    )}
-                  </p>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
-                  <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <Calendar className="h-3.5 w-3.5 text-indigo-500" /> Acquisition
-                  </p>
-                  <p className="text-sm font-semibold text-text">
-                    {formatDisplayDate(asset.purchaseDate)}
-                  </p>
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
-                  <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <Truck className="h-3.5 w-3.5 text-indigo-500" /> Supplier
-                  </p>
-                  <p className="text-sm font-medium text-text truncate">
-                    {supplierName ||
-                      (asset.supplierId
-                        ? "Supplier record unavailable"
-                        : "Unspecified")}
-                  </p>
-                </div>
-
-                {asset.value != null && asset.value !== undefined && (
-                  <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
-                    <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
-                      Inventory Value (₱)
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {asset.notes ? (
+                  <div className="px-4 py-3 border-t border-border bg-bg-subtle/30">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mb-1.5">
+                      Notes
                     </p>
-                    <p className="text-sm font-mono font-bold text-text">
-                      ₱{asset.value.toLocaleString()}
-                    </p>
+                    <AuditNoteDisplay note={asset.notes} className="mt-0" />
                   </div>
-                )}
+                ) : null}
+              </section>
+
+              <p className="text-[11px] text-text-secondary leading-relaxed px-0.5">
+                To borrow or request this item, use{" "}
+                <span className="font-semibold text-text">Request</span> in the
+                sidebar.
+              </p>
+            </>
+          ) : (
+            <>
+              {/* QR Code Tag Card */}
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+                  <QrCode className="h-3.5 w-3.5 text-primary" />
+                  Physical QR Tag
+                </h3>
+                <QRCodeDisplay assetCode={asset.assetCode} assetName={asset.name} />
               </div>
 
-              {/* Notes Full Width */}
-              {asset.notes && (
-                <div className="p-4 border-t border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-950/20">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="p-1 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                      <StickyNote className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                      Custody Notes & Details
-                    </span>
-                  </div>
-                  <AuditNoteDisplay note={asset.notes} className="mt-0" />
-                </div>
-              )}
-            </div>
-          </div>
+              {/* Asset Record Card */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-indigo-500" />
+                  Asset Record & Condition
+                </h3>
 
-          {/* Asset History Card */}
-          <div className="space-y-3 pb-8">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-                <History className="h-3.5 w-3.5" />
-                Asset History
-              </h3>
-            </div>
-            <AssetHistoryTimeline asset={asset} />
-          </div>
+                <div className="bg-bg rounded-xl border border-indigo-500/25 shadow-xs overflow-hidden">
+                  <div className="p-4 border-b border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-950/20 flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                      Current Condition & Custody
+                    </span>
+                    <div className="flex gap-2">
+                      {asset.currentHolder ? (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-primary text-white uppercase tracking-wider">
+                          {custodyBadgeLabel(asset.currentHolder, asset.assignmentType)}
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 uppercase tracking-wider">
+                          Available
+                        </span>
+                      )}
+                      <span
+                        className={cn(
+                          "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                          statusMeta.bg,
+                          statusMeta.text
+                        )}
+                      >
+                        {statusMeta.label}
+                      </span>
+                      <span
+                        className={cn(
+                          "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                          asset.assignmentType === "assignable"
+                            ? "bg-amber-600/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
+                            : "bg-bg-subtle text-text-secondary border border-border"
+                        )}
+                      >
+                        {asset.assignmentType === "assignable"
+                          ? "Assignable"
+                          : "General"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {asset.status === "needs_repair" && (
+                    <div className="px-4 py-3 border-b border-status-repair-bg/25 bg-status-repair-bg/10 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-status-repair-text">
+                        Open repair flag — resolve via Maintenance Logs to mark
+                        serviceable again.
+                      </p>
+                      <Link
+                        href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-status-repair-text hover:underline shrink-0"
+                      >
+                        <Wrench className="h-3.5 w-3.5" />
+                        Open maintenance log
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                  )}
+
+                  <div className="p-5 grid grid-cols-2 gap-4 text-xs">
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                        Serial Number
+                      </p>
+                      <p className="text-sm font-mono font-bold text-text">
+                        {asset.serialNumber || "N/A"}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-indigo-500" /> Location
+                      </p>
+                      <p
+                        className="text-sm font-medium text-text truncate"
+                        title={asset.location}
+                      >
+                        {asset.location}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 text-indigo-500" /> Custody
+                      </p>
+                      <p className="text-sm font-medium text-text truncate">
+                        {asset.currentHolder ? (
+                          <span
+                            title={`${asset.currentHolder} ${asset.department ? `(${asset.department})` : ""}`}
+                            className="font-semibold text-text"
+                          >
+                            {asset.currentHolder}
+                          </span>
+                        ) : (
+                          <span className="text-status-active-text font-semibold">
+                            Available In Stock
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-indigo-500" />{" "}
+                        Acquisition
+                      </p>
+                      <p className="text-sm font-semibold text-text">
+                        {formatDisplayDate(asset.purchaseDate)}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <Truck className="h-3.5 w-3.5 text-indigo-500" /> Supplier
+                      </p>
+                      <p className="text-sm font-medium text-text truncate">
+                        {supplierName ||
+                          (asset.supplierId
+                            ? "Supplier record unavailable"
+                            : "Unspecified")}
+                      </p>
+                    </div>
+
+                    {asset.value != null && asset.value !== undefined && (
+                      <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                        <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                          Inventory Value (₱)
+                        </p>
+                        <p className="text-sm font-mono font-bold text-text">
+                          ₱{asset.value.toLocaleString()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {asset.notes && (
+                    <div className="p-4 border-t border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-950/20">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="p-1 rounded-md bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                          <StickyNote className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                          Custody Notes & Details
+                        </span>
+                      </div>
+                      <AuditNoteDisplay note={asset.notes} className="mt-0" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-3 pb-8">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+                    <History className="h-3.5 w-3.5" />
+                    Asset History
+                  </h3>
+                </div>
+                <AssetHistoryTimeline asset={asset} />
+              </div>
+            </>
+          )}
         </div>
       </aside>
     </div>
 
-    <div className="hidden print:block">
-      <IndividualAssetPrintableReport asset={asset} />
-    </div>
+    {!isBorrower && (
+      <div className="hidden print:block">
+        <IndividualAssetPrintableReport asset={asset} />
+      </div>
+    )}
     </>
   );
 }

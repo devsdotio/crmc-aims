@@ -1,5 +1,4 @@
 import type { StockMovementDTO } from "@/server/modules/stock-movements";
-import { appendIncludeSandbox } from "@/components/providers/sandbox-visibility-context";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 
 export type StockMovement = StockMovementDTO;
@@ -12,12 +11,10 @@ export const stockMovementsApi = {
   async list(params?: {
     reason?: StockMovement["reason"];
     limit?: number;
-    includeSandbox?: boolean;
   }): Promise<StockMovement[]> {
     const sp = new URLSearchParams();
     if (params?.reason) sp.set("reason", params.reason);
     if (params?.limit) sp.set("limit", String(params.limit));
-    appendIncludeSandbox(sp, params?.includeSandbox);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<StockMovement[]>>(
       qs ? `/api/stock-movements?${qs}` : "/api/stock-movements"

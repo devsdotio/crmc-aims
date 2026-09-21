@@ -24,8 +24,8 @@ export function IssueAssetDialog({
   onSuccess,
 }: IssueAssetDialogProps) {
   const releaseMutation = useReleaseAssetMutation();
-  const { data: departments = [] } = useDepartmentsQuery();
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+  const { data: projects = [] } = useProjectsQuery({ enabled: isOpen });
 
   const [destinationKind, setDestinationKind] =
     useState<DestinationKind>("department");

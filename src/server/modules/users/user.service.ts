@@ -18,6 +18,8 @@ import {
   type AppRole,
 } from "@/server/shared/roles";
 import { DepartmentRepository } from "@/server/modules/departments/department.repository";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import { ProfileRepository } from "./user.repository";
 import type {
@@ -55,6 +57,7 @@ export function toProfileDTO(row: ProfileWithDepartment): ProfileDTO {
     department: departmentName,
     departmentId: row.departmentId ?? null,
     departmentCode: row.linkedDepartmentCode ?? null,
+    tenantId: row.tenantId ?? null,
     dateAdded: toDateString(row.createdAt),
     lastActive:
       row.status === "deactivated"
@@ -107,6 +110,8 @@ function assertCanMutateTarget(actor: ActorContext, target: ProfileRow) {
 }
 
 export class UserService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly profileRepository: IProfileRepository = new ProfileRepository(),
     private readonly departmentRepository: DepartmentRepository = new DepartmentRepository()
@@ -347,6 +352,22 @@ export class UserService {
       if (!created) {
         throw new Error("Profile was created but could not be reloaded.");
       }
+      await this.auditLogs.log({
+        entityType: AUDIT_ENTITY.user,
+        entityId: created.userId,
+        action: AUDIT_ACTION.created,
+        actorName: actor.displayName,
+        actorUserId: actor.userId,
+        notes: `Created user account ${created.email} (${created.role}).`,
+        metadata: {
+          targetUserId: created.userId,
+          email: created.email,
+          role: created.role,
+          status: created.status,
+          tenantId: created.tenantId,
+          departmentId: created.departmentId,
+        },
+      });
       return toProfileDTO(created);
     } catch (error) {
       // Roll back auth user if profile insert fails so admins can retry cleanly
@@ -473,6 +494,47 @@ export class UserService {
 
     const row = await this.profileRepository.findByUserId(userId);
     if (!row) throw new NotFoundError("User", userId);
+
+    const changedFields: Record<string, unknown> = {};
+    if (existing.fullName !== row.fullName) {
+      changedFields.name = { from: existing.fullName, to: row.fullName };
+    }
+    if (existing.role !== row.role) {
+      changedFields.role = { from: existing.role, to: row.role };
+    }
+    if (existing.status !== row.status) {
+      changedFields.status = { from: existing.status, to: row.status };
+    }
+    if (existing.departmentId !== row.departmentId) {
+      changedFields.departmentId = {
+        from: existing.departmentId,
+        to: row.departmentId,
+      };
+    }
+
+    let action: string = AUDIT_ACTION.updated;
+    if (existing.status !== row.status) {
+      action =
+        row.status === "deactivated"
+          ? AUDIT_ACTION.userDeactivated
+          : AUDIT_ACTION.userActivated;
+    } else if (existing.role !== row.role) {
+      action = AUDIT_ACTION.userRoleChanged;
+    }
+
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.user,
+      entityId: row.userId,
+      action,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Updated user account ${row.email}.`,
+      metadata: {
+        targetUserId: row.userId,
+        email: row.email,
+        changedFields,
+      },
+    });
     return toProfileDTO(row);
   }
 

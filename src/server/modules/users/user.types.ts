@@ -16,6 +16,7 @@ export interface ProfileDTO {
   department: string | null;
   departmentId: string | null;
   departmentCode: string | null;
+  tenantId: string | null;
   dateAdded: string;
   /** Human-relative display string ("Active now", "2 hours ago", …). */
   lastActive: string | null;

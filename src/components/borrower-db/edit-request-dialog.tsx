@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -21,6 +21,8 @@ import { useConsumablesQuery } from "@/features/consumables/client/use-consumabl
 import { useUpdateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
 import { useUpdateConsumableRequestMutation } from "@/features/consumable-requests/client";
 import { useToast } from "@/components/providers/toast-context";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useRequestModalDismiss } from "@/hooks/use-request-modal-dismiss";
 import type { PortalBorrowRequest } from "./types";
 import type { BorrowRequest } from "@/types/borrow-requests";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -35,7 +37,7 @@ interface EditRequestDialogProps {
 type EditStep = "items" | "audit";
 
 const STEPS: { key: EditStep; label: string; stepNumber: number }[] = [
-  { key: "items", label: "Items & Quantities", stepNumber: 1 },
+  { key: "items", label: "Details & Items", stepNumber: 1 },
   { key: "audit", label: "Audit Reason", stepNumber: 2 },
 ];
 
@@ -49,6 +51,10 @@ export function EditRequestDialog({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [editReason, setEditReason] = useState("");
+  const [requestedByName, setRequestedByName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [purpose, setPurpose] = useState("");
+  const [expectedReturnDate, setExpectedReturnDate] = useState("");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [assetItems, setAssetItems] = useState<any[]>([]);
@@ -56,7 +62,6 @@ export function EditRequestDialog({
   const [supplyLines, setSupplyLines] = useState<any[]>([]);
 
   const { data: consumableData } = useConsumablesQuery({ limit: 100 });
-  const [isSaving, setIsSaving] = useState(false);
 
   const { getCategoryStyle } = useCategoryStyleMap();
   const { data: dbCategories = [] } = useCategoriesQuery();
@@ -68,6 +73,7 @@ export function EditRequestDialog({
   const updateBorrowMutation = useUpdateBorrowRequestMutation();
   const updateSupplyMutation = useUpdateConsumableRequestMutation();
   const toast = useToast();
+  const baselineRef = useRef<string>("");
 
   const consumablesCatalog = useMemo(() => consumableData?.data ?? [], [consumableData]);
 
@@ -91,6 +97,9 @@ export function EditRequestDialog({
     return request.items?.every((i) => i.itemType === "consumable");
   }, [request]);
 
+  const isSubmitting =
+    updateBorrowMutation.isPending || updateSupplyMutation.isPending;
+
   // Sync state on open
   useEffect(() => {
     if (!open || !request) return;
@@ -98,43 +107,144 @@ export function EditRequestDialog({
     setCurrentStep("items");
     setErrorMsg(null);
     setEditReason("");
+    const initialRequestedBy =
+      ("requestedByName" in request && request.requestedByName?.trim()) ||
+      request.requesterName ||
+      "";
+    const initialNotes = request.notes?.trim() || "";
+    const initialPurpose = request.purpose?.trim() || "";
+    const initialReturn =
+      ("expectedReturnDate" in request && request.expectedReturnDate
+        ? String(request.expectedReturnDate).slice(0, 10)
+        : "") ||
+      ("requestedDateTo" in request && request.requestedDateTo
+        ? String(request.requestedDateTo).slice(0, 10)
+        : "");
+    setRequestedByName(initialRequestedBy);
+    setNotes(initialNotes);
+    setPurpose(initialPurpose);
+    setExpectedReturnDate(initialReturn);
 
     if (request.items?.every((i) => i.itemType === "consumable")) {
-      setSupplyLines(
-        request.items.map((it, idx) => ({
-          id: `line-${idx}`,
-          consumableId: it.consumableId || "",
-          itemName: it.itemDescription,
-          category: it.category || "office",
-          quantity: it.quantity || 1,
-          purpose: it.purpose || request.purpose || "General",
-          notes: "",
-        }))
-      );
+      const lines = request.items.map((it, idx) => ({
+        id: `line-${idx}`,
+        consumableId: it.consumableId || "",
+        itemName: it.itemDescription,
+        category: it.category || "office",
+        quantity: it.quantity || 1,
+        purpose: it.purpose || request.purpose || "General",
+        notes: "",
+      }));
+      setSupplyLines(lines);
+      setAssetItems([]);
+      baselineRef.current = JSON.stringify({
+        kind: "supply",
+        lines,
+        reason: "",
+        requestedByName: initialRequestedBy,
+        notes: initialNotes,
+        purpose: initialPurpose,
+        expectedReturnDate: "",
+      });
     } else {
-      setAssetItems(
-        (request.items || []).map((it, idx) => ({
-          id: `item-${idx}`,
-          itemDescription: it.itemDescription,
-          assetId: it.assetId,
-          assetCode: it.assetCode,
-          category: it.category || "computing",
-          quantity: it.quantity || 1,
-          itemType: "asset",
-          purpose: it.purpose || request.purpose || "General",
-        }))
-      );
+      const items = (request.items || []).map((it, idx) => ({
+        id: `item-${idx}`,
+        itemDescription: it.itemDescription,
+        assetId: it.assetId,
+        assetCode: it.assetCode,
+        category: it.category || "computing",
+        quantity: it.quantity || 1,
+        itemType: "asset",
+        purpose: it.purpose || request.purpose || "General",
+      }));
+      setAssetItems(items);
+      setSupplyLines([]);
+      baselineRef.current = JSON.stringify({
+        kind: "asset",
+        items,
+        reason: "",
+        requestedByName: initialRequestedBy,
+        notes: initialNotes,
+        purpose: initialPurpose,
+        expectedReturnDate: initialReturn,
+      });
     }
   }, [open, request]);
 
+  const isDirty = useMemo(() => {
+    if (!open || !request) return false;
+    const current = isSupply
+      ? JSON.stringify({
+          kind: "supply",
+          lines: supplyLines,
+          reason: editReason,
+          requestedByName,
+          notes,
+          purpose,
+          expectedReturnDate: "",
+        })
+      : JSON.stringify({
+          kind: "asset",
+          items: assetItems,
+          reason: editReason,
+          requestedByName,
+          notes,
+          purpose,
+          expectedReturnDate,
+        });
+    return current !== baselineRef.current;
+  }, [
+    open,
+    request,
+    isSupply,
+    supplyLines,
+    assetItems,
+    editReason,
+    requestedByName,
+    notes,
+    purpose,
+    expectedReturnDate,
+  ]);
+
+  const handleRequestClose = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const {
+    requestClose,
+    onBackdropClick,
+    discardConfirmOpen,
+    confirmDiscard,
+    keepEditing,
+  } = useRequestModalDismiss({
+    open,
+    isPending: isSubmitting,
+    isDirty,
+    onRequestClose: handleRequestClose,
+  });
+
   if (!open || !request) return null;
 
-  const isSubmitting = updateBorrowMutation.isPending || updateSupplyMutation.isPending;
+  const requestType =
+    !isSupply && "requestType" in request ? request.requestType : undefined;
+  const isBorrowable = !isSupply && requestType !== "assignable";
 
   const validateStep = (step: EditStep): boolean => {
     setErrorMsg(null);
 
     if (step === "items") {
+      if (!requestedByName.trim()) {
+        setErrorMsg("Requested by is required.");
+        return false;
+      }
+      if (!purpose.trim()) {
+        setErrorMsg("Purpose is required.");
+        return false;
+      }
+      if (isBorrowable && !expectedReturnDate) {
+        setErrorMsg("Expected return date is required for borrow requests.");
+        return false;
+      }
       if (isSupply) {
         if (supplyLines.length === 0) {
           setErrorMsg("At least one supply product line is required.");
@@ -149,6 +259,10 @@ export function EditRequestDialog({
             setErrorMsg("Quantity must be at least 1 for each line.");
             return false;
           }
+          if (!(line.purpose || "").trim()) {
+            setErrorMsg("Each supply line needs a purpose.");
+            return false;
+          }
         }
       } else {
         if (assetItems.length === 0) {
@@ -158,6 +272,10 @@ export function EditRequestDialog({
         for (const it of assetItems) {
           if (!it.itemDescription.trim()) {
             setErrorMsg("Item description cannot be empty.");
+            return false;
+          }
+          if (!(it.purpose || "").trim()) {
+            setErrorMsg("Each asset line needs a purpose.");
             return false;
           }
         }
@@ -196,12 +314,13 @@ export function EditRequestDialog({
             requesterEmail: request.requesterEmail,
             requesterPhone: request.requesterPhone,
             departmentId: ("departmentId" in request ? request.departmentId : null) ?? null,
-            purpose: request.purpose,
-            notes: request.notes?.trim() || null,
+            purpose: purpose.trim(),
+            notes: notes.trim() || null,
+            requestedByName: requestedByName.trim(),
             lines: supplyLines.map((l) => ({
               consumableId: l.consumableId,
               quantity: Number(l.quantity),
-              purpose: (l.purpose || request.purpose || "General").trim(),
+              purpose: (l.purpose || purpose || "General").trim(),
               notes: l.notes?.trim() || undefined,
             })),
             editReason: editReason.trim(),
@@ -216,10 +335,13 @@ export function EditRequestDialog({
             requesterEmail: request.requesterEmail,
             requesterPhone: request.requesterPhone,
             departmentId: ("departmentId" in request ? request.departmentId : undefined) ?? undefined,
-            requestType: ("requestType" in request ? request.requestType : undefined) ?? undefined,
-            purpose: request.purpose,
-            expectedReturnDate: request.expectedReturnDate ?? null,
-            notes: request.notes?.trim() || null,
+            requestType: requestType ?? undefined,
+            purpose: purpose.trim(),
+            expectedReturnDate: isBorrowable
+              ? expectedReturnDate || null
+              : null,
+            notes: notes.trim() || null,
+            requestedByName: requestedByName.trim(),
             items: assetItems.map((it) => ({
               itemDescription: it.itemDescription.trim(),
               assetId: it.assetId || undefined,
@@ -227,7 +349,7 @@ export function EditRequestDialog({
               category: it.category,
               quantity: Number(it.quantity || 1),
               itemType: "asset" as const,
-              purpose: (it.purpose || request.purpose || "General").trim(),
+              purpose: (it.purpose || purpose || "General").trim(),
             })),
             editReason: editReason.trim(),
           },
@@ -253,7 +375,7 @@ export function EditRequestDialog({
         category: firstConsumable?.category || "office",
         quantity: 1,
         notes: "",
-        purpose: request.purpose || "General",
+        purpose: purpose.trim() || "General",
       },
     ]);
   };
@@ -271,7 +393,7 @@ export function EditRequestDialog({
         category: "computing",
         quantity: 1,
         itemType: "asset",
-        purpose: request.purpose || "General",
+        purpose: purpose.trim() || "General",
       },
     ]);
   };
@@ -283,23 +405,30 @@ export function EditRequestDialog({
   const currentIdx = STEPS.findIndex((s) => s.key === currentStep);
 
   return (
+    <>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-dialog-title"
+      aria-describedby="edit-dialog-desc"
     >
-      {/* Fixed-size container — 680px wide × 600px tall */}
-      <div className="relative w-170 h-150 bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-xs"
+        onClick={onBackdropClick}
+        aria-hidden="true"
+      />
+
+      <div className="relative z-10 w-full max-w-2xl max-h-[70vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
 
         {/* ── Header ─────────────────────────────────────────────────── */}
-        <div className="px-5 py-4 border-b border-border bg-bg-subtle/50 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="px-5 py-4 border-b border-border bg-bg-subtle/50 flex items-center justify-between shrink-0 gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-9 w-9 rounded-xl bg-accent/10 border border-accent/25 flex items-center justify-center text-accent shrink-0">
               <Edit3 className="h-4 w-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 id="edit-dialog-title" className="text-sm font-bold text-text">
                   Edit Request
                 </h2>
@@ -310,16 +439,17 @@ export function EditRequestDialog({
                   {isSupply ? "Supplies Requisition" : "Asset Borrow"}
                 </span>
               </div>
-              <p className="text-[11px] text-text-secondary mt-0.5">
-                Modify requested items and quantities. Requester and schedule details are preserved.
+              <p id="edit-dialog-desc" className="text-[11px] text-text-secondary mt-0.5">
+                Update request details, who it is for, items, and quantities.
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => onOpenChange(false)}
+            onClick={requestClose}
             disabled={isSubmitting}
-            className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0"
+            aria-label="Close"
+            className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0 disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
@@ -382,7 +512,7 @@ export function EditRequestDialog({
         )}
 
         {/* ── Scrollable Body ────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5">
           <AnimatePresence mode="wait">
 
             {/* ── Step 1: Items & Quantities ──────────────────────────── */}
@@ -395,6 +525,69 @@ export function EditRequestDialog({
                 transition={{ duration: 0.18 }}
                 className="space-y-3 h-full"
               >
+                <div className="rounded-lg border border-border bg-bg-subtle/40 p-3 space-y-2.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    Request details
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="space-y-1 sm:col-span-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                        Requested by <span className="text-destructive">*</span>
+                      </span>
+                      <input
+                        id="edit-requested-by"
+                        type="text"
+                        value={requestedByName}
+                        onChange={(e) => setRequestedByName(e.target.value)}
+                        placeholder="Name of the person this request is for…"
+                        disabled={isSubmitting}
+                        className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                      />
+                    </label>
+                    <label className="space-y-1 sm:col-span-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                        Purpose <span className="text-destructive">*</span>
+                      </span>
+                      <input
+                        type="text"
+                        value={purpose}
+                        onChange={(e) => setPurpose(e.target.value)}
+                        placeholder="Reason, project, or clinical task…"
+                        disabled={isSubmitting}
+                        className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                      />
+                    </label>
+                    {isBorrowable && (
+                      <label className="space-y-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                          Expected return <span className="text-destructive">*</span>
+                        </span>
+                        <input
+                          type="date"
+                          value={expectedReturnDate}
+                          min={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setExpectedReturnDate(e.target.value)}
+                          disabled={isSubmitting}
+                          className="w-full h-8 px-2 text-xs bg-bg border border-border rounded-md text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                        />
+                      </label>
+                    )}
+                    <label className={cn("space-y-1", isBorrowable ? "" : "sm:col-span-2")}>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                        Notes <span className="font-normal normal-case">(optional)</span>
+                      </span>
+                      <input
+                        type="text"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Delivery or condition notes…"
+                        disabled={isSubmitting}
+                        className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 {/* Section header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -424,15 +617,28 @@ export function EditRequestDialog({
                       return (
                         <div
                           key={line.id || idx}
-                          className="flex items-center gap-2 p-3 rounded-xl border border-border bg-bg shadow-xs"
+                          className="rounded-lg border border-border bg-bg p-2.5 space-y-2"
                         >
-                          {/* Index chip */}
-                          <div className="w-6 h-6 shrink-0 rounded-full bg-bg-subtle border border-border flex items-center justify-center text-[10px] font-bold text-text-secondary">
-                            {idx + 1}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">
+                              Line {idx + 1}
+                            </span>
+                            {supplyLines.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveSupplyLine(idx)}
+                                aria-label={`Remove line ${idx + 1}`}
+                                className="p-1 rounded-md text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                           </div>
 
-                          {/* Product selector */}
-                          <div className="flex-1 min-w-0">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                              Item
+                            </span>
                             <SearchableSelect
                               value={line.consumableId}
                               onValueChange={(newId) => {
@@ -451,56 +657,66 @@ export function EditRequestDialog({
                                 );
                               }}
                               options={supplyOptions}
-                              placeholder="Select supply item..."
-                              clearLabel="Select supply item..."
+                              placeholder="Select supply…"
+                              clearLabel="Select supply…"
                               emptyMessage="No supplies available"
-                              inputClassName="h-8 text-xs bg-bg-subtle"
+                              inputClassName="h-8 text-xs bg-bg"
                             />
+                          </label>
+
+                          <div className="flex items-end gap-2">
+                            <label className="w-20 shrink-0 space-y-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Qty
+                              </span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={9999}
+                                value={line.quantity}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10) || 1;
+                                  setSupplyLines((prev) =>
+                                    prev.map((l, i) => (i === idx ? { ...l, quantity: Math.max(1, val) } : l))
+                                  );
+                                }}
+                                className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                              />
+                            </label>
+                            {selected && (
+                              <span
+                                className={cn(
+                                  "mb-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
+                                  (selected.availableQty ?? selected.currentQty ?? 0) >= line.quantity
+                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                                    : "bg-destructive/10 text-destructive border-destructive/25"
+                                )}
+                              >
+                                {(selected.availableQty ?? selected.currentQty ?? 0) >= line.quantity
+                                  ? "In stock"
+                                  : "Low stock"}
+                              </span>
+                            )}
                           </div>
 
-                          {/* Qty */}
-                          <div className="w-20 shrink-0">
+                          <label className="block space-y-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                              Line purpose <span className="text-destructive">*</span>
+                            </span>
                             <input
-                              type="number"
-                              min={1}
-                              max={9999}
-                              value={line.quantity}
+                              type="text"
+                              value={line.purpose || ""}
                               onChange={(e) => {
-                                const val = parseInt(e.target.value, 10) || 1;
+                                const next = e.target.value;
                                 setSupplyLines((prev) =>
-                                  prev.map((l, i) => (i === idx ? { ...l, quantity: Math.max(1, val) } : l))
+                                  prev.map((l, i) => (i === idx ? { ...l, purpose: next } : l))
                                 );
                               }}
-                              className="w-full h-8 px-2 text-xs font-mono font-bold bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent text-center"
+                              placeholder="What this line is for…"
+                              disabled={isSubmitting}
+                              className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
                             />
-                          </div>
-
-                          {/* Stock badge */}
-                          {selected && (
-                            <div
-                              className={cn(
-                                "shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                                (selected.availableQty ?? selected.currentQty ?? 0) >= line.quantity
-                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                                  : "bg-destructive/10 text-destructive border-destructive/25"
-                              )}
-                            >
-                              {(selected.availableQty ?? selected.currentQty ?? 0) >= line.quantity
-                                ? "✓ In stock"
-                                : "⚠ Low"}
-                            </div>
-                          )}
-
-                          {/* Remove */}
-                          {supplyLines.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSupplyLine(idx)}
-                              className="p-1.5 rounded-lg text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer shrink-0"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
+                          </label>
                         </div>
                       );
                     })}
@@ -519,77 +735,100 @@ export function EditRequestDialog({
                       return (
                         <div
                           key={item.id || idx}
-                          className="flex items-center gap-2 p-3 rounded-xl border border-border bg-bg shadow-xs"
+                          className="rounded-lg border border-border bg-bg p-2.5 space-y-2"
                         >
-                          {/* Index chip */}
-                          <div className="w-6 h-6 shrink-0 rounded-full bg-bg-subtle border border-border flex items-center justify-center text-[10px] font-bold text-text-secondary">
-                            {idx + 1}
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-text-secondary">
+                              <span className={cn("w-1.5 h-1.5 rounded-full", catMeta.bg)} />
+                              Line {idx + 1}
+                            </span>
+                            {assetItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAssetItem(idx)}
+                                aria-label={`Remove line ${idx + 1}`}
+                                className="p-1 rounded-md text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                           </div>
 
-                          {/* Category */}
-                          <div className="w-36 shrink-0">
-                            <SearchableSelect
-                              value={item.category}
-                              onValueChange={(cat) => {
-                                setAssetItems((prev) =>
-                                  prev.map((it, i) => (i === idx ? { ...it, category: cat } : it))
-                                );
-                              }}
-                              options={assetCategoryOptions}
-                              placeholder="Type to find a category…"
-                              emptyMessage="No categories available"
-                              inputClassName="h-8 text-xs bg-bg-subtle capitalize"
-                            />
+                          <div className="grid grid-cols-[minmax(0,8rem)_1fr] gap-2">
+                            <label className="space-y-1 min-w-0">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Category
+                              </span>
+                              <SearchableSelect
+                                value={item.category}
+                                onValueChange={(cat) => {
+                                  setAssetItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, category: cat } : it))
+                                  );
+                                }}
+                                options={assetCategoryOptions}
+                                placeholder="Category"
+                                emptyMessage="No categories available"
+                                inputClassName="h-8 text-xs bg-bg capitalize"
+                              />
+                            </label>
+                            <label className="space-y-1 min-w-0">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Description
+                              </span>
+                              <input
+                                type="text"
+                                value={item.itemDescription}
+                                onChange={(e) => {
+                                  const desc = e.target.value;
+                                  setAssetItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, itemDescription: desc } : it))
+                                  );
+                                }}
+                                placeholder="e.g. Dell Latitude 5420"
+                                className="w-full h-8 px-2 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                              />
+                            </label>
                           </div>
 
-                          {/* Category color dot */}
-                          <div
-                            className={cn("w-2 h-2 rounded-full shrink-0", catMeta.bg)}
-                          />
-
-                          {/* Description */}
-                          <div className="flex-1 min-w-0">
-                            <input
-                              type="text"
-                              value={item.itemDescription}
-                              onChange={(e) => {
-                                const desc = e.target.value;
-                                setAssetItems((prev) =>
-                                  prev.map((it, i) => (i === idx ? { ...it, itemDescription: desc } : it))
-                                );
-                              }}
-                              placeholder="e.g. Dell Latitude 5420 Laptop"
-                              className="w-full h-8 px-2.5 text-xs bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                            />
+                          <div className="grid grid-cols-[5rem_1fr] gap-2">
+                            <label className="space-y-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Qty
+                              </span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={item.quantity}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10) || 1;
+                                  setAssetItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, quantity: Math.max(1, val) } : it))
+                                  );
+                                }}
+                                className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                              />
+                            </label>
+                            <label className="space-y-1 min-w-0">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                Line purpose <span className="text-destructive">*</span>
+                              </span>
+                              <input
+                                type="text"
+                                value={item.purpose || ""}
+                                onChange={(e) => {
+                                  const next = e.target.value;
+                                  setAssetItems((prev) =>
+                                    prev.map((it, i) => (i === idx ? { ...it, purpose: next } : it))
+                                  );
+                                }}
+                                placeholder="What this line is for…"
+                                disabled={isSubmitting}
+                                className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                              />
+                            </label>
                           </div>
-
-                          {/* Qty */}
-                          <div className="w-16 shrink-0">
-                            <input
-                              type="number"
-                              min={1}
-                              max={99}
-                              value={item.quantity}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10) || 1;
-                                setAssetItems((prev) =>
-                                  prev.map((it, i) => (i === idx ? { ...it, quantity: Math.max(1, val) } : it))
-                                );
-                              }}
-                              className="w-full h-8 px-2 text-xs font-mono font-bold bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent text-center"
-                            />
-                          </div>
-
-                          {/* Remove */}
-                          {assetItems.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveAssetItem(idx)}
-                              className="p-1.5 rounded-lg text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer shrink-0"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          )}
                         </div>
                       );
                     })}
@@ -618,8 +857,8 @@ export function EditRequestDialog({
                 <div className="grid grid-cols-3 gap-2">
                   {/* Requester chip */}
                   <div className="flex flex-col gap-0.5 p-3 rounded-xl border border-border bg-bg-subtle">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">Requester</span>
-                    <span className="text-xs font-semibold text-text truncate">{request.requesterName}</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">Requested by</span>
+                    <span className="text-xs font-semibold text-text truncate">{requestedByName.trim() || "—"}</span>
                     <span className="text-[10px] text-text-secondary truncate">{request.department || "—"}</span>
                   </div>
 
@@ -651,6 +890,28 @@ export function EditRequestDialog({
                   </div>
                 </div>
 
+                <div className="rounded-xl border border-border bg-bg-subtle/40 p-3 space-y-1.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    Details to submit
+                  </p>
+                  <p className="text-xs text-text">
+                    <span className="text-text-secondary">Purpose:</span>{" "}
+                    <span className="font-semibold">{purpose.trim() || "—"}</span>
+                  </p>
+                  {isBorrowable && (
+                    <p className="text-xs text-text">
+                      <span className="text-text-secondary">Expected return:</span>{" "}
+                      <span className="font-semibold tabular-nums">{expectedReturnDate || "—"}</span>
+                    </p>
+                  )}
+                  {notes.trim() && (
+                    <p className="text-xs text-text">
+                      <span className="text-text-secondary">Notes:</span>{" "}
+                      <span className="font-semibold">{notes.trim()}</span>
+                    </p>
+                  )}
+                </div>
+
                 {/* ── Line items diff table ────────────────────────── */}
                 <div className="rounded-xl border border-border overflow-hidden">
                   {/* Table header */}
@@ -667,7 +928,7 @@ export function EditRequestDialog({
                   {/* Rows */}
                   <div className="divide-y divide-border">
                     {isSupply
-                      ? supplyLines.map((line: { consumableId: string; quantity: number; itemName?: string }, idx: number) => {
+                      ? supplyLines.map((line: { consumableId: string; quantity: number; itemName?: string; purpose?: string }, idx: number) => {
                           const found = consumablesCatalog.find((c) => c.id === line.consumableId);
                           const inStock = (found?.availableQty ?? found?.currentQty ?? 0) >= line.quantity;
                           return (
@@ -682,9 +943,11 @@ export function EditRequestDialog({
                                 <p className="text-xs font-semibold text-text truncate">
                                   {found?.name ?? line.itemName ?? "—"}
                                 </p>
-                                {found && (
-                                  <p className="text-[10px] text-text-secondary">{found.itemCode} · {found.unit}</p>
-                                )}
+                                <p className="text-[10px] text-text-secondary truncate">
+                                  {found ? `${found.itemCode} · ${found.unit}` : ""}
+                                  {found && (line.purpose || purpose) ? " · " : ""}
+                                  {(line.purpose || purpose || "").trim() || ""}
+                                </p>
                               </div>
                               <div className="shrink-0 text-right">
                                 <span className="text-sm font-bold text-text tabular-nums">{line.quantity}</span>
@@ -703,7 +966,7 @@ export function EditRequestDialog({
                             </div>
                           );
                         })
-                      : assetItems.map((item: { itemDescription: string; category: string; quantity: number }, idx: number) => {
+                      : assetItems.map((item: { itemDescription: string; category: string; quantity: number; purpose?: string }, idx: number) => {
                           const catMeta = getCategoryStyle(item.category);
                           return (
                             <div
@@ -722,9 +985,16 @@ export function EditRequestDialog({
                               >
                                 {item.category}
                               </span>
-                              <p className="flex-1 text-xs font-semibold text-text truncate">
-                                {item.itemDescription || <span className="text-text-secondary italic">No description</span>}
-                              </p>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-text truncate">
+                                  {item.itemDescription || <span className="text-text-secondary italic">No description</span>}
+                                </p>
+                                {(item.purpose || purpose)?.trim() && (
+                                  <p className="text-[10px] text-text-secondary truncate">
+                                    {(item.purpose || purpose).trim()}
+                                  </p>
+                                )}
+                              </div>
                               <div className="shrink-0 text-right">
                                 <span className="text-sm font-bold text-text tabular-nums">{item.quantity}</span>
                                 <span className="text-[10px] text-text-secondary ml-1">unit{item.quantity !== 1 ? "s" : ""}</span>
@@ -740,10 +1010,13 @@ export function EditRequestDialog({
                   <div className="px-3 py-2 bg-bg-subtle border-b border-border flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Edit3 className="h-3.5 w-3.5 text-text-secondary shrink-0" />
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+                      <label
+                        htmlFor="edit-modification-reason"
+                        className="text-[11px] font-bold uppercase tracking-wider text-text-secondary"
+                      >
                         Modification Reason
-                      </span>
-                      <span className="text-destructive text-xs font-bold">*</span>
+                      </label>
+                      <span className="text-destructive text-xs font-bold" aria-hidden="true">*</span>
                     </div>
                     {/* Live char counter */}
                     <div className={cn(
@@ -756,16 +1029,25 @@ export function EditRequestDialog({
                       <span>{editReason.trim().length} chars{editReason.trim().length < 5 ? ` · ${5 - editReason.trim().length} more` : " · Ready"}</span>
                     </div>
                   </div>
-                  <div className="p-3 bg-bg">
+                  <div className="p-2.5 bg-bg">
                     <textarea
-                      rows={4}
+                      id="edit-modification-reason"
+                      rows={3}
                       value={editReason}
-                      onChange={(e) => setEditReason(e.target.value)}
-                      placeholder="e.g. Adjusted item quantity per verbal custodian agreement with department head on 08/22/2026. Confirmed by Property Custodian."
-                      className="w-full text-xs bg-transparent text-text placeholder:text-text-secondary/50 focus:outline-none leading-relaxed resize-none"
+                      onChange={(e) => {
+                        setEditReason(e.target.value);
+                        if (errorMsg) setErrorMsg(null);
+                      }}
+                      required
+                      aria-required="true"
+                      aria-invalid={
+                        currentStep === "audit" && editReason.trim().length > 0 && editReason.trim().length < 5
+                      }
+                      placeholder="Why this request is changing… (required)"
+                      className="w-full rounded-md border border-border bg-bg-subtle px-2.5 py-2 text-xs text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 leading-relaxed resize-none"
                     />
-                    <p className="text-[10px] text-text-secondary mt-1 pt-1 border-t border-border/50">
-                      Logged permanently in the accountability timeline with your staff name and timestamp.
+                    <p className="text-[10px] text-text-secondary mt-1.5">
+                      Required for the audit trail — logged with your name and timestamp.
                     </p>
                   </div>
                 </div>
@@ -793,9 +1075,9 @@ export function EditRequestDialog({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => onOpenChange(false)}
+              onClick={requestClose}
               disabled={isSubmitting}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-border text-text-secondary hover:text-text hover:bg-bg transition-colors cursor-pointer"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-border text-text-secondary hover:text-text hover:bg-bg transition-colors cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
@@ -813,8 +1095,8 @@ export function EditRequestDialog({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-accent text-accent-foreground hover:opacity-90 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                disabled={isSubmitting || editReason.trim().length < 5}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-accent text-accent-foreground hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-xs"
               >
                 {isSubmitting ? (
                   <>
@@ -833,5 +1115,17 @@ export function EditRequestDialog({
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      isOpen={discardConfirmOpen}
+      title="Discard changes?"
+      description="You have unsaved edits to this request. Closing will discard them."
+      confirmLabel="Discard"
+      cancelLabel="Keep editing"
+      variant="warning"
+      onConfirm={confirmDiscard}
+      onClose={keepEditing}
+    />
+    </>
   );
 }

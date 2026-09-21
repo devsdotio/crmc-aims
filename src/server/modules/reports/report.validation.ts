@@ -36,5 +36,13 @@ export const exportReportQuerySchema = baseReportQuerySchema.extend({
   format: z.enum(["csv", "pdf"]).default("csv"),
 });
 
+export const reportPrintIntentSchema = z.object({
+  reportType: reportTypeSchema,
+  filters: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional(),
+});
+
 export type BaseReportQuery = z.infer<typeof baseReportQuerySchema>;
 export type ExportReportQuery = z.infer<typeof exportReportQuerySchema>;
+export type ReportPrintIntentInput = z.infer<typeof reportPrintIntentSchema>;

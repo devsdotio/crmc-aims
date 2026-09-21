@@ -4,6 +4,7 @@ import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
 import { requireActor } from "@/server/shared/auth";
 import { CategoryRepository, type CategoryType } from "@/server/modules/categories/category.repository";
+import { handleError } from "@/server/shared/http";
 import { serverCache } from "@/server/shared/cache";
 
 export async function PUT(
@@ -75,8 +76,7 @@ export async function PUT(
 
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error("PUT /api/categories/[id] Error:", error);
-    return NextResponse.json({ error: "Failed to update category" }, { status: 500 });
+    return handleError(error);
   }
 }
 
@@ -132,7 +132,6 @@ export async function DELETE(
 
     return NextResponse.json({ data: { success: true } });
   } catch (error) {
-    console.error("DELETE /api/categories/[id] Error:", error);
-    return NextResponse.json({ error: "Failed to delete category" }, { status: 500 });
+    return handleError(error);
   }
 }

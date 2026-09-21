@@ -20,21 +20,76 @@ function safeNextPath(raw: string | null): string {
 
 const REDIRECT_ERROR_MESSAGES: Record<string, string> = {
   no_profile:
-    'This account has no application profile. Contact a system administrator.',
-  deactivated: 'This account has been deactivated.',
+    'This account isn’t set up for AIMS yet. Ask a system administrator to create your profile.',
+  deactivated:
+    'This account has been deactivated. Contact a system administrator if you need access restored.',
   borrower_portal:
-    'Department accounts use the requester portal, not the staff workspace.',
+    'Department accounts use the requester portal. Sign in there, or ask an administrator for staff access.',
+  session_expired:
+    'Your previous session ended. Enter your email and password to continue.',
+  unavailable:
+    'The database was unreachable just now. Wait a moment, then sign in again.',
 };
 
 const STAY_ON_SIGN_IN_ERRORS = new Set([
   'no_profile',
   'deactivated',
   'borrower_portal',
+  'session_expired',
+  'unavailable',
 ]);
 
 function getRedirectErrorMessage(errorKey: string | null): string | null {
   if (!errorKey) return null;
-  return REDIRECT_ERROR_MESSAGES[errorKey] ?? 'Unable to access the application.';
+  return (
+    REDIRECT_ERROR_MESSAGES[errorKey] ??
+    'You were signed out before reaching that page. Sign in to continue.'
+  );
+}
+
+/** Map API / network failures into plain-language recovery guidance. */
+function mapSignInFailure(serverError: string | undefined, offline: boolean): string {
+  if (offline) {
+    return 'You appear to be offline. Check your connection, then try signing in again.';
+  }
+
+  const raw = (serverError || '').trim();
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes('invalid email or password') ||
+    lower.includes('invalid login') ||
+    lower.includes('invalid credentials')
+  ) {
+    return 'That email and password don’t match our records. Double-check both, or use Forgot password.';
+  }
+
+  if (lower.includes('deactivated')) {
+    return REDIRECT_ERROR_MESSAGES.deactivated;
+  }
+
+  if (lower.includes('no application profile') || lower.includes('not linked')) {
+    return REDIRECT_ERROR_MESSAGES.no_profile;
+  }
+
+  if (
+    lower.includes('failed to fetch') ||
+    lower.includes('network') ||
+    lower.includes('timeout') ||
+    lower.includes('database') ||
+    lower.includes('couldn’t reach') ||
+    lower.includes('could not reach') ||
+    lower.includes('temporarily unavailable') ||
+    lower.includes('unexpected error')
+  ) {
+    return 'We couldn’t finish signing you in because the server is unreachable right now. Check your connection, then try again.';
+  }
+
+  if (raw && raw.length < 160 && !raw.includes('<')) {
+    return raw;
+  }
+
+  return 'We couldn’t sign you in. Check your email and password, then try again.';
 }
 
 type SignInApiData = {
@@ -56,6 +111,7 @@ export function SignInForm() {
 
   const [touched, setTouched] = useState<{ email?: boolean; password?: boolean }>({});
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const [formState, setFormState] = useState<AuthFormState>({
     isLoading: false,
@@ -71,10 +127,14 @@ export function SignInForm() {
       : null;
   const displayErrorMessage = formState.errorMessage ?? redirectErrorMessage;
 
-  // Autofocus email field on mount
+  // Autofocus email on mount; password when returning from an expired session.
   useEffect(() => {
+    if (paramErrorKey === 'session_expired') {
+      passwordInputRef.current?.focus();
+      return;
+    }
     emailInputRef.current?.focus();
-  }, []);
+  }, [paramErrorKey]);
 
   /**
    * Clear residual Supabase session when the private shell rejected entry.
@@ -173,13 +233,17 @@ export function SignInForm() {
         | null;
 
       if (!res.ok || !body?.data?.profile) {
+        const errorMessage = mapSignInFailure(
+          body?.error,
+          typeof navigator !== 'undefined' && !navigator.onLine
+        );
         setFormState({
           isLoading: false,
-          errorMessage:
-            body?.error ||
-            'Invalid email or password. Please verify your credentials and try again.',
+          errorMessage,
           successMessage: null,
         });
+        // Keep email; send focus to password so recovery is one field away.
+        requestAnimationFrame(() => passwordInputRef.current?.focus());
         return;
       }
 
@@ -211,7 +275,10 @@ export function SignInForm() {
     } catch {
       setFormState({
         isLoading: false,
-        errorMessage: 'Unable to sign in right now. Please try again.',
+        errorMessage: mapSignInFailure(
+          undefined,
+          typeof navigator !== 'undefined' && !navigator.onLine
+        ),
         successMessage: null,
       });
     }
@@ -230,8 +297,9 @@ export function SignInForm() {
           </p>
         </div>
 
-        {/* Global Error/Success Alert */}
+        {/* Global Error/Success Alert — single status region (visibility + recovery) */}
         <FormAlert
+          id="sign-in-status"
           type={displayErrorMessage ? 'error' : 'success'}
           message={displayErrorMessage || formState.successMessage}
           onDismiss={() => {
@@ -241,7 +309,12 @@ export function SignInForm() {
         />
 
         {/* Form */}
-        <form onSubmit={handleSubmit} noValidate className="space-y-4 relative">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="space-y-4 relative"
+          aria-describedby={displayErrorMessage ? 'sign-in-status' : undefined}
+        >
           
           {/* Inputs Container */}
           <div className="space-y-4">
@@ -261,7 +334,12 @@ export function SignInForm() {
                 onChange={(e) => handleChange('email', e.target.value)}
                 onBlur={() => handleBlur('email')}
                 placeholder="admin@example.com"
+                autoComplete="username"
                 disabled={formState.isLoading}
+                aria-invalid={Boolean(errors.email && touched.email)}
+                aria-describedby={
+                  errors.email && touched.email ? 'email-error' : undefined
+                }
                 className={`flex h-11 w-full rounded-xl border bg-background px-3.5 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${
                   errors.email && touched.email
                     ? 'border-red-500'
@@ -269,7 +347,10 @@ export function SignInForm() {
                 }`}
               />
               {errors.email && touched.email && (
-                <p className="text-xs text-red-500 font-medium animate-in fade-in-50">
+                <p
+                  id="email-error"
+                  className="text-xs text-red-500 font-medium animate-in fade-in-50"
+                >
                   {errors.email}
                 </p>
               )}
@@ -293,15 +374,24 @@ export function SignInForm() {
               </div>
               <PasswordInput
                 id="password"
+                ref={passwordInputRef}
                 value={formValues.password}
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
                 placeholder="••••••••"
+                autoComplete="current-password"
                 disabled={formState.isLoading}
                 error={Boolean(errors.password && touched.password)}
+                aria-invalid={Boolean(errors.password && touched.password)}
+                aria-describedby={
+                  errors.password && touched.password ? 'password-error' : undefined
+                }
               />
               {errors.password && touched.password && (
-                <p className="text-xs text-red-500 font-medium animate-in fade-in-50">
+                <p
+                  id="password-error"
+                  className="text-xs text-red-500 font-medium animate-in fade-in-50"
+                >
                   {errors.password}
                 </p>
               )}

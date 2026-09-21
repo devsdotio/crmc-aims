@@ -8,10 +8,6 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import {
-  appendIncludeSandbox,
-  useSandboxVisibility,
-} from "@/components/providers/sandbox-visibility-context";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 import { userQueryKeys } from "@/features/users/client/query-keys";
 
@@ -41,14 +37,9 @@ export type UpdateDepartmentPayload = {
   isSandbox?: boolean;
 };
 
-async function fetchDepartments(
-  includeSandbox?: boolean
-): Promise<DepartmentDTO[]> {
-  const sp = new URLSearchParams();
-  appendIncludeSandbox(sp, includeSandbox);
-  const qs = sp.toString();
+async function fetchDepartments(): Promise<DepartmentDTO[]> {
   const result = await fetchJson<ApiResponse<DepartmentDTO[]>>(
-    qs ? `/api/departments?${qs}` : "/api/departments",
+    "/api/departments",
     {
       method: "GET",
       timeoutMs: 60_000,
@@ -63,10 +54,9 @@ async function fetchDepartments(
 export function useDepartmentsQuery(options?: {
   enabled?: boolean;
 }): UseQueryResult<DepartmentDTO[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
   return useQuery({
-    queryKey: departmentQueryKeys.list(includeSandbox),
-    queryFn: () => fetchDepartments(includeSandbox),
+    queryKey: departmentQueryKeys.list(),
+    queryFn: () => fetchDepartments(),
     staleTime: 10 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,

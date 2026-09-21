@@ -11,7 +11,6 @@ import {
 } from "@/lib/assets-custody";
 import type { Asset,  AssetStatus } from "@/types/assets";
 import { AssignmentTypeBadge } from "./assignment-type-badge";
-import { SandboxBadge } from "@/components/shared/sandbox-badge";
 
 export interface AssetTableRowProps {
   asset: Asset;
@@ -91,11 +90,6 @@ export function AssetTableRow({ asset, onSelect }: AssetTableRowProps) {
       <td className="px-3 py-3.5">
         <span className="text-sm font-bold text-text group-hover:text-accent transition-colors block leading-tight">
           {asset.name}
-          {asset.isSandbox ? (
-            <span className="ml-1.5 inline-block align-middle">
-              <SandboxBadge />
-            </span>
-          ) : null}
         </span>
         <span className="text-xs text-text-secondary truncate block">
           {asset.serialNumber || asset.location}

@@ -1,9 +1,7 @@
 import { redirect } from "next/navigation";
 import { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getDb } from "@/server/db";
-import { profiles } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import { getCachedProfile } from "@/server/shared/auth";
 import { isStaffShellRole, type AppRole } from "@/server/shared/roles";
 
 interface RouteGuardProps {
@@ -21,22 +19,41 @@ function homeForRole(role: AppRole): string {
   return "/sign-in";
 }
 
+function isConnectivityFailure(error: unknown): boolean {
+  const text = error instanceof Error
+    ? `${error.message} ${error.cause ?? ""}`
+    : String(error);
+  return /ETIMEDOUT|ECONNREFUSED|ENOTFOUND|CONNECT_TIMEOUT|fetch failed|Failed query/i.test(
+    text
+  );
+}
+
+/**
+ * Prefer relying on `(private)/layout.tsx` for auth. Use this only when a
+ * nested route needs an extra role allow-list beyond the shell gate.
+ */
 export async function RouteGuard({ children, config }: RouteGuardProps) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: claimsData, error: claimsError } =
+    await supabase.auth.getClaims();
+  const userId = claimsData?.claims?.sub;
 
-  if (!user) {
+  if (claimsError || !userId) {
     redirect("/sign-in");
   }
 
-  const db = getDb();
-  const [profile] = await db
-    .select()
-    .from(profiles)
-    .where(eq(profiles.userId, user.id))
-    .limit(1);
+  let profile;
+  try {
+    profile = await getCachedProfile(userId);
+  } catch (error) {
+    console.error("[RouteGuard] profile lookup failed:", error);
+    if (isConnectivityFailure(error)) {
+      throw new Error(
+        "Database temporarily unavailable. Refresh the page in a moment and try again."
+      );
+    }
+    redirect("/sign-in?error=no_profile");
+  }
 
   if (!profile || profile.status !== "active") {
     redirect("/sign-in");
@@ -45,8 +62,6 @@ export async function RouteGuard({ children, config }: RouteGuardProps) {
   const role = profile.role as AppRole;
 
   if (!config.allowedRoles.includes(role)) {
-    // Send mismatched roles to *their* home — never bounce admin→/dashboard
-    // when /dashboard is the page that already denied them (self-loop).
     redirect(config.fallbackRoute ?? homeForRole(role));
   }
 

@@ -127,10 +127,6 @@ export class ConsumableRepository implements IConsumableRepository {
         )!
       );
     }
-    if (!filters.includeSandbox) {
-      conditions.push(eq(consumables.isSandbox, false));
-    }
-
     if (filters.stockLevel === "critical") {
       conditions.push(
         sql`${consumables.currentQty} <= ${consumables.minThreshold}`
@@ -184,7 +180,6 @@ export class ConsumableRepository implements IConsumableRepository {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [
-      eq(consumables.isSandbox, false),
       sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
     ];
     if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
@@ -200,7 +195,6 @@ export class ConsumableRepository implements IConsumableRepository {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [
-      eq(consumables.isSandbox, false),
       sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
     ];
     if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
@@ -220,7 +214,7 @@ export class ConsumableRepository implements IConsumableRepository {
   ): Promise<{ category: string; count: number }[]> {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
-    const conditions = [eq(consumables.isSandbox, false)];
+    const conditions = [];
     if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
 
     const rows = await db
@@ -229,7 +223,7 @@ export class ConsumableRepository implements IConsumableRepository {
         value: sql<number>`coalesce(sum(${consumables.currentQty}), 0)`,
       })
       .from(consumables)
-      .where(and(...conditions))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
       .groupBy(consumables.category);
 
     return rows.map((r) => ({

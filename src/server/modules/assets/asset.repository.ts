@@ -5,7 +5,6 @@ import type { DbSession } from "@/server/db/transaction";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   assets,
-  assetModels,
   borrowTransactions,
   projectAssetAssignments,
   type AssetRow,
@@ -184,17 +183,6 @@ export class AssetRepository implements IAssetRepository {
         )!
       );
     }
-    if (!filters?.includeSandbox) {
-      conditions.push(eq(assets.isSandbox, false));
-      conditions.push(
-        sql`not exists (
-          select 1 from ${assetModels}
-          where ${assetModels.id} = ${assets.modelId}
-            and ${assetModels.isSandbox} = true
-        )`
-      );
-    }
-
     const base = db
       .select(assetListColumns)
       .from(assets)

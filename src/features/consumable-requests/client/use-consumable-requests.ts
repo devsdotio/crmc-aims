@@ -14,7 +14,6 @@ import {
   STOCK_DOMAINS,
   invalidateDomains,
 } from "@/features/shared/cache-invalidation";
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 
 import {
@@ -44,9 +43,7 @@ export function useConsumableRequests(filters?: {
   enabled?: boolean;
   refetchInterval?: number | false;
 }): UseQueryResult<PaginatedResponse<ConsumableRequest[]>, Error> {
-  const { includeSandbox } = useSandboxVisibility();
-  const { enabled = true, refetchInterval, ...rest } = filters ?? {};
-  const listFilters = { ...rest, includeSandbox };
+  const { enabled = true, refetchInterval, ...listFilters } = filters ?? {};
   return useQuery({
     queryKey: consumableRequestQueryKeys.list(listFilters),
     queryFn: () => consumableRequestsApi.list(listFilters),

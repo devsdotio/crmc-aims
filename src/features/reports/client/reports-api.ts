@@ -124,3 +124,14 @@ export function getExportUrl(
   }
   return `/api/reports/export?${sp.toString()}`;
 }
+
+export async function logReportPrintIntent(
+  reportType: string,
+  filters: BaseReportFilters = {}
+): Promise<void> {
+  await fetch("/api/audit-logs/report-print-intent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reportType, filters }),
+  });
+}

@@ -13,7 +13,6 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import {
   invalidateDomains,
   type CacheDomain,
@@ -39,11 +38,9 @@ export function useMaintenanceLogsQuery(filters?: {
   search?: string;
   condition?: MaintenanceLog["condition"];
 }): UseQueryResult<MaintenanceLog[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
-  const listFilters = { ...filters, includeSandbox };
   return useQuery({
-    queryKey: maintenanceQueryKeys.list(listFilters),
-    queryFn: () => maintenanceLogsApi.list(listFilters),
+    queryKey: maintenanceQueryKeys.list(filters),
+    queryFn: () => maintenanceLogsApi.list(filters),
   });
 }
 

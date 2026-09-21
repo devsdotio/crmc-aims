@@ -4,6 +4,7 @@ import type { UserRole } from "@/types/users";
 
 import Link from "next/link";
 import Image from "next/image";
+import { Krona_One } from "next/font/google";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -29,12 +30,15 @@ import {
   Building2,
   Receipt,
   Wallet,
-  FlaskConical,
   ChevronDown,
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
+
+const kronaOne = Krona_One({
+  weight: "400",
+  subsets: ["latin"],
+});
 
 interface NavSubItem {
   name: string;
@@ -67,6 +71,9 @@ interface SidebarProps {
   className?: string;
   onCollapsedChange?: (collapsed: boolean) => void;
   pendingCount?: number;
+  pendingAssignCount?: number;
+  pendingBorrowCount?: number;
+  pendingSupplyCount?: number;
   lowStockCount?: number;
   overdueCount?: number;
   userName?: string;
@@ -79,6 +86,9 @@ export default function Sidebar({
   className,
   onCollapsedChange,
   pendingCount = 0,
+  pendingAssignCount = 0,
+  pendingBorrowCount = 0,
+  pendingSupplyCount = 0,
   lowStockCount = 0,
   overdueCount = 0,
   userName = "Unknown user",
@@ -92,27 +102,62 @@ export default function Sidebar({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { canToggle, preference, setShowSandbox } = useSandboxVisibility();
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {
       "/purchase-orders": true,
       "/consumables": true,
-      "/borrower-db/requests": true,
     };
     if (typeof window !== "undefined") {
-      if (window.location.pathname.startsWith("/purchase-orders")) {
+      const path = window.location.pathname;
+      if (path.startsWith("/purchase-orders")) {
         initial["/purchase-orders"] = true;
       }
-      if (window.location.pathname.startsWith("/consumables")) {
+      if (path.startsWith("/consumables")) {
         initial["/consumables"] = true;
       }
-      if (window.location.pathname.startsWith("/borrower-db/requests")) {
-        initial["/borrower-db/requests"] = true;
+      if (path.startsWith("/borrow-requests")) {
+        initial["/borrow-requests/assign"] = true;
+      }
+      if (path.startsWith("/disbursements")) {
+        initial["/disbursements/vouchers"] = true;
       }
     }
     return initial;
   });
+
+  // Keep known accordion sections open while browsing their subpages.
+  useEffect(() => {
+    const sectionRoots: Array<{ key: string; match: (path: string) => boolean }> = [
+      {
+        key: "/borrow-requests/assign",
+        match: (path) => path.startsWith("/borrow-requests"),
+      },
+      {
+        key: "/purchase-orders",
+        match: (path) => path.startsWith("/purchase-orders"),
+      },
+      {
+        key: "/consumables",
+        match: (path) => path.startsWith("/consumables"),
+      },
+      {
+        key: "/disbursements/vouchers",
+        match: (path) => path.startsWith("/disbursements"),
+      },
+    ];
+    setOpenSubmenus((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const section of sectionRoots) {
+        if (section.match(pathname) && next[section.key] !== true) {
+          next[section.key] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [pathname]);
 
   useEffect(() => {
     if (pathname.startsWith("/purchase-orders")) {
@@ -120,9 +165,6 @@ export default function Sidebar({
     }
     if (pathname.startsWith("/consumables")) {
       setOpenSubmenus((prev) => ({ ...prev, "/consumables": true }));
-    }
-    if (pathname.startsWith("/borrower-db/requests")) {
-      setOpenSubmenus((prev) => ({ ...prev, "/borrower-db/requests": true }));
     }
   }, [pathname]);
 
@@ -217,6 +259,35 @@ export default function Sidebar({
       ],
     },
     {
+      label: "Request",
+      items: [
+        {
+          name: "Assign",
+          href: "/borrower-db/requests/assignment",
+          icon: ClipboardList,
+          badge: pendingAssignCount,
+          badgeTone: "accent",
+          roles: ["borrower"],
+        },
+        {
+          name: "Borrow",
+          href: "/borrower-db/requests/borrow",
+          icon: Repeat,
+          badge: pendingBorrowCount,
+          badgeTone: "accent",
+          roles: ["borrower"],
+        },
+        {
+          name: "Supplies",
+          href: "/borrower-db/requests/supplies",
+          icon: Boxes,
+          badge: pendingSupplyCount,
+          badgeTone: "accent",
+          roles: ["borrower"],
+        },
+      ],
+    },
+    {
       label: "Operations",
       items: [
         {
@@ -224,6 +295,18 @@ export default function Sidebar({
           href: "/assets",
           icon: Package,
           roles: ["admin", "staff"],
+        },
+        {
+          name: "Assets",
+          href: "/borrower-db/assets",
+          icon: Package,
+          roles: ["borrower"],
+        },
+        {
+          name: "Supplies",
+          href: "/borrower-db/supplies",
+          icon: Boxes,
+          roles: ["borrower"],
         },
         {
           name: "Inventory",
@@ -245,11 +328,31 @@ export default function Sidebar({
         },
         {
           name: "Requests",
-          href: "/borrow-requests",
+          href: "/borrow-requests/assign",
           icon: ClipboardList,
           badge: pendingCount,
           badgeTone: "accent",
           roles: ["admin", "staff"],
+          children: [
+            {
+              name: "Assign",
+              href: "/borrow-requests/assign",
+              badge: pendingAssignCount,
+              badgeTone: "accent",
+            },
+            {
+              name: "Borrow",
+              href: "/borrow-requests/borrow",
+              badge: pendingBorrowCount,
+              badgeTone: "accent",
+            },
+            {
+              name: "Supplies",
+              href: "/borrow-requests/supplies",
+              badge: pendingSupplyCount,
+              badgeTone: "accent",
+            },
+          ],
         },
         {
           name: "Purchase Orders",
@@ -303,35 +406,6 @@ export default function Sidebar({
           icon: FolderKanban,
           roles: ["admin"],
         },
-
-        {
-          name: "Requests",
-          href: "/borrower-db/requests",
-          icon: ClipboardList,
-          badge: pendingCount,
-          badgeTone: "accent",
-          roles: ["borrower"],
-          children: [
-            {
-              name: "Borrow",
-              href: "/borrower-db/requests/borrow",
-            },
-            {
-              name: "Assignment",
-              href: "/borrower-db/requests/assignment",
-            },
-            {
-              name: "Supplies",
-              href: "/borrower-db/requests/supplies",
-            },
-          ],
-        },
-        {
-          name: "Inventory",
-          href: "/borrower-db/inventory",
-          icon: Package,
-          roles: ["borrower"],
-        },
       ],
     },
     {
@@ -355,6 +429,13 @@ export default function Sidebar({
           name: "Maintenance Logs",
           href: "/maintenance-logs",
           icon: Wrench,
+          roles: ["admin", "staff"],
+        },
+        {
+          name: "Audit Trails",
+          href: "/audit-trails",
+          icon: History,
+          badgeText: "Beta",
           roles: ["admin", "staff"],
         },
         {
@@ -493,6 +574,7 @@ export default function Sidebar({
     }
 
     if (item.children && item.children.length > 0) {
+      const firstChildHref = item.children[0]?.href ?? item.href;
       const isSubmenuOpen = openSubmenus[item.href] ?? isChildActive;
 
       if (isCollapsed) {
@@ -502,7 +584,10 @@ export default function Sidebar({
             className="relative group/collapsed flex items-center justify-center w-full"
           >
             <Link
-              href={item.href}
+              href={firstChildHref}
+              onClick={() =>
+                setOpenSubmenus((prev) => ({ ...prev, [item.href]: true }))
+              }
               aria-current={isExactActive ? "page" : undefined}
               className={cn(
                 "relative flex items-center justify-center rounded-lg text-sm font-medium h-10 w-full outline-none focus-visible:ring-2 focus-visible:ring-accent/70 transition-colors duration-150",
@@ -543,7 +628,10 @@ export default function Sidebar({
               <div className="absolute -left-2 top-0 bottom-0 w-2" />
 
               <Link
-                href={item.href}
+                href={firstChildHref}
+                onClick={() =>
+                  setOpenSubmenus((prev) => ({ ...prev, [item.href]: true }))
+                }
                 className={cn(
                   "flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold mb-1 border-b border-white/10 transition-colors",
                   isExactActive
@@ -552,25 +640,42 @@ export default function Sidebar({
                 )}
               >
                 <span>{item.name}</span>
-                <span className="text-[10px] text-white/40 font-normal">All</span>
+                <span className="text-[10px] text-white/40 font-normal">
+                  {item.children[0]?.name ?? "Open"}
+                </span>
               </Link>
 
               <div className="space-y-0.5">
                 {item.children.map((subItem) => {
                   const isSubActive = pathname === subItem.href;
+                  const subBadge = subItem.badge ?? 0;
+                  const subBadgeClass =
+                    subItem.badgeTone === "accent"
+                      ? "bg-blue-100 text-primary"
+                      : "bg-status-repair-bg text-status-repair-text";
                   return (
                     <Link
                       key={subItem.href}
                       href={subItem.href}
                       aria-current={isSubActive ? "page" : undefined}
                       className={cn(
-                        "block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        "flex items-center justify-between gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                         isSubActive
                           ? "text-accent bg-accent/10 font-semibold"
                           : "text-white/70 hover:text-white hover:bg-white/10",
                       )}
                     >
                       <span className="truncate">{subItem.name}</span>
+                      {subBadge > 0 && (
+                        <span
+                          className={cn(
+                            "flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-bold rounded-full shrink-0 tabular-nums",
+                            subBadgeClass,
+                          )}
+                        >
+                          {subBadge > 99 ? "99+" : subBadge}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -585,7 +690,10 @@ export default function Sidebar({
         <div key={item.href} className="space-y-0.5">
           <div className="relative flex items-center group">
             <Link
-              href={item.href}
+              href={firstChildHref}
+              onClick={() =>
+                setOpenSubmenus((prev) => ({ ...prev, [item.href]: true }))
+              }
               aria-current={isExactActive ? "page" : undefined}
               className={cn(
                 "relative flex-1 flex items-center justify-between rounded-lg text-sm font-medium py-2.5 pl-3 pr-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
@@ -614,6 +722,19 @@ export default function Sidebar({
                   )}
                 />
                 <span className="truncate">{item.name}</span>
+              </span>
+
+              <span className="relative flex items-center gap-1.5 shrink-0">
+                {hasBadge && (
+                  <span
+                    className={cn(
+                      "flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-bold rounded-full tabular-nums",
+                      badgeClass,
+                    )}
+                  >
+                    {item.badge! > 99 ? "99+" : item.badge}
+                  </span>
+                )}
               </span>
 
               {isExactActive && (
@@ -657,19 +778,34 @@ export default function Sidebar({
               >
                 {item.children.map((subItem) => {
                   const isSubActive = pathname === subItem.href;
+                  const subBadge = subItem.badge ?? 0;
+                  const subBadgeClass =
+                    subItem.badgeTone === "accent"
+                      ? "bg-blue-100 text-primary"
+                      : "bg-status-repair-bg text-status-repair-text";
                   return (
                     <Link
                       key={subItem.href}
                       href={subItem.href}
                       aria-current={isSubActive ? "page" : undefined}
                       className={cn(
-                        "relative flex items-center justify-between rounded-lg text-sm font-medium py-2.5 pl-3 pr-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
+                        "relative flex items-center justify-between gap-2 rounded-lg text-sm font-medium py-2.5 pl-3 pr-2 transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
                         isSubActive
                           ? "text-accent font-semibold bg-accent/10 border border-accent/20"
                           : "text-white/65 hover:text-white hover:bg-white/6",
                       )}
                     >
                       <span className="truncate">{subItem.name}</span>
+                      {subBadge > 0 && (
+                        <span
+                          className={cn(
+                            "flex items-center justify-center min-w-5 h-5 px-1.5 text-[11px] font-bold rounded-full shrink-0 tabular-nums",
+                            subBadgeClass,
+                          )}
+                        >
+                          {subBadge > 99 ? "99+" : subBadge}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}
@@ -856,15 +992,20 @@ export default function Sidebar({
                 priority
               />
             </div>
-            <span className="text-lg font-bold tracking-wider text-white whitespace-nowrap">
-              <span className="text-accent">AIMS</span>
+            <span className="text-lg font-bold letter-spacing-wide tracking-wider text-white whitespace-nowrap">
+              <span className={cn("text-accent tracking-widest", kronaOne.className)}>AIMS</span>
             </span>
           </Link>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar">
+      <nav
+        className={cn(
+          "flex-1 px-3 py-3 space-y-3 overflow-y-auto min-h-0 no-scrollbar",
+          isCollapsed ? "overflow-x-visible" : "overflow-x-hidden",
+        )}
+      >
         {sections.map((section, index) => (
           <div key={section.label}>
             {!isCollapsed ? (
@@ -971,37 +1112,6 @@ export default function Sidebar({
 
               {/* Action buttons */}
               <div className="space-y-0.5">
-                {canToggle && (
-                  <button
-                    type="button"
-                    onClick={() => setShowSandbox(!preference)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-colors cursor-pointer group"
-                    aria-pressed={preference}
-                  >
-                    <FlaskConical
-                      className={cn(
-                        "w-4 h-4 transition-colors",
-                        preference
-                          ? "text-amber-300"
-                          : "text-white/50 group-hover:text-white"
-                      )}
-                    />
-                    <span className="font-medium flex-1 text-left">
-                      Show sandbox data
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
-                        preference
-                          ? "bg-amber-500/20 text-amber-300"
-                          : "bg-white/10 text-white/40"
-                      )}
-                    >
-                      {preference ? "On" : "Off"}
-                    </span>
-                  </button>
-                )}
-
                 <button
                   type="button"
                   onClick={handleNavigateProfile}

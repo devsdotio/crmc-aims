@@ -61,6 +61,8 @@ import { LoadingState } from "@/components/providers/loading-context";
 import { useToast } from "@/components/providers/toast-context";
 import { formatQuantityWithUnit } from "@/lib/sanitize-display";
 import { summarizePurposes } from "@/lib/request-purpose";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useRequestModalDismiss } from "@/hooks/use-request-modal-dismiss";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -142,11 +144,22 @@ const STEPS: { key: RequestWizardStep; label: string; stepNumber: number }[] = [
 function MilestoneStepIndicator({
   current,
   selectedTypes,
+  hideTypeStep = false,
 }: {
   current: RequestWizardStep;
   selectedTypes: WizardRequestType[];
+  hideTypeStep?: boolean;
 }) {
-  const currentIdx = STEPS.findIndex((s) => s.key === current);
+  const steps = hideTypeStep
+    ? STEPS.filter((s) => s.key !== "type").map((s, i) => ({
+        ...s,
+        stepNumber: i + 1,
+      }))
+    : STEPS;
+  const currentIdx = Math.max(
+    0,
+    steps.findIndex((s) => s.key === current)
+  );
   const hasConsumable = selectedTypes.includes("consumable");
   const hasAsset = selectedTypes.some(
     (t) => t === "borrowable" || t === "assignable"
@@ -161,10 +174,10 @@ function MilestoneStepIndicator({
   return (
     <nav aria-label="Request Progress" className="w-full">
       <ol className="flex items-center justify-between w-full">
-        {STEPS.map((step, idx) => {
+        {steps.map((step, idx) => {
           const isDone = idx < currentIdx;
           const isActive = idx === currentIdx;
-          const isLast = idx === STEPS.length - 1;
+          const isLast = idx === steps.length - 1;
 
           return (
             <li
@@ -175,7 +188,6 @@ function MilestoneStepIndicator({
               )}
             >
               <div className="flex items-center gap-2.5">
-                {/* Milestone Node */}
                 <div
                   className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-200",
@@ -194,7 +206,6 @@ function MilestoneStepIndicator({
                   )}
                 </div>
 
-                {/* Milestone Label */}
                 <div className="hidden sm:block">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                     Step {step.stepNumber}
@@ -214,7 +225,6 @@ function MilestoneStepIndicator({
                 </div>
               </div>
 
-              {/* Connecting Milestone Bar */}
               {!isLast && (
                 <div
                   className={cn(
@@ -559,7 +569,7 @@ function StepSelect({
 }: {
   value: BrowseItem[];
   onChange: (items: BrowseItem[]) => void;
-  initialType?: "borrow" | "requisition" | null;
+  initialType?: "borrow" | "assign" | "requisition" | null;
   requestType?: "borrowable" | "assignable" | "consumable" | null;
 }) {
   const [search, setSearch] = useState("");
@@ -1040,7 +1050,10 @@ function StepDetails({
   errors: Record<string, string>;
   me?: MeProfile;
 }) {
-  const { data: departments = [] } = useDepartmentsQuery();
+  const { data: departments = [] } = useDepartmentsQuery({
+    // Borrowers resolve department from their profile; staff catalog is staff-shell only.
+    enabled: Boolean(me && me.role !== "borrower"),
+  });
   const isManual = values.requesterMode === "manual";
 
   const updateBundle = useCallback(
@@ -1160,7 +1173,7 @@ function StepDetails({
       {/* ── Requester ─────────────────────────────────────────────── */}
       <section
         aria-label="Requester"
-        className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-3"
+        className="rounded-lg border border-border bg-card p-3 shadow-xs space-y-2.5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
@@ -1212,8 +1225,8 @@ function StepDetails({
                 onChange={(e) => onChange({ requestedByName: e.target.value })}
                 placeholder="Full name of the person requesting…"
                 className={cn(
-                  "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
-                  "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
+                  "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                  "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
                   errors.requestedByName
                     ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
                     : "border-border"
@@ -1247,8 +1260,8 @@ function StepDetails({
                 }}
                 placeholder="Select or type a department…"
                 className={cn(
-                  "w-full h-10 rounded-xl border bg-bg-subtle/50 px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
-                  "focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20",
+                  "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                  "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
                   errors.department
                     ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
                     : "border-border"
@@ -1272,38 +1285,61 @@ function StepDetails({
             </div>
           </div>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-3 rounded-lg border border-border bg-bg-subtle/40 p-3">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
-                Requested by
-              </p>
-              <p className="text-sm font-semibold text-text mt-0.5 truncate">
-                {values.requestedByName || me?.name || "—"}
-              </p>
+          <div className="space-y-2.5">
+            <div className="space-y-1.5">
+              <label htmlFor="requestedByName-account" className="text-xs font-bold text-text">
+                Requested by <span className="text-status-outofservice-bg">*</span>
+              </label>
+              <input
+                id="requestedByName-account"
+                type="text"
+                value={values.requestedByName}
+                onChange={(e) => onChange({ requestedByName: e.target.value })}
+                placeholder="Name of the person this request is for…"
+                className={cn(
+                  "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                  "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
+                  errors.requestedByName
+                    ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                    : "border-border"
+                )}
+              />
+              {errors.requestedByName ? (
+                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  {errors.requestedByName}
+                </p>
+              ) : (
+                <p className="text-[11px] text-text-secondary">
+                  Defaults to your account name. Change it if requesting on behalf of someone else.
+                </p>
+              )}
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
-                Department
-              </p>
-              <p className="text-sm font-semibold text-text mt-0.5 truncate">
-                {values.department || me?.department || "Not linked"}
-              </p>
+            <div className="grid gap-2 sm:grid-cols-2 rounded-lg border border-border bg-bg-subtle/40 p-2.5">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                  Department
+                </p>
+                <p className="text-xs font-semibold text-text mt-0.5 truncate">
+                  {values.department || me?.department || "Not linked"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                  Account email
+                </p>
+                <p className="text-xs font-semibold text-text mt-0.5 truncate">
+                  {me?.email || "—"}
+                </p>
+              </div>
+              {errors.department && (
+                <p className="sm:col-span-2 text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3 shrink-0" />
+                  {errors.department} Switch to{" "}
+                  <span className="font-bold">Enter manually</span> to fix.
+                </p>
+              )}
             </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
-                Email
-              </p>
-              <p className="text-sm font-semibold text-text mt-0.5 truncate">
-                {me?.email || "—"}
-              </p>
-            </div>
-            {(errors.department || errors.requestedByName) && (
-              <p className="sm:col-span-3 text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
-                <AlertCircle className="h-3 w-3 shrink-0" />
-                {errors.department || errors.requestedByName} Switch to{" "}
-                <span className="font-bold">Enter manually</span> to fix.
-              </p>
-            )}
           </div>
         )}
 
@@ -1323,7 +1359,7 @@ function StepDetails({
           <section
             key={bundle.requestType}
             aria-label={`${typeLabel(bundle.requestType)} purposes`}
-            className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs"
+            className="space-y-2.5 rounded-lg border border-border bg-card p-3 shadow-xs"
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
@@ -1390,8 +1426,8 @@ function StepDetails({
                       min={today()}
                       onChange={(e) => onChange({ dateFrom: e.target.value })}
                       className={cn(
-                        "w-full h-9 rounded-lg border bg-card px-3 text-sm font-medium text-text transition-all",
-                        "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20",
+                        "w-full h-8 rounded-md border bg-bg px-2 text-xs text-text",
+                        "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
                         errors.dateFrom
                           ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
                           : "border-border"
@@ -1419,8 +1455,8 @@ function StepDetails({
                       min={values.dateFrom || today()}
                       onChange={(e) => onChange({ dateTo: e.target.value })}
                       className={cn(
-                        "w-full h-9 rounded-lg border bg-card px-3 text-sm font-medium text-text transition-all",
-                        "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20",
+                        "w-full h-8 rounded-md border bg-bg px-2 text-xs text-text",
+                        "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
                         errors.dateTo
                           ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
                           : "border-border"
@@ -1500,8 +1536,8 @@ function StepDetails({
                         placeholder="Purpose — reason, project, or clinical task…"
                         aria-label={`Purpose ${idx + 1}`}
                         className={cn(
-                          "flex-1 min-w-0 h-9 rounded-lg border bg-card px-3 text-sm font-medium text-text placeholder:text-text-secondary transition-all",
-                          "focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20",
+                          "flex-1 min-w-0 h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                          "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
                           errors[`purpose_${errKey}`]
                             ? "border-status-outofservice-bg"
                             : "border-border"
@@ -1644,7 +1680,7 @@ function StepDetails({
 
       <section
         aria-label="Additional Notes"
-        className="rounded-xl border border-border bg-card p-4 shadow-xs space-y-2"
+        className="rounded-lg border border-border bg-card p-3 shadow-xs space-y-1.5"
       >
         <div className="flex items-center gap-2">
           <StickyNote className="h-3.5 w-3.5 text-text-secondary" />
@@ -1664,7 +1700,7 @@ function StepDetails({
           onChange={(e) => onChange({ notes: e.target.value })}
           rows={2}
           placeholder="Specify any special delivery instructions, accessories, or condition notes…"
-          className="w-full rounded-xl border border-border bg-bg-subtle/50 p-3 text-sm text-text placeholder:text-text-secondary transition-all resize-none focus:outline-none focus:bg-card focus:border-accent focus:ring-2 focus:ring-accent/20"
+          className="w-full rounded-md border border-border bg-bg px-2.5 py-2 text-xs text-text placeholder:text-text-secondary/70 resize-none focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
         />
       </section>
     </div>
@@ -1865,7 +1901,7 @@ interface NewBorrowRequestWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prefilledItems?: BrowseItem[];
-  initialType?: "borrow" | "requisition" | null;
+  initialType?: "borrow" | "assign" | "requisition" | null;
   onSuccess: (newRequest: PortalBorrowRequest) => void;
 }
 
@@ -1876,15 +1912,22 @@ export function NewBorrowRequestWizard({
   initialType,
   onSuccess,
 }: NewBorrowRequestWizardProps) {
+  const typeLocked = Boolean(initialType);
   const initialTypes: WizardRequestType[] =
     initialType === "requisition"
       ? ["consumable"]
-      : initialType === "borrow"
-        ? ["borrowable"]
-        : [];
+      : initialType === "assign"
+        ? ["assignable"]
+        : initialType === "borrow"
+          ? ["borrowable"]
+          : [];
 
   const [step, setStep] = useState<RequestWizardStep>(
-    prefilledItems && prefilledItems.length > 0 ? "details" : "type"
+    prefilledItems && prefilledItems.length > 0
+      ? "details"
+      : typeLocked
+        ? "select"
+        : "type"
   );
   const [values, setValues] = useState<WizardFormValues>(() => {
     const base = emptyWizardValues(initialTypes);
@@ -1924,9 +1967,11 @@ export function NewBorrowRequestWizard({
     const types: WizardRequestType[] =
       initialType === "requisition"
         ? ["consumable"]
-        : initialType === "borrow"
-          ? ["borrowable"]
-          : [];
+        : initialType === "assign"
+          ? ["assignable"]
+          : initialType === "borrow"
+            ? ["borrowable"]
+            : [];
     const base = emptyWizardValues(types);
     if (prefilledItems && prefilledItems.length > 0 && base.typeBundles[0]) {
       base.typeBundles[0] = {
@@ -1934,12 +1979,18 @@ export function NewBorrowRequestWizard({
         selectedItems: prefilledItems,
       };
     }
-    setStep(prefilledItems && prefilledItems.length > 0 ? "details" : "type");
+    setStep(
+      prefilledItems && prefilledItems.length > 0
+        ? "details"
+        : typeLocked
+          ? "select"
+          : "type"
+    );
     setValues(base);
     setFieldErrors({});
     setErrorMessage("");
     resetMutation();
-  }, [open, prefilledItems, resetMutation, initialType]);
+  }, [open, prefilledItems, resetMutation, initialType, typeLocked]);
 
   useEffect(() => {
     if (!open || !me) return;
@@ -1952,7 +2003,8 @@ export function NewBorrowRequestWizard({
         requesterMode: prev.requesterMode || "account",
         departmentId: me.departmentId ?? prev.departmentId,
         department: me.department || prev.department,
-        requestedByName: me.name || prev.requestedByName,
+        // Prefill once; do not overwrite if the requester already edited the name.
+        requestedByName: prev.requestedByName.trim() || me.name || "",
       };
     });
   }, [open, me]);
@@ -1965,21 +2017,25 @@ export function NewBorrowRequestWizard({
 
   const selectedTypes = values.typeBundles.map((b) => b.requestType);
 
-  const toggleType = useCallback((type: WizardRequestType) => {
-    setValues((prev) => {
-      const exists = prev.typeBundles.some((b) => b.requestType === type);
-      if (exists) {
+  const toggleType = useCallback(
+    (type: WizardRequestType) => {
+      if (typeLocked) return;
+      setValues((prev) => {
+        const exists = prev.typeBundles.some((b) => b.requestType === type);
+        if (exists) {
+          return {
+            ...prev,
+            typeBundles: prev.typeBundles.filter((b) => b.requestType !== type),
+          };
+        }
         return {
           ...prev,
-          typeBundles: prev.typeBundles.filter((b) => b.requestType !== type),
+          typeBundles: [...prev.typeBundles, newTypeBundle(type)],
         };
-      }
-      return {
-        ...prev,
-        typeBundles: [...prev.typeBundles, newTypeBundle(type)],
-      };
-    });
-  }, []);
+      });
+    },
+    [typeLocked]
+  );
 
   const updateBundleItems = useCallback(
     (requestType: WizardRequestType, items: BrowseItem[]) => {
@@ -2078,9 +2134,18 @@ export function NewBorrowRequestWizard({
   }
 
   function handleBack() {
-    if (step === "select") setStep("type");
-    if (step === "details")
-      setStep(prefilledItems && prefilledItems.length > 0 ? "type" : "select");
+    if (step === "select") {
+      if (!typeLocked) setStep("type");
+      return;
+    }
+    if (step === "details") {
+      setStep(
+        prefilledItems && prefilledItems.length > 0 && !typeLocked
+          ? "type"
+          : "select"
+      );
+      return;
+    }
     if (step === "review") setStep("details");
     setErrorMessage("");
   }
@@ -2123,6 +2188,15 @@ export function NewBorrowRequestWizard({
       const codes: string[] = [];
 
       for (const bundle of values.typeBundles) {
+        // Typed request pages lock to one kind — never create sibling types from this entry.
+        if (
+          typeLocked &&
+          ((initialType === "assign" && bundle.requestType !== "assignable") ||
+            (initialType === "borrow" && bundle.requestType !== "borrowable") ||
+            (initialType === "requisition" && bundle.requestType !== "consumable"))
+        ) {
+          continue;
+        }
         const itemsById = new Map(
           bundle.selectedItems.map((item) => [item.id, item])
         );
@@ -2222,6 +2296,32 @@ export function NewBorrowRequestWizard({
     }
   }
 
+  const isDirty = useMemo(() => {
+    if (step !== "type") return true;
+    if (values.typeBundles.some((b) => b.selectedItems.length > 0)) return true;
+    if (values.notes?.trim()) return true;
+    // Type chips toggled beyond the empty pristine start
+    if (!initialType && values.typeBundles.length > 0) return true;
+    return Boolean(prefilledItems && prefilledItems.length > 0);
+  }, [step, values, initialType, prefilledItems]);
+
+  const handleRequestClose = useCallback(() => {
+    onOpenChange(false);
+  }, [onOpenChange]);
+
+  const {
+    requestClose,
+    onBackdropClick,
+    discardConfirmOpen,
+    confirmDiscard,
+    keepEditing,
+  } = useRequestModalDismiss({
+    open,
+    isPending: isSubmitting,
+    isDirty,
+    onRequestClose: handleRequestClose,
+  });
+
   if (!open) return null;
 
   const headerTitle =
@@ -2229,23 +2329,28 @@ export function NewBorrowRequestWizard({
       ? "New Multi-Type Request"
       : values.typeBundles[0]?.requestType === "consumable" ||
           initialType === "requisition"
-        ? "New Requisition Request"
-        : values.typeBundles[0]?.requestType === "borrowable" ||
-            values.typeBundles[0]?.requestType === "assignable" ||
-            initialType === "borrow"
-          ? "New Borrow Request"
-          : "New Requests";
+        ? "New Supply Request"
+        : values.typeBundles[0]?.requestType === "assignable" ||
+            initialType === "assign"
+          ? "New Assign Request"
+          : values.typeBundles[0]?.requestType === "borrowable" ||
+              initialType === "borrow"
+            ? "New Borrow Request"
+            : "New Requests";
 
   const categoryBadgeLabel =
     values.typeBundles.length > 1
       ? "Multi"
       : values.typeBundles[0]?.requestType === "consumable"
-        ? "Requisition"
-        : values.typeBundles[0]
-          ? "Borrow Request"
-          : "Portal";
+        ? "Supplies"
+        : values.typeBundles[0]?.requestType === "assignable"
+          ? "Assignment"
+          : values.typeBundles[0]
+            ? "Borrow"
+            : "Portal";
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       role="dialog"
@@ -2254,12 +2359,12 @@ export function NewBorrowRequestWizard({
     >
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => !isSubmitting && onOpenChange(false)}
+        onClick={onBackdropClick}
         aria-hidden="true"
       />
 
-      <div className="relative z-10 w-full max-w-6xl h-[90vh] max-h-[96vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-6 py-4.5 border-b border-border bg-card shrink-0 space-y-3.5">
+      <div className="relative z-10 w-full max-w-3xl max-h-[76vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-border bg-card shrink-0 space-y-2.5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2">
@@ -2277,9 +2382,9 @@ export function NewBorrowRequestWizard({
             </div>
             <button
               type="button"
-              onClick={() => onOpenChange(false)}
+              onClick={requestClose}
               disabled={isSubmitting}
-              aria-label="Close wizard"
+              aria-label="Close"
               className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <X className="h-5 w-5" />
@@ -2290,12 +2395,13 @@ export function NewBorrowRequestWizard({
             <MilestoneStepIndicator
               current={step}
               selectedTypes={selectedTypes}
+              hideTypeStep={typeLocked}
             />
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 p-6 overflow-y-auto">
-          {step === "type" && (
+        <div className="flex-1 min-h-0 p-4 overflow-y-auto">
+          {step === "type" && !typeLocked && (
             <StepType value={selectedTypes} onToggle={toggleType} />
           )}
           {step === "select" && (
@@ -2398,22 +2504,34 @@ export function NewBorrowRequestWizard({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-border bg-card shrink-0">
-          <button
-            type="button"
-            onClick={handleBack}
-            disabled={
-              step === "type" ||
-              isSubmitting ||
-              isSubmitted ||
-              (step === "details" &&
-                Boolean(prefilledItems && prefilledItems.length > 0))
-            }
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </button>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border bg-card shrink-0">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={requestClose}
+              disabled={isSubmitting || isSubmitted}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleBack}
+              disabled={
+                step === "type" ||
+                (typeLocked && step === "select") ||
+                isSubmitting ||
+                isSubmitted ||
+                (step === "details" &&
+                  Boolean(prefilledItems && prefilledItems.length > 0) &&
+                  !typeLocked)
+              }
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Back
+            </button>
+          </div>
 
           {step !== "review" ? (
             <button
@@ -2458,5 +2576,17 @@ export function NewBorrowRequestWizard({
         </div>
       </div>
     </div>
+
+    <ConfirmDialog
+      isOpen={discardConfirmOpen}
+      title="Discard draft?"
+      description="You have an unfinished request. Closing will discard your progress."
+      confirmLabel="Discard"
+      cancelLabel="Keep editing"
+      variant="warning"
+      onConfirm={confirmDiscard}
+      onClose={keepEditing}
+    />
+    </>
   );
 }

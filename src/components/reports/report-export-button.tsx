@@ -2,7 +2,10 @@
 
 import { useState } from "react";
 import { Download, FileSpreadsheet, Printer, ChevronDown } from "lucide-react";
-import { getExportUrl } from "@/features/reports/client/reports-api";
+import {
+  getExportUrl,
+  logReportPrintIntent,
+} from "@/features/reports/client/reports-api";
 import type { BaseReportFilters } from "@/types/reports";
 
 interface ReportExportButtonProps {
@@ -24,8 +27,13 @@ export function ReportExportButton({
     window.location.href = url;
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     setIsOpen(false);
+    try {
+      await logReportPrintIntent(reportType, filters);
+    } catch {
+      // Print should still proceed even if telemetry logging fails.
+    }
     if (onPrint) {
       onPrint();
     } else {

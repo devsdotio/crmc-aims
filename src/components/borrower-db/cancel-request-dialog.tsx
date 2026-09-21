@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, AlertCircle, AlertTriangle, XCircle, Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatItemDescription, formatQuantityWithUnit } from "@/lib/sanitize-display";
+import { useRequestModalDismiss } from "@/hooks/use-request-modal-dismiss";
 import type { PortalBorrowRequest } from "./types";
 
 interface CancelRequestDialogProps {
@@ -23,27 +24,24 @@ export function CancelRequestDialog({
   const [isCancelling, setIsCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+
+  const { requestClose, onBackdropClick } = useRequestModalDismiss({
+    open,
+    isPending: isCancelling,
+    isDirty: false,
+    onRequestClose: () => onOpenChange(false),
+  });
 
   // Reset fields when opening or switching request
   useEffect(() => {
     if (open) {
       setReason("");
       setError(null);
+      const id = window.setTimeout(() => reasonRef.current?.focus(), 0);
+      return () => window.clearTimeout(id);
     }
   }, [open, request?.id]);
-
-  // Handle escape key
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && open && !isCancelling) {
-        onOpenChange(false);
-      }
-    }
-    if (open) {
-      document.addEventListener("keydown", handleKeyDown);
-    }
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, isCancelling, onOpenChange]);
 
   if (!open) return null;
 
@@ -65,6 +63,12 @@ export function CancelRequestDialog({
     setIsCancelling(true);
     try {
       await onConfirm(trimmedReason);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to cancel request. Please try again."
+      );
     } finally {
       setIsCancelling(false);
     }
@@ -81,7 +85,7 @@ export function CancelRequestDialog({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
-        onClick={() => !isCancelling && onOpenChange(false)}
+        onClick={onBackdropClick}
         aria-hidden="true"
       />
 
@@ -174,6 +178,7 @@ export function CancelRequestDialog({
           </div>
 
           <textarea
+            ref={reasonRef}
             id="cancellation-reason-input"
             rows={3}
             maxLength={500}
@@ -209,7 +214,7 @@ export function CancelRequestDialog({
         <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-border">
           <button
             type="button"
-            onClick={() => onOpenChange(false)}
+            onClick={requestClose}
             disabled={isCancelling}
             className="px-4 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
           >

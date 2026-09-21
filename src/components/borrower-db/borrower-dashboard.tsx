@@ -33,8 +33,6 @@ import {
   formatRelativeTime,
 } from "@/lib/format-relative-time";
 
-const LIVE_INTERVAL = 15_000;
-
 interface StatCardProps {
   label: string;
   value?: number;
@@ -313,7 +311,7 @@ export function BorrowerDashboard() {
     isError,
     refetch,
   } = useDashboardSnapshotQuery({
-    refetchInterval: LIVE_INTERVAL,
+    refetchInterval: false,
     staleTime: 0,
   });
   const {
@@ -322,17 +320,14 @@ export function BorrowerDashboard() {
   } = useBorrowLogQuery({
     scope: "department",
     enabled: Boolean(me?.departmentId),
-    refetchInterval: LIVE_INTERVAL,
   });
   const { data: pendingBorrowRes, isLoading: pendingBorrowLoading } = useBorrowRequests({
     status: "pending",
     limit: 20,
-    refetchInterval: LIVE_INTERVAL,
   });
   const { data: pendingSupplyRes, isLoading: pendingSupplyLoading } = useConsumableRequests({
     status: "pending",
     limit: 20,
-    refetchInterval: LIVE_INTERVAL,
   });
 
   const onHandItems = useMemo(
@@ -360,21 +355,21 @@ export function BorrowerDashboard() {
   }, [pendingBorrowRes?.data, pendingSupplyRes?.data]);
 
   const snapshotSummary = snapshot?.summary;
-  const liveCustody = Boolean(custodyRows);
-  const livePending = Boolean(pendingBorrowRes && pendingSupplyRes);
+  const hasCustody = Boolean(custodyRows);
+  const hasPending = Boolean(pendingBorrowRes && pendingSupplyRes);
 
-  const onHandCount = liveCustody
+  const onHandCount = hasCustody
     ? onHandItems.length
     : Math.max(0, (snapshotSummary?.activeBorrows ?? 0) - (snapshotSummary?.overdueAssets ?? 0));
-  const overdueCount = liveCustody
+  const overdueCount = hasCustody
     ? overdueItems.length
     : (snapshotSummary?.overdueAssets ?? 0);
-  const pendingCount = livePending
+  const pendingCount = hasPending
     ? (pendingBorrowRes?.meta.total ?? 0) + (pendingSupplyRes?.meta.total ?? 0)
     : (snapshotSummary?.pendingApprovals ?? 0);
   const totalRequests = snapshotSummary?.totalRequests ?? 0;
 
-  const statsLoading = snapshotLoading && !snapshot && !liveCustody;
+  const statsLoading = snapshotLoading && !snapshot && !hasCustody;
   const custodyLoading = Boolean(me?.departmentId) && custodyQueryLoading && !custodyRows;
   const pendingLoading =
     (pendingBorrowLoading && !pendingBorrowRes) ||
@@ -461,14 +456,14 @@ export function BorrowerDashboard() {
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
           >
             <Package className="h-4 w-4" aria-hidden />
-            New Request
+            Multi-type Request
           </button>
         </div>
       </div>
 
-      {isError && !snapshot && !liveCustody && (
+      {isError && !snapshot && !hasCustody && (
         <div className="rounded-lg border border-status-repair-bg/40 bg-status-repair-bg/10 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-status-repair-text shrink-0">
-          <span>Failed to load live dashboard statistics. Default values are shown.</span>
+          <span>Failed to load dashboard statistics. Default values are shown.</span>
           <button
             type="button"
             onClick={() => refetch()}

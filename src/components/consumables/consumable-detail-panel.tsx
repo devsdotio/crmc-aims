@@ -20,11 +20,13 @@ import {
   Layers,
   StickyNote,
   Printer,
+  X,
 } from "lucide-react";
 
 import { IndividualConsumablePrintableReport } from "@/components/reports/print/individual/IndividualConsumablePrintableReport";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/providers/loading-context";
+import { useAssetOperator } from "@/hooks/use-asset-operator";
 import type { ConsumableItem } from "@/types/inventory";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 import type { PurchaseLot } from "@/types/purchase-lots";
@@ -120,6 +122,8 @@ export function ConsumableDetailPanel({
 }: ConsumableDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const { getCategoryStyle } = useCategoryStyleMap();
+  const { role } = useAssetOperator();
+  const isBorrower = role === "borrower";
   const [expandedLotId, setExpandedLotId] = useState<string | null>(null);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
 
@@ -181,51 +185,84 @@ export function ConsumableDetailPanel({
           "animate-in slide-in-from-right duration-250 ease-in-out"
         )}
       >
-        <div className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-bg-subtle/50 shrink-0">
-          <div className="min-w-0 flex-1 pr-3">
-            <h2
-              id="consumable-detail-heading"
-              className="font-mono text-base font-bold tracking-tight text-text leading-tight"
-            >
-              {displayItem.itemCode}
-            </h2>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-bg border border-border text-text-secondary">
-                {consumableClassificationLabel(displayItem.classification)}
-              </span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs",
-                  categoryMeta.bg,
-                  categoryMeta.text
-                )}
-              >
-                <Tag className="h-2.5 w-2.5 shrink-0" />
-                {categoryMeta.label}
-              </span>
-              <span className="text-text-secondary/40">•</span>
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 shadow-2xs">
-                <Boxes className="h-2.5 w-2.5 shrink-0" />
-                <span className="truncate max-w-45">{displayItem.name}</span>
-              </span>
-            </div>
+        <div className="flex items-start justify-between px-5 py-4 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
+          <div className="min-w-0 flex-1 pr-2">
+            {isBorrower ? (
+              <>
+                <p className="font-mono text-[11px] font-bold tracking-wide text-primary mb-1">
+                  {displayItem.itemCode}
+                </p>
+                <h2
+                  id="consumable-detail-heading"
+                  className="text-base font-bold tracking-tight text-text leading-snug"
+                >
+                  {displayItem.name}
+                </h2>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-bg border border-border text-text-secondary">
+                    {consumableClassificationLabel(displayItem.classification)}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
+                      categoryMeta.bg,
+                      categoryMeta.text
+                    )}
+                  >
+                    <Tag className="h-2.5 w-2.5 shrink-0" />
+                    {categoryMeta.label}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2
+                  id="consumable-detail-heading"
+                  className="font-mono text-base font-bold tracking-tight text-text leading-tight"
+                >
+                  {displayItem.itemCode}
+                </h2>
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-bg border border-border text-text-secondary">
+                    {consumableClassificationLabel(displayItem.classification)}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs",
+                      categoryMeta.bg,
+                      categoryMeta.text
+                    )}
+                  >
+                    <Tag className="h-2.5 w-2.5 shrink-0" />
+                    {categoryMeta.label}
+                  </span>
+                  <span className="text-text-secondary/40">•</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 shadow-2xs">
+                    <Boxes className="h-2.5 w-2.5 shrink-0" />
+                    <span className="truncate max-w-45">{displayItem.name}</span>
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => window.print()}
-              aria-label="Print SKU Report"
-              className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
-            >
-              <Printer className="h-4 w-4" />
-              <span
-                role="tooltip"
-                className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
+            {!isBorrower && (
+              <button
+                type="button"
+                onClick={() => window.print()}
+                aria-label="Print SKU Report"
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
               >
-                Print Report (PDF)
-              </span>
-            </button>
+                <Printer className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
+                >
+                  Print Report (PDF)
+                </span>
+              </button>
+            )}
             {onDelete && (
               <button
                 type="button"
@@ -242,6 +279,14 @@ export function ConsumableDetailPanel({
                 </span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="inline-flex items-center justify-center p-1.5 rounded-md text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
@@ -263,7 +308,7 @@ export function ConsumableDetailPanel({
             )}
           </div>
 
-          {(onOrderPO || onRelease || onAdjust || onEdit) && (
+          {(onOrderPO || onRelease || onAdjust || onEdit) && !isBorrower && (
             <div className="grid grid-cols-2 gap-2">
               {onOrderPO ? (
                 <button
@@ -382,18 +427,24 @@ export function ConsumableDetailPanel({
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
-                <QrCode className="h-3.5 w-3.5" />
-                Purchase lots (QR per supplier batch)
+                {isBorrower ? (
+                  <Boxes className="h-3.5 w-3.5" />
+                ) : (
+                  <QrCode className="h-3.5 w-3.5" />
+                )}
+                {isBorrower ? "Stock lots" : "Purchase lots (QR per supplier batch)"}
               </h3>
               <span className="text-[10px] font-semibold text-text-secondary">
                 {openLots.length} open · {lots.length} total
               </span>
             </div>
-            <p className="text-[11px] text-text-secondary leading-relaxed">
-              Each restock creates a lot with frozen unit cost and supplier.
-              Print the lot QR for shelf tags — staff scan it to release
-              quantity.
-            </p>
+            {!isBorrower && (
+              <p className="text-[11px] text-text-secondary leading-relaxed">
+                Each restock creates a lot with frozen unit cost and supplier.
+                Print the lot QR for shelf tags — staff scan it to release
+                quantity.
+              </p>
+            )}
 
             {lotsLoading ? (
               <LoadingState
@@ -445,8 +496,9 @@ export function ConsumableDetailPanel({
                             )}
                           </div>
                           <p className="text-[11px] text-text-secondary truncate">
-                            {lot.supplierName || "No supplier"} ·{" "}
-                            {formatPhp(Number(lot.unitCost))}/{displayItem.unit}
+                            {isBorrower
+                              ? lot.supplierName || "Supplier lot"
+                              : `${lot.supplierName || "No supplier"} · ${formatPhp(Number(lot.unitCost))}/${displayItem.unit}`}
                           </p>
                           <p className="text-[11px] text-text">
                             <span className="font-semibold">
@@ -468,12 +520,23 @@ export function ConsumableDetailPanel({
 
                       {expanded && (
                         <div className="px-3 pb-3 space-y-3 border-t border-border pt-3">
-                          <LotQrCodeDisplay
-                            lotCode={lot.lotCode}
-                            qrPayload={lot.qrPayload}
-                            label={`${lot.itemName} · ${lot.supplierName || "—"}`}
-                            size={128}
-                          />
+                          {isBorrower ? (
+                            <div className="rounded-lg border border-border bg-bg-subtle/40 px-3 py-2.5">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mb-1">
+                                Lot ID
+                              </p>
+                              <p className="font-mono text-sm font-bold text-text">
+                                {lot.lotCode}
+                              </p>
+                            </div>
+                          ) : (
+                            <LotQrCodeDisplay
+                              lotCode={lot.lotCode}
+                              qrPayload={lot.qrPayload}
+                              label={`${lot.itemName} · ${lot.supplierName || "—"}`}
+                              size={128}
+                            />
+                          )}
                           {!depleted && onRelease && (
                             <button
                               type="button"
@@ -664,9 +727,11 @@ export function ConsumableDetailPanel({
       </aside>
     </div>
 
-    <div className="hidden print:block">
-      <IndividualConsumablePrintableReport item={displayItem} lots={lots} movements={movements} />
-    </div>
+    {!isBorrower && (
+      <div className="hidden print:block">
+        <IndividualConsumablePrintableReport item={displayItem} lots={lots} movements={movements} />
+      </div>
+    )}
     </>
   );
 }

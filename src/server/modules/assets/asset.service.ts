@@ -19,6 +19,8 @@ import { PurchaseLotService } from "@/server/modules/purchase-lots/purchase-lot.
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
 import { ProjectAssetAssignmentRepository } from "@/server/modules/projects/project-asset.repository";
 import { CategoryRepository } from "@/server/modules/categories/category.repository";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import { AssetLifecycleService } from "./asset.lifecycle.service";
 import { buildAssetFieldChanges } from "./asset.lifecycle.types";
@@ -153,6 +155,8 @@ const TRACKED_UPDATE_FIELDS: (keyof AssetRow)[] = [
 ];
 
 export class AssetService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly assetRepository: AssetRepository = new AssetRepository(),
     private readonly lifecycleService: AssetLifecycleService = new AssetLifecycleService(),
@@ -439,6 +443,25 @@ export class AssetService {
               tx
             );
           }
+
+          await this.auditLogs.log(
+            {
+              entityType: AUDIT_ENTITY.asset,
+              entityId: row.id,
+              action: AUDIT_ACTION.created,
+              actorName: actor.displayName,
+              actorUserId: actor.userId,
+              notes: `Created asset ${row.assetCode} (${row.name}).`,
+              metadata: {
+                assetCode: row.assetCode,
+                category: row.category,
+                status: row.status,
+                assignmentType: row.assignmentType,
+                supplierId: row.supplierId,
+              },
+            },
+            tx
+          );
 
           return toAssetDTO(row);
         });
@@ -837,6 +860,25 @@ export class AssetService {
         }
       }
 
+      if (existing.status !== updated.status) {
+        await this.auditLogs.log({
+          entityType: AUDIT_ENTITY.asset,
+          entityId: updated.id,
+          action:
+            updated.status === "retired"
+              ? AUDIT_ACTION.retired
+              : AUDIT_ACTION.statusChanged,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Asset ${updated.assetCode} status changed from ${existing.status} to ${updated.status}.`,
+          metadata: {
+            assetCode: updated.assetCode,
+            fromStatus: existing.status,
+            toStatus: updated.status,
+          },
+        });
+      }
+
       // Editing Condition → Needs Repair (or saving while already needs_repair
       // with a missing open log) must open a Maintenance Logs entry.
       if (updated.status === "needs_repair") {
@@ -891,6 +933,20 @@ export class AssetService {
           assignmentType: existing.assignmentType,
           currentHolder: existing.currentHolder,
         },
+      },
+    });
+
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.asset,
+      entityId: existing.id,
+      action: AUDIT_ACTION.deleted,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Deleted asset ${existing.assetCode} (${existing.name}).`,
+      metadata: {
+        assetCode: existing.assetCode,
+        category: existing.category,
+        previousStatus: existing.status,
       },
     });
 
@@ -1251,6 +1307,23 @@ export class AssetService {
         );
       }
 
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.asset,
+          entityId: next.id,
+          action: AUDIT_ACTION.statusChanged,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Flagged ${next.assetCode} for maintenance.`,
+          metadata: {
+            assetCode: next.assetCode,
+            fromStatus: existing.status,
+            toStatus: next.status,
+          },
+        },
+        tx
+      );
+
       return next;
     });
 
@@ -1343,6 +1416,24 @@ export class AssetService {
             via: "report_missing",
             reason: input.reason,
             notes: input.notes.trim(),
+          },
+        },
+        tx
+      );
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.asset,
+          entityId: next.id,
+          action: AUDIT_ACTION.statusChanged,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Marked ${next.assetCode} as missing (${input.reason}).`,
+          metadata: {
+            assetCode: next.assetCode,
+            fromStatus: existing.status,
+            toStatus: "missing",
+            reason: input.reason,
           },
         },
         tx

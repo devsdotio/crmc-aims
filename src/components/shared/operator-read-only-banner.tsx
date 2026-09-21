@@ -6,13 +6,14 @@ import { useAssetOperator } from "@/hooks/use-asset-operator";
 
 export function OperatorReadOnlyBanner() {
   const [mounted, setMounted] = useState(false);
-  const { canOperate, isLoading } = useAssetOperator();
+  const { canOperate, isLoading, role } = useAssetOperator();
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  if (!mounted || isLoading || canOperate) {
+  // Borrowers get a clean browse UI; staff still see the view-only notice.
+  if (!mounted || isLoading || canOperate || role === "borrower") {
     return null;
   }
 

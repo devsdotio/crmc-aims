@@ -7,6 +7,7 @@ import {
   useState,
   useEffect,
   useRef,
+  useMemo,
   type ReactNode,
 } from "react";
 import { CheckCircle, XCircle, AlertTriangle, Info, X, RefreshCw } from "lucide-react";
@@ -159,7 +160,9 @@ function ToastItem({
                     : "bg-white text-red-600 hover:bg-white/90 active:bg-white/80 font-bold"
               )}
             >
-              <RefreshCw className="h-3 w-3" />
+              {/retry|refresh|reconnect/i.test(toast.action.label) ? (
+                <RefreshCw className="h-3 w-3" aria-hidden />
+              ) : null}
               {toast.action.label}
             </button>
           </div>
@@ -189,17 +192,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const add = useCallback(
     (variant: ToastVariant, message: string, options?: ToastOptions) => {
-      const id = crypto.randomUUID();
-      setToasts((prev) => [
-        ...prev,
-        {
-          id,
-          variant,
-          message,
-          action: options?.action,
-          duration: options?.duration,
-        },
-      ]);
+      setToasts((prev) => {
+        // One notice per message+variant — stacking identical alerts is noise.
+        if (prev.some((t) => t.message === message && t.variant === variant)) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            variant,
+            message,
+            action: options?.action,
+            duration: options?.duration,
+          },
+        ];
+      });
     },
     []
   );
@@ -208,12 +216,27 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const value: ToastContextValue = {
-    success: (msg, opts) => add("success", msg, opts),
-    error: (msg, opts) => add("error", msg, opts),
-    warning: (msg, opts) => add("warning", msg, opts),
-    info: (msg, opts) => add("info", msg, opts),
-  };
+  const success = useCallback(
+    (msg: string, opts?: ToastOptions) => add("success", msg, opts),
+    [add]
+  );
+  const error = useCallback(
+    (msg: string, opts?: ToastOptions) => add("error", msg, opts),
+    [add]
+  );
+  const warning = useCallback(
+    (msg: string, opts?: ToastOptions) => add("warning", msg, opts),
+    [add]
+  );
+  const info = useCallback(
+    (msg: string, opts?: ToastOptions) => add("info", msg, opts),
+    [add]
+  );
+
+  const value = useMemo<ToastContextValue>(
+    () => ({ success, error, warning, info }),
+    [success, error, warning, info]
+  );
 
   return (
     <ToastContext.Provider value={value}>

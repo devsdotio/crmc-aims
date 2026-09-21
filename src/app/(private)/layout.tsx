@@ -43,6 +43,18 @@ export default async function PrivateLayout({
     profile = await getCachedProfile(userId);
   } catch (error) {
     console.error("[private-layout] profile lookup failed:", error);
+    const text =
+      error instanceof Error
+        ? `${error.message} ${error.cause ?? ""}`
+        : String(error);
+    const unavailable = /ETIMEDOUT|ECONNREFUSED|ENOTFOUND|CONNECT_TIMEOUT|fetch failed|Failed query/i.test(
+      text
+    );
+    if (unavailable) {
+      throw new Error(
+        "Database temporarily unavailable. Refresh the page in a moment and try again."
+      );
+    }
     redirect("/sign-in?error=no_profile");
   }
 

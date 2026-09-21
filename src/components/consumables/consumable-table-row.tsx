@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import type { ConsumableItem } from "@/types/inventory";
 import { StockLevelBar } from "./stock-level-bar";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
-import { SandboxBadge } from "@/components/shared/sandbox-badge";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableTableRowProps {
@@ -49,7 +48,6 @@ export function ConsumableTableRow({
           <span className="text-sm font-bold text-text group-hover:text-accent transition-colors block leading-tight">
             {item.name}
           </span>
-          {item.isSandbox ? <SandboxBadge /> : null}
         </div>
       </td>
 

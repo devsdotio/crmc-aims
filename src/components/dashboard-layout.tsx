@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { useMeQuery } from "@/features/users/client";
 import { useDashboardSidebarSummaryQuery } from "@/features/dashboard/client/use-dashboard";
 import { ROLE_DEFINITIONS } from "@/constants/roles";
-import { SandboxVisibilityProvider } from "@/components/providers/sandbox-visibility-context";
 
 import type { UserRole } from "@/types/users";
 
@@ -55,11 +54,13 @@ export default function DashboardLayout({
       : "—";
 
   const pendingCount = summary?.pendingApprovals ?? 0;
+  const pendingAssignCount = summary?.pendingAssignRequests ?? 0;
+  const pendingBorrowCount = summary?.pendingBorrowRequests ?? 0;
+  const pendingSupplyCount = summary?.pendingSupplyRequests ?? 0;
   const overdueCount = summary?.overdueAssets ?? 0;
   const lowStockCount = summary?.lowStockItems ?? 0;
 
   return (
-    <SandboxVisibilityProvider role={currentRole}>
     <div className="flex h-full w-full overflow-hidden bg-bg-subtle text-text print:h-auto print:overflow-visible print:bg-white">
       <div className="hidden md:block h-full shrink-0 print:hidden no-print">
         <Sidebar
@@ -67,6 +68,9 @@ export default function DashboardLayout({
           userEmail={userEmail}
           userRole={currentRole}
           pendingCount={pendingCount}
+          pendingAssignCount={pendingAssignCount}
+          pendingBorrowCount={pendingBorrowCount}
+          pendingSupplyCount={pendingSupplyCount}
           overdueCount={overdueCount}
           lowStockCount={lowStockCount}
         />
@@ -97,6 +101,9 @@ export default function DashboardLayout({
             userEmail={userEmail}
             userRole={currentRole}
             pendingCount={pendingCount}
+            pendingAssignCount={pendingAssignCount}
+            pendingBorrowCount={pendingBorrowCount}
+            pendingSupplyCount={pendingSupplyCount}
             overdueCount={overdueCount}
             lowStockCount={lowStockCount}
           />
@@ -120,6 +127,5 @@ export default function DashboardLayout({
         </main>
       </div>
     </div>
-    </SandboxVisibilityProvider>
   );
 }

@@ -51,8 +51,7 @@ export class DepartmentService {
 
   async getById(rawId: string, actorTenantId?: string): Promise<DepartmentDTO> {
     const id = departmentIdSchema.parse(rawId);
-    // By-id fetch must not apply list sandbox filters — mutations (e.g. toggling
-    // isSandbox) would otherwise 404 after a successful write.
+    // By-id fetch lists all departments (no list filters).
     const rows = await this.repo.list({ includeSandbox: true }, undefined, actorTenantId);
     const match = rows.find((row) => row.id === id);
     if (!match) throw new NotFoundError("Department", id);

@@ -8,7 +8,6 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 import {
   STOCK_DOMAINS,
   invalidateDomains,
@@ -26,12 +25,10 @@ export function useStockMovementsQuery(filters?: {
   limit?: number;
   enabled?: boolean;
 }): UseQueryResult<StockMovement[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
   const { enabled = true, ...params } = filters ?? {};
-  const listFilters = { ...params, includeSandbox };
   return useQuery({
-    queryKey: stockMovementQueryKeys.list(listFilters),
-    queryFn: () => stockMovementsApi.list(listFilters),
+    queryKey: stockMovementQueryKeys.list(params),
+    queryFn: () => stockMovementsApi.list(params),
     enabled,
   });
 }

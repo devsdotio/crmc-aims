@@ -66,10 +66,52 @@ export class ForbiddenError extends AppError {
   }
 }
 
+export class ServiceUnavailableError extends AppError {
+  constructor(
+    message = "The service is temporarily unavailable. Please try again in a moment."
+  ) {
+    super(message, 503, "SERVICE_UNAVAILABLE");
+    this.name = "ServiceUnavailableError";
+  }
+}
+
 /**
  * Type guard used by controllers to safely branch on AppError vs
  * unexpected errors without using `any`.
  */
 export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
+}
+
+/** Walk Error.cause chains for DNS / DB connectivity failures. */
+export function isConnectivityError(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current; depth++) {
+    if (typeof current !== "object" || current === null) break;
+
+    const code =
+      "code" in current && typeof current.code === "string"
+        ? current.code
+        : "";
+    const message =
+      current instanceof Error
+        ? current.message
+        : "message" in current && typeof current.message === "string"
+          ? current.message
+          : "";
+
+    if (
+      /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)$/i.test(
+        code
+      ) ||
+      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Connect Timeout|Failed query|fetch failed/i.test(
+        message
+      )
+    ) {
+      return true;
+    }
+
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
 }

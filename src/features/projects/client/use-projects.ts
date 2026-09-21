@@ -59,10 +59,13 @@ const PROJECT_DAMAGE_DOMAINS = [
   "dashboard",
 ] as const satisfies readonly CacheDomain[];
 
-export function useProjectsQuery(): UseQueryResult<Project[], Error> {
+export function useProjectsQuery(options?: {
+  enabled?: boolean;
+}): UseQueryResult<Project[], Error> {
   return useQuery({
     queryKey: projectQueryKeys.list(),
     queryFn: () => projectsApi.list(),
+    enabled: options?.enabled ?? true,
   });
 }
 

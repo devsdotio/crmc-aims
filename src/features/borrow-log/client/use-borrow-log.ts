@@ -17,7 +17,6 @@ import {
   CUSTODY_DOMAINS,
   invalidateDomains,
 } from "@/features/shared/cache-invalidation";
-import { useSandboxVisibility } from "@/components/providers/sandbox-visibility-context";
 
 import {
   borrowLogApi,
@@ -37,9 +36,7 @@ export function useBorrowLogQuery(filters?: {
   enabled?: boolean;
   refetchInterval?: number | false;
 }): UseQueryResult<BorrowLogRecord[], Error> {
-  const { includeSandbox } = useSandboxVisibility();
-  const { enabled = true, refetchInterval, ...rest } = filters ?? {};
-  const listFilters = { ...rest, includeSandbox };
+  const { enabled = true, refetchInterval, ...listFilters } = filters ?? {};
   return useQuery({
     queryKey: borrowLogQueryKeys.list(listFilters),
     queryFn: () => borrowLogApi.list(listFilters),
