@@ -102,8 +102,11 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
           supplierId: item.supplierId || newPO.supplierId || null,
           supplierName:
             item.suggestedDealer ||
-            newPO.supplierName ||
-            "Direct / Default Supplier",
+            (newPO.supplierName &&
+            newPO.supplierName.trim().toLowerCase() !== "multiple suppliers"
+              ? newPO.supplierName
+              : null) ||
+            null,
           quantity: qty,
           quantityRemaining: qty,
           unitCost: uCost.toFixed(2),
@@ -139,7 +142,12 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
               unitCost: iCost.toFixed(2),
               totalCost: (iQty * iCost).toFixed(2),
               purpose: it.purpose || newPO.purpose || null,
-              suggestedDealer: it.suggestedDealer || newPO.supplierName || null,
+              suggestedDealer:
+                it.suggestedDealer ||
+                (newPO.supplierName &&
+                newPO.supplierName.trim().toLowerCase() !== "multiple suppliers"
+                  ? newPO.supplierName
+                  : null),
             };
           }),
         };

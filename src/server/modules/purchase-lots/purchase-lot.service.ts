@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
@@ -44,6 +44,17 @@ function formatMoney(value: string | number): string {
   return n.toFixed(2);
 }
 
+/** PO-level placeholder when line items have different dealers — never store on a lot/item. */
+function isAggregateSupplierLabel(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  return (
+    n === "multiple suppliers" ||
+    n.startsWith("multiple suppliers") ||
+    /^multiple\s*\(\d+\)$/.test(n)
+  );
+}
+
 export type LotCostAllocation = {
   lotId: string | null;
   lotCode: string | null;
@@ -86,7 +97,8 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   orderedQuantity: number | null;
   receivedQuantity: number | null;
 } {
-  let status: PurchaseOrderStatus = "delivered";
+  // Default must NOT be "delivered" — that silently skips stock intake on receive.
+  let status: PurchaseOrderStatus = "pending_approval";
   let purpose: string | null = null;
   let receiptUrl: string | null = null;
   let approvedByName: string | null = null;
@@ -98,9 +110,10 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   let cleanNotes = rawNotes ?? null;
 
   if (rawNotes) {
-    if (rawNotes.startsWith("{") && rawNotes.includes('"status"')) {
+    const trimmedNotes = rawNotes.trim();
+    if (trimmedNotes.startsWith("{") && trimmedNotes.includes('"status"')) {
       try {
-        const meta = JSON.parse(rawNotes);
+        const meta = JSON.parse(trimmedNotes);
         if (meta.status) status = meta.status;
         if (meta.purpose) purpose = meta.purpose;
         if (meta.receiptUrl) receiptUrl = meta.receiptUrl;
@@ -317,6 +330,10 @@ export class PurchaseLotService {
           resolvedSupplierName = sup.name;
         }
       }
+      // Body may carry a UI aggregate label when dealers differ — never use that on lots/stock.
+      if (isAggregateSupplierLabel(resolvedSupplierName)) {
+        resolvedSupplierName = null;
+      }
 
       const initialStatus: PurchaseOrderStatus = body.status || "pending_approval";
       const nowIso = new Date().toISOString();
@@ -343,6 +360,23 @@ export class PurchaseLotService {
 
         const targetProjectId = item.projectId || body.projectId || null;
         const targetProjectName = item.projectName || body.projectName || null;
+
+        // Prefer the line item's own dealer; fall back to PO-level only when it is a real vendor.
+        let lineSupplierId = item.supplierId ?? null;
+        let lineSupplierName = item.suggestedDealer?.trim() || null;
+        if (lineSupplierId) {
+          const lineSup = await this.suppliers.findById(lineSupplierId, session);
+          if (lineSup) lineSupplierName = lineSup.name;
+        }
+        if (!lineSupplierName && resolvedSupplierName) {
+          lineSupplierName = resolvedSupplierName;
+        }
+        if (!lineSupplierId && supplierId && resolvedSupplierName) {
+          lineSupplierId = supplierId;
+        }
+        if (isAggregateSupplierLabel(lineSupplierName)) {
+          lineSupplierName = item.suggestedDealer?.trim() || null;
+        }
 
         // 1. Handle Consumable
         if (item.itemType === "consumable") {
@@ -394,12 +428,12 @@ export class PurchaseLotService {
                   unitCost: String(Number(item.unitCost).toFixed(2)),
                   consumableId,
                   incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
-                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${resolvedSupplierName || item.suggestedDealer || "—"}`,
+                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${lineSupplierName || "—"}`,
                   recordedByUserId: actor.userId,
                   recordedByName: actor.displayName,
                   metadata: {
                     poNumber,
-                    supplierName: resolvedSupplierName || item.suggestedDealer || null,
+                    supplierName: lineSupplierName,
                     directProjectDelivery: true,
                   },
                 });
@@ -410,6 +444,7 @@ export class PurchaseLotService {
                     currentQty: existing.currentQty + item.quantity,
                     lastRestocked: new Date(),
                     updatedAt: new Date(),
+                    ...(lineSupplierName ? { supplier: lineSupplierName } : {}),
                   })
                   .where(eq(consumables.id, consumableId));
 
@@ -437,6 +472,7 @@ export class PurchaseLotService {
             const [newConsumable] = await db
               .insert(consumables)
               .values({
+                tenantId: actor.tenantId,
                 itemCode,
                 name: itemName,
                 category: item.category || "General Supply",
@@ -445,7 +481,7 @@ export class PurchaseLotService {
                 currentQty: initialQty,
                 minThreshold: item.minThreshold ?? 5,
                 location: item.location || "Main Property Storage",
-                supplier: resolvedSupplierName || item.suggestedDealer || undefined,
+                supplier: lineSupplierName || undefined,
                 lastRestocked: initialStatus === "delivered" && !targetProjectId ? new Date() : undefined,
                 notes: body.notes,
               })
@@ -479,12 +515,12 @@ export class PurchaseLotService {
                   unitCost: String(Number(item.unitCost).toFixed(2)),
                   consumableId,
                   incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
-                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${resolvedSupplierName || item.suggestedDealer || "—"}`,
+                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${lineSupplierName || "—"}`,
                   recordedByUserId: actor.userId,
                   recordedByName: actor.displayName,
                   metadata: {
                     poNumber,
-                    supplierName: resolvedSupplierName || item.suggestedDealer || null,
+                    supplierName: lineSupplierName,
                     directProjectDelivery: true,
                   },
                 });
@@ -520,24 +556,41 @@ export class PurchaseLotService {
             itemCode = existing.assetCode;
             itemName = existing.name;
           } else {
-            // New Asset registration
-            itemCode = generateOperationalCode("AST");
-            const [newAsset] = await db
-              .insert(assets)
-              .values({
-                assetCode: itemCode,
-                name: itemName,
-                category: item.category || "Equipment",
-                status: initialStatus === "delivered" ? "active" : "needs_repair",
-                assignmentType: item.assignmentType || "borrowable",
-                location: item.location || "Property Custodian Depot",
-                purchaseDate: body.poDate,
-                value: formatMoney(item.unitCost),
-                supplierId: supplierId || undefined,
-                notes: `Acquired via PO ${poNumber}`,
-              })
-              .returning();
-            assetId = newAsset.id;
+            // New asset(s): one placeholder until receive, or all units if filed as delivered.
+            const unitsToCreate =
+              initialStatus === "delivered" ? Math.max(1, item.quantity) : 1;
+            let firstCode = "";
+            let firstId: string | null = null;
+
+            for (let i = 0; i < unitsToCreate; i++) {
+              const code = generateOperationalCode("AST");
+              const [newAsset] = await db
+                .insert(assets)
+                .values({
+                  tenantId: actor.tenantId,
+                  assetCode: code,
+                  name: itemName,
+                  category: item.category || "Equipment",
+                  status: initialStatus === "delivered" ? "active" : "needs_repair",
+                  assignmentType: item.assignmentType || "borrowable",
+                  location: item.location || "Property Custodian Depot",
+                  purchaseDate: body.poDate,
+                  value: formatMoney(item.unitCost),
+                  supplierId: lineSupplierId || undefined,
+                  notes: `Acquired via PO ${poNumber}${
+                    unitsToCreate > 1 ? ` (unit ${i + 1}/${unitsToCreate})` : ""
+                  }`,
+                })
+                .returning();
+
+              if (!firstId) {
+                firstId = newAsset.id;
+                firstCode = newAsset.assetCode;
+              }
+            }
+
+            assetId = firstId;
+            itemCode = firstCode;
           }
         }
 
@@ -575,8 +628,8 @@ export class PurchaseLotService {
             assetId,
             itemCode,
             itemName,
-            supplierId,
-            supplierName: resolvedSupplierName || item.suggestedDealer || null,
+            supplierId: lineSupplierId,
+            supplierName: lineSupplierName,
             departmentId,
             departmentName,
             projectId: targetProjectId,
@@ -612,7 +665,10 @@ export class PurchaseLotService {
           status: initialStatus,
           itemCount: body.items.length,
           totalCost: results.reduce((sum, r) => sum + parseFloat(r.totalCost), 0).toFixed(2),
-          supplierName: resolvedSupplierName,
+          supplierName:
+            resolvedSupplierName ||
+            results.map((r) => r.supplierName).filter(Boolean)[0] ||
+            null,
         },
       });
 
@@ -667,9 +723,10 @@ export class PurchaseLotService {
       let nextQuantity = lot.quantity;
       let receivedQtyForMeta: number | null = currentMeta.receivedQuantity;
       let orderedQtyForMeta: number | null = currentMeta.orderedQuantity;
+      let nextAssetId = lot.assetId;
 
       if (nextStatus === "delivered" && currentMeta.status !== "delivered") {
-        const orderedQty = lot.quantity;
+        const orderedQty = currentMeta.orderedQuantity ?? lot.quantity;
         const receivedQty =
           typeof body.receivedQuantity === "number"
             ? body.receivedQuantity
@@ -685,131 +742,232 @@ export class PurchaseLotService {
         orderedQtyForMeta = orderedQty;
         receivedQtyForMeta = receivedQty;
 
-        if (lot.projectId) {
-          // ─── Dual Crediting: Record in Consumable Materials AND auto-issue to Project ───
-          nextRemaining = 0; // Auto-issued upon delivery to project site
+        const poNumber = derivePONumber(lot.lotCode, lot.reference);
+        const unit = Number(lot.unitCost) || 0;
+        const lineTotal = formatMoney(unit * receivedQty);
 
-          if (lot.itemType === "consumable" && lot.consumableId) {
-            const [consumable] = await db
-              .select()
-              .from(consumables)
-              .where(eq(consumables.id, lot.consumableId))
-              .limit(1);
-
-            if (consumable) {
-              const unit = Number(lot.unitCost) || 0;
-              const lineTotal = formatMoney(unit * receivedQty);
-              const poNumber = derivePONumber(lot.lotCode, lot.reference);
-
-              // Ensure classification is "material"
-              if (consumable.classification !== "material") {
-                await db
-                  .update(consumables)
-                  .set({
-                    classification: "material",
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(consumables.id, lot.consumableId));
-              }
-
-              // Auto-issue movement for direct project material delivery
-              await db.insert(stockMovements).values({
-                movementCode: generateOperationalCode("MOV"),
-                consumableId: lot.consumableId,
-                projectId: lot.projectId,
-                purchaseLotId: lot.id,
-                lotCode: lot.lotCode,
-                qty: receivedQty,
-                direction: "out",
-                reason: "issue",
-                unitCost: lot.unitCost,
-                lineTotal,
-                notes: `Direct project delivery to ${lot.projectName || "Project"} via PO ${poNumber}`,
-                actorUserId: actor.userId,
-                actorName: actor.displayName,
-              });
-            }
+        if (lot.itemType === "consumable") {
+          if (!lot.consumableId) {
+            throw new BadRequestError(
+              `Cannot receive PO line "${lot.itemName}" — no linked supply/material catalog item.`
+            );
           }
 
-          // Directly credit to project expenses
-          const unit = Number(lot.unitCost) || 0;
-          const lineTotal = formatMoney(unit * receivedQty);
-          const poNumber = derivePONumber(lot.lotCode, lot.reference);
+          const [consumable] = await db
+            .select()
+            .from(consumables)
+            .where(eq(consumables.id, lot.consumableId))
+            .for("update")
+            .limit(1);
 
-          await db.insert(projectExpenseLines).values({
-            tenantId: lot.tenantId,
-            projectId: lot.projectId,
-            lineType: "material",
-            category: "miscellaneous",
-            description: `${lot.itemName} (${receivedQty} × ₱${unit.toFixed(2)}) [PO: ${poNumber}]`,
-            amount: lineTotal,
-            quantity: String(receivedQty),
-            unitCost: String(unit.toFixed(2)),
-            consumableId: lot.consumableId || null,
-            incurredOn: nowIso.slice(0, 10),
-            notes: `Auto-credited upon PO ${poNumber} delivery. Supplier: ${lot.supplierName || "—"}`,
-            recordedByUserId: actor.userId,
-            recordedByName: actor.displayName,
-            metadata: {
-              purchaseLotId: lot.id,
-              poNumber,
-              supplierName: lot.supplierName,
-              lotCode: lot.lotCode,
-              directProjectDelivery: true,
-            },
-          });
-        } else {
-          // Standard warehouse intake for general inventory
-          if (lot.itemType === "consumable" && lot.consumableId) {
-            const [consumable] = await db
-              .select()
-              .from(consumables)
-              .where(eq(consumables.id, lot.consumableId))
-              .limit(1);
+          if (!consumable) {
+            throw new NotFoundError("Consumable", lot.consumableId);
+          }
 
-            if (consumable) {
-              const unit = Number(lot.unitCost) || 0;
-              const lineTotal = formatMoney(unit * receivedQty);
+          if (lot.projectId) {
+            // Dual credit: intake to materials catalog, then auto-issue to project.
+            // Net on-hand stays flat; ledger + project expense reflect the delivery.
+            nextRemaining = 0;
 
+            if (consumable.classification !== "material") {
               await db
                 .update(consumables)
                 .set({
-                  currentQty: consumable.currentQty + receivedQty,
-                  lastRestocked: new Date(),
+                  classification: "material",
                   updatedAt: new Date(),
                 })
                 .where(eq(consumables.id, lot.consumableId));
+            }
 
-              // Record stock movement for actual received qty
-              await db.insert(stockMovements).values({
-                movementCode: generateOperationalCode("MOV"),
-                consumableId: lot.consumableId,
+            await db
+              .update(consumables)
+              .set({
+                currentQty: sql`${consumables.currentQty} + ${receivedQty}`,
+                lastRestocked: new Date(),
+                updatedAt: new Date(),
+                ...(lot.supplierName && !isAggregateSupplierLabel(lot.supplierName)
+                  ? { supplier: lot.supplierName }
+                  : {}),
+              })
+              .where(eq(consumables.id, lot.consumableId));
+
+            await db.insert(stockMovements).values({
+              tenantId: lot.tenantId,
+              movementCode: generateOperationalCode("MOV"),
+              consumableId: lot.consumableId,
+              purchaseLotId: lot.id,
+              lotCode: lot.lotCode,
+              qty: receivedQty,
+              direction: "in",
+              reason: "restock",
+              unitCost: lot.unitCost,
+              lineTotal,
+              notes: `PO ${poNumber} received into materials before project issue`,
+              actorUserId: actor.userId,
+              actorName: actor.displayName,
+            });
+
+            await db
+              .update(consumables)
+              .set({
+                currentQty: sql`${consumables.currentQty} - ${receivedQty}`,
+                updatedAt: new Date(),
+              })
+              .where(eq(consumables.id, lot.consumableId));
+
+            await db.insert(stockMovements).values({
+              tenantId: lot.tenantId,
+              movementCode: generateOperationalCode("MOV"),
+              consumableId: lot.consumableId,
+              projectId: lot.projectId,
+              purchaseLotId: lot.id,
+              lotCode: lot.lotCode,
+              qty: receivedQty,
+              direction: "out",
+              reason: "issue",
+              unitCost: lot.unitCost,
+              lineTotal,
+              notes: `Direct project delivery to ${lot.projectName || "Project"} via PO ${poNumber}`,
+              actorUserId: actor.userId,
+              actorName: actor.displayName,
+            });
+
+            await db.insert(projectExpenseLines).values({
+              tenantId: lot.tenantId,
+              projectId: lot.projectId,
+              lineType: "material",
+              category: "miscellaneous",
+              description: `${lot.itemName} (${receivedQty} × ₱${unit.toFixed(2)}) [PO: ${poNumber}]`,
+              amount: lineTotal,
+              quantity: String(receivedQty),
+              unitCost: String(unit.toFixed(2)),
+              consumableId: lot.consumableId,
+              incurredOn: nowIso.slice(0, 10),
+              notes: `Auto-credited upon PO ${poNumber} delivery. Supplier: ${
+                isAggregateSupplierLabel(lot.supplierName) ? "—" : lot.supplierName || "—"
+              }`,
+              recordedByUserId: actor.userId,
+              recordedByName: actor.displayName,
+              metadata: {
                 purchaseLotId: lot.id,
+                poNumber,
+                supplierName: isAggregateSupplierLabel(lot.supplierName)
+                  ? null
+                  : lot.supplierName,
                 lotCode: lot.lotCode,
-                qty: receivedQty,
-                direction: "in",
-                reason: "restock",
-                unitCost: lot.unitCost,
-                lineTotal,
-                notes:
-                  receivedQty === orderedQty
-                    ? `Delivered via PO ${lot.reference || lot.lotCode}`
-                    : `Delivered via PO ${lot.reference || lot.lotCode} — received ${receivedQty} of ${orderedQty} ordered`,
-                actorUserId: actor.userId,
-                actorName: actor.displayName,
+                directProjectDelivery: true,
+              },
+            });
+          } else {
+            // Standard warehouse intake → supplies or materials on-hand qty
+            await db
+              .update(consumables)
+              .set({
+                currentQty: sql`${consumables.currentQty} + ${receivedQty}`,
+                lastRestocked: new Date(),
+                updatedAt: new Date(),
+                ...(lot.supplierName && !isAggregateSupplierLabel(lot.supplierName)
+                  ? { supplier: lot.supplierName }
+                  : {}),
+              })
+              .where(eq(consumables.id, lot.consumableId));
+
+            await db.insert(stockMovements).values({
+              tenantId: lot.tenantId,
+              movementCode: generateOperationalCode("MOV"),
+              consumableId: lot.consumableId,
+              purchaseLotId: lot.id,
+              lotCode: lot.lotCode,
+              qty: receivedQty,
+              direction: "in",
+              reason: "restock",
+              unitCost: lot.unitCost,
+              lineTotal,
+              notes:
+                receivedQty === orderedQty
+                  ? `Delivered via PO ${poNumber}`
+                  : `Delivered via PO ${poNumber} — received ${receivedQty} of ${orderedQty} ordered`,
+              actorUserId: actor.userId,
+              actorName: actor.displayName,
+            });
+          }
+        } else if (lot.itemType === "asset") {
+          // Activate / mint physical units so /assets reflects received quantity
+          const unitsToEnsure = receivedQty;
+          let primaryAssetId = lot.assetId;
+
+          if (primaryAssetId) {
+            const [existingAsset] = await db
+              .select()
+              .from(assets)
+              .where(eq(assets.id, primaryAssetId))
+              .for("update")
+              .limit(1);
+
+            if (!existingAsset) {
+              throw new NotFoundError("Asset", primaryAssetId);
+            }
+
+            await db
+              .update(assets)
+              .set({
+                status: "active",
+                purchaseDate: existingAsset.purchaseDate || lot.purchasedOn,
+                value: existingAsset.value || lot.unitCost,
+                supplierId: existingAsset.supplierId || lot.supplierId,
+                lastUpdated: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(assets.id, primaryAssetId));
+
+            // Mint remaining units when PO ordered/received more than one physical asset
+            for (let i = 1; i < unitsToEnsure; i++) {
+              await db.insert(assets).values({
+                tenantId: lot.tenantId,
+                assetCode: generateOperationalCode("AST"),
+                name: existingAsset.name,
+                category: existingAsset.category,
+                status: "active",
+                assignmentType: existingAsset.assignmentType,
+                modelId: existingAsset.modelId,
+                location: existingAsset.location,
+                purchaseDate: lot.purchasedOn,
+                value: lot.unitCost,
+                supplierId: lot.supplierId,
+                notes: `Acquired via PO ${poNumber} (unit ${i + 1}/${unitsToEnsure})`,
               });
             }
-          }
-        }
+          } else {
+            // No linked asset yet — register received physical units now
+            for (let i = 0; i < unitsToEnsure; i++) {
+              const [created] = await db
+                .insert(assets)
+                .values({
+                  tenantId: lot.tenantId,
+                  assetCode: generateOperationalCode("AST"),
+                  name: lot.itemName,
+                  category: "Equipment",
+                  status: "active",
+                  assignmentType: "borrowable",
+                  location: "Property Custodian Depot",
+                  purchaseDate: lot.purchasedOn,
+                  value: lot.unitCost,
+                  supplierId: lot.supplierId,
+                  notes: `Acquired via PO ${poNumber}${
+                    unitsToEnsure > 1 ? ` (unit ${i + 1}/${unitsToEnsure})` : ""
+                  }`,
+                })
+                .returning();
 
-        if (lot.itemType === "asset" && lot.assetId) {
-          await db
-            .update(assets)
-            .set({
-              status: "active",
-              updatedAt: new Date(),
-            })
-            .where(eq(assets.id, lot.assetId));
+              if (i === 0) {
+                primaryAssetId = created.id;
+                nextAssetId = created.id;
+              }
+            }
+          }
+
+          // Asset lots track one primary unit link; remaining qty stays available for write-off math
+          nextRemaining = unitsToEnsure;
         }
       }
 
@@ -838,6 +996,13 @@ export class PurchaseLotService {
           quantity: nextQuantity,
           quantityRemaining: nextRemaining,
           receiptUrl: nextReceiptUrl,
+          ...(nextAssetId && nextAssetId !== lot.assetId
+            ? { assetId: nextAssetId }
+            : {}),
+          // Drop stale PO-level aggregate labels from older multi-dealer POs.
+          ...(isAggregateSupplierLabel(lot.supplierName)
+            ? { supplierName: null }
+            : {}),
           ...(nextStatus === "delivered" &&
           currentMeta.status !== "delivered" &&
           nextQuantity !== lot.quantity
