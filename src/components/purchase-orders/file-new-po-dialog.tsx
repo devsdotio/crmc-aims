@@ -920,12 +920,10 @@ export function FileNewPODialog({
       const uniqueSuppliers = Array.from(
         new Set(items.map((it) => it.suggestedDealer?.trim()).filter(Boolean))
       );
+      // Only set a PO-level supplier when every line shares one vendor.
+      // Never send "Multiple Suppliers" — each lot stores its own line dealer.
       const masterSupplierName =
-        uniqueSuppliers.length === 1
-          ? uniqueSuppliers[0]
-          : uniqueSuppliers.length > 1
-          ? "Multiple Suppliers"
-          : undefined;
+        uniqueSuppliers.length === 1 ? uniqueSuppliers[0] : undefined;
       const masterSupplierId =
         uniqueSuppliers.length === 1 ? items[0]?.supplierId : undefined;
 

@@ -44,6 +44,17 @@ function formatMoney(value: string | number): string {
   return n.toFixed(2);
 }
 
+/** PO-level placeholder when line items have different dealers — never store on a lot/item. */
+function isAggregateSupplierLabel(name: string | null | undefined): boolean {
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  return (
+    n === "multiple suppliers" ||
+    n.startsWith("multiple suppliers") ||
+    /^multiple\s*\(\d+\)$/.test(n)
+  );
+}
+
 export type LotCostAllocation = {
   lotId: string | null;
   lotCode: string | null;
@@ -319,6 +330,10 @@ export class PurchaseLotService {
           resolvedSupplierName = sup.name;
         }
       }
+      // Body may carry a UI aggregate label when dealers differ — never use that on lots/stock.
+      if (isAggregateSupplierLabel(resolvedSupplierName)) {
+        resolvedSupplierName = null;
+      }
 
       const initialStatus: PurchaseOrderStatus = body.status || "pending_approval";
       const nowIso = new Date().toISOString();
@@ -345,6 +360,23 @@ export class PurchaseLotService {
 
         const targetProjectId = item.projectId || body.projectId || null;
         const targetProjectName = item.projectName || body.projectName || null;
+
+        // Prefer the line item's own dealer; fall back to PO-level only when it is a real vendor.
+        let lineSupplierId = item.supplierId ?? null;
+        let lineSupplierName = item.suggestedDealer?.trim() || null;
+        if (lineSupplierId) {
+          const lineSup = await this.suppliers.findById(lineSupplierId, session);
+          if (lineSup) lineSupplierName = lineSup.name;
+        }
+        if (!lineSupplierName && resolvedSupplierName) {
+          lineSupplierName = resolvedSupplierName;
+        }
+        if (!lineSupplierId && supplierId && resolvedSupplierName) {
+          lineSupplierId = supplierId;
+        }
+        if (isAggregateSupplierLabel(lineSupplierName)) {
+          lineSupplierName = item.suggestedDealer?.trim() || null;
+        }
 
         // 1. Handle Consumable
         if (item.itemType === "consumable") {
@@ -396,12 +428,12 @@ export class PurchaseLotService {
                   unitCost: String(Number(item.unitCost).toFixed(2)),
                   consumableId,
                   incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
-                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${resolvedSupplierName || item.suggestedDealer || "—"}`,
+                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${lineSupplierName || "—"}`,
                   recordedByUserId: actor.userId,
                   recordedByName: actor.displayName,
                   metadata: {
                     poNumber,
-                    supplierName: resolvedSupplierName || item.suggestedDealer || null,
+                    supplierName: lineSupplierName,
                     directProjectDelivery: true,
                   },
                 });
@@ -412,6 +444,7 @@ export class PurchaseLotService {
                     currentQty: existing.currentQty + item.quantity,
                     lastRestocked: new Date(),
                     updatedAt: new Date(),
+                    ...(lineSupplierName ? { supplier: lineSupplierName } : {}),
                   })
                   .where(eq(consumables.id, consumableId));
 
@@ -448,7 +481,7 @@ export class PurchaseLotService {
                 currentQty: initialQty,
                 minThreshold: item.minThreshold ?? 5,
                 location: item.location || "Main Property Storage",
-                supplier: resolvedSupplierName || item.suggestedDealer || undefined,
+                supplier: lineSupplierName || undefined,
                 lastRestocked: initialStatus === "delivered" && !targetProjectId ? new Date() : undefined,
                 notes: body.notes,
               })
@@ -482,12 +515,12 @@ export class PurchaseLotService {
                   unitCost: String(Number(item.unitCost).toFixed(2)),
                   consumableId,
                   incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
-                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${resolvedSupplierName || item.suggestedDealer || "—"}`,
+                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${lineSupplierName || "—"}`,
                   recordedByUserId: actor.userId,
                   recordedByName: actor.displayName,
                   metadata: {
                     poNumber,
-                    supplierName: resolvedSupplierName || item.suggestedDealer || null,
+                    supplierName: lineSupplierName,
                     directProjectDelivery: true,
                   },
                 });
@@ -543,7 +576,7 @@ export class PurchaseLotService {
                   location: item.location || "Property Custodian Depot",
                   purchaseDate: body.poDate,
                   value: formatMoney(item.unitCost),
-                  supplierId: supplierId || undefined,
+                  supplierId: lineSupplierId || undefined,
                   notes: `Acquired via PO ${poNumber}${
                     unitsToCreate > 1 ? ` (unit ${i + 1}/${unitsToCreate})` : ""
                   }`,
@@ -595,8 +628,8 @@ export class PurchaseLotService {
             assetId,
             itemCode,
             itemName,
-            supplierId,
-            supplierName: resolvedSupplierName || item.suggestedDealer || null,
+            supplierId: lineSupplierId,
+            supplierName: lineSupplierName,
             departmentId,
             departmentName,
             projectId: targetProjectId,
@@ -632,7 +665,10 @@ export class PurchaseLotService {
           status: initialStatus,
           itemCount: body.items.length,
           totalCost: results.reduce((sum, r) => sum + parseFloat(r.totalCost), 0).toFixed(2),
-          supplierName: resolvedSupplierName,
+          supplierName:
+            resolvedSupplierName ||
+            results.map((r) => r.supplierName).filter(Boolean)[0] ||
+            null,
         },
       });
 
@@ -749,7 +785,9 @@ export class PurchaseLotService {
                 currentQty: sql`${consumables.currentQty} + ${receivedQty}`,
                 lastRestocked: new Date(),
                 updatedAt: new Date(),
-                ...(lot.supplierName ? { supplier: lot.supplierName } : {}),
+                ...(lot.supplierName && !isAggregateSupplierLabel(lot.supplierName)
+                  ? { supplier: lot.supplierName }
+                  : {}),
               })
               .where(eq(consumables.id, lot.consumableId));
 
@@ -805,13 +843,17 @@ export class PurchaseLotService {
               unitCost: String(unit.toFixed(2)),
               consumableId: lot.consumableId,
               incurredOn: nowIso.slice(0, 10),
-              notes: `Auto-credited upon PO ${poNumber} delivery. Supplier: ${lot.supplierName || "—"}`,
+              notes: `Auto-credited upon PO ${poNumber} delivery. Supplier: ${
+                isAggregateSupplierLabel(lot.supplierName) ? "—" : lot.supplierName || "—"
+              }`,
               recordedByUserId: actor.userId,
               recordedByName: actor.displayName,
               metadata: {
                 purchaseLotId: lot.id,
                 poNumber,
-                supplierName: lot.supplierName,
+                supplierName: isAggregateSupplierLabel(lot.supplierName)
+                  ? null
+                  : lot.supplierName,
                 lotCode: lot.lotCode,
                 directProjectDelivery: true,
               },
@@ -824,7 +866,9 @@ export class PurchaseLotService {
                 currentQty: sql`${consumables.currentQty} + ${receivedQty}`,
                 lastRestocked: new Date(),
                 updatedAt: new Date(),
-                ...(lot.supplierName ? { supplier: lot.supplierName } : {}),
+                ...(lot.supplierName && !isAggregateSupplierLabel(lot.supplierName)
+                  ? { supplier: lot.supplierName }
+                  : {}),
               })
               .where(eq(consumables.id, lot.consumableId));
 
@@ -954,6 +998,10 @@ export class PurchaseLotService {
           receiptUrl: nextReceiptUrl,
           ...(nextAssetId && nextAssetId !== lot.assetId
             ? { assetId: nextAssetId }
+            : {}),
+          // Drop stale PO-level aggregate labels from older multi-dealer POs.
+          ...(isAggregateSupplierLabel(lot.supplierName)
+            ? { supplierName: null }
             : {}),
           ...(nextStatus === "delivered" &&
           currentMeta.status !== "delivered" &&
