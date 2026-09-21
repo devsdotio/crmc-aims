@@ -1,0 +1,2 @@
+CREATE TYPE "public"."asset_assignment_type" AS ENUM('borrowable', 'assignable');--> statement-breakpoint
+ALTER TABLE "assets" ADD COLUMN "assignment_type" "asset_assignment_type" DEFAULT 'borrowable' NOT NULL;

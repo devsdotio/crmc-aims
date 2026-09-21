@@ -1,0 +1,236 @@
+"use client";
+
+import React, { useState, useMemo } from "react";
+import {
+  Wallet,
+  FilePlus2,
+  Search,
+  X,
+  Clock,
+  ShieldCheck,
+  CheckCircle2,
+  Banknote,
+  Tag,
+} from "lucide-react";
+import {
+  usePettyCashListQuery,
+  usePettyCashRealtimeSync,
+} from "@/features/petty-cash/client";
+import type { PettyCashVoucher, PettyCashStatus } from "@/types/petty-cash";
+import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
+import { formatPhp } from "@/components/projects/format-money";
+import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
+import { PettyCashTable } from "./petty-cash-table";
+import { CreatePettyCashDialog } from "./create-petty-cash-dialog";
+import { PettyCashDetailSheet } from "./petty-cash-detail-sheet";
+
+export function PettyCashView() {
+  // Real-time synchronization via Supabase postgres_changes
+  usePettyCashRealtimeSync();
+
+  const [search, setSearch] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<PettyCashStatus | "all">("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [selectedVoucher, setSelectedVoucher] = useState<PettyCashVoucher | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  // Fetch petty cash vouchers query
+  const {
+    data,
+    isLoading,
+    refetch,
+  } = usePettyCashListQuery({
+    search: search.trim() || undefined,
+    status: selectedStatus === "all" ? undefined : selectedStatus,
+    category: selectedCategory === "all" ? undefined : selectedCategory,
+    limit: 100,
+  });
+
+  const vouchers = useMemo(() => data?.vouchers ?? [], [data?.vouchers]);
+
+  // Summary statistics calculated across current results
+  const stats = useMemo(() => {
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let completedCount = 0;
+    let totalDisbursed = 0;
+
+    for (const v of vouchers) {
+      if (v.status === "pending_approval") pendingCount++;
+      if (v.status === "approved") approvedCount++;
+      if (v.status === "completed") {
+        completedCount++;
+        totalDisbursed += parseFloat(v.amount) || 0;
+      }
+    }
+
+    return {
+      total: vouchers.length,
+      pendingCount,
+      approvedCount,
+      completedCount,
+      totalDisbursed,
+    };
+  }, [vouchers]);
+
+  const handleSelectVoucher = (voucher: PettyCashVoucher) => {
+    setSelectedVoucher(voucher);
+    setIsDetailOpen(true);
+  };
+
+  return (
+    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg rounded-lg border border-border shadow-2xs">
+      {/* Page Header Bar (flush at top with border-b) */}
+      <div className="px-4 md:px-6 py-3.5 bg-bg shrink-0 flex flex-wrap items-center justify-between gap-3 border-b border-border">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-text">
+              Petty Cash Vouchers
+            </h1>
+            <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
+              {isLoading ? "Loading records…" : `${vouchers.length} record${vouchers.length === 1 ? "" : "s"}`}
+            </span>
+          </div>
+          <p className="text-xs text-text-secondary mt-0.5">
+            Petty cash micro-disbursement records for immediate small expenses and urgent cash purchases.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setIsCreateOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+          >
+            <FilePlus2 className="h-4 w-4" />
+            <span>New Petty Cash</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Search & Filter Toolbar (flush below header with border-b, matching vouchers/assets) */}
+      <div className="px-4 md:px-6 py-2.5 bg-bg border-b border-border shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        {/* Search */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by PCV#, claimant, category, receipt, particulars..."
+            className="w-full h-8.5 rounded-lg border border-border bg-bg-subtle/50 pl-8.5 pr-8 text-xs text-text placeholder:text-text-secondary/60 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary focus:bg-bg transition-colors"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Classification Indicator */}
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            <Wallet className="h-3.5 w-3.5" />
+            <span>Petty Cash Voucher (PCV)</span>
+          </div>
+
+          {/* Category Filter */}
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="h-8.5 rounded-lg border border-border bg-bg px-2.5 text-xs text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+          >
+            <option value="all">All Categories</option>
+            {PETTY_CASH_CATEGORIES.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.label}
+              </option>
+            ))}
+          </select>
+
+          {/* Status Filter */}
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value as PettyCashStatus | "all")}
+            className="h-8.5 rounded-lg border border-border bg-bg px-2.5 text-xs text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
+          >
+            <option value="all">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="pending_approval">Pending Approval</option>
+            <option value="approved">Approved</option>
+            <option value="completed">Disbursed / Paid</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Main Content Region with Stat Cards and Table */}
+      <main className="flex-1 overflow-y-auto min-h-0 p-3.5 md:p-4 bg-bg flex flex-col gap-3">
+        {/* Summary Stat Cards */}
+        <StatCardGrid columns={4} className="gap-3 shrink-0">
+          <StatCard
+            title="Total Petty Cash Vouchers"
+            value={stats.total}
+            subtitle="All recorded PCVs"
+            icon={Wallet}
+            tone="accent"
+          />
+          <StatCard
+            title="Pending Approval"
+            value={stats.pendingCount}
+            subtitle="Awaiting custodian sign-off"
+            icon={Clock}
+            tone="amber"
+          />
+          <StatCard
+            title="Approved"
+            value={stats.approvedCount}
+            subtitle="Ready for disbursement"
+            icon={ShieldCheck}
+            tone="blue"
+          />
+          <StatCard
+            title="Total Disbursed"
+            value={formatPhp(stats.totalDisbursed)}
+            subtitle={`${stats.completedCount} completed disbursement(s)`}
+            icon={Banknote}
+            tone="emerald"
+          />
+        </StatCardGrid>
+
+        {/* Table / Empty State Container */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <PettyCashTable
+            vouchers={vouchers}
+            loading={isLoading}
+            onSelectVoucher={handleSelectVoucher}
+          />
+        </div>
+      </main>
+
+      {/* Detail Slide-out Sheet */}
+      <PettyCashDetailSheet
+        voucher={selectedVoucher}
+        isOpen={isDetailOpen}
+        onClose={() => {
+          setIsDetailOpen(false);
+          setSelectedVoucher(null);
+        }}
+      />
+
+      {/* Create Dialog */}
+      <CreatePettyCashDialog
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        onSuccess={() => void refetch()}
+      />
+    </div>
+  );
+}

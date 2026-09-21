@@ -1,0 +1,94 @@
+{
+  "$schema": "agent-workflow-v1",
+  "description": "Machine-readable phase/cycle definitions. Mirrors workflow.md — keep both in sync.",
+  "phases": [
+    {
+      "id": "01-planning",
+      "name": "Planning",
+      "rules_file": ".mdrules/<project>/01-planning.md",
+      "entry_criteria": ["user request or problem statement exists"],
+      "exit_criteria": ["scope defined", "task breakdown produced", "acceptance criteria defined"],
+      "on_fail": {
+        "default": { "retry": "self" }
+      },
+      "max_retries": 3
+    },
+    {
+      "id": "02-architecture",
+      "name": "Architecture",
+      "rules_file": ".mdrules/<project>/02-architecture.md",
+      "entry_criteria": ["01-planning passed"],
+      "exit_criteria": ["contract defined", "data model changes (if any) specified", "trade-offs documented"],
+      "on_fail": {
+        "scope_ambiguous_or_wrong": { "cycle_to": "01-planning", "carry_forward": "specific gap exposed" },
+        "design_flaw": { "retry": "self" }
+      },
+      "max_retries": 3
+    },
+    {
+      "id": "03-coding",
+      "name": "Coding",
+      "rules_file": ".mdrules/<project>/03-coding.md",
+      "entry_criteria": ["02-architecture passed"],
+      "exit_criteria": ["implementation complete", "matches contract from architecture phase", "no known blockers"],
+      "on_fail": {
+        "design_breaks_on_implementation": { "cycle_to": "02-architecture", "carry_forward": "exact contract/assumption that broke" },
+        "simple_bug": { "retry": "self" }
+      },
+      "max_retries": 3
+    },
+    {
+      "id": "04-review",
+      "name": "Review",
+      "rules_file": ".mdrules/<project>/04-review.md",
+      "entry_criteria": ["03-coding passed"],
+      "exit_criteria": ["no blocker-level (red) findings remain"],
+      "on_fail": {
+        "blocker_found": { "cycle_to": "03-coding", "carry_forward": "specific blocker list only" },
+        "design_gap_found": { "cycle_to": "02-architecture", "carry_forward": "what the design missed" }
+      },
+      "max_retries": 3
+    },
+    {
+      "id": "05-testing",
+      "name": "Testing",
+      "rules_file": ".mdrules/<project>/05-testing.md",
+      "entry_criteria": ["04-review passed"],
+      "exit_criteria": ["happy path, edge cases, and failure cases covered and passing"],
+      "on_fail": {
+        "edge_case_fails": { "cycle_to": "03-coding", "carry_forward": "the specific failing test case" },
+        "design_cannot_support_case": { "cycle_to": "02-architecture", "carry_forward": "what the design needs to account for" }
+      },
+      "max_retries": 3
+    },
+    {
+      "id": "06-documentation",
+      "name": "Documentation",
+      "rules_file": ".mdrules/<project>/06-documentation.md",
+      "entry_criteria": ["05-testing passed"],
+      "exit_criteria": ["docs match actual behavior", "usage example included"],
+      "on_fail": {
+        "docs_reveal_scope_was_wrong": { "cycle_to": "01-planning", "carry_forward": "the scope mismatch discovered" }
+      },
+      "max_retries": 2
+    },
+    {
+      "id": "07-deployment",
+      "name": "Deployment",
+      "rules_file": ".mdrules/<project>/07-deployment.md",
+      "entry_criteria": ["06-documentation passed"],
+      "exit_criteria": ["pre-flight checklist fully passes", "rollback plan documented"],
+      "on_fail": {
+        "tests_red": { "cycle_to": "05-testing", "carry_forward": "which check failed" },
+        "migration_unsafe": { "cycle_to": "02-architecture", "carry_forward": "the migration issue" }
+      },
+      "max_retries": 2
+    }
+  ],
+  "global_rules": {
+    "max_retries_per_phase_default": 3,
+    "on_max_retries_exceeded": "stop_and_escalate_to_user",
+    "on_planning_revisited_twice_in_one_task": "stop_and_confirm_scope_with_user",
+    "carry_forward_policy": "pass_only_the_specific_failure_reason_not_full_history"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "0003_profiles_last_active",
+  "prevId": "0002_glamorous_madame_hydra",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {},
+  "enums": {},
+  "schemas": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

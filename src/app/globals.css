@@ -1,0 +1,436 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-quicksand), sans-serif;
+  --font-mono: var(--font-quicksand), monospace;
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--color-border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--color-accent-foreground);
+  --color-accent: var(--color-accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--color-primary-foreground);
+  --color-primary: var(--color-primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-bg: #FFFFFF;
+  --color-bg-subtle: #F2F3F7;
+  --color-text: #1B2140;
+  --color-text-secondary: #5A5F73;
+
+  /* Status Colors */
+  --color-status-active: var(--status-active-bg);
+  --color-status-active-bg: var(--status-active-bg);
+  --color-status-active-text: var(--status-active-text);
+  --color-status-repair: var(--status-repair-bg);
+  --color-status-repair-bg: var(--status-repair-bg);
+  --color-status-repair-text: var(--status-repair-text);
+  --color-status-outofservice: var(--status-outofservice-bg);
+  --color-status-outofservice-bg: var(--status-outofservice-bg);
+  --color-status-outofservice-text: var(--status-outofservice-text);
+  --color-status-retired: var(--status-retired-bg);
+  --color-status-retired-bg: var(--status-retired-bg);
+  --color-status-retired-text: var(--status-retired-text);
+
+  /* Category Colors */
+  --color-category-transport: var(--category-transport-bg);
+  --color-category-transport-bg: var(--category-transport-bg);
+  --color-category-transport-text: var(--category-transport-text);
+  --color-category-computing: var(--category-computing-bg);
+  --color-category-computing-bg: var(--category-computing-bg);
+  --color-category-computing-text: var(--category-computing-text);
+  --color-category-av: var(--category-av-bg);
+  --color-category-av-bg: var(--category-av-bg);
+  --color-category-av-text: var(--category-av-text);
+  --color-category-furniture: var(--category-furniture-bg);
+  --color-category-furniture-bg: var(--category-furniture-bg);
+  --color-category-furniture-text: var(--category-furniture-text);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --background: #F2F3F7;
+  --foreground: #1B2140;
+  --card: #FFFFFF;
+  --card-foreground: #1B2140;
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Brand base */
+  --color-primary: #2A3260;
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: #FF4E45;
+  --color-accent-foreground: #FFFFFF;
+  --color-bg: #FFFFFF;
+  --color-bg-subtle: #F2F3F7;
+  --color-border: #E3E5EC;
+  --color-text: #1B2140;
+  --color-text-secondary: #5A5F73;
+
+  /* Status tags - Solid vibrant background with high-contrast text */
+  --status-active-bg: #16A34A;
+  --status-active-text: #15803D;
+  --status-repair-bg: #D97706;
+  --status-repair-text: #B45309;
+  --status-outofservice-bg: #DC2626;
+  --status-outofservice-text: #B91C1C;
+  --status-retired-bg: #64748B;
+  --status-retired-text: #475569;
+
+  /* Category tags - Solid distinct non-pink colors with white text */
+  --category-transport-bg: #2563EB;
+  --category-transport-text: #FFFFFF;
+  --category-computing-bg: #0284C7;
+  --category-computing-text: #FFFFFF;
+  --category-av-bg: #7C3AED;
+  --category-av-text: #FFFFFF;
+  --category-furniture-bg: #059669;
+  --category-furniture-text: #FFFFFF;
+}
+
+.dark, [data-theme="dark"] {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  /* Brand base */
+  --color-primary: #2A3260;
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: #FF6B62;
+  --color-accent-foreground: #12162B;
+  --color-bg: #12162B;
+  --color-bg-subtle: #1B2140;
+  --color-border: #2A3260;
+  --color-text: #F2F3F7;
+  --color-text-secondary: #A9AEC2;
+
+  /* Status tags */
+  --status-active-bg: #1F7A4C;
+  --status-active-text: #C8F5DC;
+  --status-repair-bg: #8A5A0C;
+  --status-repair-text: #FFE1A8;
+  --status-outofservice-bg: #B23A32;
+  --status-outofservice-text: #FFD9D6;
+  --status-retired-bg: #4A4F5C;
+  --status-retired-text: #E2E4EA;
+
+  /* Category tags */
+  --category-transport-bg: #2A3260;
+  --category-transport-text: #C7CBE8;
+  --category-computing-bg: #123A5C;
+  --category-computing-text: #9CC7EE;
+  --category-av-bg: #4A241F;
+  --category-av-text: #FFB4AB;
+  --category-furniture-bg: #3E1B29;
+  --category-furniture-text: #F0A8C4;
+}
+
+.light, [data-theme="light"] {
+  --background: #F2F3F7;
+  --foreground: #1B2140;
+  --card: #FFFFFF;
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  /* Brand base */
+  --color-primary: #2A3260;
+  --color-primary-foreground: #FFFFFF;
+  --color-accent: #FF4E45;
+  --color-accent-foreground: #FFFFFF;
+  --color-bg: #FFFFFF;
+  --color-bg-subtle: #F2F3F7;
+  --color-border: #E3E5EC;
+  --color-text: #1B2140;
+  --color-text-secondary: #5A5F73;
+
+  /* Status tags - Solid vibrant background with high-contrast text */
+  --status-active-bg: #16A34A;
+  --status-active-text: #15803D;
+  --status-repair-bg: #D97706;
+  --status-repair-text: #B45309;
+  --status-outofservice-bg: #DC2626;
+  --status-outofservice-text: #B91C1C;
+  --status-retired-bg: #64748B;
+  --status-retired-text: #475569;
+
+  /* Category tags - Solid distinct non-pink colors with white text */
+  --category-transport-bg: #2563EB;
+  --category-transport-text: #FFFFFF;
+  --category-computing-bg: #0284C7;
+  --category-computing-text: #FFFFFF;
+  --category-av-bg: #7C3AED;
+  --category-av-text: #FFFFFF;
+  --category-furniture-bg: #059669;
+  --category-furniture-text: #FFFFFF;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* Brand base */
+    --color-primary: #2A3260;
+    --color-primary-foreground: #FFFFFF;
+    --color-accent: #FF6B62;
+    --color-accent-foreground: #12162B;
+    --color-bg: #12162B;
+    --color-bg-subtle: #1B2140;
+    --color-border: #2A3260;
+    --color-text: #F2F3F7;
+    --color-text-secondary: #A9AEC2;
+
+    /* Status tags */
+    --status-active-bg: #16A34A;
+    --status-active-text: #4ADE80;
+    --status-repair-bg: #D97706;
+    --status-repair-text: #FBBF24;
+    --status-outofservice-bg: #DC2626;
+    --status-outofservice-text: #F87171;
+    --status-retired-bg: #64748B;
+    --status-retired-text: #94A3B8;
+
+    /* Category tags */
+    --category-transport-bg: #2563EB;
+    --category-transport-text: #FFFFFF;
+    --category-computing-bg: #0284C7;
+    --category-computing-text: #FFFFFF;
+    --category-av-bg: #7C3AED;
+    --category-av-text: #FFFFFF;
+    --category-furniture-bg: #059669;
+    --category-furniture-text: #FFFFFF;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Hide Next.js dev indicator portal */
+nextjs-portal {
+  display: none !important;
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ─── Printable Document Styles (Legal: 8.5in x 14in Landscape) ─── */
+@page {
+  size: 14in 8.5in;
+  margin: 10mm;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    vertical-align: top;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+
+  /* Force pure black ink throughout all printable documents */
+  .print-page,
+  .print-page * {
+    color: #000000 !important;
+    border-color: #000000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Logo must retain its vibrant color */
+  .print-page img {
+    filter: none !important;
+    -webkit-filter: none !important;
+  }
+
+  .print-page [class*="bg-"] {
+    background-color: transparent !important;
+  }
+
+  /* Hide screen chrome and controls */
+  .no-print,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .print-only,
+  .print\:block {
+    display: block !important;
+  }
+
+  .print-page {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    vertical-align: top;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  /* Pagination and page-break utilities */
+  .avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .page-break-before {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  table {
+    break-inside: auto;
+  }
+
+  /* Allow rows to cut/break across pages naturally to fill page completely */
+  tr {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* Only proceed to next page if header would be the last element at bottom */
+  thead,
+  .avoid-orphan-header {
+    break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tfoot {
+    display: table-footer-group;
+  }
+}
+
+.print-only {
+  display: none;
+}
