@@ -80,7 +80,7 @@ export function PendingApprovalsWidget({
           </div>
         </div>
         <Link
-          href="/borrow-requests?status=pending"
+          href="/borrow-requests/assign?status=pending"
           className="flex items-center gap-1 text-xs font-semibold text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md px-1.5 py-0.5"
         >
           View all <ChevronRight className="h-3.5 w-3.5" />
@@ -136,7 +136,13 @@ export function PendingApprovalsWidget({
                 {/* Single View Request Action */}
                 <div className="shrink-0">
                   <Link
-                    href={`/borrow-requests?kind=${req.kind ?? "borrow"}&requestId=${req.id}&status=pending`}
+                    href={`/borrow-requests/${
+                      req.kind === "supply"
+                        ? "supplies"
+                        : req.kind === "assign"
+                          ? "assign"
+                          : "borrow"
+                    }?requestId=${req.id}&status=pending`}
                     className={cn(
                       "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
                       "bg-accent text-accent-foreground shadow-xs hover:opacity-90 transition-opacity",

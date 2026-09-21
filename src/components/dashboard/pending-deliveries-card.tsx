@@ -57,7 +57,7 @@ export function PendingDeliveriesCard({
         code: `${r.requesterName} (${r.department})`,
         delayText: r.relativeTime || "Pending",
         isOverdue: false,
-        href: r.kind === "supply" ? `/consumable-requests` : `/borrow-requests?status=pending`,
+        href: r.kind === "supply" ? `/borrow-requests/supplies` : `/borrow-requests/borrow?status=pending`,
       });
     });
   }
@@ -174,7 +174,7 @@ export function PendingDeliveriesCard({
       {/* Bottom CTA */}
       <div className="pt-1.5 border-t border-border/60">
         <Link
-          href="/borrow-requests?status=pending"
+          href="/borrow-requests/borrow?status=pending"
           className="flex h-7.5 w-full items-center justify-center gap-1.5 rounded-xl bg-primary text-[11px] font-bold text-white hover:bg-primary/90 transition-colors shadow-xs cursor-pointer"
         >
           <span>

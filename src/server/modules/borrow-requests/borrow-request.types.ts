@@ -97,6 +97,7 @@ export interface IBorrowRequestRepository {
   countPending(
     session?: import("@/server/db/transaction").DbSession,
     userId?: string,
-    tenantId?: string
+    tenantId?: string,
+    requestType?: "borrowable" | "assignable"
   ): Promise<number>;
 }

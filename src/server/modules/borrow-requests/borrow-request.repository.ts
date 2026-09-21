@@ -5,7 +5,6 @@ import type { DbSession } from "@/server/db/transaction";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   borrowRequests,
-  departments,
   type BorrowRequestRow,
   type NewBorrowRequestRow,
 } from "@/server/db/schema";
@@ -81,22 +80,6 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
         sql`EXISTS (
           SELECT 1 FROM jsonb_array_elements(${borrowRequests.items}) AS item
           WHERE item->>'assetId' = ${filters.assetId}
-        )`
-      );
-    }
-    if (!filters.includeSandbox) {
-      conditions.push(
-        sql`(${borrowRequests.departmentId} is null OR not exists (
-          select 1 from ${departments}
-          where ${departments.id} = ${borrowRequests.departmentId}
-            and ${departments.isSandbox} = true
-        ))`
-      );
-      conditions.push(
-        sql`not exists (
-          select 1 from jsonb_array_elements(${borrowRequests.items}) AS item
-          inner join assets a on a.id::text = item->>'assetId'
-          where a.is_sandbox = true
         )`
       );
     }
@@ -189,12 +172,27 @@ export class BorrowRequestRepository implements IBorrowRequestRepository {
     return Number(row?.value ?? 0);
   }
 
-  async countPending(session?: DbSession, userId?: string, tenantId?: string): Promise<number> {
+  async countPending(
+    session?: DbSession,
+    userId?: string,
+    tenantId?: string,
+    requestType?: "borrowable" | "assignable"
+  ): Promise<number> {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [eq(borrowRequests.status, "pending")];
     if (resolvedTenantId) conditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
     if (userId) conditions.push(eq(borrowRequests.requesterUserId, userId));
+    if (requestType === "assignable") {
+      conditions.push(eq(borrowRequests.requestType, "assignable"));
+    } else if (requestType === "borrowable") {
+      conditions.push(
+        or(
+          eq(borrowRequests.requestType, "borrowable"),
+          sql`${borrowRequests.requestType} is null`
+        )!
+      );
+    }
     const [row] = await db
       .select({ value: count() })
       .from(borrowRequests)

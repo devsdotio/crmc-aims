@@ -3,7 +3,6 @@ import { BorrowRequestRepository } from "@/server/modules/borrow-requests/borrow
 import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repository";
 import { ConsumableRepository } from "@/server/modules/consumables/consumable.repository";
 import { ConsumableRequestRepository } from "@/server/modules/consumable-requests/consumable-request.repository";
-import { DepartmentRepository } from "@/server/modules/departments/department.repository";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { getDb } from "@/server/db";
 import {
@@ -42,6 +41,9 @@ export type DashboardSummaryDTO = {
   activeBorrows: number;
   activeAssignments: number;
   pendingApprovals: number;
+  pendingAssignRequests?: number;
+  pendingBorrowRequests?: number;
+  pendingSupplyRequests?: number;
   lowStockItems: number;
   overdueAssets: number;
   totalRequests?: number;
@@ -177,13 +179,11 @@ export class DashboardService {
     private readonly borrowLog = new BorrowLogRepository(),
     private readonly consumables = new ConsumableRepository(),
     private readonly consumableRequests = new ConsumableRequestRepository(),
-    private readonly assets = new AssetRepository(),
-    private readonly departments = new DepartmentRepository()
+    private readonly assets = new AssetRepository()
   ) {}
 
   private async resolveBorrowerDeptContext(userId: string, actorTenantId?: string): Promise<{
     departmentId: string | null;
-    includeSandbox: boolean;
   }> {
     const db = getDb();
     const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
@@ -195,15 +195,7 @@ export class DashboardService {
       .from(profiles)
       .where(and(...conditions))
       .limit(1);
-    const departmentId = profile?.departmentId ?? null;
-    if (!departmentId) {
-      return { departmentId: null, includeSandbox: false };
-    }
-    const dept = await this.departments.findById(departmentId, undefined, resolvedTenantId);
-    return {
-      departmentId,
-      includeSandbox: Boolean(dept?.isSandbox),
-    };
+    return { departmentId: profile?.departmentId ?? null };
   }
 
   private mergePendingRequests(
@@ -283,13 +275,19 @@ export class DashboardService {
       30_000,
       async () => {
         if (userId) {
-          const { departmentId, includeSandbox } =
+          const { departmentId } =
             await this.resolveBorrowerDeptContext(userId, tenantId);
 
-          const [activeBorrows, pendingApprovals, overdueAssets] = await Promise.all([
+          const [
+            activeBorrows,
+            pendingAssignRequests,
+            pendingBorrowRequests,
+            pendingSupplyRequests,
+            overdueAssets,
+          ] = await Promise.all([
             departmentId
               ? this.borrowLog
-                  .countDepartmentHeld(departmentId, { includeSandbox, tenantId })
+                  .countDepartmentHeld(departmentId, { tenantId })
                   .catch((err) => {
                     console.error(
                       "[dashboard] failed to count department held assets for borrower:",
@@ -298,20 +296,36 @@ export class DashboardService {
                     return 0;
                   })
               : Promise.resolve(0),
-            Promise.all([
-              this.requests.countPending(undefined, userId, tenantId).catch((err) => {
-                console.error("[dashboard] failed to count pending requests for borrower:", err);
+            this.requests
+              .countPending(undefined, userId, tenantId, "assignable")
+              .catch((err) => {
+                console.error(
+                  "[dashboard] failed to count pending assign requests for borrower:",
+                  err
+                );
                 return 0;
               }),
-              this.consumableRequests.countPending(undefined, userId, tenantId).catch((err) => {
-                console.error("[dashboard] failed to count pending supply requests for borrower:", err);
+            this.requests
+              .countPending(undefined, userId, tenantId, "borrowable")
+              .catch((err) => {
+                console.error(
+                  "[dashboard] failed to count pending borrow requests for borrower:",
+                  err
+                );
                 return 0;
               }),
-            ]).then(([a, b]) => a + b),
+            this.consumableRequests
+              .countPending(undefined, userId, tenantId)
+              .catch((err) => {
+                console.error(
+                  "[dashboard] failed to count pending supply requests for borrower:",
+                  err
+                );
+                return 0;
+              }),
             departmentId
               ? this.borrowLog
                   .countDepartmentHeld(departmentId, {
-                    includeSandbox,
                     overdueOnly: true,
                     tenantId,
                   })
@@ -324,10 +338,17 @@ export class DashboardService {
                   })
               : Promise.resolve(0),
           ]);
+          const pendingApprovals =
+            pendingAssignRequests +
+            pendingBorrowRequests +
+            pendingSupplyRequests;
           return {
             activeBorrows,
             activeAssignments: 0,
             pendingApprovals,
+            pendingAssignRequests,
+            pendingBorrowRequests,
+            pendingSupplyRequests,
             lowStockItems: 0,
             overdueAssets,
           };
@@ -336,7 +357,9 @@ export class DashboardService {
         const [
           activeBorrows,
           activeAssignments,
-          pendingApprovals,
+          pendingAssignRequests,
+          pendingBorrowRequests,
+          pendingSupplyRequests,
           lowStockItems,
           overdueAssets,
         ] = await Promise.all([
@@ -348,16 +371,22 @@ export class DashboardService {
             console.error("[dashboard] failed to count active assignments:", err);
             return 0;
           }),
-          Promise.all([
-            this.requests.countPending(undefined, undefined, tenantId).catch((err) => {
-              console.error("[dashboard] failed to count pending requests:", err);
+          this.requests
+            .countPending(undefined, undefined, tenantId, "assignable")
+            .catch((err) => {
+              console.error("[dashboard] failed to count pending assign requests:", err);
               return 0;
             }),
-            this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err) => {
-              console.error("[dashboard] failed to count pending supply requests:", err);
+          this.requests
+            .countPending(undefined, undefined, tenantId, "borrowable")
+            .catch((err) => {
+              console.error("[dashboard] failed to count pending borrow requests:", err);
               return 0;
             }),
-          ]).then(([a, b]) => a + b),
+          this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err) => {
+            console.error("[dashboard] failed to count pending supply requests:", err);
+            return 0;
+          }),
           this.consumables.countLowStock(undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to count low stock consumables:", err);
             return 0;
@@ -368,10 +397,16 @@ export class DashboardService {
           }),
         ]);
 
+        const pendingApprovals =
+          pendingAssignRequests + pendingBorrowRequests + pendingSupplyRequests;
+
         return {
           activeBorrows,
           activeAssignments,
           pendingApprovals,
+          pendingAssignRequests,
+          pendingBorrowRequests,
+          pendingSupplyRequests,
           lowStockItems,
           overdueAssets,
         };
@@ -395,9 +430,9 @@ export class DashboardService {
       cacheKey,
       5_000,
       async () => {
-        const { departmentId, includeSandbox } = targetUserId
+        const { departmentId } = targetUserId
           ? await this.resolveBorrowerDeptContext(targetUserId, tenantId)
-          : { departmentId: null, includeSandbox: false };
+          : { departmentId: null };
 
         const [
           activeBorrows,
@@ -410,7 +445,7 @@ export class DashboardService {
         ] = await Promise.all([
           departmentId
             ? this.borrowLog
-                .countDepartmentHeld(departmentId, { includeSandbox, tenantId })
+                .countDepartmentHeld(departmentId, { tenantId })
                 .catch((err) => {
                   console.error(
                     "[dashboard] failed to count borrower department held assets:",
@@ -432,7 +467,6 @@ export class DashboardService {
           departmentId
             ? this.borrowLog
                 .countDepartmentHeld(departmentId, {
-                  includeSandbox,
                   overdueOnly: true,
                   tenantId,
                 })
@@ -473,7 +507,6 @@ export class DashboardService {
                   departmentId,
                   excludeProjects: true,
                   custodyKind: "all",
-                  includeSandbox,
                 }, undefined, tenantId)
                 .catch((err) => {
                   console.error(
@@ -756,7 +789,13 @@ export class DashboardService {
         message: `${row.requesterName} (${row.department}) — ${row.itemDescription}`,
         href: userId
           ? "/borrower-db/requests"
-          : "/borrow-requests?status=pending",
+          : `/borrow-requests/${
+              row.kind === "supply"
+                ? "supplies"
+                : row.kind === "assign"
+                  ? "assign"
+                  : "borrow"
+            }?status=pending&requestId=${row.id}`,
         type: "info",
         relativeTime: row.relativeTime,
         sortAt: row.requestedAt,
@@ -1018,7 +1057,7 @@ export class DashboardService {
       async () => {
         const db = getDb();
         const resolvedTenantId = params?.tenantId ?? actorTenantId ?? getTenantContext()?.tenantId;
-        const conditions = [eq(assets.isSandbox, false)];
+        const conditions = [];
         if (resolvedTenantId) {
           conditions.push(eq(assets.tenantId, resolvedTenantId));
         }
@@ -1061,7 +1100,7 @@ export class DashboardService {
             updatedAt: assets.updatedAt,
           })
           .from(assets)
-          .where(and(...conditions))
+          .where(conditions.length > 0 ? and(...conditions) : undefined)
           .orderBy(desc(assets.updatedAt))
           .limit(limit);
 

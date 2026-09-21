@@ -23,6 +23,21 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     subtitle: "Borrow, assignment, and supply request queues",
     category: "Operations",
   },
+  "/borrow-requests/borrow": {
+    title: "Borrow Requests",
+    subtitle: "Temporary equipment loans awaiting review and release",
+    category: "Operations",
+  },
+  "/borrow-requests/assign": {
+    title: "Assign Requests",
+    subtitle: "Long-term department assignment requests",
+    category: "Operations",
+  },
+  "/borrow-requests/supplies": {
+    title: "Supply Requests",
+    subtitle: "Consumable requisitions awaiting approval and issue",
+    category: "Operations",
+  },
   "/assets": {
     title: "Assets Inventory",
     subtitle: "Manage fixed assets, serial numbers, and equipment records",
@@ -101,6 +116,21 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   "/borrower-db/dashboard": {
     title: "My Dashboard",
     subtitle: "Active borrowings, custody overview, and department requests",
+    category: "Overview",
+  },
+  "/borrower-db/assets": {
+    title: "Assets Registry",
+    subtitle: "Browse institutional fixed assets available for request",
+    category: "Operations",
+  },
+  "/borrower-db/supplies": {
+    title: "Supplies Catalog",
+    subtitle: "Browse consumable supplies available for requisition",
+    category: "Operations",
+  },
+  "/borrower-db/inventory": {
+    title: "My Inventory",
+    subtitle: "Assets currently borrowed or assigned to your department",
     category: "Overview",
   },
   "/borrower-db/requests": {
