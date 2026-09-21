@@ -63,6 +63,16 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     subtitle: "Condition flags, inspections, and repair resolutions",
     category: "Logs & History",
   },
+  "/audit-logs": {
+    title: "Audit Trail",
+    subtitle: "Critical administrative activity and operational traces",
+    category: "Logs & History",
+  },
+  "/audit-trails": {
+    title: "Audit Trails",
+    subtitle: "Critical administrative activity and operational traces",
+    category: "Logs & History",
+  },
   "/purchase-orders": {
     title: "Purchase Orders",
     subtitle: "Intake lot batches, supplier invoices, and cost ledger",

@@ -1,6 +1,5 @@
 import {
   type ConsumableRow,
-  auditLogs,
   stockMovements,
   consumableRequestLines,
 } from "@/server/db/schema";
@@ -33,6 +32,8 @@ import {
   StockMovementService,
   allocationsToMovementLines,
 } from "@/server/modules/stock-movements";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import { ConsumableRepository } from "./consumable.repository";
 import type { ConsumableDTO } from "./consumable.types";
@@ -93,6 +94,8 @@ function toDTO(row: ConsumableRow): ConsumableDTO {
 }
 
 export class ConsumableService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly repo = new ConsumableRepository(),
     private readonly purchaseLots = new PurchaseLotService(),
@@ -237,6 +240,19 @@ export class ConsumableService {
         lastRestocked: null,
         history: [],
       });
+      await this.auditLogs.log({
+        entityType: AUDIT_ENTITY.consumable,
+        entityId: row.itemCode,
+        action: "created",
+        actorName: actor.displayName,
+        actorUserId: actor.userId,
+        notes: `Created consumable ${row.itemCode} (${row.name}).`,
+        metadata: {
+          itemCode: row.itemCode,
+          category: row.category,
+          openingQty: 0,
+        },
+      });
       return toDTO(row);
     }
 
@@ -300,6 +316,24 @@ export class ConsumableService {
               lineTotal: lot.totalCost,
             },
           ],
+        },
+        tx
+      );
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.consumable,
+          entityId: updated.itemCode,
+          action: "created",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Created consumable ${updated.itemCode} with opening stock (${input.currentQty}).`,
+          metadata: {
+            itemCode: updated.itemCode,
+            category: updated.category,
+            openingQty: input.currentQty,
+            lotCode: lot.lotCode,
+          },
         },
         tx
       );
@@ -396,6 +430,24 @@ export class ConsumableService {
               lineTotal: lot.totalCost,
             },
           ],
+        },
+        tx
+      );
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.consumable,
+          entityId: updated.itemCode,
+          action: "restocked",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Restocked ${updated.itemCode} by ${input.quantity} ${updated.unit}.`,
+          metadata: {
+            itemCode: updated.itemCode,
+            quantity: input.quantity,
+            lotCode: lot.lotCode,
+            unitCost: lot.unitCost,
+          },
         },
         tx
       );
@@ -501,6 +553,25 @@ export class ConsumableService {
           projectId: dest.projectId,
           notes: input.notes ?? input.reason ?? null,
           lines: allocationsToMovementLines([allocation]),
+        },
+        tx
+      );
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.consumable,
+          entityId: updated.itemCode,
+          action: "issued",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Issued ${input.quantity} ${existing.unit} from lot ${allocation.lotCode ?? preview.lotCode}.`,
+          metadata: {
+            itemCode: updated.itemCode,
+            quantity: input.quantity,
+            departmentId: dest.departmentId,
+            projectId: dest.projectId,
+            lotCode: allocation.lotCode ?? preview.lotCode,
+          },
         },
         tx
       );
@@ -620,6 +691,24 @@ export class ConsumableService {
           actor,
           notes: input.notes ?? input.reason,
           lines: allocationsToMovementLines(lotAllocations),
+        },
+        tx
+      );
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.consumable,
+          entityId: updated.itemCode,
+          action: "stock_adjusted",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Adjusted ${updated.itemCode} stock by ${input.quantityChange}.`,
+          metadata: {
+            itemCode: updated.itemCode,
+            quantityChange: input.quantityChange,
+            reason: input.reason,
+            notes: input.notes ?? null,
+          },
         },
         tx
       );
@@ -763,6 +852,25 @@ export class ConsumableService {
         );
       }
 
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.consumable,
+          entityId: updated.itemCode,
+          action: "issued",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Issued ${input.quantity} ${existing.unit} of ${updated.itemCode}.`,
+          metadata: {
+            itemCode: updated.itemCode,
+            quantity: input.quantity,
+            departmentId: dest.departmentId,
+            projectId: dest.projectId,
+            lotCode: result.allocation.lotCode,
+          },
+        },
+        tx
+      );
+
       return toDTO(updated);
     });
   }
@@ -776,21 +884,24 @@ export class ConsumableService {
         throw new NotFoundError("Consumable", id);
       }
 
-      await db.insert(auditLogs).values({
-        entityType: "consumable",
-        entityId: existing.itemCode,
-        action: "consumable_deleted",
-        actorName: actor.displayName,
-        actorUserId: actor.userId,
-        notes: `Deleted consumable inventory item "${existing.name}" (${existing.itemCode}).`,
-        metadata: {
-          id: existing.id,
-          itemCode: existing.itemCode,
-          name: existing.name,
-          category: existing.category,
-          currentQty: existing.currentQty,
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.consumable,
+          entityId: existing.itemCode,
+          action: "consumable_deleted",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Deleted consumable inventory item "${existing.name}" (${existing.itemCode}).`,
+          metadata: {
+            id: existing.id,
+            itemCode: existing.itemCode,
+            name: existing.name,
+            category: existing.category,
+            currentQty: existing.currentQty,
+          },
         },
-      });
+        session
+      );
 
       await db
         .delete(stockMovements)

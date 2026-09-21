@@ -53,6 +53,8 @@ import {
   type LinkedRequestSummary,
 } from "@/server/shared/linked-requests";
 import { invalidateDashboardCache } from "@/server/modules/dashboard/dashboard.service";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 function money(value: string | number): string {
   const n = typeof value === "number" ? value : Number(value);
@@ -173,6 +175,8 @@ export interface PaginatedMeta {
 }
 
 export class ConsumableRequestService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly repo = new ConsumableRequestRepository(),
     private readonly consumables = new ConsumableRepository(),
@@ -379,6 +383,20 @@ export class ConsumableRequestService {
     });
 
     invalidateDashboardCache(actor.tenantId);
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.consumableRequest,
+      entityId: dto.id,
+      action: AUDIT_ACTION.created,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Created consumable request ${dto.requestCode}.`,
+      metadata: {
+        requestCode: dto.requestCode,
+        lineCount: dto.lines.length,
+        destinationDepartmentId: dto.departmentId,
+        destinationProjectId: dto.projectId,
+      },
+    });
     return dto;
   }
 
@@ -484,6 +502,19 @@ export class ConsumableRequestService {
       return up;
     });
 
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.consumableRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.approved,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Approved consumable request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        status: updated.status,
+        note: input.note ?? null,
+      },
+    });
     return this.hydrate(updated);
   }
 
@@ -520,6 +551,18 @@ export class ConsumableRequestService {
       return up;
     });
 
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.consumableRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.rejected,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Rejected consumable request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        reason: input.reason,
+      },
+    });
     return this.hydrate(updated);
   }
 
@@ -587,6 +630,18 @@ export class ConsumableRequestService {
       return up;
     });
 
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.consumableRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.cancelled,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Cancelled consumable request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        reason: reason || null,
+      },
+    });
     return this.hydrate(updated);
   }
 
@@ -651,6 +706,18 @@ export class ConsumableRequestService {
       return up;
     });
 
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.consumableRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.updated,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Undid approval for consumable request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        note: noteText,
+      },
+    });
     return this.hydrate(updated);
   }
 
@@ -836,6 +903,20 @@ export class ConsumableRequestService {
       return toDTO(up, lines, savedAllocations);
     });
 
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.consumableRequest,
+      entityId: dto.id,
+      action: AUDIT_ACTION.released,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Released consumable request ${dto.requestCode}.`,
+      metadata: {
+        requestCode: dto.requestCode,
+        receivedBy: input.receivedBy,
+        allocationCount: dto.allocations.length,
+        totalCost: dto.totalCost,
+      },
+    });
     return dto;
   }
 

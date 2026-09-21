@@ -29,6 +29,8 @@ import { AssetRepository } from "@/server/modules/assets/asset.repository";
 import { AssetLifecycleService } from "@/server/modules/assets/asset.lifecycle.service";
 import { BorrowRequestRepository } from "@/server/modules/borrow-requests/borrow-request.repository";
 import { MaintenanceRepository } from "@/server/modules/maintenance/maintenance.repository";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import type { AuditLogRow } from "@/server/db/schema/audit-logs";
 import { BorrowLogRepository } from "./borrow-log.repository";
@@ -142,6 +144,8 @@ export function toBorrowLogDTO(row: BorrowTransactionRow): BorrowLogDTO {
  * Optional: request status + maintenance open case.
  */
 export class BorrowLogService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly repo = new BorrowLogRepository(),
     private readonly assets = new AssetRepository(),
@@ -496,6 +500,29 @@ export class BorrowLogService {
       tx
     );
 
+    await this.auditLogs.log(
+      {
+        entityType: AUDIT_ENTITY.borrowTransaction,
+        entityId: row.id,
+        action: AUDIT_ACTION.released,
+        actorName: actor.displayName,
+        actorUserId: actor.userId,
+        notes: `Released ${asset.assetCode} to ${displayName} (${destination.custodyKind}).`,
+        metadata: {
+          logCode,
+          requestCode,
+          requestId,
+          custodyKind: destination.custodyKind,
+          dueDate: row.dueDate,
+          source: input.source ?? "portal",
+          departmentId: destination.departmentId,
+          projectId: destination.projectId,
+          borrowerName: displayName,
+        },
+      },
+      tx
+    );
+
     return toBorrowLogDTO(row);
   }
 
@@ -723,6 +750,27 @@ export class BorrowLogService {
         }
       }
 
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.borrowTransaction,
+          entityId: existing.id,
+          action: AUDIT_ACTION.returned,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Returned ${existing.assetCode} from ${existing.borrowerName}.`,
+          metadata: {
+            logCode: existing.logCode,
+            requestCode: existing.requestCode,
+            requestId: existing.requestId,
+            condition: input.condition,
+            conditionNotes: input.conditionNotes ?? null,
+            hadMaintenanceFlag: needsMaint,
+            wasMissing: isMissing,
+          },
+        },
+        tx
+      );
+
       return toBorrowLogDTO(updated);
   }
 
@@ -821,6 +869,25 @@ export class BorrowLogService {
           );
         }
       }
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.borrowTransaction,
+          entityId: existing.id,
+          action: AUDIT_ACTION.voided,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Voided custody issue ${existing.logCode}: ${reason}`,
+          metadata: {
+            logCode: existing.logCode,
+            requestCode: existing.requestCode,
+            requestId: existing.requestId,
+            source: existing.source,
+            assetCode: existing.assetCode,
+          },
+        },
+        tx
+      );
 
       return toBorrowLogDTO(updated);
     });

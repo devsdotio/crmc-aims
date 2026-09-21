@@ -2,10 +2,18 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { requireStaffShell } from "@/server/shared/auth";
 import { handleError, ok } from "@/server/shared/http";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { ReportService } from "./report.service";
-import { baseReportQuerySchema, exportReportQuerySchema } from "./report.validation";
+import {
+  baseReportQuerySchema,
+  exportReportQuerySchema,
+  reportPrintIntentSchema,
+} from "./report.validation";
 
 export class ReportController {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(private readonly service = new ReportService()) {}
 
   private extractParams(request: Request) {
@@ -162,6 +170,21 @@ export class ReportController {
         session.actor.tenantId
       );
 
+      await this.auditLogs.log({
+        entityType: AUDIT_ENTITY.report,
+        entityId: params.reportType,
+        action: AUDIT_ACTION.reportExported,
+        actorName: session.actor.displayName,
+        actorUserId: session.actor.userId,
+        notes: `Exported ${params.reportType} report as ${params.format.toUpperCase()}.`,
+        metadata: {
+          reportType: params.reportType,
+          format: params.format,
+          filters: params,
+          tenantId: session.actor.tenantId ?? null,
+        },
+      });
+
       return new NextResponse(result.csv, {
         status: 200,
         headers: {
@@ -170,6 +193,32 @@ export class ReportController {
           "Cache-Control": "no-store",
         },
       });
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async logPrintIntent(request: NextRequest | Request) {
+    try {
+      const session = await requireStaffShell();
+      const body = await request.json().catch(() => ({}));
+      const input = reportPrintIntentSchema.parse(body);
+
+      await this.auditLogs.log({
+        entityType: AUDIT_ENTITY.report,
+        entityId: input.reportType,
+        action: AUDIT_ACTION.reportPrintRequested,
+        actorName: session.actor.displayName,
+        actorUserId: session.actor.userId,
+        notes: `Requested print/PDF for ${input.reportType} report.`,
+        metadata: {
+          reportType: input.reportType,
+          filters: input.filters ?? null,
+          tenantId: session.actor.tenantId ?? null,
+        },
+      });
+
+      return ok({ logged: true });
     } catch (error) {
       return handleError(error);
     }

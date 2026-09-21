@@ -15,6 +15,8 @@ import {
   profiles,
 } from "@/server/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
+import { compactAuditMetadata, type AuditActionType, type AuditEntityType } from "./audit-events";
+import type { DbSession } from "@/server/db/transaction";
 
 export class AuditLogService {
   constructor(private readonly repo = new AuditLogRepository()) {}
@@ -133,14 +135,14 @@ export class AuditLogService {
   }
 
   async log(data: {
-    entityType: string;
+    entityType: AuditEntityType | string;
     entityId: string;
-    action: string;
+    action: AuditActionType | string;
     actorName: string;
     actorUserId?: string | null;
     notes?: string | null;
     metadata?: Record<string, unknown> | null;
-  }): Promise<AuditLogRow> {
+  }, session?: DbSession): Promise<AuditLogRow> {
     return this.repo.create({
       entityType: data.entityType,
       entityId: data.entityId,
@@ -148,7 +150,7 @@ export class AuditLogService {
       actorName: data.actorName,
       actorUserId: data.actorUserId ?? null,
       notes: data.notes ?? null,
-      metadata: data.metadata ?? null,
-    });
+      metadata: compactAuditMetadata(data.metadata),
+    }, session);
   }
 }

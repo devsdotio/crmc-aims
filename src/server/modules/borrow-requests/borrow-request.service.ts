@@ -49,6 +49,8 @@ import {
   relatedForRow,
   type LinkedRequestSummary,
 } from "@/server/shared/linked-requests";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 function toDTO(
   row: BorrowRequestRow,
@@ -159,6 +161,8 @@ export interface PaginatedMeta {
 }
 
 export class BorrowRequestService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly repo: IBorrowRequestRepository = new BorrowRequestRepository(),
     private readonly assetRepo = new AssetRepository(),
@@ -302,6 +306,21 @@ export class BorrowRequestService {
     });
 
     invalidateDashboardCache(actor.tenantId);
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: row.id,
+      action: AUDIT_ACTION.created,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Created borrow request ${row.requestCode}.`,
+      metadata: {
+        requestCode: row.requestCode,
+        requestType: row.requestType,
+        status: row.status,
+        itemCount: row.items.length,
+        departmentId: row.departmentId,
+      },
+    });
     return toDTO(row);
   }
 
@@ -356,6 +375,19 @@ export class BorrowRequestService {
 
       return up;
     });
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.approved,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Approved borrow request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        status: updated.status,
+        note: historyNote ?? null,
+      },
+    });
     return toDTO(updated);
   }
 
@@ -386,6 +418,18 @@ export class BorrowRequestService {
       if (!up) throw new NotFoundError("Borrow request", id);
 
       return up;
+    });
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.rejected,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Rejected borrow request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        reason: input.reason,
+      },
     });
     return toDTO(updated);
   }
@@ -544,6 +588,22 @@ export class BorrowRequestService {
 
       return up;
     });
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.released,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Released assets for request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        pickedUpBy: input.pickedUpBy,
+        releasedAssetCount: input.lineAllocations.reduce(
+          (sum, line) => sum + line.assetIds.length,
+          0
+        ),
+      },
+    });
     return toDTO(updated);
   }
 
@@ -591,6 +651,18 @@ export class BorrowRequestService {
       return up;
     });
 
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.cancelled,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Cancelled borrow request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        reason: reason || null,
+      },
+    });
     return toDTO(updated);
   }
 
@@ -630,6 +702,19 @@ export class BorrowRequestService {
 
       return up;
     });
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.updated,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Undid approval for borrow request ${updated.requestCode}.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        nextStatus: updated.status,
+        note: noteText,
+      },
+    });
     return toDTO(updated);
   }
 
@@ -659,6 +744,19 @@ export class BorrowRequestService {
       if (!up) throw new NotFoundError("Borrow request", id);
 
       return up;
+    });
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.borrowRequest,
+      entityId: updated.id,
+      action: AUDIT_ACTION.returned,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Marked borrow request ${updated.requestCode} as returned.`,
+      metadata: {
+        requestCode: updated.requestCode,
+        returnedBy: actor.displayName,
+        note: input.note ?? null,
+      },
     });
     return toDTO(updated);
   }

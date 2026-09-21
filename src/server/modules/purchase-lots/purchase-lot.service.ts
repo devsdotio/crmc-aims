@@ -7,7 +7,6 @@ import {
   purchaseLots,
   stockMovements,
 } from "@/server/db/schema";
-import { auditLogs } from "@/server/db/schema/audit-logs";
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
 import { withTransaction } from "@/server/db/transaction";
@@ -19,6 +18,8 @@ import {
 import { encodeLotQr, parseScanPayload } from "@/server/shared/qr";
 import type { ActorContext } from "@/server/shared/auth";
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import { listActivePoDisbursements } from "./po-disbursement";
@@ -266,6 +267,8 @@ async function withDisbursementClaims(
 }
 
 export class PurchaseLotService {
+  private readonly auditLogs = new AuditLogService();
+
   constructor(
     private readonly repo = new PurchaseLotRepository(),
     private readonly suppliers = new SupplierRepository()
@@ -651,26 +654,27 @@ export class PurchaseLotService {
         results.push(toPurchaseLotDTO(row));
       }
 
-      // Write Audit Log for PO Creation
-      await db.insert(auditLogs).values({
-        tenantId: actor.tenantId,
-        entityType: "purchase_order",
-        entityId: poNumber,
-        action: "purchase_order_created",
-        actorName: actor.displayName,
-        actorUserId: actor.userId,
-        notes: `Generated Purchase Order ${poNumber} with ${body.items.length} line item(s) (Status: ${initialStatus}).`,
-        metadata: {
-          poNumber,
-          status: initialStatus,
-          itemCount: body.items.length,
-          totalCost: results.reduce((sum, r) => sum + parseFloat(r.totalCost), 0).toFixed(2),
-          supplierName:
-            resolvedSupplierName ||
-            results.map((r) => r.supplierName).filter(Boolean)[0] ||
-            null,
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.purchaseOrder,
+          entityId: poNumber,
+          action: "purchase_order_created",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Generated Purchase Order ${poNumber} with ${body.items.length} line item(s) (Status: ${initialStatus}).`,
+          metadata: {
+            poNumber,
+            status: initialStatus,
+            itemCount: body.items.length,
+            totalCost: results.reduce((sum, r) => sum + parseFloat(r.totalCost), 0).toFixed(2),
+            supplierName:
+              resolvedSupplierName ||
+              results.map((r) => r.supplierName).filter(Boolean)[0] ||
+              null,
+          },
         },
-      });
+        session
+      );
 
       return results;
     });
@@ -1030,35 +1034,37 @@ export class PurchaseLotService {
 
       const poCode = derivePONumber(lot.lotCode, lot.reference);
 
-      await db.insert(auditLogs).values({
-        tenantId: actor.tenantId,
-        entityType: "purchase_order",
-        entityId: poCode,
-        action: actionKey,
-        actorName: actor.displayName,
-        actorUserId: actor.userId,
-        notes: `PO ${poCode} status transitioned from ${currentMeta.status} to ${nextStatus}.${
-          body.notes ? ` Notes: ${body.notes}` : ""
-        }${
-          nextStatus === "delivered" && receivedQtyForMeta != null
-            ? ` Received qty: ${receivedQtyForMeta}${
-                orderedQtyForMeta != null &&
-                orderedQtyForMeta !== receivedQtyForMeta
-                  ? ` (ordered ${orderedQtyForMeta})`
-                  : ""
-              }.`
-            : ""
-        }`,
-        metadata: {
-          poNumber: poCode,
-          lotCode: lot.lotCode,
-          previousStatus: currentMeta.status,
-          newStatus: nextStatus,
-          approvedByName,
-          orderedQuantity: orderedQtyForMeta,
-          receivedQuantity: receivedQtyForMeta,
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.purchaseOrder,
+          entityId: poCode,
+          action: actionKey,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `PO ${poCode} status transitioned from ${currentMeta.status} to ${nextStatus}.${
+            body.notes ? ` Notes: ${body.notes}` : ""
+          }${
+            nextStatus === "delivered" && receivedQtyForMeta != null
+              ? ` Received qty: ${receivedQtyForMeta}${
+                  orderedQtyForMeta != null &&
+                  orderedQtyForMeta !== receivedQtyForMeta
+                    ? ` (ordered ${orderedQtyForMeta})`
+                    : ""
+                }.`
+              : ""
+          }`,
+          metadata: {
+            poNumber: poCode,
+            lotCode: lot.lotCode,
+            previousStatus: currentMeta.status,
+            newStatus: nextStatus,
+            approvedByName,
+            orderedQuantity: orderedQtyForMeta,
+            receivedQuantity: receivedQtyForMeta,
+          },
         },
-      });
+        session
+      );
 
       return toPurchaseLotDTO(updated ?? lot);
     });
@@ -1188,20 +1194,22 @@ export class PurchaseLotService {
         ? `Updated details for Purchase Order ${poCode}: ${updates.join("; ")}.` 
         : `Updated details for Purchase Order ${poCode}.`;
 
-      await db.insert(auditLogs).values({
-        tenantId: actor.tenantId,
-        entityType: "purchase_order",
-        entityId: poCode,
-        action: "purchase_order_updated",
-        actorName: actor.displayName,
-        actorUserId: actor.userId,
-        notes: updateText,
-        metadata: {
-          poNumber: poCode,
-          lotCode: lot.lotCode,
-          updatedRequester: body.recordedByName !== undefined ? body.recordedByName : undefined,
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.purchaseOrder,
+          entityId: poCode,
+          action: "purchase_order_updated",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: updateText,
+          metadata: {
+            poNumber: poCode,
+            lotCode: lot.lotCode,
+            updatedRequester: body.recordedByName !== undefined ? body.recordedByName : undefined,
+          },
         },
-      });
+        session
+      );
 
       return toPurchaseLotDTO(updated ?? lot);
     });
@@ -1230,20 +1238,22 @@ export class PurchaseLotService {
 
       const ok = await this.repo.delete(id, session);
 
-      await db.insert(auditLogs).values({
-        tenantId: actor.tenantId,
-        entityType: "purchase_order",
-        entityId: poCode,
-        action: "purchase_order_cancelled",
-        actorName: actor.displayName,
-        actorUserId: actor.userId,
-        notes: `Deleted / Removed Purchase Order line ${poCode} (${lot.itemName}).`,
-        metadata: {
-          poNumber: poCode,
-          lotCode: lot.lotCode,
-          itemName: lot.itemName,
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.purchaseOrder,
+          entityId: poCode,
+          action: "purchase_order_cancelled",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Deleted / Removed Purchase Order line ${poCode} (${lot.itemName}).`,
+          metadata: {
+            poNumber: poCode,
+            lotCode: lot.lotCode,
+            itemName: lot.itemName,
+          },
         },
-      });
+        session
+      );
 
       return ok;
     });

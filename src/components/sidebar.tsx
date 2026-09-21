@@ -426,6 +426,13 @@ export default function Sidebar({
           roles: ["admin", "staff"],
         },
         {
+          name: "Audit Trails",
+          href: "/audit-trails",
+          icon: History,
+          badgeText: "Beta",
+          roles: ["admin", "staff"],
+        },
+        {
           name: "Borrow History",
           href: "/borrower-db/history",
           icon: History,
