@@ -4,6 +4,7 @@ import type { UserRole } from "@/types/users";
 
 import Link from "next/link";
 import Image from "next/image";
+import { Krona_One } from "next/font/google";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,6 +34,11 @@ import {
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
+
+const kronaOne = Krona_One({
+  weight: "400",
+  subsets: ["latin"],
+});
 
 interface NavSubItem {
   name: string;
@@ -986,15 +992,20 @@ export default function Sidebar({
                 priority
               />
             </div>
-            <span className="text-lg font-bold tracking-wider text-white whitespace-nowrap">
-              <span className="text-accent">AIMS</span>
+            <span className="text-lg font-bold letter-spacing-wide tracking-wider text-white whitespace-nowrap">
+              <span className={cn("text-accent tracking-widest", kronaOne.className)}>AIMS</span>
             </span>
           </Link>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-3 space-y-3 overflow-y-auto overflow-x-hidden min-h-0 no-scrollbar">
+      <nav
+        className={cn(
+          "flex-1 px-3 py-3 space-y-3 overflow-y-auto min-h-0 no-scrollbar",
+          isCollapsed ? "overflow-x-visible" : "overflow-x-hidden",
+        )}
+      >
         {sections.map((section, index) => (
           <div key={section.label}>
             {!isCollapsed ? (
