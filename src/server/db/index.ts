@@ -11,6 +11,8 @@ type HyperdriveBinding = { connectionString: string };
 const globalForDb = globalThis as unknown as {
   __crmcDb?: Database;
   __crmcPg?: ReturnType<typeof postgres>;
+  /** Workers isolate: one Hyperdrive-backed client (Hyperdrive pools upstream). */
+  __crmcHyperdriveDb?: Database;
 };
 
 function getHyperdriveConnectionString(): string | undefined {
@@ -35,15 +37,23 @@ export function getDb(): Database {
   const hyperdriveUrl = getHyperdriveConnectionString();
 
   if (hyperdriveUrl) {
-    // Hyperdrive pools upstream; keep the Worker-side client small and
-    // request-scoped (no cross-request global reuse).
+    if (globalForDb.__crmcHyperdriveDb) {
+      return globalForDb.__crmcHyperdriveDb;
+    }
+
+    // Reuse one Worker-side client per isolate. Creating a new `postgres()` on
+    // every getDb() (dashboard fires many parallel APIs) exhausts outbound
+    // connections and surfaces as 500s after a successful sign-in.
+    // Hyperdrive owns the real pool; keep prepare:false for Drizzle.
     const client = postgres(hyperdriveUrl, {
-      max: 5,
+      max: 1,
       fetch_types: false,
-      prepare: true,
+      prepare: false,
       connect_timeout: 30,
     });
-    return drizzle(client, { schema });
+    const db = drizzle(client, { schema });
+    globalForDb.__crmcHyperdriveDb = db;
+    return db;
   }
 
   if (globalForDb.__crmcDb) {
