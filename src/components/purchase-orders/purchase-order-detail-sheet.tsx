@@ -47,6 +47,8 @@ import { PoDisbursementBadge } from "./po-disbursement-badge";
 
 interface PurchaseOrderDetailSheetProps {
   lot: PurchaseLot | null;
+  /** All lots belonging to this PO (multi-item). Falls back to `[lot]` when omitted. */
+  lineItems?: PurchaseLot[];
   isOpen: boolean;
   onClose: () => void;
   onPrintSlip: (lot: PurchaseLot) => void;
@@ -90,6 +92,7 @@ const WORKFLOW_STEPS: Array<{
 
 export function PurchaseOrderDetailSheet({
   lot,
+  lineItems,
   isOpen,
   onClose,
   onPrintSlip,
@@ -104,7 +107,8 @@ export function PurchaseOrderDetailSheet({
   const [selectedTagFilter, setSelectedTagFilter] = useState<string>("all");
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [statusNote, setStatusNote] = useState("");
-  const [receivedQuantity, setReceivedQuantity] = useState("");
+  /** Per-line-item received qty keyed by lot id (consumables only). */
+  const [receivedQuantities, setReceivedQuantities] = useState<Record<string, string>>({});
   const [deliveryReceiptUrl, setDeliveryReceiptUrl] = useState<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState<PurchaseOrderStatus | null>(null);
   const [isEditingPoNumber, setIsEditingPoNumber] = useState(false);
@@ -147,6 +151,29 @@ export function PurchaseOrderDetailSheet({
 
   if (!isOpen || !lot) return null;
 
+  const lotsToUpdate =
+    lineItems && lineItems.length > 0 ? lineItems : [lot];
+  const isMultiLotPo = lotsToUpdate.length > 1;
+
+  const openDeliveredModal = () => {
+    const initial: Record<string, string> = {};
+    for (const li of lotsToUpdate) {
+      if (li.itemType === "consumable") {
+        initial[li.id] = String(li.quantity);
+      }
+    }
+    setReceivedQuantities(initial);
+    setDeliveryReceiptUrl(lot.receiptUrl ?? null);
+    setShowStatusModal("delivered");
+  };
+
+  const resetStatusModal = () => {
+    setShowStatusModal(null);
+    setStatusNote("");
+    setReceivedQuantities({});
+    setDeliveryReceiptUrl(null);
+  };
+
   const handleCopyCode = () => {
     navigator.clipboard.writeText(lot.poNumber || lot.lotCode);
     setCopiedCode(true);
@@ -162,13 +189,17 @@ export function PurchaseOrderDetailSheet({
   const isDepleted = lot.status === "delivered" && lot.quantityRemaining === 0;
   const isLowStock = lot.status === "delivered" && !isDepleted && remainingRatio <= 20;
   const poDate = lot.purchasedOn || lot.createdAt.split("T")[0];
-  const isMultiItem = Boolean(lot.items && lot.items.length > 1);
-  const totalLineItems = lot.items?.length || 1;
+  const isMultiItem = Boolean(lot.items && lot.items.length > 1) || isMultiLotPo;
+  const totalLineItems = lotsToUpdate.length > 1 ? lotsToUpdate.length : lot.items?.length || 1;
   const aggregateTotalCost = isMultiItem
-    ? lot.items!.reduce((acc, item) => acc + (parseFloat(item.totalCost) || 0), 0)
+    ? (lot.items?.length
+        ? lot.items.reduce((acc, item) => acc + (parseFloat(item.totalCost) || 0), 0)
+        : lotsToUpdate.reduce((acc, li) => acc + (parseFloat(li.totalCost) || 0), 0))
     : totalCostNum;
   const aggregateTotalQuantity = isMultiItem
-    ? lot.items!.reduce((acc, item) => acc + (item.quantity || 0), 0)
+    ? (lot.items?.length
+        ? lot.items.reduce((acc, item) => acc + (item.quantity || 0), 0)
+        : lotsToUpdate.reduce((acc, li) => acc + (li.quantity || 0), 0))
     : lot.quantity;
 
   const uniqueDealers = Array.from(
@@ -232,41 +263,64 @@ export function PurchaseOrderDetailSheet({
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
     setIsUpdatingStatus(true);
     try {
-      const parsedReceived =
-        nextStatus === "delivered" && lot.itemType === "consumable"
-          ? Number.parseInt(receivedQuantity || String(lot.quantity), 10)
-          : undefined;
+      const consumableLines = lotsToUpdate.filter((li) => li.itemType === "consumable");
+      const parsedByLotId = new Map<string, number>();
 
-      if (
-        nextStatus === "delivered" &&
-        lot.itemType === "consumable" &&
-        (!Number.isFinite(parsedReceived) || (parsedReceived ?? 0) < 1)
-      ) {
-        toast.error("Enter a valid received quantity (at least 1).");
-        setIsUpdatingStatus(false);
-        return;
+      if (nextStatus === "delivered") {
+        for (const li of consumableLines) {
+          const parsed = Number.parseInt(
+            receivedQuantities[li.id] || String(li.quantity),
+            10
+          );
+          if (!Number.isFinite(parsed) || parsed < 1) {
+            toast.error(
+              lotsToUpdate.length > 1
+                ? `Enter a valid received quantity (at least 1) for "${li.itemName}".`
+                : "Enter a valid received quantity (at least 1)."
+            );
+            setIsUpdatingStatus(false);
+            return;
+          }
+          parsedByLotId.set(li.id, parsed);
+        }
       }
 
-      await updateStatusMutation.mutateAsync({
-        id: lot.id,
-        payload: {
-          status: nextStatus,
-          notes: statusNote.trim() || undefined,
-          receivedQuantity: parsedReceived,
-          receiptUrl: deliveryReceiptUrl || undefined,
-        },
-      });
-      toast.success(
-        nextStatus === "delivered" && parsedReceived != null
-          ? lot.projectId
-            ? `PO ${lot.poNumber || lot.lotCode} delivered · ${parsedReceived} material unit(s) credited directly to ${lot.projectName || "project"}.`
-            : `PO ${lot.poNumber || lot.lotCode} delivered · ${parsedReceived} unit(s) added to inventory.`
-          : `PO ${lot.poNumber || lot.lotCode} updated to ${nextStatus.replace("_", " ")}.`
+      // Sequential: avoids races when multiple lines restock the same consumable.
+      for (const li of lotsToUpdate) {
+        await updateStatusMutation.mutateAsync({
+          id: li.id,
+          payload: {
+            status: nextStatus,
+            notes: statusNote.trim() || undefined,
+            receivedQuantity:
+              nextStatus === "delivered" && li.itemType === "consumable"
+                ? parsedByLotId.get(li.id)
+                : undefined,
+            receiptUrl: deliveryReceiptUrl || undefined,
+          },
+        });
+      }
+
+      const totalReceived = Array.from(parsedByLotId.values()).reduce(
+        (sum, q) => sum + q,
+        0
       );
-      setShowStatusModal(null);
-      setStatusNote("");
-      setReceivedQuantity("");
-      setDeliveryReceiptUrl(null);
+      const poLabel = lot.poNumber || lot.lotCode;
+
+      toast.success(
+        nextStatus === "delivered"
+          ? lotsToUpdate.length > 1
+            ? lot.projectId
+              ? `PO ${poLabel} delivered · ${lotsToUpdate.length} line items · ${totalReceived} material unit(s) credited to ${lot.projectName || "project"}.`
+              : `PO ${poLabel} delivered · ${lotsToUpdate.length} line items received into inventory.`
+            : consumableLines.length > 0
+              ? lot.projectId
+                ? `PO ${poLabel} delivered · ${totalReceived} material unit(s) credited directly to ${lot.projectName || "project"}.`
+                : `PO ${poLabel} delivered · ${totalReceived} unit(s) added to inventory.`
+              : `PO ${poLabel} delivered · asset activated in inventory.`
+          : `PO ${poLabel} updated to ${nextStatus.replace("_", " ")}.`
+      );
+      resetStatusModal();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update status.");
     } finally {
@@ -620,7 +674,7 @@ export function PurchaseOrderDetailSheet({
                 {lot.status === "ordered" && (
                   <button
                     type="button"
-                    onClick={() => setShowStatusModal("delivered")}
+                    onClick={openDeliveredModal}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
                   >
                     <PackageCheck className="h-3.5 w-3.5" />
@@ -802,7 +856,7 @@ export function PurchaseOrderDetailSheet({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowStatusModal("delivered")}
+                      onClick={openDeliveredModal}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer shadow-2xs"
                     >
                       <PackageCheck className="h-3.5 w-3.5" />
@@ -823,7 +877,7 @@ export function PurchaseOrderDetailSheet({
                   <>
                     <button
                       type="button"
-                      onClick={() => setShowStatusModal("delivered")}
+                      onClick={openDeliveredModal}
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer shadow-2xs"
                     >
                       <PackageCheck className="h-3.5 w-3.5" />
@@ -1492,7 +1546,12 @@ export function PurchaseOrderDetailSheet({
     {/* Modal for Status Confirmation / Notes */}
     {showStatusModal && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-        <div className="w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+        <div
+          className={cn(
+            "w-full rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto",
+            showStatusModal === "delivered" && isMultiLotPo ? "max-w-lg" : "max-w-sm"
+          )}
+        >
           <div className="flex items-center justify-between border-b border-border pb-2">
             <h3 className="font-bold text-text text-sm capitalize flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4 text-accent" />
@@ -1500,7 +1559,7 @@ export function PurchaseOrderDetailSheet({
             </h3>
             <button
               type="button"
-              onClick={() => setShowStatusModal(null)}
+              onClick={resetStatusModal}
               className="p-1 rounded text-text-secondary hover:text-text"
             >
               <X className="h-4 w-4" />
@@ -1509,42 +1568,106 @@ export function PurchaseOrderDetailSheet({
 
           <p className="text-xs text-text-secondary">
             {showStatusModal === "delivered"
-              ? lot.itemType === "consumable"
-                ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
-                : "Marking this PO as delivered will activate the asset in inventory."
+              ? isMultiLotPo
+                ? `Confirm the actual quantity received for each of the ${lotsToUpdate.length} line items. Consumable amounts are added to inventory (they can differ from ordered qty); assets are activated.`
+                : lotsToUpdate[0]?.itemType === "consumable"
+                  ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
+                  : "Marking this PO as delivered will activate the asset in inventory."
               : showStatusModal === "approved"
               ? "Approve this purchase order to authorize supplier issuance and procurement."
               : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
           </p>
 
-          {showStatusModal === "delivered" && lot.itemType === "consumable" && (
-            <div className="space-y-1">
-              <label
-                htmlFor="po-received-qty"
-                className="text-[11px] font-semibold text-text"
-              >
-                Actual Quantity Received <span className="text-accent">*</span>
+          {showStatusModal === "delivered" && (
+            <div className="space-y-2">
+              <label className="text-[11px] font-semibold text-text">
+                {isMultiLotPo ? "Line Items to Receive" : "Actual Quantity Received"}
+                {lotsToUpdate.some((li) => li.itemType === "consumable") && (
+                  <span className="text-accent"> *</span>
+                )}
               </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="po-received-qty"
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={receivedQuantity || String(lot.quantity)}
-                  onChange={(e) => setReceivedQuantity(e.target.value)}
-                  className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
-                />
-                <span className="text-[11px] text-text-secondary shrink-0">
-                  of {lot.quantity} ordered
-                </span>
+              <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+                {lotsToUpdate.map((li, idx) => {
+                  const qtyValue =
+                    receivedQuantities[li.id] ?? String(li.quantity);
+                  const parsedQty = Number.parseInt(qtyValue, 10);
+                  const differsFromOrdered =
+                    li.itemType === "consumable" &&
+                    Number.isFinite(parsedQty) &&
+                    parsedQty !== li.quantity;
+
+                  return (
+                    <div
+                      key={li.id}
+                      className="p-3 bg-bg space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {isMultiLotPo && (
+                              <span className="text-[10px] font-mono text-text-secondary shrink-0">
+                                #{idx + 1}
+                              </span>
+                            )}
+                            <span className="text-xs font-semibold text-text truncate">
+                              {li.itemName}
+                            </span>
+                            <span
+                              className={cn(
+                                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border shrink-0",
+                                li.itemType === "asset"
+                                  ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25"
+                                  : "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/25"
+                              )}
+                            >
+                              {li.itemType}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-text-secondary">
+                            {li.itemCode}
+                            {li.lotCode ? ` · ${li.lotCode}` : ""}
+                          </span>
+                        </div>
+                      </div>
+
+                      {li.itemType === "consumable" ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`po-received-qty-${li.id}`}
+                              type="number"
+                              min={1}
+                              step={1}
+                              value={qtyValue}
+                              onChange={(e) =>
+                                setReceivedQuantities((prev) => ({
+                                  ...prev,
+                                  [li.id]: e.target.value,
+                                }))
+                              }
+                              aria-label={`Actual quantity received for ${li.itemName}`}
+                              className="w-full max-w-28 p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
+                            />
+                            <span className="text-[11px] text-text-secondary shrink-0">
+                              of {li.quantity} ordered
+                            </span>
+                          </div>
+                          {differsFromOrdered && (
+                            <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                              Inventory will be adjusted to the received quantity, not the ordered amount.
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-text-secondary">
+                          Asset will be activated in inventory
+                          {li.quantity > 1 ? ` (${li.quantity} units)` : ""}.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              {Number.parseInt(receivedQuantity || String(lot.quantity), 10) !==
-                lot.quantity && (
-                <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                  Inventory will be adjusted to the received quantity, not the ordered amount.
-                </p>
-              )}
             </div>
           )}
 
@@ -1584,11 +1707,7 @@ export function PurchaseOrderDetailSheet({
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
             <button
               type="button"
-              onClick={() => {
-                setShowStatusModal(null);
-                setStatusNote("");
-                setReceivedQuantity("");
-              }}
+              onClick={resetStatusModal}
               className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-bg-subtle text-text cursor-pointer"
             >
               Cancel
@@ -1607,7 +1726,9 @@ export function PurchaseOrderDetailSheet({
               ) : (
                 <span>
                   {showStatusModal === "delivered"
-                    ? "Confirm Receive & Stock"
+                    ? isMultiLotPo
+                      ? `Confirm Receive · ${lotsToUpdate.length} Items`
+                      : "Confirm Receive & Stock"
                     : "Confirm"}
                 </span>
               )}
