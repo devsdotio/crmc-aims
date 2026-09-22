@@ -463,12 +463,16 @@ export function PurchaseOrderDetailSheet({
     }
   };
 
+  const releasableLots = lotsToUpdate.filter(
+    (li) =>
+      li.itemType === "consumable" &&
+      li.status === "delivered" &&
+      li.quantityRemaining > 0
+  );
+  const primaryReleaseLot =
+    releasableLots.find((li) => li.id === lot.id) ?? releasableLots[0] ?? null;
   const canRelease =
-    canOperate &&
-    lot.status === "delivered" &&
-    lot.itemType === "consumable" &&
-    lot.quantityRemaining > 0 &&
-    Boolean(onReleaseStock);
+    canOperate && releasableLots.length > 0 && Boolean(onReleaseStock);
 
   return (
     <>
@@ -816,14 +820,18 @@ export function PurchaseOrderDetailSheet({
                     <span>{lot.projectId ? "Receive & Credit to Project" : "Receive & Stock"}</span>
                   </button>
                 )}
-                {canRelease && (
+                {canRelease && primaryReleaseLot && (
                   <button
                     type="button"
-                    onClick={() => onReleaseStock?.(lot)}
+                    onClick={() => onReleaseStock?.(primaryReleaseLot)}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer shadow-xs"
                   >
                     <ArrowUpRight className="h-3.5 w-3.5" />
-                    <span>Release Stock</span>
+                    <span>
+                      {releasableLots.length > 1
+                        ? `Release Stock (${releasableLots.length})`
+                        : "Release Stock"}
+                    </span>
                   </button>
                 )}
                 <button
@@ -1065,9 +1073,10 @@ export function PurchaseOrderDetailSheet({
                             <th className="px-3 py-2">#</th>
                             <th className="px-3 py-2">Item</th>
                             <th className="px-3 py-2 text-center">Qty</th>
+                            <th className="px-3 py-2 text-center">Remaining</th>
                             <th className="px-3 py-2 text-right">Unit Cost</th>
                             <th className="px-3 py-2 text-right">Total</th>
-                            {canEditLines && (
+                            {(canEditLines || canRelease) && (
                               <th className="px-3 py-2 text-right">
                                 <span className="sr-only">Actions</span>
                               </th>
@@ -1079,6 +1088,11 @@ export function PurchaseOrderDetailSheet({
                             const iUnitCost = parseFloat(item.unitCost) || 0;
                             const iTotalCost = parseFloat(item.totalCost) || 0;
                             const isEditing = editingLineId === item.id;
+                            const lineCanRelease =
+                              canRelease &&
+                              item.itemType === "consumable" &&
+                              item.status === "delivered" &&
+                              item.quantityRemaining > 0;
                             return (
                               <tr key={item.id} className="hover:bg-bg-subtle/50 transition-colors">
                                 <td className="px-3 py-2.5 text-text-secondary font-mono text-[10px]">{idx + 1}</td>
@@ -1134,6 +1148,26 @@ export function PurchaseOrderDetailSheet({
                                     item.quantity
                                   )}
                                 </td>
+                                <td className="px-3 py-2.5 text-center font-mono text-text">
+                                  {item.itemType === "consumable" &&
+                                  item.status === "delivered" ? (
+                                    <span
+                                      className={cn(
+                                        "font-bold",
+                                        item.quantityRemaining <= 0
+                                          ? "text-status-retired-text"
+                                          : item.quantityRemaining <=
+                                              Math.ceil(item.quantity * 0.2)
+                                            ? "text-amber-600 dark:text-amber-400"
+                                            : "text-status-active-text"
+                                      )}
+                                    >
+                                      {item.quantityRemaining}
+                                    </span>
+                                  ) : (
+                                    <span className="text-text-secondary">—</span>
+                                  )}
+                                </td>
                                 <td className="px-3 py-2.5 text-right font-mono text-text">
                                   {isEditing ? (
                                     <input
@@ -1161,7 +1195,7 @@ export function PurchaseOrderDetailSheet({
                                       )
                                     : formatPhp(iTotalCost)}
                                 </td>
-                                {canEditLines && (
+                                {(canEditLines || canRelease) && (
                                   <td className="px-3 py-2.5 text-right whitespace-nowrap">
                                     {isEditing ? (
                                       <div className="inline-flex items-center gap-1">
@@ -1185,23 +1219,38 @@ export function PurchaseOrderDetailSheet({
                                       </div>
                                     ) : (
                                       <div className="inline-flex items-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => startEditLine(item)}
-                                          className="p-1.5 rounded-md border border-border text-text-secondary hover:text-text cursor-pointer"
-                                          title="Edit line"
-                                        >
-                                          <Edit3 className="h-3.5 w-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => void handleDeleteLine(item)}
-                                          disabled={deletePOMutation.isPending}
-                                          className="p-1.5 rounded-md border border-border text-rose-600 hover:bg-rose-500/10 cursor-pointer"
-                                          title="Delete line item"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5" />
-                                        </button>
+                                        {lineCanRelease && (
+                                          <button
+                                            type="button"
+                                            onClick={() => onReleaseStock?.(item)}
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/20 text-[10px] font-bold cursor-pointer"
+                                            title="Release from this stock"
+                                          >
+                                            <Send className="h-3 w-3" />
+                                            <span>Release</span>
+                                          </button>
+                                        )}
+                                        {canEditLines && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              onClick={() => startEditLine(item)}
+                                              className="p-1.5 rounded-md border border-border text-text-secondary hover:text-text cursor-pointer"
+                                              title="Edit line"
+                                            >
+                                              <Edit3 className="h-3.5 w-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => void handleDeleteLine(item)}
+                                              disabled={deletePOMutation.isPending}
+                                              className="p-1.5 rounded-md border border-border text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                                              title="Delete line item"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          </>
+                                        )}
                                       </div>
                                     )}
                                   </td>
@@ -1216,11 +1265,29 @@ export function PurchaseOrderDetailSheet({
                             <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
                               {lotsToUpdate.reduce((sum, li) => sum + li.quantity, 0)}
                             </td>
+                            <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
+                              {lotsToUpdate.some(
+                                (li) =>
+                                  li.itemType === "consumable" &&
+                                  li.status === "delivered"
+                              )
+                                ? lotsToUpdate
+                                    .filter(
+                                      (li) =>
+                                        li.itemType === "consumable" &&
+                                        li.status === "delivered"
+                                    )
+                                    .reduce(
+                                      (sum, li) => sum + li.quantityRemaining,
+                                      0
+                                    )
+                                : "—"}
+                            </td>
                             <td className="px-3 py-2.5"></td>
                             <td className="px-3 py-2.5 text-right font-mono font-bold text-base text-status-active-text">
                               {formatPhp(lotsToUpdate.reduce((sum, li) => sum + (parseFloat(li.totalCost) || 0), 0))}
                             </td>
-                            {canEditLines && <td />}
+                            {(canEditLines || canRelease) && <td />}
                           </tr>
                         </tfoot>
                       </table>
@@ -1388,62 +1455,141 @@ export function PurchaseOrderDetailSheet({
               </div>
 
               {/* Stock Availability Card (for delivered consumable lots) */}
-              {lot.itemType === "consumable" && lot.status === "delivered" && (
+              {isMultiLotPo &&
+              lotsToUpdate.some(
+                (li) => li.itemType === "consumable" && li.status === "delivered"
+              ) ? (
                 <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between border-b border-border pb-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
                       <Tag className="h-3.5 w-3.5 text-accent" />
                       Lot Remaining Stock Status
                     </span>
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 rounded-full text-[10px] font-bold border",
-                        isDepleted
-                          ? "bg-status-retired-bg/15 text-status-retired-text border-status-retired-bg/30"
-                          : isLowStock
-                          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                          : "bg-status-active-bg/15 text-status-active-text border-status-active-bg/30"
-                      )}
-                    >
-                      {isDepleted ? "Depleted" : isLowStock ? "Low Stock" : "In Stock"}
+                    <span className="text-[10px] text-text-secondary">
+                      {releasableLots.length} releasable line
+                      {releasableLots.length === 1 ? "" : "s"}
                     </span>
                   </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs font-medium">
-                      <span className="text-text-secondary">Units Remaining / Available:</span>
-                      <span className="font-mono font-bold text-text">
-                        {lot.quantityRemaining} of {lot.quantity}
+                  <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+                    {lotsToUpdate
+                      .filter(
+                        (li) =>
+                          li.itemType === "consumable" &&
+                          li.status === "delivered"
+                      )
+                      .map((li) => {
+                        const lineDepleted = li.quantityRemaining <= 0;
+                        const lineLow =
+                          !lineDepleted &&
+                          li.quantityRemaining <= Math.ceil(li.quantity * 0.2);
+                        return (
+                          <div
+                            key={li.id}
+                            className="flex items-center justify-between gap-3 px-3 py-2.5 bg-bg-subtle/30 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-semibold text-text truncate">
+                                {li.itemName}
+                              </p>
+                              <p className="font-mono text-[10px] text-text-secondary">
+                                {li.lotCode} · {li.quantityRemaining} of {li.quantity}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span
+                                className={cn(
+                                  "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                                  lineDepleted
+                                    ? "bg-status-retired-bg/15 text-status-retired-text border-status-retired-bg/30"
+                                    : lineLow
+                                      ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                                      : "bg-status-active-bg/15 text-status-active-text border-status-active-bg/30"
+                                )}
+                              >
+                                {lineDepleted
+                                  ? "Depleted"
+                                  : lineLow
+                                    ? "Low Stock"
+                                    : "In Stock"}
+                              </span>
+                              {canRelease &&
+                                !lineDepleted &&
+                                onReleaseStock && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onReleaseStock(li)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
+                                    title="Release from this stock"
+                                  >
+                                    <Send className="h-3 w-3" />
+                                    Release
+                                  </button>
+                                )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : (
+                lot.itemType === "consumable" &&
+                lot.status === "delivered" && (
+                  <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between border-b border-border pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
+                        <Tag className="h-3.5 w-3.5 text-accent" />
+                        Lot Remaining Stock Status
+                      </span>
+                      <span
+                        className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-bold border",
+                          isDepleted
+                            ? "bg-status-retired-bg/15 text-status-retired-text border-status-retired-bg/30"
+                            : isLowStock
+                            ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                            : "bg-status-active-bg/15 text-status-active-text border-status-active-bg/30"
+                        )}
+                      >
+                        {isDepleted ? "Depleted" : isLowStock ? "Low Stock" : "In Stock"}
                       </span>
                     </div>
-                    <div className="w-full h-2 rounded-full bg-border overflow-hidden">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all duration-300",
-                          isDepleted
-                            ? "bg-status-retired-bg"
-                            : isLowStock
-                            ? "bg-amber-500"
-                            : "bg-status-active-bg"
-                        )}
-                        style={{ width: `${Math.min(100, Math.max(0, remainingRatio))}%` }}
-                      />
-                    </div>
-                  </div>
 
-                  {canRelease && (
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() => onReleaseStock?.(lot)}
-                        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-xs"
-                      >
-                        <Send className="h-4 w-4" />
-                        <span>Issue / Release From This Lot</span>
-                      </button>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-text-secondary">Units Remaining / Available:</span>
+                        <span className="font-mono font-bold text-text">
+                          {lot.quantityRemaining} of {lot.quantity}
+                        </span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-border overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all duration-300",
+                            isDepleted
+                              ? "bg-status-retired-bg"
+                              : isLowStock
+                              ? "bg-amber-500"
+                              : "bg-status-active-bg"
+                          )}
+                          style={{ width: `${Math.min(100, Math.max(0, remainingRatio))}%` }}
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    {canRelease && primaryReleaseLot && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => onReleaseStock?.(primaryReleaseLot)}
+                          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-xs"
+                        >
+                          <Send className="h-4 w-4" />
+                          <span>Issue / Release From This Lot</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
               )}
             </div>
           )}

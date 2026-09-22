@@ -241,6 +241,22 @@ export function PurchaseOrdersView({
     return releaseLot;
   }, [groupedPOs, releaseLot]);
 
+  const releaseCandidateLots = useMemo(() => {
+    if (!releaseLotSynced) return undefined;
+    for (const g of groupedPOs) {
+      if (g.lineItems.some((l) => l.id === releaseLotSynced.id)) {
+        const candidates = g.lineItems.filter(
+          (li) =>
+            li.itemType === "consumable" &&
+            li.status === "delivered" &&
+            li.quantityRemaining > 0
+        );
+        return candidates.length > 0 ? candidates : [releaseLotSynced];
+      }
+    }
+    return [releaseLotSynced];
+  }, [groupedPOs, releaseLotSynced]);
+
   const supplierOptions = useMemo(() => {
     const countMap = new Map<string, number>();
     for (const g of scopedGroups) {
@@ -899,6 +915,7 @@ export function PurchaseOrdersView({
         <>
           <LotReleaseDialog
             lot={releaseLotSynced}
+            candidateLots={releaseCandidateLots}
             isOpen={Boolean(releaseLotSynced)}
             onClose={() => setReleaseLot(null)}
             onSuccess={() => {
