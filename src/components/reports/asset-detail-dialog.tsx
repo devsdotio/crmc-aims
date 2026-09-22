@@ -44,6 +44,7 @@ import { LoadingState } from "@/components/providers/loading-context";
 import { getCategoryStyle } from "@/constants/categories";
 import { cn } from "@/lib/utils";
 import { IndividualAssetPrintableReport } from "@/components/reports/print/individual/IndividualAssetPrintableReport";
+import { mapMaintenanceHistoryToPrintEntries } from "@/components/reports/print/individual/map-maintenance-print-entries";
 
 interface AssetDetailDialogProps {
   assetId: string | null;
@@ -112,6 +113,10 @@ export function AssetDetailDialog({
   const tco = data?.tco;
   const canViewCosts = data?.canViewCosts ?? true;
   const categoryMeta = asset ? getCategoryStyle(asset.category) : null;
+  const repairVsAcquisitionPct =
+    tco && tco.purchaseCost > 0
+      ? (tco.maintenanceCost / tco.purchaseCost) * 100
+      : null;
 
   const handleCopyCode = () => {
     if (!asset?.assetCode) return;
@@ -396,6 +401,23 @@ export function AssetDetailDialog({
                       toneValue
                     />
                   </StatCardGrid>
+                  {canViewCosts && tco && (
+                    <div className="rounded-xl border border-border/70 bg-bg-subtle/40 px-3 py-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-text">
+                          Repair Spend vs Acquisition Value
+                        </span>
+                        <span className="font-mono font-bold text-text">
+                          ₱{tco.maintenanceCost.toLocaleString()} / ₱{tco.purchaseCost.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-text-secondary">
+                        {repairVsAcquisitionPct != null
+                          ? `${repairVsAcquisitionPct.toFixed(1)}% of acquisition value has been spent on repairs.`
+                          : "Acquisition cost is unavailable, so percentage comparison cannot be computed."}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── Visualizations Section (Pie & Line Charts) ─────────── */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -695,7 +717,53 @@ export function AssetDetailDialog({
                                     via {log.source.replace(/_/g, " ")}
                                   </span>
                                 </div>
-                                <p className="text-xs text-text mt-1 font-medium">{log.notes}</p>
+                                <p className="text-xs text-text mt-1 font-medium">
+                                  <span className="text-[10px] font-bold uppercase tracking-wide text-text-secondary mr-1">
+                                    Issue
+                                  </span>
+                                  {log.notes || "No issue notes recorded."}
+                                </p>
+                                {log.workNotes ? (
+                                  <p className="text-xs text-text mt-1.5 leading-relaxed">
+                                    <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 mr-1">
+                                      Work
+                                    </span>
+                                    {log.workNotes}
+                                  </p>
+                                ) : null}
+                                {log.repairParts && log.repairParts.length > 0 ? (
+                                  <div className="mt-1.5 space-y-0.5">
+                                    <div className="text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400">
+                                      Parts
+                                    </div>
+                                    <ul className="space-y-0.5">
+                                      {log.repairParts.map((part, idx) => (
+                                        <li
+                                          key={`${log.id}-part-${idx}`}
+                                          className="flex items-center justify-between gap-2 text-xs text-text"
+                                        >
+                                          <span>{part.name}</span>
+                                          {canViewCosts && part.cost != null && part.cost !== "" ? (
+                                            <span className="font-mono text-[11px] text-text-secondary">
+                                              ₱{Number(part.cost).toLocaleString("en-PH", {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              })}
+                                            </span>
+                                          ) : null}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ) : null}
+                                {log.resolutionNotes ? (
+                                  <p className="text-xs text-text mt-1.5 leading-relaxed">
+                                    <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mr-1">
+                                      Resolution
+                                    </span>
+                                    {log.resolutionNotes}
+                                  </p>
+                                ) : null}
                               </div>
 
                               {canViewCosts && log.repairCost != null && (
@@ -913,14 +981,7 @@ export function AssetDetailDialog({
       <div className="hidden print:block print:w-full">
         <IndividualAssetPrintableReport
           asset={asset}
-          maintenanceHistory={maintenanceHistory.map((m) => ({
-            id: m.id,
-            cost: m.totalCost || m.repairCost || 0,
-            date: m.dateLogged,
-            type: m.condition,
-            description: m.notes || `Work Order ${m.logCode}`,
-            technician: m.serviceProvider || "Internal Maintenance",
-          }))}
+          maintenanceHistory={mapMaintenanceHistoryToPrintEntries(maintenanceHistory)}
           canViewCosts={canViewCosts}
         />
       </div>
