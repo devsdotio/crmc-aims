@@ -255,9 +255,7 @@ export function PurchaseOrderDetailSheet({
     const targets = receivableLots.length > 0 ? receivableLots : lotsToUpdate;
     const initial: Record<string, string> = {};
     for (const li of targets) {
-      if (li.itemType === "consumable") {
-        initial[li.id] = String(li.orderedQuantity ?? li.quantity);
-      }
+      initial[li.id] = String(li.orderedQuantity ?? li.quantity);
     }
     setReceivedQuantities(initial);
     setDeliveryReceiptUrl(lot.receiptUrl ?? null);
@@ -381,11 +379,10 @@ export function PurchaseOrderDetailSheet({
         return;
       }
 
-      const consumableLines = targets.filter((li) => li.itemType === "consumable");
       const parsedByLotId = new Map<string, number>();
 
       if (nextStatus === "delivered") {
-        for (const li of consumableLines) {
+        for (const li of targets) {
           const ordered = li.orderedQuantity ?? li.quantity;
           const parsed = Number.parseInt(
             receivedQuantities[li.id] || String(ordered),
@@ -412,11 +409,7 @@ export function PurchaseOrderDetailSheet({
             status: nextStatus,
             notes: statusNote.trim() || undefined,
             receivedQuantity:
-              nextStatus === "delivered" && li.itemType === "consumable"
-                ? parsedByLotId.get(li.id)
-                : nextStatus === "delivered" && li.itemType === "asset"
-                  ? li.quantity
-                  : undefined,
+              nextStatus === "delivered" ? parsedByLotId.get(li.id) : undefined,
             receiptUrl: deliveryReceiptUrl || undefined,
           },
         });
@@ -428,7 +421,7 @@ export function PurchaseOrderDetailSheet({
       );
       const assetUnits = targets
         .filter((li) => li.itemType === "asset")
-        .reduce((sum, li) => sum + li.quantity, 0);
+        .reduce((sum, li) => sum + (parsedByLotId.get(li.id) ?? li.quantity), 0);
       const poLabel = lot.poNumber || lot.lotCode;
 
       toast.success(
@@ -437,11 +430,11 @@ export function PurchaseOrderDetailSheet({
             ? lot.projectId
               ? `PO ${poLabel} delivered · ${targets.length} line items · ${totalReceived} material unit(s) credited to ${lot.projectName || "project"}.`
               : `PO ${poLabel} delivered · ${targets.length} line items received into inventory.`
-            : consumableLines.length > 0
+            : targets[0]?.itemType === "consumable"
               ? lot.projectId
                 ? `PO ${poLabel} delivered · ${totalReceived} material unit(s) credited directly to ${lot.projectName || "project"}.`
                 : `PO ${poLabel} delivered · ${totalReceived} unit(s) added to inventory.`
-              : `PO ${poLabel} delivered · ${assetUnits || 1} asset unit(s) activated in inventory.`
+              : `PO ${poLabel} delivered · ${assetUnits || totalReceived || 1} asset unit(s) activated in inventory.`
           : `PO ${poLabel} updated to ${nextStatus.replace("_", " ")}.`
       );
       resetStatusModal();
@@ -1854,7 +1847,7 @@ export function PurchaseOrderDetailSheet({
                   }
                   return deliverTargets[0]?.itemType === "consumable"
                     ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
-                    : "Marking this PO as delivered will activate the asset unit(s) in inventory.";
+                    : "Confirm how many physical units were received. That count will be activated in inventory (it can differ from the ordered quantity).";
                 })()
               : showStatusModal === "approved"
               ? "Approve this purchase order to authorize supplier issuance and procurement."
@@ -1871,9 +1864,7 @@ export function PurchaseOrderDetailSheet({
                   <>
               <label className="text-[11px] font-semibold text-text">
                 {multi ? "Line Items to Receive" : "Actual Quantity Received"}
-                {deliverTargets.some((li) => li.itemType === "consumable") && (
-                  <span className="text-accent"> *</span>
-                )}
+                <span className="text-accent"> *</span>
               </label>
               <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
                 {deliverTargets.map((li, idx) => {
@@ -1882,9 +1873,7 @@ export function PurchaseOrderDetailSheet({
                     receivedQuantities[li.id] ?? String(orderedQty);
                   const parsedQty = Number.parseInt(qtyValue, 10);
                   const differsFromOrdered =
-                    li.itemType === "consumable" &&
-                    Number.isFinite(parsedQty) &&
-                    parsedQty !== orderedQty;
+                    Number.isFinite(parsedQty) && parsedQty !== orderedQty;
 
                   return (
                     <div
@@ -1920,41 +1909,35 @@ export function PurchaseOrderDetailSheet({
                         </div>
                       </div>
 
-                      {li.itemType === "consumable" ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <input
-                              id={`po-received-qty-${li.id}`}
-                              type="number"
-                              min={1}
-                              step={1}
-                              value={qtyValue}
-                              onChange={(e) =>
-                                setReceivedQuantities((prev) => ({
-                                  ...prev,
-                                  [li.id]: e.target.value,
-                                }))
-                              }
-                              aria-label={`Actual quantity received for ${li.itemName}`}
-                              className="w-full max-w-28 p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
-                            />
-                            <span className="text-[11px] text-text-secondary shrink-0">
-                              of {orderedQty} ordered
-                            </span>
-                          </div>
-                          {differsFromOrdered && (
-                            <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                              Inventory will be adjusted to the received quantity, not the ordered amount.
-                            </p>
-                          )}
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            id={`po-received-qty-${li.id}`}
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={qtyValue}
+                            onChange={(e) =>
+                              setReceivedQuantities((prev) => ({
+                                ...prev,
+                                [li.id]: e.target.value,
+                              }))
+                            }
+                            aria-label={`Actual quantity received for ${li.itemName}`}
+                            className="w-full max-w-28 p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
+                          />
+                          <span className="text-[11px] text-text-secondary shrink-0">
+                            of {orderedQty} ordered
+                          </span>
                         </div>
-                      ) : (
-                        <p className="text-[11px] text-text-secondary">
-                          {li.quantity > 1
-                            ? `${li.quantity} physical units will be activated in /assets.`
-                            : "Asset will be activated in /assets."}
-                        </p>
-                      )}
+                        {differsFromOrdered && (
+                          <p className="text-[10px] text-amber-700 dark:text-amber-300">
+                            {li.itemType === "consumable"
+                              ? "Inventory will be adjusted to the received quantity, not the ordered amount."
+                              : "Only the received number of asset units will be activated in inventory."}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

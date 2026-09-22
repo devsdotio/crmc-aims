@@ -21,6 +21,8 @@ import type { ActorContext } from "@/server/shared/auth";
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
+import { AssetModelRepository } from "@/server/modules/assets/asset.model.repository";
+import { assetCategoryCodePrefix } from "@/lib/asset-category";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import { listActivePoDisbursements } from "./po-disbursement";
@@ -44,6 +46,10 @@ function formatMoney(value: string | number): string {
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return "0.00";
   return n.toFixed(2);
+}
+
+function padAssetSeq(n: number, width = 3): string {
+  return String(n).padStart(width, "0");
 }
 
 /** PO-level placeholder when line items have different dealers — never store on a lot/item. */
@@ -269,11 +275,26 @@ async function withDisbursementClaims(
 
 export class PurchaseLotService {
   private readonly auditLogs = new AuditLogService();
+  private readonly assetModels = new AssetModelRepository();
 
   constructor(
     private readonly repo = new PurchaseLotRepository(),
     private readonly suppliers = new SupplierRepository()
   ) {}
+
+  private async nextCategoryAssetCode(
+    category: string,
+    session: DbSession,
+    tenantId?: string
+  ): Promise<string> {
+    const prefix = assetCategoryCodePrefix(category || "Equipment");
+    const seq = await this.assetModels.firstAvailableSequenceForPrefix(
+      prefix,
+      session,
+      tenantId
+    );
+    return `${prefix}-${padAssetSeq(seq)}`;
+  }
 
   async list(rawQuery: unknown, actorTenantId?: string): Promise<PurchaseLotDTO[]> {
     const filters = listPurchaseLotsQuerySchema.parse(rawQuery ?? {});
@@ -580,7 +601,11 @@ export class PurchaseLotService {
             let firstId: string | null = null;
 
             for (let i = 0; i < unitsToCreate; i++) {
-              const code = generateOperationalCode("AST");
+              const code = await this.nextCategoryAssetCode(
+                item.category || "Equipment",
+                session,
+                actor.tenantId
+              );
               const [newAsset] = await db
                 .insert(assets)
                 .values({
@@ -940,9 +965,14 @@ export class PurchaseLotService {
 
             // Mint remaining units when PO ordered/received more than one physical asset
             for (let i = 1; i < unitsToEnsure; i++) {
+              const assetCode = await this.nextCategoryAssetCode(
+                existingAsset.category || "Equipment",
+                session,
+                lot.tenantId
+              );
               await db.insert(assets).values({
                 tenantId: lot.tenantId,
-                assetCode: generateOperationalCode("AST"),
+                assetCode,
                 name: existingAsset.name,
                 category: existingAsset.category,
                 status: "active",
@@ -958,11 +988,16 @@ export class PurchaseLotService {
           } else {
             // No linked asset yet — register received physical units now
             for (let i = 0; i < unitsToEnsure; i++) {
+              const assetCode = await this.nextCategoryAssetCode(
+                "Equipment",
+                session,
+                lot.tenantId
+              );
               const [created] = await db
                 .insert(assets)
                 .values({
                   tenantId: lot.tenantId,
-                  assetCode: generateOperationalCode("AST"),
+                  assetCode,
                   name: lot.itemName,
                   category: "Equipment",
                   status: "active",
