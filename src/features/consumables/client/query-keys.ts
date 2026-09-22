@@ -8,6 +8,7 @@ export const consumableQueryKeys = {
     search?: string;
     page?: number;
     limit?: number;
+    catalog?: boolean;
     includeSandbox?: boolean;
   }) => [...consumableQueryKeys.lists(), filters ?? {}] as const,
   detail: (id: string) => [...consumableQueryKeys.all, "detail", id] as const,

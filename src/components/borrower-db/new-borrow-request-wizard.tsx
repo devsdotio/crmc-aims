@@ -798,7 +798,10 @@ function StepSelectConsumables({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const { data: paginatedData, isLoading } = useConsumablesQuery({ limit: 100 });
+  const { data: paginatedData, isLoading } = useConsumablesQuery({
+    limit: 100,
+    catalog: true,
+  });
   const consumables = useMemo(
     () => paginatedData?.data ?? [],
     [paginatedData?.data]

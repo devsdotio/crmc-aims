@@ -4,6 +4,8 @@ export const stockMovementQueryKeys = {
   list: (filters?: {
     reason?: string;
     limit?: number;
+    departmentId?: string;
+    classification?: string;
     includeSandbox?: boolean;
   }) => [...stockMovementQueryKeys.lists(), filters ?? {}] as const,
   byConsumable: (id: string) =>

@@ -1,7 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { AssetsView } from "@/components/assets/assets-view";
-
+/** Legacy Operations → Assets URL; custody lives under Inventory. */
 export default function BorrowerAssetsPage() {
-  return <AssetsView />;
+  redirect("/borrower-db/inventory");
 }

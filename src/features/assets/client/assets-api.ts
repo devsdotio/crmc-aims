@@ -97,6 +97,8 @@ export const assetsApi = {
       search?: string;
       availableOnly?: boolean;
       assignmentType?: "borrowable" | "assignable";
+      /** Request-wizard path for borrowers (warehouse catalog). */
+      catalog?: boolean;
     }
   ): Promise<Asset[]> {
     const searchParams = new URLSearchParams();
@@ -109,6 +111,7 @@ export const assetsApi = {
     if (filters?.search) searchParams.set("search", filters.search);
     if (filters?.availableOnly) searchParams.set("availableOnly", "true");
     if (filters?.assignmentType) searchParams.set("assignmentType", filters.assignmentType);
+    if (filters?.catalog) searchParams.set("catalog", "1");
 
     const queryString = searchParams.toString();
     const path =

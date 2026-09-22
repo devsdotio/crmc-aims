@@ -61,7 +61,10 @@ export function EditRequestDialog({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [supplyLines, setSupplyLines] = useState<any[]>([]);
 
-  const { data: consumableData } = useConsumablesQuery({ limit: 100 });
+  const { data: consumableData } = useConsumablesQuery({
+    limit: 100,
+    catalog: true,
+  });
 
   const { getCategoryStyle } = useCategoryStyleMap();
   const { data: dbCategories = [] } = useCategoriesQuery();
