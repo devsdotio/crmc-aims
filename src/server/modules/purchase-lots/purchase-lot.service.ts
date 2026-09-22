@@ -23,9 +23,14 @@ import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import { listActivePoDisbursements } from "./po-disbursement";
+import {
+  computePoDeleteImpact,
+  deletePurchaseOrderWithRevert,
+} from "./purchase-lot-delete-impact";
 import type {
   CreatePurchaseLotInput,
   CreatePurchaseOrderInput,
+  PoDeleteImpact,
   PurchaseLotDTO,
   PurchaseOrderStatus,
   UpdatePurchaseOrderInput,
@@ -1216,11 +1221,11 @@ export class PurchaseLotService {
   }
 
   /**
-   * Delete or Cancel PO.
+   * Delete or Cancel PO line (legacy single-lot). Prefer {@link previewDeleteByPoNumber}
+   * + {@link deleteByPoNumberWithRevert} for whole-PO cleanup with inventory revert.
    */
   async deletePurchaseOrder(id: string, actor: ActorContext): Promise<boolean> {
     return withTransaction(async (session) => {
-      const db = session ?? getDb();
       const lot = await this.repo.findByIdForUpdate(id, session);
       if (!lot) {
         throw new NotFoundError("Purchase Order lot", id);
@@ -1257,6 +1262,27 @@ export class PurchaseLotService {
 
       return ok;
     });
+  }
+
+  /** TEMPORARY: preview inventory/asset effects of deleting an entire PO. */
+  async previewDeleteByPoNumber(
+    poNumber: string,
+    tenantId?: string
+  ): Promise<PoDeleteImpact> {
+    return computePoDeleteImpact(poNumber, tenantId, this.repo);
+  }
+
+  /** TEMPORARY: atomic delete of all PO lines with inventory revert when clear. */
+  async deleteByPoNumberWithRevert(
+    poNumber: string,
+    actor: ActorContext
+  ): Promise<PoDeleteImpact> {
+    return deletePurchaseOrderWithRevert(
+      poNumber,
+      actor,
+      this.repo,
+      this.auditLogs
+    );
   }
 
   /** Exposed for project FIFO / repo-level callers. */

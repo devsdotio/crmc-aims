@@ -72,3 +72,43 @@ export interface PurchaseLot {
     status: string;
   } | null;
 }
+
+/** TEMPORARY: delete-PO impact preview */
+export type PoDeleteAssetUnit = {
+  id: string;
+  assetCode: string;
+  name: string;
+  status: string;
+  currentHolder: string | null;
+  reservedForRequestId: string | null;
+};
+
+export type PoDeleteLineEffect = {
+  lotId: string;
+  lotCode: string;
+  itemName: string;
+  itemType: PurchaseLotItemType;
+  status: PurchaseOrderStatus;
+  projectId: string | null;
+  effects: string[];
+  qtyToReverse?: number;
+  assetsToDelete?: PoDeleteAssetUnit[];
+  movementsToRemove?: number;
+  expensesToRemove?: number;
+};
+
+export type PoDeleteBlocker = {
+  lotId: string;
+  itemName: string;
+  code: string;
+  message: string;
+};
+
+export type PoDeleteImpact = {
+  poNumber: string;
+  canDelete: boolean;
+  lineCount: number;
+  lines: PoDeleteLineEffect[];
+  blockers: PoDeleteBlocker[];
+  warnings: string[];
+};
