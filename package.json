@@ -7,6 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings 0",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && node scripts/cf-deploy.mjs",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf:deploy": "node scripts/cf-deploy.mjs",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:verbose": "tsx scripts/db-migrate.ts",
@@ -17,6 +22,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@opennextjs/cloudflare": "^1.20.6",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.9",
     "@tanstack/react-query": "^5.101.4",
@@ -27,7 +33,7 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.27.0",
-    "next": "16.2.12",
+    "next": "16.3.5",
     "next-swagger-doc": "^0.4.1",
     "postgres": "^3.4.9",
     "qrcode": "^1.5.4",
@@ -51,8 +57,9 @@
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.136.0"
   }
 }

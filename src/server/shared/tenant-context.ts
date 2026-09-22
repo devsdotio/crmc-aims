@@ -2,6 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+
 import { getDb } from "@/server/db";
 import { tenants, type TenantRow } from "@/server/db/schema";
 import { serverCache } from "@/server/shared/cache";
@@ -22,6 +24,24 @@ export interface TenantContext {
 
 const tenantStorage = new AsyncLocalStorage<TenantContext>();
 
+/**
+ * Workers intentionally omit `AsyncLocalStorage.enterWith()`.
+ * Key tenant context by the request ExecutionContext instead (GC'd with the request).
+ * @see https://developers.cloudflare.com/workers/runtime-apis/nodejs/asynclocalstorage/
+ */
+const tenantByExecutionCtx = new WeakMap<object, TenantContext>();
+
+/** Node/`next dev` fallback when ALS enterWith is available or request is single-threaded. */
+let nodeFallbackContext: TenantContext | undefined;
+
+function getExecutionCtx(): object | undefined {
+  try {
+    const { ctx } = getCloudflareContext();
+    return ctx ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 /**
  * Cache-wrapped tenant query by primary key ID.
  */
@@ -99,7 +119,8 @@ export function invalidateTenantCache(tenantId?: string, slug?: string) {
 }
 
 /**
- * Executes a callback within a scoped TenantContext using AsyncLocalStorage.
+ * Executes a callback within a scoped TenantContext using AsyncLocalStorage.run
+ * (supported on Workers; prefer this over setTenantContext when wrapping work).
  */
 export function runWithTenant<T>(
   context: TenantContext,
@@ -109,19 +130,39 @@ export function runWithTenant<T>(
 }
 
 /**
- * Sets the TenantContext for the remainder of the current execution context.
+ * Sets the TenantContext for the remainder of the current request.
+ * Avoids `enterWith()` (unimplemented on Cloudflare Workers).
  */
 export function setTenantContext(context: TenantContext): void {
-  tenantStorage.enterWith(context);
+  const execCtx = getExecutionCtx();
+  if (execCtx) {
+    tenantByExecutionCtx.set(execCtx, context);
+    return;
+  }
+
+  // Local Node: enterWith works. Soft-fail to a process fallback for scripts.
+  try {
+    tenantStorage.enterWith(context);
+  } catch {
+    nodeFallbackContext = context;
+  }
 }
 
 /**
  * Returns the currently active TenantContext if one is set.
  */
 export function getTenantContext(): TenantContext | undefined {
-  return tenantStorage.getStore();
-}
+  const fromAls = tenantStorage.getStore();
+  if (fromAls) return fromAls;
 
+  const execCtx = getExecutionCtx();
+  if (execCtx) {
+    const fromCtx = tenantByExecutionCtx.get(execCtx);
+    if (fromCtx) return fromCtx;
+  }
+
+  return nodeFallbackContext;
+}
 /**
  * Returns the active TenantContext, throwing BadRequestError if not set.
  */
