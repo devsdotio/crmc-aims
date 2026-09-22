@@ -2,7 +2,6 @@
 
 /**
  * React Query hooks for maintenance logs.
- * Ready for page integration — UI still uses mocks until wired.
  */
 
 import {
@@ -22,10 +21,12 @@ import {
   maintenanceLogsApi,
   type CreateMaintenancePayload,
   type MaintenanceLog,
+  type ResolveMaintenancePayload,
+  type UpdateOpenMaintenancePayload,
 } from "./maintenance-logs-api";
 import { maintenanceQueryKeys } from "./query-keys";
 
-/** Flagging or resolving a log also flips asset status and lifecycle history. */
+/** Flagging, documenting, or resolving a log also flips asset status / lifecycle. */
 const MAINTENANCE_DOMAINS = [
   "maintenance",
   "assets",
@@ -37,10 +38,31 @@ export function useMaintenanceLogsQuery(filters?: {
   openOnly?: boolean;
   search?: string;
   condition?: MaintenanceLog["condition"];
+  assetId?: string;
 }): UseQueryResult<MaintenanceLog[], Error> {
   return useQuery({
     queryKey: maintenanceQueryKeys.list(filters),
     queryFn: () => maintenanceLogsApi.list(filters),
+  });
+}
+
+export function useOpenMaintenanceLogForAssetQuery(
+  assetId: string | undefined
+): UseQueryResult<MaintenanceLog | null, Error> {
+  return useQuery({
+    queryKey: maintenanceQueryKeys.list({
+      assetId,
+      openOnly: true,
+    }),
+    queryFn: async () => {
+      if (!assetId) return null;
+      const rows = await maintenanceLogsApi.list({
+        assetId,
+        openOnly: true,
+      });
+      return rows[0] ?? null;
+    },
+    enabled: Boolean(assetId),
   });
 }
 
@@ -68,10 +90,25 @@ export function useCreateMaintenanceLogMutation(): UseMutationResult<
   });
 }
 
+export function useUpdateMaintenanceLogMutation(): UseMutationResult<
+  MaintenanceLog,
+  Error,
+  { id: string } & UpdateOpenMaintenancePayload
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...payload }) =>
+      maintenanceLogsApi.updateOpen(id, payload),
+    onSettled: () => {
+      void invalidateDomains(qc, MAINTENANCE_DOMAINS);
+    },
+  });
+}
+
 export function useResolveMaintenanceLogMutation(): UseMutationResult<
   MaintenanceLog,
   Error,
-  { id: string } & import("./maintenance-logs-api").ResolveMaintenancePayload
+  { id: string } & ResolveMaintenancePayload
 > {
   const qc = useQueryClient();
   return useMutation({

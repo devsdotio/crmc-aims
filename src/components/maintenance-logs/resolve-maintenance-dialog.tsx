@@ -6,12 +6,17 @@ import {
   CheckCircle2,
   AlertTriangle,
   Check,
-  Plus,
-  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
-import { filterMoneyInput } from "@/lib/numeric-input";
+import {
+  RepairPartsCostFields,
+  newRepairPartLine,
+  partLinesFromRecord,
+  serializePartLines,
+  partsCostSummary,
+  type RepairPartLine,
+} from "@/components/maintenance-logs/repair-parts-cost-fields";
 
 export type ResolveMaintenanceConfirmPayload = {
   resolutionNotes: string;
@@ -19,6 +24,7 @@ export type ResolveMaintenanceConfirmPayload = {
   resolutionDate: string;
   repairCost?: string | null;
   repairParts?: Array<{ name: string; cost: string | null }>;
+  noPartsUsed?: boolean;
 };
 
 export interface ResolveMaintenanceDialogProps {
@@ -29,16 +35,6 @@ export interface ResolveMaintenanceDialogProps {
     record: MaintenanceLogRecord,
     payload: ResolveMaintenanceConfirmPayload
   ) => void | Promise<void>;
-}
-
-type PartLine = { id: string; name: string; cost: string };
-
-function newPartLine(): PartLine {
-  return {
-    id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: "",
-    cost: "",
-  };
 }
 
 interface ResolveMaintenanceDialogFormProps {
@@ -52,13 +48,25 @@ function ResolveMaintenanceDialogForm({
   onClose,
   onConfirmResolve,
 }: ResolveMaintenanceDialogFormProps) {
-  const [resolutionNotes, setResolutionNotes] = useState("");
+  const existingParts = record.repairParts ?? [];
+
+  const [resolutionNotes, setResolutionNotes] = useState(
+    () =>
+      record.resolutionNotes?.trim() ||
+      record.workNotes?.trim() ||
+      ""
+  );
   const [assignedTo, setAssignedTo] = useState("");
   const [resolutionDate, setResolutionDate] = useState(
     () => new Date().toISOString().split("T")[0]
   );
-  const [overallCost, setOverallCost] = useState("");
-  const [parts, setParts] = useState<PartLine[]>(() => [newPartLine()]);
+  const [overallCost, setOverallCost] = useState(
+    () => (record.repairCost != null ? String(record.repairCost) : "")
+  );
+  const [parts, setParts] = useState<RepairPartLine[]>(() =>
+    partLinesFromRecord(existingParts)
+  );
+  const [noPartsUsed, setNoPartsUsed] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -72,26 +80,8 @@ function ResolveMaintenanceDialogForm({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose, isSubmitting]);
 
-  const filledParts = parts.filter((p) => p.name.trim());
-  const partsSum = filledParts.reduce((sum, p) => {
-    if (!p.cost.trim()) return sum;
-    const n = Number(p.cost);
-    return Number.isFinite(n) ? sum + n : sum;
-  }, 0);
-  const hasAnyPartCost = filledParts.some((p) => p.cost.trim() !== "");
+  const { hasAnyPartCost, partsSum } = partsCostSummary(parts);
   const overallBlank = !overallCost.trim();
-  const displayOverall = overallBlank
-    ? hasAnyPartCost
-      ? partsSum
-      : null
-    : Number(overallCost);
-  const isAutoCalculated = overallBlank && hasAnyPartCost;
-
-  const updatePart = (id: string, patch: Partial<Omit<PartLine, "id">>) => {
-    setParts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...patch } : p))
-    );
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,24 +94,30 @@ function ResolveMaintenanceDialogForm({
       return;
     }
 
+    const repairParts = noPartsUsed ? [] : serializePartLines(parts);
+    if (!noPartsUsed && repairParts.length === 0) {
+      setError(
+        "Add at least one part/material, or confirm that no parts were used."
+      );
+      return;
+    }
+
     for (const part of parts) {
-      if (part.cost.trim() && !part.name.trim()) {
+      if (!noPartsUsed && part.cost.trim() && !part.name.trim()) {
         setError("Enter a part name for every line that has a cost.");
         return;
       }
     }
 
-    const repairParts = filledParts.map((p) => ({
-      name: p.name.trim(),
-      cost: p.cost.trim() ? p.cost.trim() : null,
-    }));
-
-    // Explicit overall cost wins; blank falls back to line-item sum (or null).
-    const repairCost = overallBlank
-      ? hasAnyPartCost
-        ? partsSum.toFixed(2)
-        : null
-      : overallCost.trim();
+    const repairCost = noPartsUsed
+      ? overallBlank
+        ? null
+        : overallCost.trim()
+      : overallBlank
+        ? hasAnyPartCost
+          ? partsSum.toFixed(2)
+          : null
+        : overallCost.trim();
 
     setIsSubmitting(true);
     setError("");
@@ -132,6 +128,7 @@ function ResolveMaintenanceDialogForm({
         resolutionDate,
         repairParts,
         repairCost,
+        noPartsUsed,
       });
       onClose();
     } catch (err) {
@@ -164,7 +161,7 @@ function ResolveMaintenanceDialogForm({
                 id="resolve-dialog-title"
                 className="text-base font-bold text-text leading-tight"
               >
-                Resolve Maintenance Flag
+                Mark Serviceable
               </h3>
               <p className="text-xs text-text-secondary mt-0.5 font-mono">
                 {record.logCode} · Tag {record.assetCode}
@@ -220,142 +217,20 @@ function ResolveMaintenanceDialogForm({
             />
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="block text-xs font-semibold text-text">
-                Parts &amp; materials{" "}
-                <span className="text-text-secondary font-normal">
-                  (optional)
-                </span>
-              </label>
-              <button
-                type="button"
-                disabled={isSubmitting || parts.length >= 20}
-                onClick={() => setParts((prev) => [...prev, newPartLine()])}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer disabled:opacity-50"
-              >
-                <Plus className="h-3 w-3" />
-                Add line
-              </button>
-            </div>
-
-            <div className="space-y-2 rounded-xl border border-border bg-bg-subtle/40 p-2.5">
-              <div className="hidden sm:grid grid-cols-[1fr_7.5rem_2rem] gap-2 px-0.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
-                <span>Part name</span>
-                <span>Cost (₱)</span>
-                <span className="sr-only">Remove</span>
-              </div>
-              {parts.map((part) => (
-                <div
-                  key={part.id}
-                  className="grid grid-cols-1 sm:grid-cols-[1fr_7.5rem_2rem] gap-2"
-                >
-                  <input
-                    type="text"
-                    value={part.name}
-                    onChange={(e) =>
-                      updatePart(part.id, { name: e.target.value })
-                    }
-                    placeholder="e.g. Autofocus gear ring"
-                    disabled={isSubmitting}
-                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                    aria-label="Part name"
-                  />
-                  <div className="relative">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-text-secondary">
-                      ₱
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={part.cost}
-                      onChange={(e) => {
-                        const next = filterMoneyInput(e.target.value);
-                        if (next !== null) updatePart(part.id, { cost: next });
-                      }}
-                      placeholder="0.00"
-                      disabled={isSubmitting}
-                      className="w-full h-9 pl-6 pr-2 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-                      aria-label="Part cost"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={isSubmitting || parts.length <= 1}
-                    onClick={() =>
-                      setParts((prev) => prev.filter((p) => p.id !== part.id))
-                    }
-                    className="h-9 w-8 inline-flex items-center justify-center rounded-lg border border-border text-text-secondary hover:text-status-outofservice-text hover:bg-bg cursor-pointer disabled:opacity-40"
-                    aria-label="Remove part line"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <p className="text-[11px] text-text-secondary px-0.5">
-              Cost is optional per part. Leave blank if unrecorded.
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            <label
-              htmlFor="overall-repair-cost"
-              className="block text-xs font-semibold text-text"
-            >
-              Overall repair cost{" "}
-              <span className="text-text-secondary font-normal">
-                (optional)
-              </span>
-            </label>
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-text-secondary">
-                ₱
-              </span>
-              <input
-                id="overall-repair-cost"
-                type="text"
-                inputMode="decimal"
-                value={overallCost}
-                onChange={(e) => {
-                  const next = filterMoneyInput(e.target.value);
-                  if (next !== null) setOverallCost(next);
-                }}
-                placeholder={
-                  isAutoCalculated
-                    ? partsSum.toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
-                    : "0.00"
-                }
-                disabled={isSubmitting}
-                className="w-full h-9 pl-6 pr-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-            <p className="text-[11px] text-text-secondary">
-              {isAutoCalculated ? (
-                <>
-                  Auto-calculated from line items:{" "}
-                  <span className="font-mono font-bold text-text">
-                    ₱
-                    {partsSum.toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                  . Enter a value to override.
-                </>
-              ) : displayOverall != null &&
-                Number.isFinite(displayOverall) &&
-                !overallBlank ? (
-                <>Using the overall cost you entered.</>
-              ) : (
-                <>Leave blank to auto-sum costs from parts &amp; materials.</>
-              )}
-            </p>
-          </div>
+          <RepairPartsCostFields
+            parts={parts}
+            onPartsChange={setParts}
+            overallCost={overallCost}
+            onOverallCostChange={setOverallCost}
+            disabled={isSubmitting}
+            noPartsUsed={noPartsUsed}
+            onNoPartsUsedChange={(next) => {
+              setNoPartsUsed(next);
+              if (next) setParts([newRepairPartLine()]);
+              if (error) setError("");
+            }}
+            showNoPartsToggle
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">

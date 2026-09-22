@@ -19,6 +19,7 @@ export type MaintenanceRepairPart = {
 export interface MaintenanceLogRecord {
   id: string;
   logCode: string;
+  assetId?: string | null;
   assetCode: string;
   assetName: string;
   category: AssetCategory;
@@ -27,6 +28,8 @@ export interface MaintenanceLogRecord {
   dateLogged: string;
   loggedBy: string;
   notes: string;
+  /** Progressive work-performed notes while the log is open. */
+  workNotes?: string | null;
   isResolved: boolean;
   resolutionDate?: string;
   resolutionNotes?: string;

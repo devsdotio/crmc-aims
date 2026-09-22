@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Loader2, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Asset } from "@/types/assets";
 import { useFlagMaintenanceMutation } from "@/features/assets/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface FlagMaintenanceDialogProps {
   asset: Asset | null;
@@ -13,6 +14,8 @@ export interface FlagMaintenanceDialogProps {
   onSuccess?: (message: string) => void;
 }
 
+type FlagCondition = "needs_maintenance" | "damaged";
+
 export function FlagMaintenanceDialog({
   asset,
   isOpen,
@@ -20,24 +23,46 @@ export function FlagMaintenanceDialog({
   onSuccess,
 }: FlagMaintenanceDialogProps) {
   const [notes, setNotes] = useState("");
+  const [condition, setCondition] =
+    useState<FlagCondition>("needs_maintenance");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [error, setError] = useState("");
   const mutation = useFlagMaintenanceMutation();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setNotes("");
+    setCondition("needs_maintenance");
+    setScheduledDate("");
+    setError("");
+  }, [isOpen, asset?.id]);
 
   if (!isOpen || !asset) return null;
 
   const submit = async () => {
     const trimmed = notes.trim();
+    if (!trimmed) {
+      setError("Please describe the fault or maintenance issue.");
+      return;
+    }
     try {
       await mutation.mutateAsync({
         id: asset.id,
-        payload: trimmed ? { notes: trimmed } : {},
+        payload: {
+          notes: trimmed,
+          condition,
+          scheduledDate: scheduledDate || undefined,
+        },
       });
       onSuccess?.(
-        `${asset.assetCode} flagged for maintenance. Resolve it under Maintenance Logs when repaired.`
+        `${asset.assetCode} flagged for maintenance. Document parts and costs on the asset, then mark serviceable when repaired.`
       );
       setNotes("");
       onClose();
-    } catch {
-      // Mutation error surfaces via toast / query; keep dialog open.
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to flag for maintenance."
+      );
     }
   };
 
@@ -84,27 +109,81 @@ export function FlagMaintenanceDialog({
 
         <div className="px-5 py-4 space-y-3">
           <p className="text-xs text-text-secondary leading-relaxed">
-            Marks this asset as needs repair and opens a Maintenance Logs entry
-            so it can be marked serviceable again after work is done.
+            Marks this asset as needs repair and opens a Maintenance Logs entry.
+            You can document parts, costs, and work notes on the asset while the
+            flag is open.
           </p>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="flag-condition-select"
+              className="block text-xs font-semibold text-text"
+            >
+              Condition <span className="text-accent">*</span>
+            </label>
+            <SearchableSelect
+              id="flag-condition-select"
+              value={condition}
+              onValueChange={(next) => setCondition(next as FlagCondition)}
+              options={[
+                {
+                  value: "needs_maintenance",
+                  label: "Needs Maintenance / Repair",
+                },
+                { value: "damaged", label: "Damaged / Out of Service" },
+              ]}
+              disabled={mutation.isPending}
+              placeholder="Type to find a condition…"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label
+              htmlFor="flag-scheduled-date"
+              className="block text-xs font-semibold text-text"
+            >
+              Target service date{" "}
+              <span className="text-text-secondary font-normal">(optional)</span>
+            </label>
+            <input
+              id="flag-scheduled-date"
+              type="date"
+              value={scheduledDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              disabled={mutation.isPending}
+              className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+
           <div className="space-y-1">
             <label
               htmlFor="flag-maintenance-notes"
               className="block text-xs font-semibold text-text"
             >
-              Issue notes{" "}
-              <span className="text-text-secondary font-normal">(optional)</span>
+              Issue description <span className="text-accent">*</span>
             </label>
             <textarea
               id="flag-maintenance-notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => {
+                setNotes(e.target.value);
+                if (error) setError("");
+              }}
               rows={3}
               placeholder="e.g. Fan noisy, screen flicker on wake…"
               disabled={mutation.isPending}
-              className="w-full p-2.5 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
+              className={cn(
+                "w-full p-2.5 text-xs bg-bg border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent",
+                error ? "border-status-outofservice-bg" : "border-border"
+              )}
             />
           </div>
+
+          {error && (
+            <p className="text-xs font-bold text-status-outofservice-text">
+              {error}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-border px-5 py-3">

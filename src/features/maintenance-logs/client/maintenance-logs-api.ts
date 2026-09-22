@@ -10,17 +10,25 @@ export type CreateMaintenancePayload = {
   category: MaintenanceLog["category"];
   condition?: MaintenanceLog["condition"];
   source?: MaintenanceLog["source"];
-  notes?: string;
+  notes: string;
   scheduledDate?: string;
   relatedBorrowLogCode?: string;
+};
+
+export type UpdateOpenMaintenancePayload = {
+  workNotes?: string;
+  repairCost?: string | number | null;
+  repairParts?: Array<{ name: string; cost?: string | number | null }>;
+  scheduledDate?: string | null;
 };
 
 export type ResolveMaintenancePayload = {
   resolutionNotes: string;
   repairCost?: string | number | null;
   repairParts?: Array<{ name: string; cost?: string | number | null }>;
+  noPartsUsed?: boolean;
   resolutionDate?: string;
-  technician?: string;
+  technician: string;
 };
 
 export const maintenanceLogsApi = {
@@ -28,11 +36,13 @@ export const maintenanceLogsApi = {
     openOnly?: boolean;
     search?: string;
     condition?: MaintenanceLog["condition"];
+    assetId?: string;
   }): Promise<MaintenanceLog[]> {
     const sp = new URLSearchParams();
     if (params?.openOnly) sp.set("openOnly", "true");
     if (params?.search) sp.set("search", params.search);
     if (params?.condition) sp.set("condition", params.condition);
+    if (params?.assetId) sp.set("assetId", params.assetId);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<MaintenanceLog[]>>(
       qs ? `/api/maintenance-logs?${qs}` : "/api/maintenance-logs"
@@ -51,6 +61,17 @@ export const maintenanceLogsApi = {
     const res = await fetchJson<ApiResponse<MaintenanceLog>>(
       "/api/maintenance-logs",
       { method: "POST", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+
+  async updateOpen(
+    id: string,
+    payload: UpdateOpenMaintenancePayload
+  ): Promise<MaintenanceLog> {
+    const res = await fetchJson<ApiResponse<MaintenanceLog>>(
+      `/api/maintenance-logs/${id}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
     );
     return res.data;
   },

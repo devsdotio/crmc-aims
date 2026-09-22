@@ -257,7 +257,7 @@ export function useReturnAssetMutation(): UseMutationResult<
 export function useFlagMaintenanceMutation(): UseMutationResult<
   Asset,
   Error,
-  { id: string; payload?: FlagMaintenanceInput }
+  { id: string; payload: FlagMaintenanceInput }
 > {
   const queryClient = useQueryClient();
 

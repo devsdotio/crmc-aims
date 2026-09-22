@@ -1234,7 +1234,10 @@ export class AssetService {
       const notes =
         input.notes?.trim() ||
         input.description?.trim() ||
-        "Flagged for maintenance inspection by Property Custodian.";
+        "";
+      if (!notes) {
+        throw new ConflictError("Issue description is required to flag for maintenance.");
+      }
 
       const next = await this.assetRepository.update(
         id,
@@ -1254,7 +1257,7 @@ export class AssetService {
           assetCode: next.assetCode,
           assetName: next.name,
           category: next.category,
-          condition: "needs_maintenance",
+          condition: input.condition ?? "needs_maintenance",
           source: "manual_flag",
           dateLogged: todayDateString(),
           loggedByUserId: actor.userId,
@@ -1268,7 +1271,7 @@ export class AssetService {
           repairCost: null,
           repairParts: [],
           relatedBorrowLogCode: null,
-          scheduledDate: null,
+          scheduledDate: input.scheduledDate ?? null,
         },
         tx
       );

@@ -64,6 +64,8 @@ export const maintenanceLogs = pgTable(
     loggedByUserId: uuid("logged_by_user_id").notNull(),
     loggedByName: text("logged_by_name").notNull(),
     notes: text("notes").notNull().default(""),
+    /** Progressive work-performed notes while the log is still open. */
+    workNotes: text("work_notes"),
 
     isResolved: boolean("is_resolved").notNull().default(false),
     resolutionDate: date("resolution_date", { mode: "string" }),

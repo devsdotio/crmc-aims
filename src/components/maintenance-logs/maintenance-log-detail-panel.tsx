@@ -1,27 +1,29 @@
 "use client";
 
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
-  X,
   CheckCircle2,
   Tag,
   ExternalLink,
-  Wrench,
   Calendar,
   User,
   FileText,
+  FilePenLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
 import { ConditionTag } from "./condition-tag";
+import { DocumentMaintenanceDialog } from "./document-maintenance-dialog";
 
 export interface MaintenanceLogDetailPanelProps {
   record: MaintenanceLogRecord | null;
   isOpen: boolean;
   onClose: () => void;
   onResolve?: (record: MaintenanceLogRecord) => void;
+  canDocument?: boolean;
+  onDocumentSaved?: (message: string) => void;
 }
 
 function Field({
@@ -62,23 +64,32 @@ export function MaintenanceLogDetailPanel({
   isOpen,
   onClose,
   onResolve,
+  canDocument = false,
+  onDocumentSaved,
 }: MaintenanceLogDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const { getCategoryStyle } = useCategoryStyleMap();
+  const [documentOpen, setDocumentOpen] = useState(false);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isOpen) onClose();
+      if (e.key === "Escape" && isOpen && !documentOpen) onClose();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, documentOpen]);
 
   if (!isOpen || !record) return null;
 
   const categoryMeta = getCategoryStyle(record.category);
   const effectiveCondition = record.isResolved ? "resolved" : record.condition;
   const notesDisplay = record.notes?.trim() || "No notes provided.";
+  const parts = record.repairParts ?? [];
+  const hasDocs =
+    Boolean(record.workNotes?.trim()) ||
+    parts.length > 0 ||
+    (record.repairCost != null && record.repairCost !== "") ||
+    Boolean(record.scheduledDate);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
@@ -94,47 +105,70 @@ export function MaintenanceLogDetailPanel({
           "animate-in slide-in-from-right duration-250 ease-in-out"
         )}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
-          <div className="min-w-0 flex-1 pr-3">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-status-repair-bg/15 text-status-repair-text shrink-0">
-                <Wrench className="h-4 w-4" />
-              </span>
-              <h2
-                id="mnt-detail-heading"
-                className="font-mono text-lg font-bold tracking-tight text-text"
-              >
-                {record.logCode}
-              </h2>
-              <ConditionTag condition={effectiveCondition} />
-            </div>
-            <p className="text-xs text-text-secondary font-medium mt-1 truncate">
-              {record.assetName} ·{" "}
-              <span className="font-mono text-text">{record.assetCode}</span>
-            </p>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
+          <div className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
+            <h2
+              id="mnt-detail-heading"
+              className="text-lg font-extrabold tracking-tight text-primary truncate min-w-0 leading-tight"
+            >
+              {record.assetName}
+            </h2>
+            <ConditionTag condition={effectiveCondition} />
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close maintenance detail panel"
-            className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-border transition-colors cursor-pointer shrink-0"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center justify-end gap-2 shrink-0">
+            {!record.isResolved && canDocument && (
+              <button
+                type="button"
+                onClick={() => setDocumentOpen(true)}
+                aria-label={
+                  hasDocs ? "Update repair documentation" : "Document repair"
+                }
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-md border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer shadow-xs shrink-0"
+              >
+                <FilePenLine className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 text-white px-2 py-0.5 text-[10px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  {hasDocs ? "Update documentation" : "Document repair"}
+                </span>
+              </button>
+            )}
+            {!record.isResolved && onResolve && (
+              <button
+                type="button"
+                onClick={() => onResolve(record)}
+                aria-label="Mark serviceable"
+                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-status-active-bg text-white hover:opacity-90 cursor-pointer shadow-xs shrink-0"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 text-white px-2 py-0.5 text-[10px] font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  Mark serviceable
+                </span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <section className="space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-              Asset
+              Asset &amp; log
             </h3>
-            <dl className="grid grid-cols-2 gap-4 p-4 rounded-xl border border-border bg-bg-subtle/40">
-              <Field label="Name">
-                <span className="font-semibold">{record.assetName}</span>
+            <dl className="grid grid-cols-2 gap-3 p-4 rounded-xl border border-border bg-bg-subtle/40">
+              <Field label="Log code">
+                <span className="font-mono font-extrabold text-status-repair-text">
+                  {record.logCode}
+                </span>
               </Field>
               <Field label="Asset code">
-                <span className="font-mono font-bold">{record.assetCode}</span>
+                <span className="font-mono font-extrabold text-primary">
+                  {record.assetCode}
+                </span>
               </Field>
               <Field label="Category">
                 <span
@@ -149,8 +183,8 @@ export function MaintenanceLogDetailPanel({
                 </span>
               </Field>
               <Field label="Date logged">
-                <span className="inline-flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5 text-text-secondary" />
+                <span className="inline-flex items-center gap-1 font-semibold">
+                  <Calendar className="h-3.5 w-3.5 text-accent" />
                   {record.dateLogged}
                 </span>
               </Field>
@@ -162,10 +196,14 @@ export function MaintenanceLogDetailPanel({
               Logging context
             </h3>
             <dl className="grid grid-cols-1 gap-3 p-4 rounded-xl border border-border bg-bg">
-              <Field label="Source">{sourceLabel(record.source)}</Field>
+              <Field label="Source">
+                <span className="font-semibold text-text">
+                  {sourceLabel(record.source)}
+                </span>
+              </Field>
               <Field label="Logged by">
-                <span className="inline-flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5 text-text-secondary" />
+                <span className="inline-flex items-center gap-1.5 font-semibold">
+                  <User className="h-3.5 w-3.5 text-primary" />
                   {record.loggedBy}
                 </span>
               </Field>
@@ -181,20 +219,104 @@ export function MaintenanceLogDetailPanel({
                 </Field>
               )}
               {record.scheduledDate && (
-                <Field label="Target service date">{record.scheduledDate}</Field>
+                <Field label="Target service date">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-accent/15 text-accent border border-accent/25">
+                    {record.scheduledDate}
+                  </span>
+                </Field>
               )}
             </dl>
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-status-repair-text flex items-center gap-1.5">
               <FileText className="h-3.5 w-3.5" />
-              Issue description / flag notes
+              Issue description
             </h3>
-            <div className="p-3.5 rounded-xl border border-border bg-bg text-sm text-text leading-relaxed whitespace-pre-wrap">
+            <div className="p-3.5 rounded-xl border border-status-repair-bg/35 bg-status-repair-bg/10 text-sm font-semibold text-text leading-relaxed whitespace-pre-wrap shadow-xs">
               {notesDisplay}
             </div>
           </section>
+
+          {!record.isResolved && (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-primary">
+                  Repair documentation
+                </h3>
+                {canDocument && (
+                  <button
+                    type="button"
+                    onClick={() => setDocumentOpen(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-status-repair-text hover:underline cursor-pointer"
+                  >
+                    <FilePenLine className="h-3 w-3" />
+                    {hasDocs ? "Update" : "Document repair"}
+                  </button>
+                )}
+              </div>
+              {hasDocs ? (
+                <div className="p-3.5 rounded-xl border border-primary/25 bg-primary/5 space-y-2.5 text-xs shadow-xs">
+                  {record.workNotes?.trim() && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-0.5">
+                        Work performed
+                      </p>
+                      <p className="font-medium text-text whitespace-pre-wrap">
+                        {record.workNotes}
+                      </p>
+                    </div>
+                  )}
+                  {record.scheduledDate && (
+                    <p>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                        Target date
+                      </span>
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-accent/15 text-accent border border-accent/25">
+                        {record.scheduledDate}
+                      </span>
+                    </p>
+                  )}
+                  {parts.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-primary mb-1">
+                        Parts &amp; materials
+                      </p>
+                      <ul className="space-y-1.5">
+                        {parts.map((part, idx) => (
+                          <li
+                            key={`${part.name}-${idx}`}
+                            className="flex justify-between gap-2 rounded-lg bg-bg border border-border/60 px-2.5 py-1.5"
+                          >
+                            <span className="font-semibold truncate">
+                              {part.name}
+                            </span>
+                            <span className="font-mono font-bold text-accent shrink-0">
+                              {formatPhp(part.cost)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {record.repairCost != null && record.repairCost !== "" && (
+                    <p className="pt-2 border-t border-primary/20 flex justify-between gap-2 items-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                        Overall cost
+                      </span>
+                      <span className="text-base font-extrabold font-mono text-accent">
+                        {formatPhp(record.repairCost)}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-status-repair-text/80 font-medium rounded-lg border border-dashed border-status-repair-bg/40 bg-status-repair-bg/10 px-3 py-2">
+                  No repair documentation recorded yet.
+                </p>
+              )}
+            </section>
+          )}
 
           {record.isResolved && (
             <section className="space-y-3">
@@ -260,18 +382,37 @@ export function MaintenanceLogDetailPanel({
         </div>
 
         {!record.isResolved && onResolve && (
-          <div className="p-4 border-t border-border bg-bg-subtle flex items-center justify-end shrink-0">
+          <div className="p-4 border-t border-border bg-bg-subtle flex items-center justify-end gap-2 shrink-0">
+            {canDocument && (
+              <button
+                type="button"
+                onClick={() => setDocumentOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer"
+              >
+                <FilePenLine className="h-4 w-4" />
+                {hasDocs ? "Update documentation" : "Document repair"}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => onResolve(record)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
             >
               <CheckCircle2 className="h-4 w-4" strokeWidth={2.5} />
-              Resolve Maintenance Flag
+              Mark Serviceable
             </button>
           </div>
         )}
       </aside>
+
+      {canDocument && (
+        <DocumentMaintenanceDialog
+          record={record}
+          isOpen={documentOpen}
+          onClose={() => setDocumentOpen(false)}
+          onSaved={onDocumentSaved}
+        />
+      )}
     </div>
   );
 }

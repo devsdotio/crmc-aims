@@ -50,6 +50,9 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     if (filters.openOnly) {
       conditions.push(eq(maintenanceLogs.isResolved, false));
     }
+    if (filters.assetId) {
+      conditions.push(eq(maintenanceLogs.assetId, filters.assetId));
+    }
     if (filters.condition) {
       conditions.push(eq(maintenanceLogs.condition, filters.condition));
     }
