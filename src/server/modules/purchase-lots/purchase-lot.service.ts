@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
@@ -502,7 +502,25 @@ export class PurchaseLotService {
               }
             }
           } else {
-            // New consumable registration
+            // New consumable registration — refuse exact-name duplicates in catalog
+            const [nameClash] = await db
+              .select()
+              .from(consumables)
+              .where(
+                and(
+                  sql`lower(${consumables.name}) = ${itemName.toLowerCase()}`,
+                  actor.tenantId
+                    ? eq(consumables.tenantId, actor.tenantId)
+                    : undefined
+                )
+              )
+              .limit(1);
+            if (nameClash) {
+              throw new ConflictError(
+                `Consumable "${itemName}" already exists as ${nameClash.itemCode}. Select it from the catalog instead of creating a new item.`
+              );
+            }
+
             itemCode = generateOperationalCode("ITM");
             const itemClassification = item.classification || (targetProjectId ? "material" : "supply");
             const initialQty = initialStatus === "delivered" && !targetProjectId ? item.quantity : 0;
@@ -594,6 +612,25 @@ export class PurchaseLotService {
             itemCode = existing.assetCode;
             itemName = existing.name;
           } else {
+            // New asset(s): refuse exact-name duplicates in catalog
+            const [nameClash] = await db
+              .select()
+              .from(assets)
+              .where(
+                and(
+                  sql`lower(${assets.name}) = ${itemName.toLowerCase()}`,
+                  actor.tenantId
+                    ? eq(assets.tenantId, actor.tenantId)
+                    : undefined
+                )
+              )
+              .limit(1);
+            if (nameClash) {
+              throw new ConflictError(
+                `Asset "${itemName}" already exists as ${nameClash.assetCode}. Select it from the catalog instead of creating a new item.`
+              );
+            }
+
             // New asset(s): one placeholder until receive, or all units if filed as delivered.
             const unitsToCreate =
               initialStatus === "delivered" ? Math.max(1, item.quantity) : 1;

@@ -521,6 +521,99 @@ export function FileNewPODialog({
     );
   };
 
+  const matchExistingCatalogByName = (rawName: string) => {
+    const needle = rawName.trim().toLowerCase();
+    if (!needle) return null;
+    if (poType === "asset") {
+      return (
+        assetsList.find(
+          (a) =>
+            a.name.trim().toLowerCase() === needle ||
+            a.assetCode.trim().toLowerCase() === needle
+        ) ?? null
+      );
+    }
+    return (
+      consumables.find(
+        (c) =>
+          ((c.classification as ConsumableClassification | undefined) ??
+            DEFAULT_CONSUMABLE_CLASSIFICATION) === effectiveClassification &&
+          (c.name.trim().toLowerCase() === needle ||
+            c.itemCode.trim().toLowerCase() === needle)
+      ) ?? null
+    );
+  };
+
+  const handleNewItemNameBlur = (rowId: string, rawName: string) => {
+    const matched = matchExistingCatalogByName(rawName);
+    if (!matched) return;
+
+    if (poType === "asset" && "assetCode" in matched) {
+      const alreadyOnPo = items.some(
+        (it) => !it.isNew && it.assetId === matched.id && it.id !== rowId
+      );
+      if (alreadyOnPo) {
+        setItems((prev) => prev.filter((it) => it.id !== rowId));
+        toast.info(`"${matched.name}" is already on this PO.`);
+        return;
+      }
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === rowId
+            ? {
+                ...it,
+                isNew: false,
+                assetId: matched.id,
+                consumableId: undefined,
+                name: matched.name,
+                category: matched.category,
+                assignmentType: matched.assignmentType || "borrowable",
+                location: matched.location || "Property Custodian Depot",
+                unit: "unit",
+              }
+            : it
+        )
+      );
+      toast.info(
+        `"${matched.name}" already exists in the catalog — linked as existing stock.`
+      );
+      return;
+    }
+
+    if (poType === "consumable" && "itemCode" in matched) {
+      const alreadyOnPo = items.some(
+        (it) => !it.isNew && it.consumableId === matched.id && it.id !== rowId
+      );
+      if (alreadyOnPo) {
+        setItems((prev) => prev.filter((it) => it.id !== rowId));
+        toast.info(`"${matched.name}" is already on this PO.`);
+        return;
+      }
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === rowId
+            ? {
+                ...it,
+                isNew: false,
+                consumableId: matched.id,
+                assetId: undefined,
+                name: matched.name,
+                category: matched.category,
+                classification: effectiveClassification,
+                unit: matched.unit || "pcs",
+                minThreshold: matched.minThreshold || 5,
+                location: matched.location || "Main Property Storage",
+                suggestedDealer: matched.supplier || it.suggestedDealer,
+              }
+            : it
+        )
+      );
+      toast.info(
+        `"${matched.name}" already exists in the catalog — linked as existing stock.`
+      );
+    }
+  };
+
   // Quick-Add & Quick-Unselect from Catalog Cards
   const handleQuickAddConsumable = (c: (typeof consumables)[number]) => {
     const itemClass =
@@ -2035,6 +2128,9 @@ export function FileNewPODialog({
                                 value={item.name}
                                 onChange={(e) =>
                                   handleItemFieldChange(item.id, "name", e.target.value)
+                                }
+                                onBlur={(e) =>
+                                  handleNewItemNameBlur(item.id, e.target.value)
                                 }
                                 placeholder={
                                   poType === "asset"
