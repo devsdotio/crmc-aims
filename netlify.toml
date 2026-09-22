@@ -2,3 +2,9 @@
   # NEXT_PUBLIC_* values are intentionally inlined into client/SSR bundles.
   # Omit them from secret scanning so Netlify does not fail the build.
   SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+
+  # Turbopack's incremental cache serializes the build environment, including
+  # server-only values that are not shipped in the application output. Keep
+  # scanning enabled for source and deployable artifacts while excluding only
+  # this non-deployable cache directory.
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache"
