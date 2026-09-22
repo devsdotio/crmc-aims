@@ -30,6 +30,7 @@ import {
   ArrowUpRight,
   Receipt,
   HardHat,
+  FolderKanban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
@@ -582,6 +583,23 @@ export function PurchaseOrderDetailSheet({
               </div>
             </div>
 
+            {(lot.projectId || lot.projectName) && (
+              <div className="flex items-center gap-2 p-2 rounded-lg border border-teal-500/25 bg-teal-500/10 min-w-0">
+                <FolderKanban className="h-3.5 w-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-[10px] text-text-secondary uppercase tracking-wider block font-medium">
+                    Assigned Project
+                  </span>
+                  <span
+                    className="font-semibold text-text truncate block text-xs"
+                    title={lot.projectName || undefined}
+                  >
+                    {lot.projectName?.trim() || "Project"}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Total Value Chip */}
             <div className="flex items-center gap-2 p-2 rounded-lg border border-border/70 bg-bg/80 min-w-0">
               <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 text-sm font-mono">₱</span>
@@ -1120,7 +1138,14 @@ export function PurchaseOrderDetailSheet({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                <div
+                  className={cn(
+                    "grid grid-cols-1 gap-4 text-xs",
+                    lot.projectId || lot.projectName
+                      ? "sm:grid-cols-2 lg:grid-cols-4"
+                      : "sm:grid-cols-3"
+                  )}
+                >
                   <div className="space-y-1">
                     <span className="text-[10px] uppercase font-bold text-text-secondary">
                       Requested By
@@ -1139,6 +1164,23 @@ export function PurchaseOrderDetailSheet({
                       </span>
                     )}
                   </div>
+
+                  {(lot.projectId || lot.projectName) && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-text-secondary">
+                        Assigned Project
+                      </span>
+                      <p className="font-semibold text-text text-sm flex items-center gap-1.5">
+                        <FolderKanban className="h-4 w-4 text-accent shrink-0" />
+                        <span className="truncate" title={lot.projectName || undefined}>
+                          {lot.projectName?.trim() || "Project"}
+                        </span>
+                      </p>
+                      <span className="text-[10px] text-text-secondary block">
+                        Direct project procurement
+                      </span>
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <span className="text-[10px] uppercase font-bold text-text-secondary">

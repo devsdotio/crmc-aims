@@ -18,6 +18,7 @@ import {
   Layers,
   Building2,
   Receipt,
+  FolderKanban,
 } from "lucide-react";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
 import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
@@ -43,6 +44,8 @@ interface PurchaseOrdersTableProps {
   onSelectLot: (lot: PurchaseLot) => void;
   onPrintSlip: (lot: PurchaseLot) => void;
   onDeleteGroup?: (group: GroupedPurchaseOrder) => void;
+  /** When true (Project POs page), surface assigned project on each row. */
+  showProject?: boolean;
 }
 
 function getStatusRowClasses(status: PurchaseOrderStatus): string {
@@ -160,6 +163,7 @@ export function PurchaseOrdersTable({
   onSelectLot,
   onPrintSlip,
   onDeleteGroup,
+  showProject = false,
 }: PurchaseOrdersTableProps) {
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
@@ -485,6 +489,15 @@ export function PurchaseOrdersTable({
                           <ItemTypeBadge key={type} itemType={type} />
                         ))}
                       </div>
+                      {showProject && (lot.projectName || lot.projectId) && (
+                        <span
+                          className="mt-0.5 inline-flex items-center gap-1 max-w-full truncate rounded-md border border-teal-500/25 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:text-teal-300"
+                          title={lot.projectName || "Assigned project"}
+                        >
+                          <FolderKanban className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{lot.projectName?.trim() || "Project"}</span>
+                        </span>
+                      )}
                       {/* On screens < lg where Dealer/Supplier column is hidden, show inline */}
                       <span className="lg:hidden text-[10px] text-text-secondary truncate max-w-full block mt-0.5">
                         • {lot.supplierName || "Internal / Direct"}
@@ -511,6 +524,15 @@ export function PurchaseOrdersTable({
                           • {lot.supplierName || "Internal / Direct"}
                         </span>
                       </div>
+                      {showProject && (lot.projectName || lot.projectId) && (
+                        <span
+                          className="mt-1 inline-flex items-center gap-1 max-w-full truncate rounded-md border border-teal-500/25 bg-teal-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800 dark:text-teal-300"
+                          title={lot.projectName || "Assigned project"}
+                        >
+                          <FolderKanban className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate">{lot.projectName?.trim() || "Project"}</span>
+                        </span>
+                      )}
                       {/* On screens < md where Total Cost column is hidden, show inline */}
                       <div className="md:hidden mt-1 flex items-center gap-1.5 text-[11px]">
                         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">

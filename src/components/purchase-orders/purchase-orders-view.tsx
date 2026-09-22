@@ -815,6 +815,7 @@ export function PurchaseOrdersView({
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
             onDeleteGroup={canOperate ? (g) => void requestDeleteGroup(g) : undefined}
+            showProject={categoryScope === "projects"}
           />
         ) : (
           <PurchaseOrdersGrid
