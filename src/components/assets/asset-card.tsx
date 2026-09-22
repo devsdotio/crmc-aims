@@ -66,21 +66,27 @@ export function AssetCard({ asset, onSelect }: AssetCardProps) {
         "hover:shadow-md hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
       )}
     >
-      {/* Top Banner: Asset Code & Status Badge */}
-      <div className="flex items-center justify-between p-3.5 border-b border-border bg-bg-subtle/50">
-        <span className="font-mono text-xs font-bold text-text bg-bg px-2 py-0.5 rounded border border-border">
+      {/* Top Banner: Asset Code & Status Badge — always one row */}
+      <div className="flex flex-nowrap items-center gap-2 p-3.5 border-b border-border bg-bg-subtle/50 overflow-hidden">
+        <span
+          className="font-mono text-xs font-bold leading-none text-text bg-bg px-2 py-1 rounded border border-border whitespace-nowrap min-w-0 truncate"
+          title={asset.assetCode}
+        >
           {asset.assetCode}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex flex-nowrap items-center justify-end gap-1.5 shrink-0">
           <AssignmentTypeBadge type={asset.assignmentType} compact />
           {asset.currentHolder && (
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-primary text-white">
+            <span
+              className="px-2.5 py-1 rounded-full text-[11px] font-bold leading-none bg-primary text-white whitespace-nowrap max-w-24 truncate"
+              title={custodyBadgeLabel(asset.currentHolder, asset.assignmentType)}
+            >
               {custodyBadgeLabel(asset.currentHolder, asset.assignmentType)}
             </span>
           )}
           <span
             className={cn(
-              "px-2.5 py-0.5 rounded-full text-[11px] font-bold",
+              "px-2.5 py-1 rounded-full text-[11px] font-bold leading-none whitespace-nowrap",
               statusMeta.bg,
               statusMeta.text,
             )}
