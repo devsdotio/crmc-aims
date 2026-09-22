@@ -93,6 +93,40 @@ export function deriveLotCode(lotCode: string): string {
   return lotCode.startsWith("PO-") ? lotCode.replace(/^PO-/, "LOT-") : lotCode;
 }
 
+/** Specs for a catalog item deferred until PO delivery. */
+export type DraftItemSpecs = {
+  category?: string | null;
+  classification?: "supply" | "material" | null;
+  unit?: string | null;
+  minThreshold?: number | null;
+  location?: string | null;
+  assignmentType?: "borrowable" | "assignable" | null;
+};
+
+function parseDraftItem(raw: unknown): DraftItemSpecs | null {
+  if (!raw || typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
+  const classification =
+    d.classification === "supply" || d.classification === "material"
+      ? d.classification
+      : null;
+  const assignmentType =
+    d.assignmentType === "borrowable" || d.assignmentType === "assignable"
+      ? d.assignmentType
+      : null;
+  return {
+    category: typeof d.category === "string" ? d.category : null,
+    classification,
+    unit: typeof d.unit === "string" ? d.unit : null,
+    minThreshold:
+      typeof d.minThreshold === "number" && Number.isFinite(d.minThreshold)
+        ? d.minThreshold
+        : null,
+    location: typeof d.location === "string" ? d.location : null,
+    assignmentType,
+  };
+}
+
 export function parseNotesMetadata(rawNotes?: string | null): {
   cleanNotes: string | null;
   status: PurchaseOrderStatus;
@@ -104,6 +138,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   deliveredAt: string | null;
   orderedQuantity: number | null;
   receivedQuantity: number | null;
+  draftItem: DraftItemSpecs | null;
 } {
   // Default must NOT be "delivered" — that silently skips stock intake on receive.
   let status: PurchaseOrderStatus = "pending_approval";
@@ -115,6 +150,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   let deliveredAt: string | null = null;
   let orderedQuantity: number | null = null;
   let receivedQuantity: number | null = null;
+  let draftItem: DraftItemSpecs | null = null;
   let cleanNotes = rawNotes ?? null;
 
   if (rawNotes) {
@@ -134,6 +170,9 @@ export function parseNotesMetadata(rawNotes?: string | null): {
         }
         if (typeof meta.receivedQuantity === "number") {
           receivedQuantity = meta.receivedQuantity;
+        }
+        if (meta.draftItem) {
+          draftItem = parseDraftItem(meta.draftItem);
         }
         cleanNotes = meta.notes ?? null;
       } catch {
@@ -175,6 +214,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
     deliveredAt,
     orderedQuantity,
     receivedQuantity,
+    draftItem,
   };
 }
 
@@ -189,8 +229,9 @@ export function serializeNotesMetadata(data: {
   deliveredAt?: string | null;
   orderedQuantity?: number | null;
   receivedQuantity?: number | null;
+  draftItem?: DraftItemSpecs | null;
 }): string {
-  return JSON.stringify({
+  const payload: Record<string, unknown> = {
     notes: data.notes || "",
     status: data.status,
     purpose: data.purpose || "",
@@ -203,7 +244,11 @@ export function serializeNotesMetadata(data: {
       typeof data.orderedQuantity === "number" ? data.orderedQuantity : null,
     receivedQuantity:
       typeof data.receivedQuantity === "number" ? data.receivedQuantity : null,
-  });
+  };
+  if (data.draftItem) {
+    payload.draftItem = data.draftItem;
+  }
+  return JSON.stringify(payload);
 }
 
 export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
@@ -395,6 +440,8 @@ export class PurchaseLotService {
         let assetId: string | null = item.assetId ?? null;
         let itemCode = "";
         let itemName = item.name.trim();
+        /** Deferred catalog specs when filing a new item before delivery. */
+        let draftItem: DraftItemSpecs | null = null;
 
         const targetProjectId = item.projectId || body.projectId || null;
         const targetProjectName = item.projectName || body.projectName || null;
@@ -501,8 +548,8 @@ export class PurchaseLotService {
                 });
               }
             }
-          } else {
-            // New consumable registration — refuse exact-name duplicates in catalog
+          } else if (initialStatus === "delivered") {
+            // New consumable minted immediately only when PO is filed as delivered
             const [nameClash] = await db
               .select()
               .from(consumables)
@@ -522,8 +569,9 @@ export class PurchaseLotService {
             }
 
             itemCode = generateOperationalCode("ITM");
-            const itemClassification = item.classification || (targetProjectId ? "material" : "supply");
-            const initialQty = initialStatus === "delivered" && !targetProjectId ? item.quantity : 0;
+            const itemClassification =
+              item.classification || (targetProjectId ? "material" : "supply");
+            const initialQty = !targetProjectId ? item.quantity : 0;
 
             const [newConsumable] = await db
               .insert(consumables)
@@ -538,63 +586,73 @@ export class PurchaseLotService {
                 minThreshold: item.minThreshold ?? 5,
                 location: item.location || "Main Property Storage",
                 supplier: lineSupplierName || undefined,
-                lastRestocked: initialStatus === "delivered" && !targetProjectId ? new Date() : undefined,
+                lastRestocked: !targetProjectId ? new Date() : undefined,
                 notes: body.notes,
               })
               .returning();
             consumableId = newConsumable.id;
 
-            if (initialStatus === "delivered") {
-              if (targetProjectId) {
-                // Auto-issue movement for direct project material delivery
-                await db.insert(stockMovements).values({
-                  movementCode: generateOperationalCode("MOV"),
-                  consumableId,
-                  projectId: targetProjectId,
-                  qty: item.quantity,
-                  direction: "out",
-                  reason: "issue",
-                  unitCost: formatMoney(item.unitCost),
-                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
-                  notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
-                  actorUserId: actor.userId,
-                  actorName: actor.displayName,
-                });
-                await db.insert(projectExpenseLines).values({
-                  tenantId: actor.tenantId,
-                  projectId: targetProjectId,
-                  lineType: "material",
-                  category: "miscellaneous",
-                  description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
-                  amount: formatMoney(Number(item.unitCost) * item.quantity),
-                  quantity: String(item.quantity),
-                  unitCost: String(Number(item.unitCost).toFixed(2)),
-                  consumableId,
-                  incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
-                  notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${lineSupplierName || "—"}`,
-                  recordedByUserId: actor.userId,
-                  recordedByName: actor.displayName,
-                  metadata: {
-                    poNumber,
-                    supplierName: lineSupplierName,
-                    directProjectDelivery: true,
-                  },
-                });
-              } else {
-                await db.insert(stockMovements).values({
-                  movementCode: generateOperationalCode("MOV"),
-                  consumableId,
-                  qty: item.quantity,
-                  direction: "in",
-                  reason: "restock",
-                  unitCost: formatMoney(item.unitCost),
-                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
-                  notes: `PO Initial Intake: ${poNumber}`,
-                  actorUserId: actor.userId,
-                  actorName: actor.displayName,
-                });
-              }
+            if (targetProjectId) {
+              // Auto-issue movement for direct project material delivery
+              await db.insert(stockMovements).values({
+                movementCode: generateOperationalCode("MOV"),
+                consumableId,
+                projectId: targetProjectId,
+                qty: item.quantity,
+                direction: "out",
+                reason: "issue",
+                unitCost: formatMoney(item.unitCost),
+                lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
+                actorUserId: actor.userId,
+                actorName: actor.displayName,
+              });
+              await db.insert(projectExpenseLines).values({
+                tenantId: actor.tenantId,
+                projectId: targetProjectId,
+                lineType: "material",
+                category: "miscellaneous",
+                description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
+                amount: formatMoney(Number(item.unitCost) * item.quantity),
+                quantity: String(item.quantity),
+                unitCost: String(Number(item.unitCost).toFixed(2)),
+                consumableId,
+                incurredOn: body.poDate || new Date().toISOString().slice(0, 10),
+                notes: `Auto-credited upon PO ${poNumber} creation. Supplier: ${lineSupplierName || "—"}`,
+                recordedByUserId: actor.userId,
+                recordedByName: actor.displayName,
+                metadata: {
+                  poNumber,
+                  supplierName: lineSupplierName,
+                  directProjectDelivery: true,
+                },
+              });
+            } else {
+              await db.insert(stockMovements).values({
+                movementCode: generateOperationalCode("MOV"),
+                consumableId,
+                qty: item.quantity,
+                direction: "in",
+                reason: "restock",
+                unitCost: formatMoney(item.unitCost),
+                lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                notes: `PO Initial Intake: ${poNumber}`,
+                actorUserId: actor.userId,
+                actorName: actor.displayName,
+              });
             }
+          } else {
+            // Defer catalog insert until delivery — lot holds draft specs only
+            itemCode = generateOperationalCode("ITM");
+            consumableId = null;
+            draftItem = {
+              category: item.category || "General Supply",
+              classification:
+                item.classification || (targetProjectId ? "material" : "supply"),
+              unit: item.unit || "pcs",
+              minThreshold: item.minThreshold ?? 5,
+              location: item.location || "Main Property Storage",
+            };
           }
         }
 
@@ -611,8 +669,8 @@ export class PurchaseLotService {
             }
             itemCode = existing.assetCode;
             itemName = existing.name;
-          } else {
-            // New asset(s): refuse exact-name duplicates in catalog
+          } else if (initialStatus === "delivered") {
+            // New asset(s) minted immediately only when PO is filed as delivered
             const [nameClash] = await db
               .select()
               .from(assets)
@@ -631,9 +689,7 @@ export class PurchaseLotService {
               );
             }
 
-            // New asset(s): one placeholder until receive, or all units if filed as delivered.
-            const unitsToCreate =
-              initialStatus === "delivered" ? Math.max(1, item.quantity) : 1;
+            const unitsToCreate = Math.max(1, item.quantity);
             let firstCode = "";
             let firstId: string | null = null;
 
@@ -650,7 +706,7 @@ export class PurchaseLotService {
                   assetCode: code,
                   name: itemName,
                   category: item.category || "Equipment",
-                  status: initialStatus === "delivered" ? "active" : "needs_repair",
+                  status: "active",
                   assignmentType: item.assignmentType || "borrowable",
                   location: item.location || "Property Custodian Depot",
                   purchaseDate: body.poDate,
@@ -670,6 +726,15 @@ export class PurchaseLotService {
 
             assetId = firstId;
             itemCode = firstCode;
+          } else {
+            // Defer catalog insert until delivery — lot holds draft specs only
+            itemCode = generateOperationalCode("ITM");
+            assetId = null;
+            draftItem = {
+              category: item.category || "Equipment",
+              location: item.location || "Property Custodian Depot",
+              assignmentType: item.assignmentType || "borrowable",
+            };
           }
         }
 
@@ -696,6 +761,7 @@ export class PurchaseLotService {
           approvedAt,
           orderedAt,
           deliveredAt,
+          draftItem,
         });
 
         const row = await this.repo.create(
@@ -804,6 +870,8 @@ export class PurchaseLotService {
       let receivedQtyForMeta: number | null = currentMeta.receivedQuantity;
       let orderedQtyForMeta: number | null = currentMeta.orderedQuantity;
       let nextAssetId = lot.assetId;
+      let nextConsumableId = lot.consumableId;
+      let nextItemCode = lot.itemCode;
 
       if (nextStatus === "delivered" && currentMeta.status !== "delivered") {
         const orderedQty = currentMeta.orderedQuantity ?? lot.quantity;
@@ -825,23 +893,68 @@ export class PurchaseLotService {
         const poNumber = derivePONumber(lot.lotCode, lot.reference);
         const unit = Number(lot.unitCost) || 0;
         const lineTotal = formatMoney(unit * receivedQty);
+        const draft = currentMeta.draftItem;
 
         if (lot.itemType === "consumable") {
-          if (!lot.consumableId) {
-            throw new BadRequestError(
-              `Cannot receive PO line "${lot.itemName}" — no linked supply/material catalog item.`
-            );
+          let consumableId = lot.consumableId;
+
+          if (!consumableId) {
+            // Mint catalog row from deferred draft specs (or sensible defaults)
+            const [nameClash] = await db
+              .select()
+              .from(consumables)
+              .where(
+                and(
+                  sql`lower(${consumables.name}) = ${lot.itemName.toLowerCase()}`,
+                  lot.tenantId
+                    ? eq(consumables.tenantId, lot.tenantId)
+                    : undefined
+                )
+              )
+              .limit(1);
+            if (nameClash) {
+              throw new ConflictError(
+                `Consumable "${lot.itemName}" already exists as ${nameClash.itemCode}. Select it from the catalog instead of creating a new item.`
+              );
+            }
+
+            const itemCode = generateOperationalCode("ITM");
+            const itemClassification =
+              draft?.classification ||
+              (lot.projectId ? "material" : "supply");
+            const [newConsumable] = await db
+              .insert(consumables)
+              .values({
+                tenantId: lot.tenantId,
+                itemCode,
+                name: lot.itemName,
+                category: draft?.category || "General Supply",
+                classification: itemClassification,
+                unit: draft?.unit || "pcs",
+                currentQty: 0,
+                minThreshold: draft?.minThreshold ?? 5,
+                location: draft?.location || "Main Property Storage",
+                supplier:
+                  lot.supplierName && !isAggregateSupplierLabel(lot.supplierName)
+                    ? lot.supplierName
+                    : undefined,
+              })
+              .returning();
+
+            consumableId = newConsumable.id;
+            nextConsumableId = newConsumable.id;
+            nextItemCode = newConsumable.itemCode;
           }
 
           const [consumable] = await db
             .select()
             .from(consumables)
-            .where(eq(consumables.id, lot.consumableId))
+            .where(eq(consumables.id, consumableId))
             .for("update")
             .limit(1);
 
           if (!consumable) {
-            throw new NotFoundError("Consumable", lot.consumableId);
+            throw new NotFoundError("Consumable", consumableId);
           }
 
           if (lot.projectId) {
@@ -856,7 +969,7 @@ export class PurchaseLotService {
                   classification: "material",
                   updatedAt: new Date(),
                 })
-                .where(eq(consumables.id, lot.consumableId));
+                .where(eq(consumables.id, consumableId));
             }
 
             await db
@@ -869,12 +982,12 @@ export class PurchaseLotService {
                   ? { supplier: lot.supplierName }
                   : {}),
               })
-              .where(eq(consumables.id, lot.consumableId));
+              .where(eq(consumables.id, consumableId));
 
             await db.insert(stockMovements).values({
               tenantId: lot.tenantId,
               movementCode: generateOperationalCode("MOV"),
-              consumableId: lot.consumableId,
+              consumableId,
               purchaseLotId: lot.id,
               lotCode: lot.lotCode,
               qty: receivedQty,
@@ -893,12 +1006,12 @@ export class PurchaseLotService {
                 currentQty: sql`${consumables.currentQty} - ${receivedQty}`,
                 updatedAt: new Date(),
               })
-              .where(eq(consumables.id, lot.consumableId));
+              .where(eq(consumables.id, consumableId));
 
             await db.insert(stockMovements).values({
               tenantId: lot.tenantId,
               movementCode: generateOperationalCode("MOV"),
-              consumableId: lot.consumableId,
+              consumableId,
               projectId: lot.projectId,
               purchaseLotId: lot.id,
               lotCode: lot.lotCode,
@@ -921,7 +1034,7 @@ export class PurchaseLotService {
               amount: lineTotal,
               quantity: String(receivedQty),
               unitCost: String(unit.toFixed(2)),
-              consumableId: lot.consumableId,
+              consumableId,
               incurredOn: nowIso.slice(0, 10),
               notes: `Auto-credited upon PO ${poNumber} delivery. Supplier: ${
                 isAggregateSupplierLabel(lot.supplierName) ? "—" : lot.supplierName || "—"
@@ -950,12 +1063,12 @@ export class PurchaseLotService {
                   ? { supplier: lot.supplierName }
                   : {}),
               })
-              .where(eq(consumables.id, lot.consumableId));
+              .where(eq(consumables.id, consumableId));
 
             await db.insert(stockMovements).values({
               tenantId: lot.tenantId,
               movementCode: generateOperationalCode("MOV"),
-              consumableId: lot.consumableId,
+              consumableId,
               purchaseLotId: lot.id,
               lotCode: lot.lotCode,
               qty: receivedQty,
@@ -975,6 +1088,11 @@ export class PurchaseLotService {
           // Activate / mint physical units so /assets reflects received quantity
           const unitsToEnsure = receivedQty;
           let primaryAssetId = lot.assetId;
+          const draftCategory = draft?.category || "Equipment";
+          const draftLocation =
+            draft?.location || "Property Custodian Depot";
+          const draftAssignment =
+            draft?.assignmentType || "borrowable";
 
           if (primaryAssetId) {
             const [existingAsset] = await db
@@ -1003,7 +1121,7 @@ export class PurchaseLotService {
             // Mint remaining units when PO ordered/received more than one physical asset
             for (let i = 1; i < unitsToEnsure; i++) {
               const assetCode = await this.nextCategoryAssetCode(
-                existingAsset.category || "Equipment",
+                existingAsset.category || draftCategory,
                 session,
                 lot.tenantId
               );
@@ -1023,10 +1141,28 @@ export class PurchaseLotService {
               });
             }
           } else {
-            // No linked asset yet — register received physical units now
+            // No linked asset yet — register received physical units from draft specs
+            const [nameClash] = await db
+              .select()
+              .from(assets)
+              .where(
+                and(
+                  sql`lower(${assets.name}) = ${lot.itemName.toLowerCase()}`,
+                  lot.tenantId
+                    ? eq(assets.tenantId, lot.tenantId)
+                    : undefined
+                )
+              )
+              .limit(1);
+            if (nameClash) {
+              throw new ConflictError(
+                `Asset "${lot.itemName}" already exists as ${nameClash.assetCode}. Select it from the catalog instead of creating a new item.`
+              );
+            }
+
             for (let i = 0; i < unitsToEnsure; i++) {
               const assetCode = await this.nextCategoryAssetCode(
-                "Equipment",
+                draftCategory,
                 session,
                 lot.tenantId
               );
@@ -1036,10 +1172,10 @@ export class PurchaseLotService {
                   tenantId: lot.tenantId,
                   assetCode,
                   name: lot.itemName,
-                  category: "Equipment",
+                  category: draftCategory,
                   status: "active",
-                  assignmentType: "borrowable",
-                  location: "Property Custodian Depot",
+                  assignmentType: draftAssignment,
+                  location: draftLocation,
                   purchaseDate: lot.purchasedOn,
                   value: lot.unitCost,
                   supplierId: lot.supplierId,
@@ -1052,6 +1188,7 @@ export class PurchaseLotService {
               if (i === 0) {
                 primaryAssetId = created.id;
                 nextAssetId = created.id;
+                nextItemCode = created.assetCode;
               }
             }
           }
@@ -1077,6 +1214,10 @@ export class PurchaseLotService {
         deliveredAt,
         orderedQuantity: orderedQtyForMeta,
         receivedQuantity: receivedQtyForMeta,
+        draftItem:
+          nextStatus === "delivered" && currentMeta.status !== "delivered"
+            ? null
+            : currentMeta.draftItem,
       });
 
       const updated = await this.repo.update(
@@ -1088,6 +1229,12 @@ export class PurchaseLotService {
           receiptUrl: nextReceiptUrl,
           ...(nextAssetId && nextAssetId !== lot.assetId
             ? { assetId: nextAssetId }
+            : {}),
+          ...(nextConsumableId && nextConsumableId !== lot.consumableId
+            ? { consumableId: nextConsumableId }
+            : {}),
+          ...(nextItemCode && nextItemCode !== lot.itemCode
+            ? { itemCode: nextItemCode }
             : {}),
           // Drop stale PO-level aggregate labels from older multi-dealer POs.
           ...(isAggregateSupplierLabel(lot.supplierName)
@@ -1216,6 +1363,7 @@ export class PurchaseLotService {
         deliveredAt: currentMeta.deliveredAt,
         orderedQuantity: currentMeta.orderedQuantity,
         receivedQuantity: currentMeta.receivedQuantity,
+        draftItem: currentMeta.draftItem,
       });
 
       const resolvedReference =
