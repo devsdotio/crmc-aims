@@ -13,6 +13,7 @@ import { withTransaction } from "@/server/db/transaction";
 import { generateOperationalCode } from "@/server/shared/codes";
 import {
   BadRequestError,
+  ConflictError,
   NotFoundError,
 } from "@/server/shared/errors";
 import { encodeLotQr, parseScanPayload } from "@/server/shared/qr";
@@ -319,6 +320,19 @@ export class PurchaseLotService {
   ): Promise<PurchaseLotDTO[]> {
     const body: CreatePurchaseOrderInput = createPurchaseOrderSchema.parse(rawBody);
     const poNumber = body.poNumber?.trim() || generateOperationalCode("PO");
+
+    if (body.poNumber?.trim()) {
+      const existing = await this.repo.findByLotCode(
+        body.poNumber.trim(),
+        undefined,
+        actor.tenantId
+      );
+      if (existing) {
+        throw new ConflictError(
+          `PO number "${body.poNumber.trim()}" already exists. Open the existing purchase order to edit or delete line items, or choose a different number.`
+        );
+      }
+    }
 
     return withTransaction(async (session) => {
       const results: PurchaseLotDTO[] = [];
@@ -1139,6 +1153,52 @@ export class PurchaseLotService {
           ? body.reference
           : lot.reference;
 
+      if (
+        resolvedReference &&
+        resolvedReference.trim() &&
+        resolvedReference.trim() !== (lot.reference || "").trim()
+      ) {
+        const clash = await this.repo.findByLotCode(
+          resolvedReference.trim(),
+          session,
+          actor.tenantId
+        );
+        if (
+          clash &&
+          clash.id !== lot.id &&
+          (clash.reference || "").trim() !== (lot.reference || "").trim()
+        ) {
+          throw new ConflictError(
+            `PO number "${resolvedReference.trim()}" already exists. Choose a different number.`
+          );
+        }
+      }
+
+      const editableStatuses = new Set([
+        "pending_approval",
+        "approved",
+        "ordered",
+      ]);
+      const wantsLineEdit =
+        body.itemName !== undefined ||
+        body.quantity !== undefined ||
+        body.unitCost !== undefined;
+      if (wantsLineEdit && !editableStatuses.has(currentMeta.status)) {
+        throw new BadRequestError(
+          `Line items can only be edited while the purchase order is pending, approved, or ordered (current: ${currentMeta.status.replace(/_/g, " ")}).`
+        );
+      }
+
+      const nextQuantity =
+        body.quantity !== undefined ? body.quantity : lot.quantity;
+      const nextUnitCost =
+        body.unitCost !== undefined
+          ? formatMoney(body.unitCost)
+          : lot.unitCost;
+      const nextTotalCost = formatMoney(
+        Number(nextUnitCost) * nextQuantity
+      );
+
       const updated = await this.repo.update(
         lot.id,
         {
@@ -1149,11 +1209,25 @@ export class PurchaseLotService {
           notes: updatedNotes,
           receiptUrl: nextReceiptUrl,
           recordedByName: body.recordedByName !== undefined ? (body.recordedByName ?? "") : lot.recordedByName,
+          ...(body.itemName !== undefined ? { itemName: body.itemName } : {}),
+          ...(body.quantity !== undefined
+            ? {
+                quantity: nextQuantity,
+                // Non-delivered lines keep remaining at 0 until intake.
+                quantityRemaining:
+                  currentMeta.status === "delivered"
+                    ? lot.quantityRemaining
+                    : 0,
+              }
+            : {}),
+          ...(body.unitCost !== undefined || body.quantity !== undefined
+            ? { unitCost: nextUnitCost, totalCost: nextTotalCost }
+            : {}),
         },
         session
       );
 
-      // If this PO has a reference (shared across multi-item lots), sync receiptUrl to siblings
+      // If this PO has a reference (shared across multi-item lots), sync shared fields to siblings
       if (lot.reference) {
         const syncUpdates: Partial<PurchaseLotRow> = {};
         let needsSync = false;
@@ -1164,6 +1238,14 @@ export class PurchaseLotService {
         }
         if (body.recordedByName !== undefined) {
           syncUpdates.recordedByName = body.recordedByName ?? "";
+          needsSync = true;
+        }
+        if (
+          resolvedReference &&
+          resolvedReference !== lot.reference &&
+          (body.poNumber !== undefined || body.reference !== undefined)
+        ) {
+          syncUpdates.reference = resolvedReference;
           needsSync = true;
         }
 

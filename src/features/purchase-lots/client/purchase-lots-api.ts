@@ -66,6 +66,9 @@ export type UpdatePurchaseOrderPayload = {
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;
+  itemName?: string;
+  quantity?: number;
+  unitCost?: string | number;
 };
 
 export type UpdatePOStatusPayload = {

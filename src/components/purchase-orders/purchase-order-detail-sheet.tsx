@@ -38,6 +38,7 @@ import { formatPhp } from "@/components/projects/format-money";
 import {
   useUpdatePOStatusMutation,
   useUpdatePurchaseOrderMutation,
+  useDeletePurchaseOrderMutation,
 } from "@/features/purchase-lots/client";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useUsersQuery } from "@/features/users/client";
@@ -56,6 +57,8 @@ interface PurchaseOrderDetailSheetProps {
   onPrintTag?: (lot: PurchaseLot) => void;
   onReleaseStock?: (lot: PurchaseLot) => void;
   onDelete?: (lot: PurchaseLot) => void;
+  /** Delete a single line item (multi-item POs). */
+  onDeleteLine?: (lot: PurchaseLot) => void;
   canOperate?: boolean;
 }
 
@@ -100,6 +103,7 @@ export function PurchaseOrderDetailSheet({
   onPrintTag,
   onReleaseStock,
   onDelete,
+  onDeleteLine,
   canOperate = false,
 }: PurchaseOrderDetailSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -114,9 +118,16 @@ export function PurchaseOrderDetailSheet({
   const [showStatusModal, setShowStatusModal] = useState<PurchaseOrderStatus | null>(null);
   const [isEditingPoNumber, setIsEditingPoNumber] = useState(false);
   const [editablePoNumber, setEditablePoNumber] = useState("");
+  const [editingLineId, setEditingLineId] = useState<string | null>(null);
+  const [lineDraft, setLineDraft] = useState<{
+    itemName: string;
+    quantity: string;
+    unitCost: string;
+  }>({ itemName: "", quantity: "1", unitCost: "0" });
 
   const updateStatusMutation = useUpdatePOStatusMutation();
   const updatePOMutation = useUpdatePurchaseOrderMutation();
+  const deletePOMutation = useDeletePurchaseOrderMutation();
   const toast = useToast();
 
   const handleRemoveReceipt = async () => {
@@ -179,6 +190,66 @@ export function PurchaseOrderDetailSheet({
       li.status !== "cancelled" &&
       (li.status === "approved" || li.status === "ordered")
   );
+
+  const canEditLines =
+    canOperate &&
+    (effectiveStatus === "pending_approval" ||
+      effectiveStatus === "approved" ||
+      effectiveStatus === "ordered");
+
+  const startEditLine = (li: PurchaseLot) => {
+    setEditingLineId(li.id);
+    setLineDraft({
+      itemName: li.itemName,
+      quantity: String(li.quantity),
+      unitCost: String(li.unitCost),
+    });
+  };
+
+  const handleSaveLine = async (li: PurchaseLot) => {
+    const qty = Number.parseInt(lineDraft.quantity, 10);
+    const cost = Number.parseFloat(lineDraft.unitCost);
+    if (!lineDraft.itemName.trim()) {
+      toast.error("Item name is required.");
+      return;
+    }
+    if (!Number.isFinite(qty) || qty < 1) {
+      toast.error("Quantity must be at least 1.");
+      return;
+    }
+    if (!Number.isFinite(cost) || cost < 0) {
+      toast.error("Enter a valid unit cost.");
+      return;
+    }
+    try {
+      await updatePOMutation.mutateAsync({
+        id: li.id,
+        payload: {
+          itemName: lineDraft.itemName.trim(),
+          quantity: qty,
+          unitCost: cost,
+        },
+      });
+      toast.success("Line item updated.");
+      setEditingLineId(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update line item.");
+    }
+  };
+
+  const handleDeleteLine = async (li: PurchaseLot) => {
+    if (onDeleteLine) {
+      onDeleteLine(li);
+      return;
+    }
+    try {
+      await deletePOMutation.mutateAsync(li.id);
+      toast.success("Line item removed.");
+      if (lotsToUpdate.length <= 1) onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete line item.");
+    }
+  };
 
   const openDeliveredModal = () => {
     const targets = receivableLots.length > 0 ? receivableLots : lotsToUpdate;
@@ -985,13 +1056,13 @@ export function PurchaseOrderDetailSheet({
                 <div className="flex items-center justify-between border-b border-border pb-2.5">
                   <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
                     <FileText className="h-3.5 w-3.5 text-accent" />
-                    {lot.items && lot.items.length > 1
-                      ? `Line Items (${lot.items.length})`
+                    {isMultiLotPo
+                      ? `Line Items (${lotsToUpdate.length})`
                       : "Item & Cost Specifications"}
                   </span>
                 </div>
 
-                {lot.items && lot.items.length > 1 ? (
+                {isMultiLotPo ? (
                   /* Multi-item PO — line items table */
                   <div className="space-y-3">
                     <div className="rounded-lg border border-border overflow-hidden">
@@ -1003,35 +1074,145 @@ export function PurchaseOrderDetailSheet({
                             <th className="px-3 py-2 text-center">Qty</th>
                             <th className="px-3 py-2 text-right">Unit Cost</th>
                             <th className="px-3 py-2 text-right">Total</th>
+                            {canEditLines && (
+                              <th className="px-3 py-2 text-right">
+                                <span className="sr-only">Actions</span>
+                              </th>
+                            )}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          {lot.items.map((item, idx) => {
+                          {lotsToUpdate.map((item, idx) => {
                             const iUnitCost = parseFloat(item.unitCost) || 0;
                             const iTotalCost = parseFloat(item.totalCost) || 0;
+                            const isEditing = editingLineId === item.id;
                             return (
                               <tr key={item.id} className="hover:bg-bg-subtle/50 transition-colors">
                                 <td className="px-3 py-2.5 text-text-secondary font-mono text-[10px]">{idx + 1}</td>
                                 <td className="px-3 py-2.5">
-                                  <span className="font-semibold text-text block">{item.itemName}</span>
-                                  <div className="flex items-center gap-1.5 mt-0.5">
-                                    <span className="font-mono text-[10px] text-text-secondary">{item.itemCode}</span>
-                                    {item.lotCode && (
-                                      <span className="font-mono text-[10px] text-text-muted">· {item.lotCode}</span>
-                                    )}
-                                    <span className={cn(
-                                      "inline-flex items-center rounded-full px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider border shadow-2xs",
-                                      item.itemType === "asset"
-                                        ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25"
-                                        : "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/25"
-                                    )}>
-                                      {item.itemType}
-                                    </span>
-                                  </div>
+                                  {isEditing ? (
+                                    <input
+                                      type="text"
+                                      value={lineDraft.itemName}
+                                      onChange={(e) =>
+                                        setLineDraft((d) => ({
+                                          ...d,
+                                          itemName: e.target.value,
+                                        }))
+                                      }
+                                      className="w-full h-8 px-2 rounded-md border border-border bg-bg text-xs font-semibold"
+                                    />
+                                  ) : (
+                                    <>
+                                      <span className="font-semibold text-text block">{item.itemName}</span>
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        <span className="font-mono text-[10px] text-text-secondary">{item.itemCode}</span>
+                                        {item.lotCode && (
+                                          <span className="font-mono text-[10px] text-text-muted">· {item.lotCode}</span>
+                                        )}
+                                        <span className={cn(
+                                          "inline-flex items-center rounded-full px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider border shadow-2xs",
+                                          item.itemType === "asset"
+                                            ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25"
+                                            : "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/25"
+                                        )}>
+                                          {item.itemType}
+                                        </span>
+                                      </div>
+                                    </>
+                                  )}
                                 </td>
-                                <td className="px-3 py-2.5 text-center font-mono font-bold text-text">{item.quantity}</td>
-                                <td className="px-3 py-2.5 text-right font-mono text-text">{formatPhp(iUnitCost)}</td>
-                                <td className="px-3 py-2.5 text-right font-mono font-bold text-status-active-text">{formatPhp(iTotalCost)}</td>
+                                <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
+                                  {isEditing ? (
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      step={1}
+                                      value={lineDraft.quantity}
+                                      onChange={(e) =>
+                                        setLineDraft((d) => ({
+                                          ...d,
+                                          quantity: e.target.value,
+                                        }))
+                                      }
+                                      className="w-16 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono text-center"
+                                    />
+                                  ) : (
+                                    item.quantity
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono text-text">
+                                  {isEditing ? (
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step="0.01"
+                                      value={lineDraft.unitCost}
+                                      onChange={(e) =>
+                                        setLineDraft((d) => ({
+                                          ...d,
+                                          unitCost: e.target.value,
+                                        }))
+                                      }
+                                      className="w-24 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono text-right ml-auto"
+                                    />
+                                  ) : (
+                                    formatPhp(iUnitCost)
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right font-mono font-bold text-status-active-text">
+                                  {isEditing
+                                    ? formatPhp(
+                                        (Number.parseInt(lineDraft.quantity, 10) || 0) *
+                                          (Number.parseFloat(lineDraft.unitCost) || 0)
+                                      )
+                                    : formatPhp(iTotalCost)}
+                                </td>
+                                {canEditLines && (
+                                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                                    {isEditing ? (
+                                      <div className="inline-flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleSaveLine(item)}
+                                          disabled={updatePOMutation.isPending}
+                                          className="p-1.5 rounded-md bg-accent text-accent-foreground cursor-pointer"
+                                          title="Save line"
+                                        >
+                                          <Check className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingLineId(null)}
+                                          className="p-1.5 rounded-md border border-border text-text-secondary cursor-pointer"
+                                          title="Cancel"
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="inline-flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => startEditLine(item)}
+                                          className="p-1.5 rounded-md border border-border text-text-secondary hover:text-text cursor-pointer"
+                                          title="Edit line"
+                                        >
+                                          <Edit3 className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleDeleteLine(item)}
+                                          disabled={deletePOMutation.isPending}
+                                          className="p-1.5 rounded-md border border-border text-rose-600 hover:bg-rose-500/10 cursor-pointer"
+                                          title="Delete line item"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}
@@ -1040,12 +1221,13 @@ export function PurchaseOrderDetailSheet({
                           <tr>
                             <td colSpan={2} className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-text-secondary">Grand Total</td>
                             <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
-                              {lot.items.reduce((sum, li) => sum + li.quantity, 0)}
+                              {lotsToUpdate.reduce((sum, li) => sum + li.quantity, 0)}
                             </td>
                             <td className="px-3 py-2.5"></td>
                             <td className="px-3 py-2.5 text-right font-mono font-bold text-base text-status-active-text">
-                              {formatPhp(lot.items.reduce((sum, li) => sum + (parseFloat(li.totalCost) || 0), 0))}
+                              {formatPhp(lotsToUpdate.reduce((sum, li) => sum + (parseFloat(li.totalCost) || 0), 0))}
                             </td>
+                            {canEditLines && <td />}
                           </tr>
                         </tfoot>
                       </table>

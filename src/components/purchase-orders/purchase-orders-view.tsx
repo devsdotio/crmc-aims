@@ -492,6 +492,33 @@ export function PurchaseOrdersView({
     });
   };
 
+  const requestDeleteLine = async (line: PurchaseLot) => {
+    await confirm({
+      title: "Delete line item?",
+      description: `Remove "${line.itemName}" from purchase order "${line.poNumber || line.lotCode}"? Other lines on this PO are kept.`,
+      confirmLabel: "Delete line",
+      cancelLabel: "Keep line",
+      variant: "destructive",
+      action: async () => {
+        try {
+          await deleteMutation.mutateAsync(line.id);
+          toast.success(`Removed line "${line.itemName}".`);
+          const remaining = selectedLineItems?.filter((li) => li.id !== line.id) ?? [];
+          if (remaining.length === 0) {
+            setSelectedLot(null);
+          } else if (selectedLot?.id === line.id) {
+            setSelectedLot(remaining[0]);
+          }
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : "Failed to delete line item."
+          );
+          throw err;
+        }
+      },
+    });
+  };
+
   // Header Icon and Titles
   const defaultHeader = useMemo(() => {
     if (categoryScope === "asset") {
@@ -849,6 +876,7 @@ export function PurchaseOrdersView({
               }
             : undefined
         }
+        onDeleteLine={canOperate ? (line) => void requestDeleteLine(line) : undefined}
         canOperate={canOperate}
       />
 
