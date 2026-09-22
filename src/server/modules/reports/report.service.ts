@@ -86,6 +86,8 @@ export class ReportService {
       result.maintenanceHistory = result.maintenanceHistory.map((m) => ({
         ...m,
         repairCost: null,
+        totalCost: null,
+        repairParts: (m.repairParts ?? []).map((p) => ({ name: p.name, cost: null })),
       }));
       result.tco = {
         purchaseCost: 0,
@@ -170,6 +172,7 @@ export class ReportService {
       result.data = result.data.map((row) => ({
         ...row,
         repairCost: null,
+        repairParts: (row.repairParts ?? []).map((p) => ({ name: p.name, cost: null })),
       }));
     }
 
@@ -385,22 +388,37 @@ export class ReportService {
           ...(canViewCosts ? ["Repair Cost"] : []),
           "MTTR (Days)",
           "Logged By",
-          "Notes",
+          "Issue Notes",
+          "Work Notes",
+          "Parts",
+          "Resolution Notes",
         ];
-        const rows = res.data.map((r) => [
-          r.logCode,
-          r.assetCode,
-          r.assetName,
-          r.category,
-          r.condition,
-          r.dateLogged,
-          r.isResolved ? "Resolved" : "Open",
-          r.resolutionDate || "",
-          ...(canViewCosts ? [r.repairCost != null ? r.repairCost.toFixed(2) : ""] : []),
-          r.mttrDays ?? "",
-          r.loggedByName,
-          r.notes,
-        ]);
+        const rows = res.data.map((r) => {
+          const partsLabel = (r.repairParts ?? [])
+            .map((p) =>
+              canViewCosts && p.cost != null && p.cost !== ""
+                ? `${p.name} (${p.cost})`
+                : p.name
+            )
+            .join("; ");
+          return [
+            r.logCode,
+            r.assetCode,
+            r.assetName,
+            r.category,
+            r.condition,
+            r.dateLogged,
+            r.isResolved ? "Resolved" : "Open",
+            r.resolutionDate || "",
+            ...(canViewCosts ? [r.repairCost != null ? r.repairCost.toFixed(2) : ""] : []),
+            r.mttrDays ?? "",
+            r.loggedByName,
+            r.notes ?? "",
+            r.workNotes ?? "",
+            partsLabel,
+            r.resolutionNotes ?? "",
+          ];
+        });
         return {
           filename: `maintenance-report-${dateStamp}.csv`,
           csv: toCsv(headers, rows),

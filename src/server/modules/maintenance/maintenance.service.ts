@@ -21,12 +21,14 @@ import {
   listMaintenanceQuerySchema,
   maintenanceIdSchema,
   resolveMaintenanceSchema,
+  updateOpenMaintenanceSchema,
 } from "./maintenance.validation";
 
 function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
   return {
     id: row.id,
     logCode: row.logCode,
+    assetId: row.assetId ?? null,
     assetCode: row.assetCode,
     assetName: row.assetName,
     category: row.category,
@@ -35,6 +37,7 @@ function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
     dateLogged: row.dateLogged,
     loggedBy: row.loggedByName,
     notes: row.notes,
+    workNotes: row.workNotes ?? null,
     isResolved: row.isResolved,
     resolutionDate: row.resolutionDate ?? undefined,
     resolutionNotes: row.resolutionNotes ?? undefined,
@@ -304,6 +307,87 @@ export class MaintenanceLogService {
     });
   }
 
+  /**
+   * Progressive documentation on an open maintenance log
+   * (parts, costs, work notes) without resolving.
+   */
+  async updateOpen(
+    rawId: string,
+    rawInput: unknown,
+    actor: ActorContext
+  ): Promise<MaintenanceLogDTO> {
+    const id = maintenanceIdSchema.parse(rawId);
+    const input = updateOpenMaintenanceSchema.parse(rawInput);
+
+    return withTransaction(async (tx) => {
+      const existing = await this.repo.findById(id, tx, actor.tenantId);
+      if (!existing) throw new NotFoundError("Maintenance log", id);
+      if (existing.isResolved) {
+        throw new ConflictError(
+          "Resolved maintenance logs cannot be edited. Open a new flag if needed."
+        );
+      }
+
+      const updated = await this.repo.update(
+        id,
+        {
+          ...(input.workNotes !== undefined
+            ? { workNotes: input.workNotes }
+            : {}),
+          ...(input.repairParts !== undefined
+            ? { repairParts: input.repairParts }
+            : {}),
+          ...(input.repairCost !== undefined
+            ? { repairCost: input.repairCost }
+            : {}),
+          ...(input.scheduledDate !== undefined
+            ? { scheduledDate: input.scheduledDate }
+            : {}),
+        },
+        tx,
+        actor.tenantId
+      );
+      if (!updated) throw new NotFoundError("Maintenance log", id);
+
+      if (existing.assetId) {
+        const asset = await this.assets.findById(existing.assetId, tx);
+        if (asset) {
+          await this.lifecycle.record(
+            {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              eventType: "updated",
+              actor,
+              fromStatus: asset.status,
+              toStatus: asset.status,
+              fromHolder: asset.currentHolder,
+              toHolder: asset.currentHolder,
+              payload: {
+                via: "maintenance_documented",
+                maintenanceLogCode: existing.logCode,
+                ...(input.workNotes !== undefined
+                  ? { workNotes: input.workNotes }
+                  : {}),
+                ...(input.repairCost !== undefined
+                  ? { repairCost: input.repairCost }
+                  : {}),
+                ...(input.repairParts !== undefined
+                  ? { repairParts: input.repairParts }
+                  : {}),
+                ...(input.scheduledDate !== undefined
+                  ? { scheduledDate: input.scheduledDate }
+                  : {}),
+              },
+            },
+            tx
+          );
+        }
+      }
+
+      return toDTO(updated);
+    });
+  }
+
   async resolve(
     rawId: string,
     rawInput: unknown,
@@ -329,7 +413,7 @@ export class MaintenanceLogService {
           resolvedByUserId: actor.userId,
           resolvedByName: input.technician.trim(),
           repairCost: input.repairCost ?? null,
-          repairParts: input.repairParts ?? [],
+          repairParts: input.repairParts,
         },
         tx,
         actor.tenantId
@@ -341,6 +425,7 @@ export class MaintenanceLogService {
         maintenanceLogCode: existing.logCode,
         resolutionNotes: input.resolutionNotes,
         technician: input.technician.trim(),
+        noPartsUsed: input.noPartsUsed,
         ...(input.repairCost != null ? { repairCost: input.repairCost } : {}),
         ...(input.repairParts.length > 0
           ? { repairParts: input.repairParts }

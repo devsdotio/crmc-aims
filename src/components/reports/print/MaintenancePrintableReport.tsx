@@ -206,9 +206,24 @@ export function MaintenancePrintableReport({
             <tbody className="divide-y divide-black/40 text-black">
               {data.map((row, index) => {
                 const isResolved = Boolean(row.isResolved);
-                const remarks = isResolved
-                  ? "Corrective repair completed and verified"
-                  : "Under technician diagnosis / awaiting parts";
+                const partsSnippet =
+                  row.repairParts && row.repairParts.length > 0
+                    ? row.repairParts.map((p) => p.name).join("; ")
+                    : null;
+                const remarkParts = [
+                  row.notes?.trim() ? `Issue: ${row.notes.trim()}` : null,
+                  row.workNotes?.trim() ? `Work: ${row.workNotes.trim()}` : null,
+                  partsSnippet ? `Parts: ${partsSnippet}` : null,
+                  row.resolutionNotes?.trim()
+                    ? `Resolution: ${row.resolutionNotes.trim()}`
+                    : null,
+                ].filter(Boolean);
+                const remarks =
+                  remarkParts.length > 0
+                    ? remarkParts.join(" · ")
+                    : isResolved
+                      ? "Corrective repair completed"
+                      : "Open work order — documentation pending";
 
                 return (
                   <tr key={row.id}>

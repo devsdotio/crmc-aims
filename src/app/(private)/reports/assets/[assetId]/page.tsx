@@ -22,6 +22,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { useAssetDrilldownReportQuery } from "@/features/reports/client/use-reports";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
+import { IndividualAssetPrintableReport } from "@/components/reports/print/individual/IndividualAssetPrintableReport";
+import { mapMaintenanceHistoryToPrintEntries } from "@/components/reports/print/individual/map-maintenance-print-entries";
 
 export default function AssetDrilldownReportPage({
   params,
@@ -58,11 +60,14 @@ export default function AssetDrilldownReportPage({
   }
 
   const { asset, purchaseInfo, maintenanceHistory, custodyHistory, tco, canViewCosts } = data;
+  const repairVsAcquisitionPct =
+    tco.purchaseCost > 0 ? (tco.maintenanceCost / tco.purchaseCost) * 100 : null;
 
   return (
-    <div className="flex flex-col gap-3 w-full">
+    <>
+    <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Back Nav & Print Button ─────────────────────────────── */}
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex items-center justify-between">
         <Link
           href="/reports/assets"
           className="inline-flex items-center gap-1.5 text-xs font-bold text-text-secondary hover:text-text transition-colors"
@@ -208,6 +213,23 @@ export default function AssetDrilldownReportPage({
           toneValue={true}
         />
       </StatCardGrid>
+      {canViewCosts && (
+        <div className="rounded-xl border border-border/70 bg-bg-subtle/40 px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-semibold text-text">
+              Repair Spend vs Acquisition Value
+            </span>
+            <span className="font-mono font-bold text-text">
+              ₱{tco.maintenanceCost.toLocaleString()} / ₱{tco.purchaseCost.toLocaleString()}
+            </span>
+          </div>
+          <div className="mt-1 text-[11px] text-text-secondary">
+            {repairVsAcquisitionPct != null
+              ? `${repairVsAcquisitionPct.toFixed(1)}% of acquisition value has been spent on repairs.`
+              : "Acquisition cost is unavailable, so percentage comparison cannot be computed."}
+          </div>
+        </div>
+      )}
 
       {/* ── Lifecycle Timeline Tabs ──────────────────────────────────── */}
       <div className="flex flex-col rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
@@ -290,8 +312,54 @@ export default function AssetDrilldownReportPage({
                         )}
                       </div>
 
-                      <div className="mt-1.5 text-xs text-text leading-relaxed">
-                        {m.notes || "No log notes recorded."}
+                      <div className="mt-1.5 text-xs text-text leading-relaxed space-y-1.5">
+                        <p>
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-text-secondary mr-1">
+                            Issue
+                          </span>
+                          {m.notes || "No log notes recorded."}
+                        </p>
+                        {m.workNotes ? (
+                          <p>
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400 mr-1">
+                              Work
+                            </span>
+                            {m.workNotes}
+                          </p>
+                        ) : null}
+                        {m.repairParts && m.repairParts.length > 0 ? (
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400 mb-0.5">
+                              Parts ({m.repairParts.length})
+                            </div>
+                            <ul className="space-y-0.5">
+                              {m.repairParts.map((part, idx) => (
+                                <li
+                                  key={`${m.id}-part-${idx}`}
+                                  className="flex items-center justify-between gap-3"
+                                >
+                                  <span>{part.name}</span>
+                                  {canViewCosts && part.cost != null && part.cost !== "" ? (
+                                    <span className="font-mono text-[11px] text-text-secondary">
+                                      ₱{Number(part.cost).toLocaleString("en-PH", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
+                                    </span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {m.resolutionNotes ? (
+                          <p>
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mr-1">
+                              Resolution
+                            </span>
+                            {m.resolutionNotes}
+                          </p>
+                        ) : null}
                       </div>
 
                       <div className="mt-2 flex items-center gap-4 text-[11px] text-text-secondary font-mono">
@@ -405,6 +473,15 @@ export default function AssetDrilldownReportPage({
         </div>
       </div>
     </div>
+
+    <div className="hidden print:block print:w-full">
+      <IndividualAssetPrintableReport
+        asset={asset}
+        maintenanceHistory={mapMaintenanceHistoryToPrintEntries(maintenanceHistory)}
+        canViewCosts={canViewCosts}
+      />
+    </div>
+    </>
   );
 }
 

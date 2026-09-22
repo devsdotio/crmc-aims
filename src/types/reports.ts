@@ -150,6 +150,9 @@ export interface AssetDrilldownReport {
     loggedByName: string;
     resolvedByName: string | null;
     notes: string;
+    workNotes: string | null;
+    resolutionNotes: string | null;
+    repairParts: Array<{ name: string; cost: string | null }>;
   }>;
   custodyHistory: Array<{
     id: string;
@@ -289,6 +292,9 @@ export interface MaintenanceReportRow {
   loggedByName: string;
   resolvedByName: string | null;
   notes: string;
+  workNotes: string | null;
+  resolutionNotes: string | null;
+  repairParts: Array<{ name: string; cost: string | null }>;
 }
 
 export interface MaintenanceSummary {

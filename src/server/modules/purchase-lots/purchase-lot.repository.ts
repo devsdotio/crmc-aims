@@ -101,6 +101,43 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
     return row ?? null;
   }
 
+  /**
+   * All line lots for a PO number (shared `reference`, or single-line lotCode variants).
+   */
+  async listByPoNumber(
+    poNumber: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<PurchaseLotRow[]> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const trimmed = poNumber.trim();
+    if (!trimmed) return [];
+
+    const altLot = trimmed.startsWith("PO-")
+      ? trimmed.replace(/^PO-/, "LOT-")
+      : trimmed.startsWith("LOT-")
+        ? trimmed.replace(/^LOT-/, "PO-")
+        : trimmed;
+
+    const conditions = [
+      or(
+        eq(purchaseLots.reference, trimmed),
+        eq(purchaseLots.lotCode, trimmed),
+        eq(purchaseLots.lotCode, altLot)
+      )!,
+    ];
+    if (resolvedTenantId) {
+      conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
+    }
+
+    return db
+      .select()
+      .from(purchaseLots)
+      .where(and(...conditions))
+      .orderBy(asc(purchaseLots.createdAt));
+  }
+
   async list(
     filters: ListPurchaseLotFilters = {},
     session?: DbSession,

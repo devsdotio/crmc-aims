@@ -55,6 +55,7 @@ export const CRITICAL_AUDIT_ACTIONS = new Set<string>([
   "purchase_order_ordered",
   "purchase_order_delivered",
   "purchase_order_cancelled",
+  "purchase_order_force_deleted",
 ]);
 
 export const AUDIT_ACTION_GROUP = {

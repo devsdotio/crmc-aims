@@ -23,8 +23,8 @@ export function AssignmentTypeBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border font-bold uppercase tracking-wider",
-        compact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-0.5 text-[11px]",
+        "inline-flex items-center rounded-full border font-bold uppercase tracking-wider whitespace-nowrap leading-none shrink-0",
+        compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-[11px]",
         ASSIGNMENT_TYPE_BADGE_CLASS[type],
         className
       )}

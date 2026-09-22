@@ -281,6 +281,13 @@
       "when": 1786374000000,
       "tag": "0039_request_submission_group",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1786375000000,
+      "tag": "0040_maintenance_work_notes",
+      "breakpoints": true
     }
   ]
 }

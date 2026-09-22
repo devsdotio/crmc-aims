@@ -48,6 +48,12 @@ export function MaintenanceLogsView() {
     sortBy: "open_first",
   });
 
+  // Modal / Drawer States
+  const [selectedRecord, setSelectedRecord] = useState<MaintenanceLogRecord | null>(null);
+  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
+  const [resolveDialogRecord, setResolveDialogRecord] = useState<MaintenanceLogRecord | null>(null);
+  const [autoSelectedFor, setAutoSelectedFor] = useState("");
+
   useEffect(() => {
     if (!assetCodeParam) return;
     setFilters((prev) => ({
@@ -58,10 +64,29 @@ export function MaintenanceLogsView() {
     }));
   }, [assetCodeParam]);
 
-  // Modal / Drawer States
-  const [selectedRecord, setSelectedRecord] = useState<MaintenanceLogRecord | null>(null);
-  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
-  const [resolveDialogRecord, setResolveDialogRecord] = useState<MaintenanceLogRecord | null>(null);
+  // Deep-link: auto-select the matching open log once per assetCode param.
+  useEffect(() => {
+    if (!assetCodeParam || isLoading || records.length === 0) return;
+    if (autoSelectedFor === assetCodeParam) return;
+    const needle = assetCodeParam.toLowerCase();
+    const match =
+      records.find(
+        (r) => !r.isResolved && r.assetCode.toLowerCase() === needle
+      ) ?? records.find((r) => r.assetCode.toLowerCase() === needle);
+    if (match) {
+      setSelectedRecord(match);
+      setAutoSelectedFor(assetCodeParam);
+    }
+  }, [assetCodeParam, isLoading, records, autoSelectedFor]);
+
+  // Keep the open detail panel in sync after progressive documentation saves.
+  useEffect(() => {
+    if (!selectedRecord) return;
+    const fresh = records.find((r) => r.id === selectedRecord.id);
+    if (fresh && fresh !== selectedRecord) {
+      setSelectedRecord(fresh);
+    }
+  }, [records, selectedRecord]);
 
   // Compute live open items count
   const openCount = useMemo(
@@ -172,6 +197,7 @@ export function MaintenanceLogsView() {
       resolutionDate: string;
       repairCost?: string | null;
       repairParts?: Array<{ name: string; cost: string | null }>;
+      noPartsUsed?: boolean;
     }
   ) => {
     try {
@@ -182,6 +208,7 @@ export function MaintenanceLogsView() {
         resolutionDate: payload.resolutionDate,
         repairCost: payload.repairCost,
         repairParts: payload.repairParts,
+        noPartsUsed: payload.noPartsUsed,
       });
       toast.success("Maintenance log resolved.");
 
@@ -264,6 +291,8 @@ export function MaintenanceLogsView() {
         record={selectedRecord}
         isOpen={Boolean(selectedRecord)}
         onClose={() => setSelectedRecord(null)}
+        canDocument={canOperate}
+        onDocumentSaved={(message) => toast.success(message)}
         onResolve={
           canOperate
             ? (rec) => {

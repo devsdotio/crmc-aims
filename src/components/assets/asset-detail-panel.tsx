@@ -5,14 +5,11 @@ import {
   Edit3,
   MapPin,
   User,
-  Tag,
   Calendar,
   Truck,
   ChevronDown,
   ChevronUp,
-  ChevronRight,
   FileText,
-  Loader2,
   Send,
   CheckCircle,
   XCircle,
@@ -30,14 +27,15 @@ import {
   Sparkles,
   Trash2,
   X,
-  Box,
   QrCode,
   Layers,
   StickyNote,
   Printer,
 } from "lucide-react";
 import { IndividualAssetPrintableReport } from "@/components/reports/print/individual/IndividualAssetPrintableReport";
+import { AssetOpenRepairPanel } from "@/components/assets/asset-open-repair-panel";
 import { cn } from "@/lib/utils";
+import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
 import { custodyBadgeLabel, isProjectCustody } from "@/lib/assets-custody";
 import Link from "next/link";
 
@@ -56,16 +54,16 @@ import type { BorrowRequest, ActionHistoryLog } from "@/types/borrow-requests";
 import { useSuppliersQuery } from "@/features/suppliers/client";
 import {
   useAssetLifecycleQuery,
-  useAssetQuery,
   type AssetLifecycleEvent,
   type AssetChangesMap,
 } from "@/features/assets/client";
 import { QRCodeDisplay } from "./qr-code-display";
-import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { useBorrowRequests } from "@/features/borrow-requests/client";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
+import { useAssetDrilldownReportQuery } from "@/features/reports/client/use-reports";
+import { mapMaintenanceHistoryToPrintEntries } from "@/components/reports/print/individual/map-maintenance-print-entries";
 
 function getTimelineIcon(status: string) {
   switch (status.toLowerCase()) {
@@ -1045,6 +1043,8 @@ export interface AssetDetailPanelProps {
   onEdit?: (asset: Asset) => void;
   onIssue?: (asset: Asset) => void;
   onFlagMaintenance?: (asset: Asset) => void;
+  onMarkServiceable?: (log: import("@/types/maintenance-logs").MaintenanceLogRecord) => void;
+  onRepairProgressSaved?: (message: string) => void;
   onDelete?: (asset: Asset) => void;
 }
 
@@ -1087,18 +1087,24 @@ export function AssetDetailPanel({
   onEdit,
   onIssue,
   onFlagMaintenance,
+  onMarkServiceable,
+  onRepairProgressSaved,
   onDelete,
 }: AssetDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const { getCategoryStyle } = useCategoryStyleMap();
-  const { role } = useAssetOperator();
+  const { role, canOperate } = useAssetOperator();
   const isBorrower = role === "borrower";
   // Suppliers only needed when panel is open with a linked vendor — never on list paint.
   const { data: suppliers = [] } = useSuppliersQuery({
     enabled: Boolean(isOpen && asset?.supplierId),
   });
-  // Detail fetch hydrates maintenance_logs for print (list DTO keeps history empty).
-  const { data: detailAsset } = useAssetQuery(isOpen && asset ? asset.id : "");
+  const drilldownAssetId =
+    isOpen && !isBorrower && asset?.id ? asset.id : "";
+  const { data: drilldown } = useAssetDrilldownReportQuery(drilldownAssetId);
+  const printMaintenanceHistory = mapMaintenanceHistoryToPrintEntries(
+    drilldown?.maintenanceHistory ?? []
+  );
+  const printCanViewCosts = drilldown?.canViewCosts ?? canOperate;
 
   const supplierName = asset?.supplierId
     ? (suppliers.find((s) => s.id === asset.supplierId)?.name ?? null)
@@ -1153,7 +1159,6 @@ export function AssetDetailPanel({
     );
   }
 
-  const categoryMeta = getCategoryStyle(asset.category);
   const statusMeta = STATUS_STYLES[asset.status];
   const showMaintenanceAction =
     asset.status !== "retired" &&
@@ -1189,76 +1194,42 @@ export function AssetDetailPanel({
           )}
         >
         {/* Panel Header */}
-        <div className="flex items-start justify-between px-5 py-4 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
-          <div className="min-w-0 flex-1 pr-2">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
+          <div className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
             {isBorrower ? (
               <>
-                <p className="font-mono text-[11px] font-bold tracking-wide text-primary mb-1">
-                  {asset.assetCode}
-                </p>
                 <h2
                   id="asset-detail-heading"
-                  className="text-base font-bold tracking-tight text-text leading-snug"
+                  className="text-base font-extrabold tracking-tight text-primary truncate min-w-0"
                 >
                   {asset.name}
                 </h2>
-                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-                      categoryMeta.bg,
-                      categoryMeta.text
-                    )}
-                  >
-                    <Tag className="h-2.5 w-2.5 shrink-0" />
-                    {categoryMeta.label}
-                  </span>
-                  <span
-                    className={cn(
-                      "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
-                      statusMeta.bg,
-                      statusMeta.text
-                    )}
-                  >
-                    {statusMeta.label}
-                  </span>
-                  {asset.currentHolder ? (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
-                      In use
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25">
-                      Available
-                    </span>
+                <span
+                  className={cn(
+                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide shrink-0 whitespace-nowrap",
+                    statusMeta.bg,
+                    statusMeta.text
                   )}
-                </div>
+                >
+                  {statusMeta.label}
+                </span>
+                {asset.currentHolder ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 shrink-0 whitespace-nowrap">
+                    In use
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 shrink-0 whitespace-nowrap">
+                    Available
+                  </span>
+                )}
               </>
             ) : (
-              <>
-                <h2
-                  id="asset-detail-heading"
-                  className="font-mono text-base font-bold tracking-tight text-text truncate leading-tight"
-                >
-                  {asset.assetCode}
-                </h2>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold shadow-2xs",
-                      categoryMeta.bg,
-                      categoryMeta.text
-                    )}
-                  >
-                    <Tag className="h-2.5 w-2.5 shrink-0" />
-                    {categoryMeta.label}
-                  </span>
-                  <span className="text-text-secondary/40">•</span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 shadow-2xs">
-                    <Box className="h-2.5 w-2.5 shrink-0" />
-                    <span className="truncate max-w-45">{asset.name}</span>
-                  </span>
-                </div>
-              </>
+              <h2
+                id="asset-detail-heading"
+                className="text-lg font-extrabold tracking-tight text-primary truncate min-w-0 leading-tight"
+              >
+                {asset.name}
+              </h2>
             )}
           </div>
 
@@ -1375,14 +1346,6 @@ export function AssetDetailPanel({
                 </span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-              className="inline-flex items-center justify-center p-1.5 rounded-md text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0"
-            >
-              <X className="h-4 w-4" />
-            </button>
           </div>
         </div>
 
@@ -1481,7 +1444,7 @@ export function AssetDetailPanel({
                 <div className="bg-bg rounded-xl border border-indigo-500/25 shadow-xs overflow-hidden">
                   <div className="p-4 border-b border-indigo-500/15 bg-indigo-500/5 dark:bg-indigo-950/20 flex items-center justify-between">
                     <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
-                      Current Condition & Custody
+                      Current Condition
                     </span>
                     <div className="flex gap-2">
                       {asset.currentHolder ? (
@@ -1518,20 +1481,15 @@ export function AssetDetailPanel({
                   </div>
 
                   {asset.status === "needs_repair" && (
-                    <div className="px-4 py-3 border-b border-status-repair-bg/25 bg-status-repair-bg/10 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs text-status-repair-text">
-                        Open repair flag — resolve via Maintenance Logs to mark
-                        serviceable again.
-                      </p>
-                      <Link
-                        href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
-                        className="inline-flex items-center gap-1.5 text-xs font-bold text-status-repair-text hover:underline shrink-0"
-                      >
-                        <Wrench className="h-3.5 w-3.5" />
-                        Open maintenance log
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
+                    <AssetOpenRepairPanel
+                      assetId={asset.id}
+                      assetCode={asset.assetCode}
+                      canOperate={canOperate && Boolean(onMarkServiceable)}
+                      onMarkServiceable={(log: MaintenanceLogRecord) =>
+                        onMarkServiceable?.(log)
+                      }
+                      onSaved={onRepairProgressSaved}
+                    />
                   )}
 
                   <div className="p-5 grid grid-cols-2 gap-4 text-xs">
@@ -1644,11 +1602,9 @@ export function AssetDetailPanel({
     {!isBorrower && (
       <div className="hidden print:block">
         <IndividualAssetPrintableReport
-          asset={{
-            ...asset,
-            maintenanceHistory:
-              detailAsset?.maintenanceHistory ?? asset.maintenanceHistory,
-          }}
+          asset={asset}
+          maintenanceHistory={printMaintenanceHistory}
+          canViewCosts={printCanViewCosts}
         />
       </div>
     )}

@@ -45,3 +45,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# IDE / local agent process (vault is SoT for personas; keep out of this repo)
+.cursor/
+.agent/
+.mdrules/

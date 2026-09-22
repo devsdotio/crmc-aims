@@ -108,7 +108,16 @@ export const returnAssetSchema = z.object({
 
 export const flagMaintenanceSchema = z.object({
   description: z.string().trim().max(2000).optional(),
-  notes: z.string().trim().max(2000).optional(),
+  notes: z
+    .string()
+    .trim()
+    .min(1, "Issue description is required.")
+    .max(2000),
+  condition: z.enum(["needs_maintenance", "damaged"]).optional(),
+  scheduledDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 
 export const reportMissingSchema = z.object({

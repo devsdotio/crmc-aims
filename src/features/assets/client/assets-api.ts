@@ -71,7 +71,9 @@ export type ReleaseAssetInput = {
 
 export type FlagMaintenanceInput = {
   description?: string;
-  notes?: string;
+  notes: string;
+  condition?: "needs_maintenance" | "damaged";
+  scheduledDate?: string;
 };
 
 export type ReportMissingInput = {
@@ -244,7 +246,7 @@ export const assetsApi = {
 
   async flagForMaintenance(
     id: string,
-    payload: FlagMaintenanceInput = {}
+    payload: FlagMaintenanceInput
   ): Promise<Asset> {
     const response = await fetchJson<ApiResponse<Asset>>(
       `/api/assets/${id}/flag-maintenance`,

@@ -9,9 +9,18 @@ import {
 
 export interface IndividualAssetMaintenanceEntry {
   id?: string;
+  logCode?: string | null;
+  status?: "open" | "resolved" | string | null;
   cost?: number | null;
   date?: string | null;
+  resolutionDate?: string | null;
   type?: string | null;
+  /** Initial fault / issue notes. */
+  issue?: string | null;
+  workNotes?: string | null;
+  resolutionNotes?: string | null;
+  parts?: Array<{ name: string; cost?: string | null }>;
+  /** Legacy single-line description (falls back when issue is absent). */
   description?: string | null;
   technician?: string | null;
 }
@@ -61,6 +70,10 @@ export function IndividualAssetPrintableReport({
   );
 
   const purchasePrice = asset.value ?? 0;
+  const hasComparableCost = canViewCosts && purchasePrice > 0;
+  const repairVsAcquisitionPct = hasComparableCost
+    ? (totalRepairSpend / purchasePrice) * 100
+    : null;
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
@@ -199,6 +212,25 @@ export function IndividualAssetPrintableReport({
           ]}
         />
       </section>
+      {canViewCosts && (
+        <section className="avoid-break rounded-xs border border-black px-3 py-1.5">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="font-bold uppercase tracking-wide">
+              Repair Spend vs Acquisition Value
+            </span>
+            <span className="font-mono font-bold">
+              {purchasePrice > 0
+                ? `₱${totalRepairSpend.toLocaleString()} / ₱${purchasePrice.toLocaleString()}`
+                : `₱${totalRepairSpend.toLocaleString()} / —`}
+            </span>
+          </div>
+          <div className="mt-0.5 text-[9px] text-black">
+            {repairVsAcquisitionPct != null
+              ? `${repairVsAcquisitionPct.toFixed(1)}% of acquisition value has been spent on repairs.`
+              : "Acquisition value is not available; percentage comparison is unavailable."}
+          </div>
+        </section>
+      )}
 
       {/* ─── Section 1: Specifications & Identification ─────────────────── */}
       <section className="avoid-break">
@@ -276,34 +308,85 @@ export function IndividualAssetPrintableReport({
             <thead>
               <tr className="border-b border-black bg-white text-[9.5px] font-bold uppercase tracking-wider text-black">
                 <th className="py-1.5 px-3 text-left whitespace-nowrap w-24 border-r border-black/30">Log Date</th>
-                <th className="py-1.5 px-3 text-left border-r border-black/30">Task Description</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-28 border-r border-black/30">Type</th>
+                <th className="py-1.5 px-3 text-left whitespace-nowrap w-20 border-r border-black/30">Status</th>
+                <th className="py-1.5 px-3 text-left border-r border-black/30">Issue / Work / Parts</th>
                 <th className="py-1.5 px-3 text-left whitespace-nowrap w-32 border-r border-black/30">Technician</th>
                 {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Service Cost</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-black/30 text-[10px] text-black">
-              {maintenanceHistory.map((entry, idx) => (
-                <tr key={idx}>
-                  <td className="py-1.5 px-3 font-mono text-black whitespace-nowrap border-r border-black/30">
-                    {entry.date || "Unrecorded"}
-                  </td>
-                  <td className="py-1.5 px-3 font-medium border-r border-black/30">
-                    {entry.description || "Routine inspection and maintenance check"}
-                  </td>
-                  <td className="py-1.5 px-3 text-black capitalize whitespace-nowrap border-r border-black/30">
-                    {entry.type || "maintenance"}
-                  </td>
-                  <td className="py-1.5 px-3 text-black whitespace-nowrap border-r border-black/30">
-                    {entry.technician || "Internal Staff"}
-                  </td>
-                  {canViewCosts && (
-                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-black whitespace-nowrap">
-                      {entry.cost ? `₱${entry.cost.toLocaleString()}` : "—"}
+              {maintenanceHistory.map((entry, idx) => {
+                const issue = entry.issue || entry.description;
+                const partsSummary =
+                  entry.parts && entry.parts.length > 0
+                    ? entry.parts
+                        .map((p) =>
+                          canViewCosts && p.cost != null && p.cost !== ""
+                            ? `${p.name} (₱${Number(p.cost).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+                            : p.name
+                        )
+                        .join("; ")
+                    : null;
+                const statusLabel =
+                  entry.status === "resolved"
+                    ? "Resolved"
+                    : entry.status === "open"
+                      ? "Open"
+                      : entry.status || (entry.resolutionDate ? "Resolved" : "Open");
+
+                return (
+                  <tr key={entry.id || idx}>
+                    <td className="py-1.5 px-3 font-mono text-black whitespace-nowrap border-r border-black/30 align-top">
+                      <div>{entry.date || "Unrecorded"}</div>
+                      {entry.logCode && (
+                        <div className="text-[8.5px] font-semibold mt-0.5">{entry.logCode}</div>
+                      )}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="py-1.5 px-3 text-black capitalize whitespace-nowrap border-r border-black/30 align-top">
+                      <div className="font-bold uppercase text-[8.5px]">{statusLabel}</div>
+                      {entry.type && (
+                        <div className="text-[8.5px] mt-0.5">{entry.type.replace(/_/g, " ")}</div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-3 font-medium border-r border-black/30 align-top space-y-0.5">
+                      {issue ? (
+                        <div>
+                          <span className="font-bold uppercase text-[8px] tracking-wide">Issue: </span>
+                          {issue}
+                        </div>
+                      ) : (
+                        <div className="italic text-black/70">No issue notes recorded</div>
+                      )}
+                      {entry.workNotes ? (
+                        <div>
+                          <span className="font-bold uppercase text-[8px] tracking-wide">Work: </span>
+                          {entry.workNotes}
+                        </div>
+                      ) : null}
+                      {partsSummary ? (
+                        <div>
+                          <span className="font-bold uppercase text-[8px] tracking-wide">Parts: </span>
+                          {partsSummary}
+                        </div>
+                      ) : null}
+                      {entry.resolutionNotes ? (
+                        <div>
+                          <span className="font-bold uppercase text-[8px] tracking-wide">Resolution: </span>
+                          {entry.resolutionNotes}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="py-1.5 px-3 text-black whitespace-nowrap border-r border-black/30 align-top">
+                      {entry.technician || "Internal Staff"}
+                    </td>
+                    {canViewCosts && (
+                      <td className="py-1.5 px-3 text-right font-mono font-semibold text-black whitespace-nowrap align-top">
+                        {entry.cost ? `₱${entry.cost.toLocaleString()}` : "—"}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
               {maintenanceHistory.length === 0 && (
                 <tr>
                   <td colSpan={canViewCosts ? 5 : 4} className="py-2.5 text-center text-black italic text-[10px]">

@@ -1,10 +1,10 @@
 "use client";
 
-import { PlusCircle, SlidersHorizontal, Tag, Trash2 } from "lucide-react";
+import { SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConsumableItem } from "@/types/inventory";
 import { StockLevelBar } from "./stock-level-bar";
-import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
+import { CategoryPill } from "./category-pill";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableTableRowProps {
@@ -20,9 +20,6 @@ export function ConsumableTableRow({
   onAdjust,
   onDelete,
 }: ConsumableTableRowProps) {
-  const { getCategoryStyle } = useCategoryStyleMap();
-  const categoryMeta = getCategoryStyle(item.category);
-
   return (
     <tr
       onClick={() => onSelect(item)}
@@ -52,21 +49,12 @@ export function ConsumableTableRow({
       </td>
 
       {/* Category Tag */}
-      <td className="px-3 py-3.5 whitespace-nowrap">
+      <td className="w-40 max-w-40 px-3 py-3.5 whitespace-nowrap">
         <div className="flex flex-col gap-1 items-start">
           <span className="text-[10px] font-semibold text-text-secondary">
             {consumableClassificationLabel(item.classification)}
           </span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-2xs",
-              categoryMeta.bg,
-              categoryMeta.text
-            )}
-          >
-            <Tag className="h-2.5 w-2.5 shrink-0" />
-            {categoryMeta.label}
-          </span>
+          <CategoryPill category={item.category} />
         </div>
       </td>
 

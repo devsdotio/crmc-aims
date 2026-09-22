@@ -8,7 +8,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
+import type { PurchaseLot, PurchaseOrderStatus, PoDeleteImpact } from "@/types/purchase-lots";
 import {
   STOCK_DOMAINS,
   invalidateDomains,
@@ -240,6 +240,21 @@ export function useDeletePurchaseOrderMutation(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => purchaseLotsApi.delete(id),
+    onSettled: () => {
+      void invalidateDomains(qc, PO_DOMAINS);
+    },
+  });
+}
+
+/** TEMPORARY: delete entire PO with inventory revert. */
+export function useDeletePurchaseOrderByPoMutation(): UseMutationResult<
+  { success: boolean; impact: PoDeleteImpact },
+  Error,
+  string
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (poNumber: string) => purchaseLotsApi.deleteByPoNumber(poNumber),
     onSettled: () => {
       void invalidateDomains(qc, PO_DOMAINS);
     },
