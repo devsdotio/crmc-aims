@@ -1,0 +1,4 @@
+[build.environment]
+  # NEXT_PUBLIC_* values are intentionally inlined into client/SSR bundles.
+  # Omit them from secret scanning so Netlify does not fail the build.
+  SECRETS_SCAN_OMIT_KEYS = "NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"

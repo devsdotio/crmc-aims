@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "crmc-aims",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-09-21",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "crmc-aims"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "vars": {
+    "NEXT_PUBLIC_SITE_URL": "https://crmc-aims.rendyllcabardo11.workers.dev/"
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "f4a7ef26c79e450ebc778ef11ef5bf86"
+    }
+  ]
+}

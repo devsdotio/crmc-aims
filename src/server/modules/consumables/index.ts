@@ -24,6 +24,7 @@ export class ConsumableController {
         await this.service.list(
           {
             category: url.searchParams.get("category") ?? undefined,
+            classification: url.searchParams.get("classification") ?? undefined,
             stockLevel: url.searchParams.get("stockLevel") ?? undefined,
             search: url.searchParams.get("search") ?? undefined,
             page: pageParam ? parseInt(pageParam, 10) : undefined,

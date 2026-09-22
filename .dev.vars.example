@@ -1,0 +1,5 @@
+# Used by Wrangler / OpenNext local preview.
+# Copy to .dev.vars for local Workers runtime testing (do not commit .dev.vars).
+NEXTJS_ENV=development
+# For `next dev` / wrangler with a Hyperdrive binding (use your pooler or direct URI):
+# CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgresql://...
