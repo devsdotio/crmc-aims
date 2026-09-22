@@ -172,13 +172,21 @@ export class ProjectAssetService {
         assignment.assetId,
         tx
       );
+      const condition = input.condition ?? "good";
+      const flagMaintenance = Boolean(input.flagMaintenance);
+      const needsMaint =
+        condition === "needs_repair" ||
+        condition === "damaged" ||
+        flagMaintenance;
+
       if (openLog) {
         // Closes borrow log + assignment + clears holder in one nested path.
         await this.borrowLogs.returnLog(
           openLog.id,
           {
-            condition: "good",
-            conditionNotes: input.notes,
+            condition,
+            conditionNotes: input.notes ?? undefined,
+            flagMaintenance: needsMaint,
           },
           actor,
           tx
@@ -202,12 +210,109 @@ export class ProjectAssetService {
 
       // Always clear holder even if borrow log was already missing (legacy orphan).
       const asset = await this.assets.findById(assignment.assetId, tx);
-      if (asset?.currentHolder) {
-        await this.assets.update(
-          assignment.assetId,
-          { currentHolder: null, lastUpdated: new Date() },
-          tx
-        );
+      if (asset) {
+        const patch: {
+          currentHolder?: null;
+          status?: "needs_repair" | "missing";
+          lastUpdated: Date;
+        } = { lastUpdated: new Date() };
+        if (asset.currentHolder) patch.currentHolder = null;
+
+        if (!openLog && (condition === "lost" || condition === "stolen")) {
+          patch.status = "missing";
+        } else if (!openLog && needsMaint && asset.status !== "needs_repair") {
+          patch.status = "needs_repair";
+        }
+
+        if (patch.currentHolder !== undefined || patch.status !== undefined) {
+          await this.assets.update(assignment.assetId, patch, tx);
+        }
+
+        // No active borrow log → open MNT here (returnLog would have done it).
+        if (!openLog && needsMaint) {
+          const openCount = await this.maintenance.countOpenByAssetId(
+            asset.id,
+            tx
+          );
+          if (openCount === 0) {
+            const mntCode = generateOperationalCode("MNT");
+            await this.maintenance.create(
+              {
+                logCode: mntCode,
+                assetId: asset.id,
+                assetCode: asset.assetCode,
+                assetName: asset.name,
+                category: asset.category,
+                condition:
+                  condition === "damaged" ? "damaged" : "needs_maintenance",
+                source: "project_assignment",
+                dateLogged: todayDateString(),
+                loggedByUserId: actor.userId,
+                loggedByName: actor.displayName,
+                notes:
+                  input.notes?.trim() ||
+                  `Returned from project with condition: ${
+                    needsMaint && condition === "good"
+                      ? "needs_repair"
+                      : condition
+                  }`,
+                isResolved: false,
+                resolutionDate: null,
+                resolutionNotes: null,
+                resolvedByUserId: null,
+                resolvedByName: null,
+                repairCost: null,
+                repairParts: [],
+                relatedBorrowLogCode: null,
+                scheduledDate: null,
+              },
+              tx
+            );
+
+            await this.lifecycle.record(
+              {
+                assetId: asset.id,
+                assetCode: asset.assetCode,
+                eventType: "flagged_maintenance",
+                actor,
+                fromStatus: asset.status,
+                toStatus: "needs_repair",
+                fromHolder: asset.currentHolder,
+                toHolder: null,
+                payload: {
+                  via: "project_return",
+                  maintenanceLogCode: mntCode,
+                  condition,
+                  flagMaintenance,
+                  notes: input.notes ?? null,
+                },
+              },
+              tx
+            );
+          }
+        } else if (
+          !openLog &&
+          (condition === "lost" || condition === "stolen")
+        ) {
+          await this.lifecycle.record(
+            {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              eventType: "status_changed",
+              actor,
+              fromStatus: asset.status,
+              toStatus: "missing",
+              fromHolder: asset.currentHolder,
+              toHolder: null,
+              payload: {
+                via: "project_return",
+                condition,
+                notes: input.notes ?? null,
+              },
+            },
+            tx
+          );
+        }
       }
 
       if (!updated) throw new NotFoundError("Project asset assignment", assignmentId);

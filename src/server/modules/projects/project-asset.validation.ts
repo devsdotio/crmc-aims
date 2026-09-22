@@ -7,6 +7,11 @@ export const assignAssetToProjectSchema = z.object({
 
 export const returnProjectAssetSchema = z.object({
   notes: z.string().trim().max(2000).optional().nullable(),
+  condition: z
+    .enum(["good", "damaged", "needs_repair", "lost", "stolen"])
+    .optional()
+    .default("good"),
+  flagMaintenance: z.boolean().optional().default(false),
 });
 
 const dateSchema = z

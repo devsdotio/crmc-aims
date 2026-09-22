@@ -106,6 +106,25 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     return Number(row?.value ?? 0);
   }
 
+  async listByAssetId(
+    assetId: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow[]> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(maintenanceLogs.assetId, assetId)];
+    if (resolvedTenantId) {
+      conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+    }
+
+    return db
+      .select()
+      .from(maintenanceLogs)
+      .where(and(...conditions))
+      .orderBy(desc(maintenanceLogs.dateLogged));
+  }
+
   /**
    * Assets marked needs_repair that have no open maintenance log
    * (e.g. status flipped via edit before the hub was wired).

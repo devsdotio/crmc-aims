@@ -187,7 +187,12 @@ export const borrowRequestsApi = {
     return res.data;
   },
 
-  async markReturned(id: string, payload: { returnedBy: string; note?: string }): Promise<BorrowRequest> {
+  async markReturned(id: string, payload: {
+    returnedBy: string;
+    note?: string;
+    condition?: "good" | "damaged" | "needs_repair" | "lost" | "stolen";
+    flagMaintenance?: boolean;
+  }): Promise<BorrowRequest> {
     const res = await fetchJson<ApiResponse<BorrowRequest>>(
       `/api/requests/${id}/return`,
       { method: "POST", body: JSON.stringify(payload ?? {}) }

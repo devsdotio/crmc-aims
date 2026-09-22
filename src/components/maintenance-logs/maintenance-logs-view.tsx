@@ -37,14 +37,14 @@ export function MaintenanceLogsView() {
   const toast = useToast();
   const { canOperate } = useAssetOperator();
 
-  // Filter & Sort State — default to open queue; deep-link via ?assetCode=
+  // Filter & Sort State — default open queue; asset deep-link shows full history
   const [filters, setFilters] = useState<MaintenanceLogFilterState>({
     searchQuery: assetCodeParam,
     categories: [],
     conditions: [],
     startDate: "",
     endDate: "",
-    openItemsOnly: true,
+    openItemsOnly: !assetCodeParam,
     sortBy: "open_first",
   });
 
@@ -53,7 +53,7 @@ export function MaintenanceLogsView() {
     setFilters((prev) => ({
       ...prev,
       searchQuery: assetCodeParam,
-      openItemsOnly: true,
+      openItemsOnly: false,
       sortBy: "open_first",
     }));
   }, [assetCodeParam]);

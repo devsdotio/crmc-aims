@@ -56,6 +56,7 @@ import type { BorrowRequest, ActionHistoryLog } from "@/types/borrow-requests";
 import { useSuppliersQuery } from "@/features/suppliers/client";
 import {
   useAssetLifecycleQuery,
+  useAssetQuery,
   type AssetLifecycleEvent,
   type AssetChangesMap,
 } from "@/features/assets/client";
@@ -1096,6 +1097,8 @@ export function AssetDetailPanel({
   const { data: suppliers = [] } = useSuppliersQuery({
     enabled: Boolean(isOpen && asset?.supplierId),
   });
+  // Detail fetch hydrates maintenance_logs for print (list DTO keeps history empty).
+  const { data: detailAsset } = useAssetQuery(isOpen && asset ? asset.id : "");
 
   const supplierName = asset?.supplierId
     ? (suppliers.find((s) => s.id === asset.supplierId)?.name ?? null)
@@ -1640,7 +1643,13 @@ export function AssetDetailPanel({
 
     {!isBorrower && (
       <div className="hidden print:block">
-        <IndividualAssetPrintableReport asset={asset} />
+        <IndividualAssetPrintableReport
+          asset={{
+            ...asset,
+            maintenanceHistory:
+              detailAsset?.maintenanceHistory ?? asset.maintenanceHistory,
+          }}
+        />
       </div>
     )}
     </>

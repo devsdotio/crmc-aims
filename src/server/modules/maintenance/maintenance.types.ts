@@ -45,6 +45,16 @@ export interface IMaintenanceRepository {
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
   ): Promise<number>;
+  countOpenByAssetId(
+    assetId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  listByAssetId(
+    assetId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow[]>;
   countYear(
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string

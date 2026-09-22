@@ -376,7 +376,15 @@ export function useMarkUnreleasedBorrowRequestMutation(): UseMutationResult<
 export function useMarkReturnedBorrowRequestMutation(): UseMutationResult<
   BorrowRequest,
   Error,
-  { id: string; payload: { returnedBy: string; note?: string } }
+  {
+    id: string;
+    payload: {
+      returnedBy: string;
+      note?: string;
+      condition?: "good" | "damaged" | "needs_repair" | "lost" | "stolen";
+      flagMaintenance?: boolean;
+    };
+  }
 > {
   const qc = useQueryClient();
   return useMutation({
