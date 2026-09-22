@@ -283,7 +283,8 @@ export function FileNewPODialog({
   const [poNumberMode, setPoNumberMode] = useState<"auto" | "manual">("auto");
   const [customPoNumber, setCustomPoNumber] = useState("");
   const [poDate, setPoDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const accountRequesterName = me?.name || me?.email || "Authorized Staff";
+  const accountDefaultName = me?.name || me?.email || "Authorized Staff";
+  const [requestedByName, setRequestedByName] = useState(accountDefaultName);
   const [targetDepartmentId, setTargetDepartmentId] = useState("");
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
@@ -345,6 +346,7 @@ export function FileNewPODialog({
       setPoNumberMode("auto");
       setCustomPoNumber("");
       setPoDate(new Date().toISOString().split("T")[0]);
+      setRequestedByName(me?.name || me?.email || "Authorized Staff");
       setItems([generateInitialRow(initialType, false, initialClassification)]);
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
@@ -366,6 +368,8 @@ export function FileNewPODialog({
   }, [
     isOpen,
     me?.departmentId,
+    me?.name,
+    me?.email,
     defaultPoType,
     defaultPurpose,
     defaultProjectId,
@@ -806,6 +810,10 @@ export function FileNewPODialog({
       setErrorMessage("Order date is required.");
       return false;
     }
+    if (!requestedByName.trim()) {
+      setErrorMessage("Requested By is required.");
+      return false;
+    }
     if (!targetDepartmentId.trim()) {
       setErrorMessage("Target department is required.");
       return false;
@@ -942,7 +950,7 @@ export function FileNewPODialog({
       await createPOMutation.mutateAsync({
         poNumber: poNumberMode === "manual" ? customPoNumber.trim() : undefined,
         poDate,
-        requestedBy: accountRequesterName,
+        requestedBy: requestedByName.trim() || accountDefaultName,
         supplierId: masterSupplierId,
         supplierName: masterSupplierName,
         departmentId: targetDepartmentId,
@@ -1542,21 +1550,23 @@ export function FileNewPODialog({
                     />
                   </div>
 
-                  {/* Requested By (Account) */}
+                  {/* Requested By */}
                   <div className="space-y-1">
                     <label className="font-semibold text-text flex items-center gap-1">
                       <User className="h-3.5 w-3.5 text-accent" />
-                      <span>Requested By (Account)</span>
+                      <span>Requested By</span>
                     </label>
-                    <div className="w-full h-9 px-3 rounded-lg border border-border bg-bg flex items-center justify-between text-xs text-text font-bold select-none">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="truncate">{accountRequesterName}</span>
-                      </div>
-                      <span className="text-[10px] text-text-secondary font-medium shrink-0 ml-1">
-                        {me?.role || "Account"}
-                      </span>
-                    </div>
+                    <input
+                      type="text"
+                      value={requestedByName}
+                      onChange={(e) => setRequestedByName(e.target.value)}
+                      placeholder="Name of the person requesting this PO"
+                      required
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden font-medium"
+                    />
+                    <p className="text-[10px] text-text-secondary">
+                      Defaults to your account; edit to match the physical request form.
+                    </p>
                   </div>
 
                   {/* Target Department (Dropdown) */}
@@ -1667,22 +1677,6 @@ export function FileNewPODialog({
                         ? "Asset Catalog"
                         : `${CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]} Catalog`}
                     </h3>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAddItem(true)}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer shadow-2xs",
-                        poType === "asset"
-                          ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
-                          : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-                      )}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>+ Custom / New {poType === "asset" ? "Asset" : effectiveClassification === "material" ? "Material" : "Supply"}</span>
-                    </button>
                   </div>
                 </div>
 
@@ -1871,6 +1865,32 @@ export function FileNewPODialog({
                       </p>
                     </div>
                   )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+                  <p className="text-[10px] text-text-secondary leading-snug">
+                    Prefer catalog picks above. Use custom only when the SKU is not registered yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleAddItem(true)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer shadow-2xs shrink-0",
+                      poType === "asset"
+                        ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
+                        : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                    )}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>
+                      + Custom / New{" "}
+                      {poType === "asset"
+                        ? "Asset"
+                        : effectiveClassification === "material"
+                          ? "Material"
+                          : "Supply"}
+                    </span>
+                  </button>
                 </div>
               </div>
 
@@ -2260,7 +2280,7 @@ export function FileNewPODialog({
                   </div>
                   <div>
                     <span className="text-[10px] text-text-secondary font-medium block">Requested By</span>
-                    <span className="font-bold text-text">{accountRequesterName}</span>
+                    <span className="font-bold text-text">{requestedByName.trim() || accountDefaultName}</span>
                   </div>
                 </div>
 
