@@ -13,6 +13,18 @@ const globalForDb = globalThis as unknown as {
   __crmcPg?: ReturnType<typeof postgres>;
 };
 
+/** One Hyperdrive client per Worker invocation — safe for I/O, avoids memory blowups. */
+const hyperdriveDbByCtx = new WeakMap<object, Database>();
+
+function getExecutionCtx(): object | undefined {
+  try {
+    const { ctx } = getCloudflareContext();
+    return ctx ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function getWorkersEnv(): { HYPERDRIVE?: HyperdriveBinding } | null {
   try {
     return getCloudflareContext().env as { HYPERDRIVE?: HyperdriveBinding };
@@ -53,7 +65,16 @@ export function getDb(): Database {
       );
     }
 
-    // Fresh client per getDb() call — request-safe on Workers.
+    const execCtx = getExecutionCtx();
+    if (execCtx) {
+      const existing = hyperdriveDbByCtx.get(execCtx);
+      if (existing) return existing;
+      const db = createHyperdriveDb(connectionString);
+      hyperdriveDbByCtx.set(execCtx, db);
+      return db;
+    }
+
+    // No ExecutionContext (unusual) — one-off client for this call only.
     return createHyperdriveDb(connectionString);
   }
 
