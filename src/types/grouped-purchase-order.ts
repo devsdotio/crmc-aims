@@ -31,10 +31,13 @@ export function isInitialStockLot(lot: PurchaseLot): boolean {
     ref === "opening balance" ||
     ref.startsWith("opening balance") ||
     po === "initial stock" ||
+    po === "opening balance" ||
     po === "po-initial stock" ||
     po.startsWith("initial stock") ||
+    po.startsWith("opening balance") ||
     notes.includes("opening balance on item create") ||
-    purpose.includes("initial stock")
+    purpose.includes("initial stock") ||
+    purpose.includes("opening balance")
   );
 }
 

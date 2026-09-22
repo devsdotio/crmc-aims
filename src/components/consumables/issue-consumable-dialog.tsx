@@ -20,6 +20,7 @@ import {
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { isInitialStockLot } from "@/types/grouped-purchase-order";
 
 const ISSUE_TIMEOUT_MS = 60_000;
 
@@ -138,11 +139,17 @@ export function IssueConsumableDialog({
 
   const lotOptions = useMemo(
     () =>
-      availableLots.map((lot) => ({
-        value: lot.id,
-        label: `${lot.lotCode} · ${lot.quantityRemaining} remaining (${formatPhp(Number(lot.unitCost))}/unit)`,
-        keywords: lot.lotCode,
-      })),
+      availableLots.map((lot) => {
+        const opening = isInitialStockLot(lot);
+        const source = opening
+          ? "Opening balance"
+          : lot.supplierName?.trim() || "No supplier";
+        return {
+          value: lot.id,
+          label: `${lot.lotCode} · ${source} · ${lot.quantityRemaining} remaining (${formatPhp(Number(lot.unitCost))}/unit)`,
+          keywords: `${lot.lotCode} ${source}`,
+        };
+      }),
     [availableLots]
   );
 

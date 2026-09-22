@@ -78,9 +78,17 @@ export function derivePONumber(lotCode: string, reference?: string | null): stri
   if (reference && reference.trim()) {
     const trimmed = reference.trim();
     const lower = trimmed.toLowerCase();
-    if (lower !== "initial stock" && lower !== "opening balance") {
-      return trimmed;
+    // Opening-balance / initial-stock lots are not formal POs — keep a clear label
+    // so PO indexes can exclude them and item detail can show "Opening balance".
+    if (
+      lower === "initial stock" ||
+      lower.startsWith("initial stock") ||
+      lower === "opening balance" ||
+      lower.startsWith("opening balance")
+    ) {
+      return "Opening balance";
     }
+    return trimmed;
   }
   return lotCode.startsWith("LOT-")
     ? lotCode.replace(/^LOT-/, "PO-")
@@ -343,6 +351,8 @@ export class PurchaseLotService {
 
   async list(rawQuery: unknown, actorTenantId?: string): Promise<PurchaseLotDTO[]> {
     const filters = listPurchaseLotsQuerySchema.parse(rawQuery ?? {});
+    // Flat list — never strips opening-balance / initial-stock lots.
+    // PO index UIs exclude those via groupLotsByPO({ excludeInitialStock: true }).
     const rows = await this.repo.list(filters, undefined, actorTenantId);
     let dtos = rows.map(toPurchaseLotDTO);
 
