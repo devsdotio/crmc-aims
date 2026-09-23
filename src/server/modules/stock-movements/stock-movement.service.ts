@@ -97,6 +97,9 @@ export type StockMovementDTO = {
 export const listStockMovementsQuerySchema = z.object({
   reason: z.enum(["restock", "issue", "adjust"]).optional(),
   limit: z.coerce.number().int().min(1).max(500).optional().default(100),
+  /** Optional for staff filters; borrowers always use session departmentId. */
+  departmentId: z.string().uuid().optional(),
+  classification: z.enum(["supply", "material"]).optional(),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
     .optional()
@@ -278,26 +281,58 @@ export class StockMovementService {
     });
   }
 
-  async list(rawQuery: unknown, actorTenantId?: string): Promise<StockMovementDTO[]> {
+  async list(
+    rawQuery: unknown,
+    actor?: ActorContext
+  ): Promise<StockMovementDTO[]> {
     const query = listStockMovementsQuerySchema.parse(rawQuery);
+
+    // Never trust client departmentId for borrowers — session only.
+    let departmentId: string | undefined;
+    if (actor?.role === "borrower") {
+      if (!actor.departmentId) {
+        throw new BadRequestError(
+          "Your account is not linked to a department. Ask Property Custodian to assign one."
+        );
+      }
+      departmentId = actor.departmentId;
+    } else if (query.departmentId) {
+      departmentId = query.departmentId;
+    }
+
     const rows = await this.repo.listRecent({
       reason: query.reason,
       limit: query.limit,
       includeSandbox: query.includeSandbox,
-      tenantId: actorTenantId,
+      tenantId: actor?.tenantId,
+      departmentId,
+      classification: query.classification,
     });
-    const labels = await destinationLabelsFor(rows, actorTenantId);
+    const labels = await destinationLabelsFor(rows, actor?.tenantId);
     const issueIds = rows
       .filter((r) => r.direction === "out" && r.reason === "issue")
       .map((r) => r.id);
-    const reversals = await this.repo.findReversalsForIds(issueIds, undefined, actorTenantId);
+    const reversals = await this.repo.findReversalsForIds(
+      issueIds,
+      undefined,
+      actor?.tenantId
+    );
 
     return rows.map((row) => {
       const reversal = reversals.get(row.id);
-      return toDTO(row, labels, {
+      const dto = toDTO(row, labels, {
         voided: Boolean(reversal) || isVoidedNotes(row.notes),
         reversalMovementCode: reversal?.movementCode ?? null,
       });
+      if (actor?.role === "borrower") {
+        return {
+          ...dto,
+          unitCost: null,
+          lineTotal: null,
+          purchaseLotId: null,
+        };
+      }
+      return dto;
     });
   }
 

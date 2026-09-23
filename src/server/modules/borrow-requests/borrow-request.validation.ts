@@ -115,6 +115,11 @@ export const markUnreleasedBorrowRequestSchema = z.object({
 export const returnBorrowRequestSchema = z.object({
   note: z.string().trim().max(1000).optional(),
   returnedBy: z.string().trim().min(1, "Name of person who returned the item is required.").max(255),
+  condition: z
+    .enum(["good", "damaged", "needs_repair", "lost", "stolen"])
+    .optional()
+    .default("good"),
+  flagMaintenance: z.boolean().optional().default(false),
 });
 
 export const cancelBorrowRequestSchema = z.object({

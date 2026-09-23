@@ -19,10 +19,13 @@ import {
 } from "lucide-react";
 import {
   usePurchaseLotsQuery,
+  useDeletePurchaseOrderMutation,
 } from "@/features/purchase-lots/client/use-purchase-lots";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-banner";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
+import { useConfirm } from "@/components/providers/confirm-context";
+import { useToast } from "@/components/providers/toast-context";
 import type { PurchaseLot } from "@/types/purchase-lots";
 import {
   groupLotsByPO,
@@ -105,6 +108,9 @@ export function PurchaseOrdersView({
   );
 
   const { canOperate } = useAssetOperator();
+  const deleteMutation = useDeletePurchaseOrderMutation();
+  const toast = useToast();
+  const { confirm } = useConfirm();
   const [deleteTarget, setDeleteTarget] = useState<GroupedPurchaseOrder | null>(
     null
   );
@@ -238,6 +244,22 @@ export function PurchaseOrdersView({
     }
     return releaseLot;
   }, [groupedPOs, releaseLot]);
+
+  const releaseCandidateLots = useMemo(() => {
+    if (!releaseLotSynced) return undefined;
+    for (const g of groupedPOs) {
+      if (g.lineItems.some((l) => l.id === releaseLotSynced.id)) {
+        const candidates = g.lineItems.filter(
+          (li) =>
+            li.itemType === "consumable" &&
+            li.status === "delivered" &&
+            li.quantityRemaining > 0
+        );
+        return candidates.length > 0 ? candidates : [releaseLotSynced];
+      }
+    }
+    return [releaseLotSynced];
+  }, [groupedPOs, releaseLotSynced]);
 
   const supplierOptions = useMemo(() => {
     const countMap = new Map<string, number>();
@@ -459,6 +481,33 @@ export function PurchaseOrdersView({
 
   const requestDeleteGroup = (group: GroupedPurchaseOrder) => {
     setDeleteTarget(group);
+  };
+
+  const requestDeleteLine = async (line: PurchaseLot) => {
+    await confirm({
+      title: "Delete line item?",
+      description: `Remove "${line.itemName}" from purchase order "${line.poNumber || line.lotCode}"? Other lines on this PO are kept.`,
+      confirmLabel: "Delete line",
+      cancelLabel: "Keep line",
+      variant: "destructive",
+      action: async () => {
+        try {
+          await deleteMutation.mutateAsync(line.id);
+          toast.success(`Removed line "${line.itemName}".`);
+          const remaining = selectedLineItems?.filter((li) => li.id !== line.id) ?? [];
+          if (remaining.length === 0) {
+            setSelectedLot(null);
+          } else if (selectedLot?.id === line.id) {
+            setSelectedLot(remaining[0]);
+          }
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : "Failed to delete line item."
+          );
+          throw err;
+        }
+      },
+    });
   };
 
   // Header Icon and Titles
@@ -783,7 +832,8 @@ export function PurchaseOrdersView({
             loading={isLoading}
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
-            onDeleteGroup={canOperate ? (g) => requestDeleteGroup(g) : undefined}
+            onDeleteGroup={canOperate ? (g) => void requestDeleteGroup(g) : undefined}
+            showProject={categoryScope === "projects"}
           />
         ) : (
           <PurchaseOrdersGrid
@@ -817,6 +867,7 @@ export function PurchaseOrdersView({
               }
             : undefined
         }
+        onDeleteLine={canOperate ? (line) => void requestDeleteLine(line) : undefined}
         canOperate={canOperate}
       />
 
@@ -855,6 +906,7 @@ export function PurchaseOrdersView({
         <>
           <LotReleaseDialog
             lot={releaseLotSynced}
+            candidateLots={releaseCandidateLots}
             isOpen={Boolean(releaseLotSynced)}
             onClose={() => setReleaseLot(null)}
             onSuccess={() => {

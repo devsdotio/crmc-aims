@@ -29,6 +29,8 @@ export type PurchaseLotDTO = {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  /** Sponsoring departments for project POs (primary = departmentId). */
+  departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;
   notes: string | null;
@@ -116,6 +118,8 @@ export type CreatePurchaseOrderInput = {
   supplierName?: string;
   departmentId?: string;
   departmentName?: string;
+  /** Project POs only — first id is primary (also written to departmentId). */
+  departmentIds?: string[];
   projectId?: string | null;
   projectName?: string | null;
   purpose?: string;
@@ -135,6 +139,9 @@ export type UpdatePurchaseOrderInput = {
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;
+  itemName?: string;
+  quantity?: number;
+  unitCost?: string | number;
 };
 
 export type UpdatePurchaseOrderStatusInput = {

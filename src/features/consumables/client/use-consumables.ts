@@ -41,6 +41,7 @@ export function useConsumablesQuery(filters?: {
   search?: string;
   page?: number;
   limit?: number;
+  catalog?: boolean;
 }): UseQueryResult<
   PaginatedResponse<ConsumableItem>,
   Error

@@ -48,6 +48,7 @@ import {
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 import {
   CONSUMABLE_CLASSIFICATIONS,
   CONSUMABLE_CLASSIFICATION_LABELS,
@@ -283,8 +284,10 @@ export function FileNewPODialog({
   const [poNumberMode, setPoNumberMode] = useState<"auto" | "manual">("auto");
   const [customPoNumber, setCustomPoNumber] = useState("");
   const [poDate, setPoDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const accountRequesterName = me?.name || me?.email || "Authorized Staff";
+  const accountDefaultName = me?.name || me?.email || "Authorized Staff";
+  const [requestedByName, setRequestedByName] = useState(accountDefaultName);
   const [targetDepartmentId, setTargetDepartmentId] = useState("");
+  const [targetDepartmentIds, setTargetDepartmentIds] = useState<string[]>([]);
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
 
@@ -345,6 +348,7 @@ export function FileNewPODialog({
       setPoNumberMode("auto");
       setCustomPoNumber("");
       setPoDate(new Date().toISOString().split("T")[0]);
+      setRequestedByName(me?.name || me?.email || "Authorized Staff");
       setItems([generateInitialRow(initialType, false, initialClassification)]);
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
@@ -360,12 +364,21 @@ export function FileNewPODialog({
           )
         : null;
       setTargetDepartmentId(matchedDept?.id || me?.departmentId || "");
+      setTargetDepartmentIds(
+        matchedDept?.id
+          ? [matchedDept.id]
+          : me?.departmentId
+            ? [me.departmentId]
+            : []
+      );
       setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
     }
   }, [
     isOpen,
     me?.departmentId,
+    me?.name,
+    me?.email,
     defaultPoType,
     defaultPurpose,
     defaultProjectId,
@@ -399,6 +412,8 @@ export function FileNewPODialog({
       Boolean(generalPurpose.trim()) ||
       Boolean(generalNotes.trim()) ||
       Boolean(targetDepartmentId.trim() && targetDepartmentId !== (me?.departmentId || "")) ||
+      (destinationKind === "project" &&
+        targetDepartmentIds.some((id) => id !== (me?.departmentId || ""))) ||
       items.some((i) => Boolean(i.name.trim()) || Boolean(i.consumableId) || Boolean(i.assetId));
 
     if (hasData) {
@@ -446,8 +461,16 @@ export function FileNewPODialog({
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setItems([generateInitialRow("consumable", false, "material")]);
+      if (targetDepartmentId) {
+        setTargetDepartmentIds((prev) =>
+          prev.includes(targetDepartmentId) ? prev : [targetDepartmentId, ...prev]
+        );
+      }
     } else {
       setTargetProjectId("");
+      if (targetDepartmentIds.length > 0) {
+        setTargetDepartmentId(targetDepartmentIds[0]);
+      }
       if (poType === "asset") {
         setItems([generateInitialRow("asset", false, poClassification)]);
       } else {
@@ -515,6 +538,99 @@ export function FileNewPODialog({
         };
       })
     );
+  };
+
+  const matchExistingCatalogByName = (rawName: string) => {
+    const needle = rawName.trim().toLowerCase();
+    if (!needle) return null;
+    if (poType === "asset") {
+      return (
+        assetsList.find(
+          (a) =>
+            a.name.trim().toLowerCase() === needle ||
+            a.assetCode.trim().toLowerCase() === needle
+        ) ?? null
+      );
+    }
+    return (
+      consumables.find(
+        (c) =>
+          ((c.classification as ConsumableClassification | undefined) ??
+            DEFAULT_CONSUMABLE_CLASSIFICATION) === effectiveClassification &&
+          (c.name.trim().toLowerCase() === needle ||
+            c.itemCode.trim().toLowerCase() === needle)
+      ) ?? null
+    );
+  };
+
+  const handleNewItemNameBlur = (rowId: string, rawName: string) => {
+    const matched = matchExistingCatalogByName(rawName);
+    if (!matched) return;
+
+    if (poType === "asset" && "assetCode" in matched) {
+      const alreadyOnPo = items.some(
+        (it) => !it.isNew && it.assetId === matched.id && it.id !== rowId
+      );
+      if (alreadyOnPo) {
+        setItems((prev) => prev.filter((it) => it.id !== rowId));
+        toast.info(`"${matched.name}" is already on this PO.`);
+        return;
+      }
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === rowId
+            ? {
+                ...it,
+                isNew: false,
+                assetId: matched.id,
+                consumableId: undefined,
+                name: matched.name,
+                category: matched.category,
+                assignmentType: matched.assignmentType || "borrowable",
+                location: matched.location || "Property Custodian Depot",
+                unit: "unit",
+              }
+            : it
+        )
+      );
+      toast.info(
+        `"${matched.name}" already exists in the catalog — linked as existing stock.`
+      );
+      return;
+    }
+
+    if (poType === "consumable" && "itemCode" in matched) {
+      const alreadyOnPo = items.some(
+        (it) => !it.isNew && it.consumableId === matched.id && it.id !== rowId
+      );
+      if (alreadyOnPo) {
+        setItems((prev) => prev.filter((it) => it.id !== rowId));
+        toast.info(`"${matched.name}" is already on this PO.`);
+        return;
+      }
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === rowId
+            ? {
+                ...it,
+                isNew: false,
+                consumableId: matched.id,
+                assetId: undefined,
+                name: matched.name,
+                category: matched.category,
+                classification: effectiveClassification,
+                unit: matched.unit || "pcs",
+                minThreshold: matched.minThreshold || 5,
+                location: matched.location || "Main Property Storage",
+                suggestedDealer: matched.supplier || it.suggestedDealer,
+              }
+            : it
+        )
+      );
+      toast.info(
+        `"${matched.name}" already exists in the catalog — linked as existing stock.`
+      );
+    }
   };
 
   // Quick-Add & Quick-Unselect from Catalog Cards
@@ -806,7 +922,16 @@ export function FileNewPODialog({
       setErrorMessage("Order date is required.");
       return false;
     }
-    if (!targetDepartmentId.trim()) {
+    if (!requestedByName.trim()) {
+      setErrorMessage("Requested By is required.");
+      return false;
+    }
+    if (destinationKind === "project") {
+      if (targetDepartmentIds.length < 1) {
+        setErrorMessage("Select at least one target department.");
+        return false;
+      }
+    } else if (!targetDepartmentId.trim()) {
       setErrorMessage("Target department is required.");
       return false;
     }
@@ -927,9 +1052,18 @@ export function FileNewPODialog({
       const masterSupplierId =
         uniqueSuppliers.length === 1 ? items[0]?.supplierId : undefined;
 
-      const selectedDepartment = departments.find((d) => d.id === targetDepartmentId);
-      const departmentName = selectedDepartment?.name?.trim() || "";
-      if (!departmentName) {
+      const selectedDepartmentIds =
+        destinationKind === "project"
+          ? targetDepartmentIds
+          : targetDepartmentId
+            ? [targetDepartmentId]
+            : [];
+      const selectedDepartments = selectedDepartmentIds
+        .map((id) => departments.find((d) => d.id === id))
+        .filter((d): d is NonNullable<typeof d> => Boolean(d));
+      const primaryDepartment = selectedDepartments[0];
+      const departmentName = primaryDepartment?.name?.trim() || "";
+      if (!departmentName || selectedDepartments.length < 1) {
         setErrorMessage("Please select a valid target department.");
         return;
       }
@@ -942,11 +1076,15 @@ export function FileNewPODialog({
       await createPOMutation.mutateAsync({
         poNumber: poNumberMode === "manual" ? customPoNumber.trim() : undefined,
         poDate,
-        requestedBy: accountRequesterName,
+        requestedBy: requestedByName.trim() || accountDefaultName,
         supplierId: masterSupplierId,
         supplierName: masterSupplierName,
-        departmentId: targetDepartmentId,
+        departmentId: primaryDepartment.id,
         departmentName,
+        departmentIds:
+          destinationKind === "project"
+            ? selectedDepartments.map((d) => d.id)
+            : undefined,
         projectId: destinationKind === "project" ? targetProjectId : undefined,
         projectName: destinationKind === "project" ? (selectedProjectObj?.name || undefined) : undefined,
         purpose: combinedPurpose,
@@ -1337,6 +1475,11 @@ export function FileNewPODialog({
                           : null;
                         if (matchedDept?.id) {
                           setTargetDepartmentId(matchedDept.id);
+                          setTargetDepartmentIds((prev) =>
+                            prev.includes(matchedDept.id)
+                              ? prev
+                              : [...prev, matchedDept.id]
+                          );
                         }
                       }}
                       options={activeProjectOptions}
@@ -1542,59 +1685,115 @@ export function FileNewPODialog({
                     />
                   </div>
 
-                  {/* Requested By (Account) */}
+                  {/* Requested By */}
                   <div className="space-y-1">
                     <label className="font-semibold text-text flex items-center gap-1">
                       <User className="h-3.5 w-3.5 text-accent" />
-                      <span>Requested By (Account)</span>
+                      <span>Requested By</span>
                     </label>
-                    <div className="w-full h-9 px-3 rounded-lg border border-border bg-bg flex items-center justify-between text-xs text-text font-bold select-none">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
-                        <span className="truncate">{accountRequesterName}</span>
-                      </div>
-                      <span className="text-[10px] text-text-secondary font-medium shrink-0 ml-1">
-                        {me?.role || "Account"}
-                      </span>
-                    </div>
+                    <input
+                      type="text"
+                      value={requestedByName}
+                      onChange={(e) => setRequestedByName(e.target.value)}
+                      placeholder="Name of the person requesting this PO"
+                      required
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden font-medium"
+                    />
+                    <p className="text-[10px] text-text-secondary">
+                      Defaults to your account; edit to match the physical request form.
+                    </p>
                   </div>
 
-                  {/* Target Department (Dropdown) */}
+                  {/* Target Department — multi for project POs, single otherwise */}
                   <div className="space-y-1">
                     <label className="font-semibold text-text flex items-center justify-between">
                       <span className="flex items-center gap-1">
                         <School className="h-3.5 w-3.5 text-text-secondary" />
-                        <span>Target Department</span>
+                        <span>
+                          {destinationKind === "project"
+                            ? "Sponsoring Departments"
+                            : "Target Department"}
+                        </span>
                       </span>
                       <span className="text-[10px] text-rose-500 font-bold">* Required</span>
                     </label>
-                    <SearchableSelect
-                      value={targetDepartmentId}
-                      onValueChange={setTargetDepartmentId}
-                      options={departmentOptions}
-                      clearLabel={
-                        departmentsLoading
-                          ? "Loading departments…"
-                          : departmentsError
+                    {destinationKind === "project" ? (
+                      <>
+                        <MultiSelectDropdown
+                          label="Departments"
+                          icon={School}
+                          variant="form"
+                          searchable
+                          selectedIds={targetDepartmentIds}
+                          onToggle={(id) => {
+                            setTargetDepartmentIds((prev) => {
+                              const next = prev.includes(id)
+                                ? prev.filter((x) => x !== id)
+                                : [...prev, id];
+                              setTargetDepartmentId(next[0] || "");
+                              return next;
+                            });
+                          }}
+                          options={departmentOptions.map((o) => ({
+                            id: o.value,
+                            label: o.label,
+                          }))}
+                          placeholder={
+                            departmentsLoading
+                              ? "Loading departments…"
+                              : departmentsError
+                                ? "Failed to load departments"
+                                : "-- Choose one or more departments --"
+                          }
+                          emptyMessage={
+                            departmentsError
+                              ? "Failed to load departments"
+                              : "No departments found"
+                          }
+                          disabled={departmentsLoading}
+                          aria-required="true"
+                          triggerClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                        />
+                        {targetDepartmentIds.length > 0 && (
+                          <p className="text-[10px] text-text-secondary">
+                            Primary for vouchers / purpose:{" "}
+                            <span className="font-semibold text-text">
+                              {departments.find((d) => d.id === targetDepartmentIds[0])
+                                ?.name || "—"}
+                            </span>{" "}
+                            (first selected)
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <SearchableSelect
+                        value={targetDepartmentId}
+                        onValueChange={setTargetDepartmentId}
+                        options={departmentOptions}
+                        clearLabel={
+                          departmentsLoading
+                            ? "Loading departments…"
+                            : departmentsError
+                              ? "Failed to load departments"
+                              : "-- Choose Department --"
+                        }
+                        placeholder={
+                          departmentsLoading
+                            ? "Loading departments…"
+                            : departmentsError
+                              ? "Failed to load departments"
+                              : "-- Choose Department --"
+                        }
+                        emptyMessage={
+                          departmentsError
                             ? "Failed to load departments"
-                            : "-- Choose Department --"
-                      }
-                      placeholder={
-                        departmentsLoading
-                          ? "Loading departments…"
-                          : departmentsError
-                            ? "Failed to load departments"
-                            : "-- Choose Department --"
-                      }
-                      emptyMessage={
-                        departmentsError
-                          ? "Failed to load departments"
-                          : "No departments found"
-                      }
-                      disabled={departmentsLoading}
-                      aria-required="true"
-                      inputClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
-                    />
+                            : "No departments found"
+                        }
+                        disabled={departmentsLoading}
+                        aria-required="true"
+                        inputClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                      />
+                    )}
                     {departmentsError && (
                       <button
                         type="button"
@@ -1667,22 +1866,6 @@ export function FileNewPODialog({
                         ? "Asset Catalog"
                         : `${CONSUMABLE_CLASSIFICATION_LABELS[effectiveClassification]} Catalog`}
                     </h3>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAddItem(true)}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer shadow-2xs",
-                        poType === "asset"
-                          ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
-                          : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
-                      )}
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      <span>+ Custom / New {poType === "asset" ? "Asset" : effectiveClassification === "material" ? "Material" : "Supply"}</span>
-                    </button>
                   </div>
                 </div>
 
@@ -1872,6 +2055,32 @@ export function FileNewPODialog({
                     </div>
                   )}
                 </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/60">
+                  <p className="text-[10px] text-text-secondary leading-snug">
+                    Prefer catalog picks above. Use custom only when the SKU is not registered yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleAddItem(true)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer shadow-2xs shrink-0",
+                      poType === "asset"
+                        ? "border-blue-500/40 bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
+                        : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20"
+                    )}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>
+                      + Custom / New{" "}
+                      {poType === "asset"
+                        ? "Asset"
+                        : effectiveClassification === "material"
+                          ? "Material"
+                          : "Supply"}
+                    </span>
+                  </button>
+                </div>
               </div>
 
               {/* Bottom Section: Configured Line Items List */}
@@ -2015,6 +2224,9 @@ export function FileNewPODialog({
                                 value={item.name}
                                 onChange={(e) =>
                                   handleItemFieldChange(item.id, "name", e.target.value)
+                                }
+                                onBlur={(e) =>
+                                  handleNewItemNameBlur(item.id, e.target.value)
                                 }
                                 placeholder={
                                   poType === "asset"
@@ -2260,7 +2472,7 @@ export function FileNewPODialog({
                   </div>
                   <div>
                     <span className="text-[10px] text-text-secondary font-medium block">Requested By</span>
-                    <span className="font-bold text-text">{accountRequesterName}</span>
+                    <span className="font-bold text-text">{requestedByName.trim() || accountDefaultName}</span>
                   </div>
                 </div>
 
@@ -2294,9 +2506,22 @@ export function FileNewPODialog({
                 <div className="space-y-2 pt-2 border-t border-border/50 text-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <span className="text-[10px] text-text-secondary font-medium block">Target Department</span>
+                      <span className="text-[10px] text-text-secondary font-medium block">
+                        {destinationKind === "project"
+                          ? "Sponsoring Departments"
+                          : "Target Department"}
+                      </span>
                       <span className="font-bold text-text">
-                        {departments.find((d) => d.id === targetDepartmentId)?.name || "—"}
+                        {destinationKind === "project"
+                          ? targetDepartmentIds
+                              .map(
+                                (id) =>
+                                  departments.find((d) => d.id === id)?.name
+                              )
+                              .filter(Boolean)
+                              .join(", ") || "—"
+                          : departments.find((d) => d.id === targetDepartmentId)
+                              ?.name || "—"}
                       </span>
                     </div>
 

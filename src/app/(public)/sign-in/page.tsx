@@ -4,8 +4,9 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import { SignInForm } from '@/components/auth/SignInForm';
 
 export const metadata: Metadata = {
-  title: 'Sign In | AIMS',
-  description: 'Sign in to the Asset & Inventory Management System',
+  title: "Sign in",
+  description:
+    "Sign in to CRMC AIMS — the Asset & Inventory Management System for Cebu Roosevelt Memorial Colleges.",
 };
 
 export default function SignInPage() {

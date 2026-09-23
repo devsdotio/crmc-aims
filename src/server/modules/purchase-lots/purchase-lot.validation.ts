@@ -61,6 +61,8 @@ export const createPurchaseOrderSchema = z
     supplierName: z.string().trim().optional(),
     departmentId: z.string().uuid().optional(),
     departmentName: z.string().trim().max(255).optional(),
+    /** Project POs only — sponsoring departments (first = primary). */
+    departmentIds: z.array(z.string().uuid()).optional(),
     projectId: z.string().uuid().optional(),
     projectName: z.string().trim().max(255).optional(),
     purpose: z.string().trim().optional(),
@@ -72,17 +74,42 @@ export const createPurchaseOrderSchema = z
       .min(1, "Please provide at least one line item."),
   })
   .superRefine((data, ctx) => {
-    if (!data.projectId) return;
-    data.items.forEach((item, index) => {
-      if (item.itemType !== "consumable") {
+    if (data.projectId) {
+      const ids =
+        data.departmentIds && data.departmentIds.length > 0
+          ? data.departmentIds
+          : data.departmentId
+            ? [data.departmentId]
+            : [];
+      if (ids.length < 1) {
         ctx.addIssue({
           code: "custom",
           message:
-            "Direct project procurement supports consumable materials only.",
-          path: ["items", index, "itemType"],
+            "At least one target department is required for project purchase orders.",
+          path: ["departmentIds"],
         });
       }
-    });
+      data.items.forEach((item, index) => {
+        if (item.itemType !== "consumable") {
+          ctx.addIssue({
+            code: "custom",
+            message:
+              "Direct project procurement supports consumable materials only.",
+            path: ["items", index, "itemType"],
+          });
+        }
+      });
+      return;
+    }
+
+    if (data.departmentIds && data.departmentIds.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Multiple departments are only allowed on project purchase orders.",
+        path: ["departmentIds"],
+      });
+    }
   });
 
 export const updatePurchaseOrderStatusSchema = z.object({
@@ -104,6 +131,10 @@ export const updatePurchaseOrderSchema = z.object({
   receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
   recordedByName: z.string().trim().nullable().optional(),
+  /** Editable on non-delivered lines only. */
+  itemName: z.string().trim().min(1).max(255).optional(),
+  quantity: z.number().int().positive().optional(),
+  unitCost: z.union([z.string(), z.number()]).optional(),
 });
 
 /** Staff scan: release qty from a supplier purchase lot. */

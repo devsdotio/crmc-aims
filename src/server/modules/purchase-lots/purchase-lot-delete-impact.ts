@@ -30,6 +30,7 @@ import type { ActorContext } from "@/server/shared/auth";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { findActivePoDisbursement } from "./po-disbursement";
+import { deletePoDepartmentLinks } from "./po-departments";
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import type {
   PoDeleteAssetUnit,
@@ -595,6 +596,9 @@ export async function deletePurchaseOrderWithRevert(
     for (const lot of freshLots) {
       await revertLine(lot, trimmed, session);
     }
+
+    // Drop project multi-dept links keyed by PO number (join is PO-scoped, not per-lot).
+    await deletePoDepartmentLinks(trimmed, actor.tenantId, session);
 
     await auditLogs.log(
       {

@@ -1,7 +1,7 @@
 import { BorrowerDashboard } from "../../../../components/borrower-db/borrower-dashboard";
 
 export const metadata = {
-  title: "Requester portal | AIMS",
+  title: "Requester portal",
   description: "Overview of department requests, active equipment custody, and history.",
 };
 

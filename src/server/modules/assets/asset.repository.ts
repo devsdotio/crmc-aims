@@ -171,6 +171,17 @@ export class AssetRepository implements IAssetRepository {
         )`
       );
     }
+    if (filters?.departmentHeldId) {
+      conditions.push(
+        sql`exists (
+          select 1 from ${borrowTransactions}
+          where ${borrowTransactions.assetId} = ${assets.id}
+            and ${borrowTransactions.status} = 'active'
+            and ${borrowTransactions.departmentId} = ${filters.departmentHeldId}
+            and ${borrowTransactions.projectId} is null
+        )`
+      );
+    }
     if (filters?.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(

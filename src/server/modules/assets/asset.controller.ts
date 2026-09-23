@@ -31,12 +31,14 @@ export class AssetController {
           assignmentType: url.searchParams.get("assignmentType") ?? undefined,
           availableOnly:
             url.searchParams.get("availableOnly") ?? undefined,
+          catalog: url.searchParams.get("catalog") ?? undefined,
           includeSandbox: parseIncludeSandbox(
             url.searchParams.get("includeSandbox"),
             session.role
           ),
         },
-        session.tenantId
+        session.tenantId,
+        session
       );
       return ok(data);
     } catch (error) {

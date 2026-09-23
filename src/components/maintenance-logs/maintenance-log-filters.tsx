@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import {
   Search,
   FilterX,
   ArrowUpDown,
   Tag,
   AlertCircle,
-  ChevronDown,
-  Check,
   Calendar,
   Wrench,
 } from "lucide-react";
@@ -20,6 +18,7 @@ import type {
 import type { AssetCategory } from "@/types/shared";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import { getCategoryStyle } from "@/constants/categories";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 
 export interface MaintenanceLogFiltersProps {
   filters: MaintenanceLogFilterState;
@@ -54,108 +53,6 @@ const CONDITIONS: {
     dotBg: "bg-status-active-bg",
   },
 ];
-
-function MultiSelectDropdown({
-  label,
-  icon: Icon,
-  options,
-  selectedIds,
-  onToggle,
-  onOpen,
-}: {
-  label: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  icon: any;
-  options: { id: string; label: string; renderDot?: () => React.ReactNode }[];
-  selectedIds: string[];
-  onToggle: (id: string) => void;
-  onOpen?: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  return (
-    <div className="relative" ref={dropdownRef}>
-      <button
-        type="button"
-        onClick={() => {
-          const next = !isOpen;
-          setIsOpen(next);
-          if (next) onOpen?.();
-        }}
-        className={cn(
-          "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors",
-          selectedIds.length > 0
-            ? "border-accent/50 bg-accent/5 text-text"
-            : "border-border bg-bg-subtle text-text-secondary hover:bg-border/60 hover:text-text"
-        )}
-      >
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-        {selectedIds.length > 0 && (
-          <span className="inline-flex items-center justify-center bg-accent text-accent-foreground text-[10px] h-4 w-4 rounded-full ml-1">
-            {selectedIds.length}
-          </span>
-        )}
-        <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-50" />
-      </button>
-
-      {isOpen && (
-        <div className="absolute top-full left-0 mt-1.5 w-56 bg-bg border border-border rounded-xl shadow-lg z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
-            {options.length === 0 ? (
-              <p className="p-2 text-xs text-text-secondary text-center">
-                No options available
-              </p>
-            ) : (
-              options.map((opt) => {
-                const isSelected = selectedIds.includes(opt.id);
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => onToggle(opt.id)}
-                    className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-xs rounded-lg hover:bg-bg-subtle transition-colors text-left"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {opt.renderDot && opt.renderDot()}
-                      <span
-                        className={cn(
-                          "truncate",
-                          isSelected
-                            ? "font-bold text-text"
-                            : "text-text-secondary"
-                        )}
-                      >
-                        {opt.label}
-                      </span>
-                    </div>
-                    {isSelected && (
-                      <Check className="h-3.5 w-3.5 text-accent shrink-0" />
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function MaintenanceLogFilters({
   filters,

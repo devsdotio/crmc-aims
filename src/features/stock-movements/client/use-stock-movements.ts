@@ -23,6 +23,8 @@ import { stockMovementQueryKeys } from "./query-keys";
 export function useStockMovementsQuery(filters?: {
   reason?: StockMovement["reason"];
   limit?: number;
+  departmentId?: string;
+  classification?: "supply" | "material";
   enabled?: boolean;
 }): UseQueryResult<StockMovement[], Error> {
   const { enabled = true, ...params } = filters ?? {};

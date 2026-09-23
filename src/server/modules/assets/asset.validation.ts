@@ -139,6 +139,15 @@ export const listAssetsQuerySchema = z.object({
       if (typeof v === "boolean") return v;
       return v === "true" || v === "1";
     }),
+  /** Request-wizard catalog: skip department custody scope for borrowers. */
+  catalog: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === "boolean") return v;
+      return v === "true" || v === "1";
+    }),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
     .optional()

@@ -1,7 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Pencil, Trash2, Eye, Loader2, MapPin, Building2, Flag } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { MoreHorizontal, Pencil, Trash2, Eye, Loader2, MapPin, Building2 } from "lucide-react";
 import type { Project } from "@/types/projects";
 import { useProjectProgressQuery } from "@/features/projects/client";
 import { ProjectStatusBadge } from "./project-status-badge";
@@ -27,11 +26,6 @@ export function ProjectTableRow({
   const canDelete =
     project.isMutable &&
     (project.status === "draft" || project.status === "cancelled");
-
-  const budgetNum = project.budget ? Number(project.budget) : 0;
-  const spentNum = Number(project.totalSpent) || 0;
-  const percentUsed = budgetNum > 0 ? Math.round((spentNum / budgetNum) * 100) : null;
-  const isOverBudget = budgetNum > 0 && spentNum > budgetNum;
 
   const totalInd = progress?.totalIndicators ?? 0;
   const doneInd = progress?.completedIndicators ?? 0;
@@ -73,29 +67,6 @@ export function ProjectTableRow({
           "—"
         )}
       </td>
-      <td className="px-3 py-3.5 text-xs font-mono tabular-nums text-text hidden sm:table-cell">
-        {project.budget ? (
-          <div className="flex items-center gap-1.5">
-            <span>{formatPhp(project.budget)}</span>
-            {percentUsed != null && (
-              <span
-                className={cn(
-                  "text-[10px] font-bold px-1.5 py-0.2 rounded-full",
-                  isOverBudget
-                    ? "bg-status-outofservice-bg/15 text-status-outofservice-text"
-                    : percentUsed >= 85
-                      ? "bg-status-repair-bg/15 text-status-repair-text"
-                      : "bg-bg-subtle text-text-secondary"
-                )}
-              >
-                {percentUsed}%
-              </span>
-            )}
-          </div>
-        ) : (
-          "—"
-        )}
-      </td>
       <td className="px-3 py-3.5 text-xs font-mono tabular-nums text-text-secondary hidden sm:table-cell">
         {formatPhp(project.totalSpent)}
       </td>
@@ -120,7 +91,6 @@ export function ProjectTableRow({
         )}
       </td>
       <td className="px-5 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-
         <div className="flex justify-end items-center gap-1.5">
           <button
             type="button"

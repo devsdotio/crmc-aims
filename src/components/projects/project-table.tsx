@@ -32,9 +32,6 @@ function SkeletonTableRow() {
       <td className="px-3 py-4 hidden sm:table-cell">
         <div className="h-3.5 w-16 bg-border rounded" />
       </td>
-      <td className="px-3 py-4 hidden sm:table-cell">
-        <div className="h-3.5 w-16 bg-border rounded" />
-      </td>
       <td className="px-3 py-4 hidden xl:table-cell">
         <div className="h-3.5 w-24 bg-border rounded" />
       </td>
@@ -48,6 +45,32 @@ function SkeletonTableRow() {
   );
 }
 
+const COLUMN_HEADERS = (
+  <tr className="border-b border-border bg-bg-subtle text-[11px] font-bold uppercase tracking-wider text-text-secondary">
+    <th scope="col" className="px-5 py-3">
+      Project
+    </th>
+    <th scope="col" className="px-3 py-3">
+      Status
+    </th>
+    <th scope="col" className="px-3 py-3 hidden md:table-cell">
+      Location
+    </th>
+    <th scope="col" className="px-3 py-3 hidden lg:table-cell">
+      Department
+    </th>
+    <th scope="col" className="px-3 py-3 hidden sm:table-cell">
+      Spent
+    </th>
+    <th scope="col" className="px-3 py-3 hidden xl:table-cell">
+      Progress
+    </th>
+    <th scope="col" className="px-5 py-3 text-right">
+      <span className="sr-only">Actions</span>
+    </th>
+  </tr>
+);
+
 export function ProjectTable({
   projects,
   loading = false,
@@ -60,34 +83,7 @@ export function ProjectTable({
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm" aria-label="Projects loading">
-          <thead>
-            <tr className="border-b border-border bg-bg-subtle text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-              <th scope="col" className="px-5 py-3">
-                Project
-              </th>
-              <th scope="col" className="px-3 py-3">
-                Status
-              </th>
-              <th scope="col" className="px-3 py-3 hidden md:table-cell">
-                Location
-              </th>
-              <th scope="col" className="px-3 py-3 hidden lg:table-cell">
-                Department
-              </th>
-              <th scope="col" className="px-3 py-3 hidden sm:table-cell">
-                Budget
-              </th>
-              <th scope="col" className="px-3 py-3 hidden sm:table-cell">
-                Spent
-              </th>
-              <th scope="col" className="px-3 py-3 hidden xl:table-cell">
-                Progress
-              </th>
-              <th scope="col" className="px-5 py-3 text-right">
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
+          <thead>{COLUMN_HEADERS}</thead>
 
           <tbody>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -116,31 +112,7 @@ export function ProjectTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm" aria-label="Projects table">
-        <thead>
-          <tr className="border-b border-border bg-bg-subtle text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-            <th scope="col" className="px-5 py-3">
-              Project
-            </th>
-            <th scope="col" className="px-3 py-3">
-              Status
-            </th>
-            <th scope="col" className="px-3 py-3 hidden md:table-cell">
-              Location
-            </th>
-            <th scope="col" className="px-3 py-3 hidden lg:table-cell">
-              Department
-            </th>
-            <th scope="col" className="px-3 py-3 hidden sm:table-cell">
-              Budget
-            </th>
-            <th scope="col" className="px-3 py-3 hidden sm:table-cell">
-              Spent
-            </th>
-            <th scope="col" className="px-5 py-3 text-right">
-              <span className="sr-only">Actions</span>
-            </th>
-          </tr>
-        </thead>
+        <thead>{COLUMN_HEADERS}</thead>
         <tbody className="divide-y divide-border">
           {projects.map((project) => (
             <ProjectTableRow

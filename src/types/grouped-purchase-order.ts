@@ -31,10 +31,13 @@ export function isInitialStockLot(lot: PurchaseLot): boolean {
     ref === "opening balance" ||
     ref.startsWith("opening balance") ||
     po === "initial stock" ||
+    po === "opening balance" ||
     po === "po-initial stock" ||
     po.startsWith("initial stock") ||
+    po.startsWith("opening balance") ||
     notes.includes("opening balance on item create") ||
-    purpose.includes("initial stock")
+    purpose.includes("initial stock") ||
+    purpose.includes("opening balance")
   );
 }
 
@@ -117,11 +120,33 @@ export function groupLotsByPO(
     }
 
     // Sync receiptUrl across representative and all line items in group
-    const groupReceiptUrl = lineItems.find((li) => Boolean(li.receiptUrl))?.receiptUrl ?? null;
+    const groupReceiptUrl = lineItems.find((li) => li.receiptUrl)?.receiptUrl ?? null;
     if (groupReceiptUrl) {
       representative.receiptUrl = groupReceiptUrl;
       for (const li of lineItems) {
         li.receiptUrl = groupReceiptUrl;
+      }
+    }
+
+    // Union sponsoring departments for project POs (multi-dept)
+    const deptMap = new Map<string, string>();
+    for (const li of lineItems) {
+      if (li.departments?.length) {
+        for (const d of li.departments) {
+          if (d.id) deptMap.set(d.id, d.name);
+        }
+      } else if (li.departmentId && li.departmentName) {
+        deptMap.set(li.departmentId, li.departmentName);
+      }
+    }
+    if (deptMap.size > 0) {
+      const departments = [...deptMap.entries()].map(([id, name]) => ({
+        id,
+        name,
+      }));
+      representative.departments = departments;
+      for (const li of lineItems) {
+        li.departments = departments;
       }
     }
 

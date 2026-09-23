@@ -22,8 +22,23 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type DestinationKind = "department" | "project";
 
+function isReleasableLot(lot: PurchaseLot): boolean {
+  return (
+    lot.itemType === "consumable" &&
+    lot.status === "delivered" &&
+    lot.quantityRemaining > 0
+  );
+}
+
 interface LotReleaseDialogProps {
+  /** Initially selected lot (QR scan or chosen PO line). */
   lot: PurchaseLot | null;
+  /**
+   * Sibling releasable lots from the same multi-item PO.
+   * When more than one candidate is available, a line/lot picker is shown.
+   * Single-lot QR scan should omit this (or pass a one-item list).
+   */
+  candidateLots?: PurchaseLot[];
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
@@ -31,6 +46,7 @@ interface LotReleaseDialogProps {
 
 export function LotReleaseDialog({
   lot,
+  candidateLots,
   isOpen,
   onClose,
   onSuccess,
@@ -68,6 +84,29 @@ export function LotReleaseDialog({
     [mutableProjects]
   );
 
+  const selectableLots = useMemo(() => {
+    const byId = new Map<string, PurchaseLot>();
+    for (const candidate of candidateLots ?? []) {
+      if (isReleasableLot(candidate)) byId.set(candidate.id, candidate);
+    }
+    if (lot && isReleasableLot(lot)) byId.set(lot.id, lot);
+    else if (lot && !byId.has(lot.id)) byId.set(lot.id, lot);
+    return Array.from(byId.values());
+  }, [candidateLots, lot]);
+
+  const showLinePicker = selectableLots.length > 1;
+
+  const lotOptions = useMemo(
+    () =>
+      selectableLots.map((l, idx) => ({
+        value: l.id,
+        label: `Line ${idx + 1} · ${l.itemName} · ${l.lotCode} (${l.quantityRemaining} avail.)`,
+        keywords: `${l.lotCode} ${l.itemCode} ${l.itemName}`,
+      })),
+    [selectableLots]
+  );
+
+  const [selectedLotId, setSelectedLotId] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [destinationKind, setDestinationKind] =
     useState<DestinationKind>("department");
@@ -79,12 +118,22 @@ export function LotReleaseDialog({
 
   useEffect(() => {
     if (!isOpen || !lot) return;
+    setSelectedLotId(lot.id);
     setQuantity("1");
     setDestinationKind("department");
     setRecipientName("");
     setReason("");
     setErrorMsg(null);
   }, [isOpen, lot]);
+
+  useEffect(() => {
+    if (!isOpen || selectableLots.length === 0) return;
+    setSelectedLotId((prev) => {
+      if (prev && selectableLots.some((l) => l.id === prev)) return prev;
+      if (lot && selectableLots.some((l) => l.id === lot.id)) return lot.id;
+      return selectableLots[0].id;
+    });
+  }, [isOpen, selectableLots, lot]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -118,18 +167,29 @@ export function LotReleaseDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen || !lot) return null;
+  const activeLot =
+    selectableLots.find((l) => l.id === selectedLotId) ??
+    (lot && selectedLotId === lot.id ? lot : null) ??
+    lot;
 
-  const maxQty = lot.quantityRemaining;
+  if (!isOpen || !activeLot) return null;
+
+  const maxQty = activeLot.quantityRemaining;
   const qtyValue = parseUnsignedInt(quantity, 0);
-  const unitCostNum = parseFloat(lot.unitCost) || 0;
+  const unitCostNum = parseFloat(activeLot.unitCost) || 0;
   const totalReleaseValue = qtyValue * unitCostNum;
+
+  const handleLotChange = (nextId: string) => {
+    setSelectedLotId(nextId);
+    setQuantity("1");
+    setErrorMsg(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    if (lot.itemType !== "consumable") {
+    if (activeLot.itemType !== "consumable") {
       setErrorMsg("Only supply lots can be released from this screen.");
       return;
     }
@@ -164,7 +224,7 @@ export function LotReleaseDialog({
 
     try {
       await releaseMutation.mutateAsync({
-        code: lot.lotCode,
+        code: activeLot.lotCode,
         quantity: qtyValue,
         recipientName: recipientName.trim() || undefined,
         reason: reason.trim() || undefined,
@@ -174,7 +234,7 @@ export function LotReleaseDialog({
       });
 
       toast.success(
-        `Released ${qtyValue}× ${lot.itemName} from lot ${lot.lotCode}.`
+        `Released ${qtyValue}× ${activeLot.itemName} from lot ${activeLot.lotCode}.`
       );
       onSuccess?.();
       onClose();
@@ -226,16 +286,37 @@ export function LotReleaseDialog({
             </div>
           )}
 
+          {showLinePicker && (
+            <div className="space-y-1.5">
+              <label htmlFor="release-lot-line" className="font-semibold text-text">
+                PO line / lot <span className="text-accent">*</span>
+              </label>
+              <SearchableSelect
+                id="release-lot-line"
+                value={selectedLotId}
+                onValueChange={handleLotChange}
+                options={lotOptions}
+                placeholder="Select a line to release from…"
+                clearLabel="Select a line to release from…"
+                emptyMessage="No releasable lots on this PO"
+                aria-required="true"
+              />
+              <p className="text-[11px] text-text-secondary">
+                Each line defaults to its own supplier lot. Switch lines to release a different item.
+              </p>
+            </div>
+          )}
+
           <div className="p-3.5 rounded-xl border border-border bg-card space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs font-bold text-text bg-bg-subtle px-1.5 py-0.5 rounded border border-border">
-                {lot.lotCode}
+                {activeLot.lotCode}
               </span>
               <span className="font-bold text-status-active-text">
-                {lot.quantityRemaining} available
+                {activeLot.quantityRemaining} available
               </span>
             </div>
-            <p className="text-sm font-bold text-text">{lot.itemName}</p>
+            <p className="text-sm font-bold text-text">{activeLot.itemName}</p>
             <div className="flex items-center justify-between text-text-secondary text-[11px] pt-1 border-t border-border">
               <span>Cost snapshot:</span>
               <span className="font-mono font-medium text-text">
@@ -412,7 +493,7 @@ export function LotReleaseDialog({
                 releaseMutation.isPending ||
                 qtyValue < 1 ||
                 qtyValue > maxQty ||
-                lot.itemType !== "consumable"
+                activeLot.itemType !== "consumable"
               }
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-category-transport-bg text-white hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
             >

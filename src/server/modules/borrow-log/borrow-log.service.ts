@@ -566,13 +566,19 @@ export class BorrowLogService {
         (input.condition === "needs_repair" ||
           input.condition === "damaged" ||
           Boolean(input.flagMaintenance));
+      // Flag-for-repair with "good" still must persist as needs_repair so
+      // custodyHistoryFromRow surfaces flagged_repair (not a clean return).
+      const conditionOnReturn =
+        needsMaint && input.condition === "good"
+          ? ("needs_repair" as const)
+          : input.condition;
 
       const updated = await this.repo.update(
         id,
         {
           status: "returned",
           returnedAt: new Date(),
-          conditionOnReturn: input.condition,
+          conditionOnReturn,
           conditionNotes: input.conditionNotes ?? null,
           receivedByName: actor.displayName,
           receivedByUserId: actor.userId,
@@ -637,7 +643,8 @@ export class BorrowLogService {
               payload: {
                 logCode: existing.logCode,
                 logId: existing.id,
-                condition: input.condition,
+                condition: conditionOnReturn,
+                flagMaintenance: Boolean(input.flagMaintenance),
                 // Persist under both keys so asset detail + older readers show notes.
                 conditionNotes: input.conditionNotes ?? null,
                 notes: input.conditionNotes ?? null,
@@ -665,54 +672,111 @@ export class BorrowLogService {
           }
 
           if (needsMaint) {
-            const mntCode = generateOperationalCode("MNT");
-            await this.maintenance.create(
-              {
-                logCode: mntCode,
-                assetId: asset.id,
-                assetCode: asset.assetCode,
-                assetName: asset.name,
-                category: asset.category,
-                condition:
-                  input.condition === "damaged" ? "damaged" : "needs_maintenance",
-                source: "return_checkout",
-                dateLogged: todayDateString(),
-                loggedByUserId: actor.userId,
-                loggedByName: actor.displayName,
-                notes:
-                  input.conditionNotes?.trim() ||
-                  `Returned with condition: ${input.condition}`,
-                isResolved: false,
-                resolutionDate: null,
-                resolutionNotes: null,
-                resolvedByUserId: null,
-                resolvedByName: null,
-                repairCost: null,
-                repairParts: [],
-                relatedBorrowLogCode: existing.logCode,
-                scheduledDate: null,
-              },
+            const returnNote =
+              input.conditionNotes?.trim() ||
+              `Returned with condition: ${conditionOnReturn}`;
+            const openMaintRows = await this.maintenance.listByAssetId(
+              asset.id,
               tx
             );
+            const openMaint = openMaintRows.find((row) => !row.isResolved);
 
-            await this.lifecycle.record(
-              {
-                assetId: asset.id,
-                assetCode: asset.assetCode,
-                eventType: "flagged_maintenance",
-                actor,
-                fromStatus: nextStatus,
-                toStatus: nextStatus,
-                fromHolder: null,
-                toHolder: null,
-                payload: {
-                  via: "borrow_return",
-                  maintenanceLogCode: mntCode,
-                  relatedBorrowLogCode: existing.logCode,
+            // Existing open MNT: append return notes / link borrow log (no orphan row).
+            if (openMaint) {
+              const linkedCodes = [
+                openMaint.relatedBorrowLogCode,
+                existing.logCode,
+              ]
+                .filter(Boolean)
+                .filter((code, i, arr) => arr.indexOf(code) === i);
+              const appendedNotes = [openMaint.notes?.trim(), returnNote]
+                .filter(Boolean)
+                .join("\n");
+
+              await this.maintenance.update(
+                openMaint.id,
+                {
+                  notes: appendedNotes || returnNote,
+                  relatedBorrowLogCode: linkedCodes.join(", ") || existing.logCode,
+                  condition:
+                    conditionOnReturn === "damaged"
+                      ? "damaged"
+                      : openMaint.condition === "damaged"
+                        ? "damaged"
+                        : "needs_maintenance",
                 },
-              },
-              tx
-            );
+                tx
+              );
+
+              await this.lifecycle.record(
+                {
+                  assetId: asset.id,
+                  assetCode: asset.assetCode,
+                  eventType: "flagged_maintenance",
+                  actor,
+                  fromStatus: nextStatus,
+                  toStatus: nextStatus,
+                  fromHolder: null,
+                  toHolder: null,
+                  payload: {
+                    via: "borrow_return",
+                    maintenanceLogCode: openMaint.logCode,
+                    relatedBorrowLogCode: existing.logCode,
+                    appendedToOpenLog: true,
+                  },
+                },
+                tx
+              );
+            } else {
+              const mntCode = generateOperationalCode("MNT");
+              await this.maintenance.create(
+                {
+                  logCode: mntCode,
+                  assetId: asset.id,
+                  assetCode: asset.assetCode,
+                  assetName: asset.name,
+                  category: asset.category,
+                  condition:
+                    conditionOnReturn === "damaged"
+                      ? "damaged"
+                      : "needs_maintenance",
+                  source: "return_checkout",
+                  dateLogged: todayDateString(),
+                  loggedByUserId: actor.userId,
+                  loggedByName: actor.displayName,
+                  notes: returnNote,
+                  isResolved: false,
+                  resolutionDate: null,
+                  resolutionNotes: null,
+                  resolvedByUserId: null,
+                  resolvedByName: null,
+                  repairCost: null,
+                  repairParts: [],
+                  relatedBorrowLogCode: existing.logCode,
+                  scheduledDate: null,
+                },
+                tx
+              );
+
+              await this.lifecycle.record(
+                {
+                  assetId: asset.id,
+                  assetCode: asset.assetCode,
+                  eventType: "flagged_maintenance",
+                  actor,
+                  fromStatus: nextStatus,
+                  toStatus: nextStatus,
+                  fromHolder: null,
+                  toHolder: null,
+                  payload: {
+                    via: "borrow_return",
+                    maintenanceLogCode: mntCode,
+                    relatedBorrowLogCode: existing.logCode,
+                  },
+                },
+                tx
+              );
+            }
           }
         }
       }
