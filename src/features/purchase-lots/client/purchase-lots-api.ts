@@ -51,6 +51,8 @@ export type CreatePurchaseOrderPayload = {
   supplierName?: string;
   departmentId?: string;
   departmentName?: string;
+  /** Project POs only — first id is primary. */
+  departmentIds?: string[];
   projectId?: string;
   projectName?: string;
   purpose?: string;

@@ -45,6 +45,8 @@ export interface PurchaseLot {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  /** Sponsoring departments for project POs (primary = departmentId). */
+  departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;
   notes: string | null;

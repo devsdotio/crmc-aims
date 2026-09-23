@@ -142,9 +142,13 @@ export type PoDepartmentSource = {
 
 /**
  * Resolve a department id from a linked PO:
- * 1) explicit departmentId on the lot
+ * 1) explicit departmentId on the lot (primary for multi-dept project POs)
  * 2) departmentName / [Dept] purpose matched to catalog
  * 3) recorded-by user's departmentId (legacy fallback)
+ *
+ * Multi-department project POs still resolve a single charging department
+ * (the primary departmentId). Callers should not expect all sponsoring
+ * departments on a voucher / petty-cash record.
  */
 export function resolveDepartmentIdFromPo(
   sources: PoDepartmentSource | PoDepartmentSource[],

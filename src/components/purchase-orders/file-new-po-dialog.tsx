@@ -48,6 +48,7 @@ import {
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 import {
   CONSUMABLE_CLASSIFICATIONS,
   CONSUMABLE_CLASSIFICATION_LABELS,
@@ -286,6 +287,7 @@ export function FileNewPODialog({
   const accountDefaultName = me?.name || me?.email || "Authorized Staff";
   const [requestedByName, setRequestedByName] = useState(accountDefaultName);
   const [targetDepartmentId, setTargetDepartmentId] = useState("");
+  const [targetDepartmentIds, setTargetDepartmentIds] = useState<string[]>([]);
   const [generalPurpose, setGeneralPurpose] = useState("");
   const [generalNotes, setGeneralNotes] = useState("");
 
@@ -362,6 +364,13 @@ export function FileNewPODialog({
           )
         : null;
       setTargetDepartmentId(matchedDept?.id || me?.departmentId || "");
+      setTargetDepartmentIds(
+        matchedDept?.id
+          ? [matchedDept.id]
+          : me?.departmentId
+            ? [me.departmentId]
+            : []
+      );
       setGeneralPurpose(defaultPurpose || "");
       setGeneralNotes("");
     }
@@ -403,6 +412,8 @@ export function FileNewPODialog({
       Boolean(generalPurpose.trim()) ||
       Boolean(generalNotes.trim()) ||
       Boolean(targetDepartmentId.trim() && targetDepartmentId !== (me?.departmentId || "")) ||
+      (destinationKind === "project" &&
+        targetDepartmentIds.some((id) => id !== (me?.departmentId || ""))) ||
       items.some((i) => Boolean(i.name.trim()) || Boolean(i.consumableId) || Boolean(i.assetId));
 
     if (hasData) {
@@ -450,8 +461,16 @@ export function FileNewPODialog({
       setCatalogSearch("");
       setCatalogCategoryFilter("all");
       setItems([generateInitialRow("consumable", false, "material")]);
+      if (targetDepartmentId) {
+        setTargetDepartmentIds((prev) =>
+          prev.includes(targetDepartmentId) ? prev : [targetDepartmentId, ...prev]
+        );
+      }
     } else {
       setTargetProjectId("");
+      if (targetDepartmentIds.length > 0) {
+        setTargetDepartmentId(targetDepartmentIds[0]);
+      }
       if (poType === "asset") {
         setItems([generateInitialRow("asset", false, poClassification)]);
       } else {
@@ -907,7 +926,12 @@ export function FileNewPODialog({
       setErrorMessage("Requested By is required.");
       return false;
     }
-    if (!targetDepartmentId.trim()) {
+    if (destinationKind === "project") {
+      if (targetDepartmentIds.length < 1) {
+        setErrorMessage("Select at least one target department.");
+        return false;
+      }
+    } else if (!targetDepartmentId.trim()) {
       setErrorMessage("Target department is required.");
       return false;
     }
@@ -1028,9 +1052,18 @@ export function FileNewPODialog({
       const masterSupplierId =
         uniqueSuppliers.length === 1 ? items[0]?.supplierId : undefined;
 
-      const selectedDepartment = departments.find((d) => d.id === targetDepartmentId);
-      const departmentName = selectedDepartment?.name?.trim() || "";
-      if (!departmentName) {
+      const selectedDepartmentIds =
+        destinationKind === "project"
+          ? targetDepartmentIds
+          : targetDepartmentId
+            ? [targetDepartmentId]
+            : [];
+      const selectedDepartments = selectedDepartmentIds
+        .map((id) => departments.find((d) => d.id === id))
+        .filter((d): d is NonNullable<typeof d> => Boolean(d));
+      const primaryDepartment = selectedDepartments[0];
+      const departmentName = primaryDepartment?.name?.trim() || "";
+      if (!departmentName || selectedDepartments.length < 1) {
         setErrorMessage("Please select a valid target department.");
         return;
       }
@@ -1046,8 +1079,12 @@ export function FileNewPODialog({
         requestedBy: requestedByName.trim() || accountDefaultName,
         supplierId: masterSupplierId,
         supplierName: masterSupplierName,
-        departmentId: targetDepartmentId,
+        departmentId: primaryDepartment.id,
         departmentName,
+        departmentIds:
+          destinationKind === "project"
+            ? selectedDepartments.map((d) => d.id)
+            : undefined,
         projectId: destinationKind === "project" ? targetProjectId : undefined,
         projectName: destinationKind === "project" ? (selectedProjectObj?.name || undefined) : undefined,
         purpose: combinedPurpose,
@@ -1438,6 +1475,11 @@ export function FileNewPODialog({
                           : null;
                         if (matchedDept?.id) {
                           setTargetDepartmentId(matchedDept.id);
+                          setTargetDepartmentIds((prev) =>
+                            prev.includes(matchedDept.id)
+                              ? prev
+                              : [...prev, matchedDept.id]
+                          );
                         }
                       }}
                       options={activeProjectOptions}
@@ -1662,42 +1704,96 @@ export function FileNewPODialog({
                     </p>
                   </div>
 
-                  {/* Target Department (Dropdown) */}
+                  {/* Target Department — multi for project POs, single otherwise */}
                   <div className="space-y-1">
                     <label className="font-semibold text-text flex items-center justify-between">
                       <span className="flex items-center gap-1">
                         <School className="h-3.5 w-3.5 text-text-secondary" />
-                        <span>Target Department</span>
+                        <span>
+                          {destinationKind === "project"
+                            ? "Sponsoring Departments"
+                            : "Target Department"}
+                        </span>
                       </span>
                       <span className="text-[10px] text-rose-500 font-bold">* Required</span>
                     </label>
-                    <SearchableSelect
-                      value={targetDepartmentId}
-                      onValueChange={setTargetDepartmentId}
-                      options={departmentOptions}
-                      clearLabel={
-                        departmentsLoading
-                          ? "Loading departments…"
-                          : departmentsError
+                    {destinationKind === "project" ? (
+                      <>
+                        <MultiSelectDropdown
+                          label="Departments"
+                          icon={School}
+                          variant="form"
+                          searchable
+                          selectedIds={targetDepartmentIds}
+                          onToggle={(id) => {
+                            setTargetDepartmentIds((prev) => {
+                              const next = prev.includes(id)
+                                ? prev.filter((x) => x !== id)
+                                : [...prev, id];
+                              setTargetDepartmentId(next[0] || "");
+                              return next;
+                            });
+                          }}
+                          options={departmentOptions.map((o) => ({
+                            id: o.value,
+                            label: o.label,
+                          }))}
+                          placeholder={
+                            departmentsLoading
+                              ? "Loading departments…"
+                              : departmentsError
+                                ? "Failed to load departments"
+                                : "-- Choose one or more departments --"
+                          }
+                          emptyMessage={
+                            departmentsError
+                              ? "Failed to load departments"
+                              : "No departments found"
+                          }
+                          disabled={departmentsLoading}
+                          aria-required="true"
+                          triggerClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                        />
+                        {targetDepartmentIds.length > 0 && (
+                          <p className="text-[10px] text-text-secondary">
+                            Primary for vouchers / purpose:{" "}
+                            <span className="font-semibold text-text">
+                              {departments.find((d) => d.id === targetDepartmentIds[0])
+                                ?.name || "—"}
+                            </span>{" "}
+                            (first selected)
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <SearchableSelect
+                        value={targetDepartmentId}
+                        onValueChange={setTargetDepartmentId}
+                        options={departmentOptions}
+                        clearLabel={
+                          departmentsLoading
+                            ? "Loading departments…"
+                            : departmentsError
+                              ? "Failed to load departments"
+                              : "-- Choose Department --"
+                        }
+                        placeholder={
+                          departmentsLoading
+                            ? "Loading departments…"
+                            : departmentsError
+                              ? "Failed to load departments"
+                              : "-- Choose Department --"
+                        }
+                        emptyMessage={
+                          departmentsError
                             ? "Failed to load departments"
-                            : "-- Choose Department --"
-                      }
-                      placeholder={
-                        departmentsLoading
-                          ? "Loading departments…"
-                          : departmentsError
-                            ? "Failed to load departments"
-                            : "-- Choose Department --"
-                      }
-                      emptyMessage={
-                        departmentsError
-                          ? "Failed to load departments"
-                          : "No departments found"
-                      }
-                      disabled={departmentsLoading}
-                      aria-required="true"
-                      inputClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
-                    />
+                            : "No departments found"
+                        }
+                        disabled={departmentsLoading}
+                        aria-required="true"
+                        inputClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                      />
+                    )}
                     {departmentsError && (
                       <button
                         type="button"
@@ -2410,9 +2506,22 @@ export function FileNewPODialog({
                 <div className="space-y-2 pt-2 border-t border-border/50 text-xs">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <span className="text-[10px] text-text-secondary font-medium block">Target Department</span>
+                      <span className="text-[10px] text-text-secondary font-medium block">
+                        {destinationKind === "project"
+                          ? "Sponsoring Departments"
+                          : "Target Department"}
+                      </span>
                       <span className="font-bold text-text">
-                        {departments.find((d) => d.id === targetDepartmentId)?.name || "—"}
+                        {destinationKind === "project"
+                          ? targetDepartmentIds
+                              .map(
+                                (id) =>
+                                  departments.find((d) => d.id === id)?.name
+                              )
+                              .filter(Boolean)
+                              .join(", ") || "—"
+                          : departments.find((d) => d.id === targetDepartmentId)
+                              ?.name || "—"}
                       </span>
                     </div>
 

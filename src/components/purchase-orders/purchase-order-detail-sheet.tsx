@@ -332,6 +332,9 @@ export function PurchaseOrderDetailSheet({
     lot.recordedByName?.trim() || matchedUser?.name || "Authorized Staff";
 
   const displayDepartment =
+    (lot.departments && lot.departments.length > 0
+      ? lot.departments.map((d) => d.name).filter(Boolean).join(", ")
+      : null) ||
     lot.departmentName?.trim() ||
     extractedDeptFromPurpose ||
     matchedUser?.department?.trim() ||
@@ -1428,12 +1431,27 @@ export function PurchaseOrderDetailSheet({
                     <span className="text-[10px] uppercase font-bold text-text-secondary">
                       Department / Office
                     </span>
-                    <p className="font-semibold text-text text-sm flex items-center gap-1.5">
-                      <Building2 className="h-4 w-4 text-accent shrink-0" />
-                      <span className="truncate">{displayDepartment}</span>
+                    <p className="font-semibold text-text text-sm flex items-start gap-1.5">
+                      <Building2 className="h-4 w-4 text-accent shrink-0 mt-0.5" />
+                      {lot.departments && lot.departments.length > 1 ? (
+                        <span className="flex flex-wrap gap-1.5">
+                          {lot.departments.map((d) => (
+                            <span
+                              key={d.id}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md bg-bg-subtle border border-border text-xs font-semibold"
+                            >
+                              {d.name}
+                            </span>
+                          ))}
+                        </span>
+                      ) : (
+                        <span className="truncate">{displayDepartment}</span>
+                      )}
                     </p>
                     <span className="text-[10px] text-text-secondary block">
-                      Target Requisitioning Unit
+                      {lot.departments && lot.departments.length > 1
+                        ? "Sponsoring departments (project PO)"
+                        : "Target Requisitioning Unit"}
                     </span>
                   </div>
 

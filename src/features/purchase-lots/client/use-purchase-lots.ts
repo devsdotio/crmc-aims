@@ -114,6 +114,20 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
           purchasedOn: newPO.poDate || new Date().toISOString(),
           reference: null,
           purpose: item.purpose || newPO.purpose || null,
+          departmentId: newPO.departmentId || null,
+          departmentName: newPO.departmentName || null,
+          departments:
+            newPO.departmentIds && newPO.departmentIds.length > 0
+              ? newPO.departmentIds.map((id) => ({
+                  id,
+                  name:
+                    id === newPO.departmentId
+                      ? newPO.departmentName || ""
+                      : "",
+                }))
+              : newPO.departmentId && newPO.departmentName
+                ? [{ id: newPO.departmentId, name: newPO.departmentName }]
+                : undefined,
           notes: newPO.notes || null,
           projectId: item.projectId || newPO.projectId || null,
           projectName: item.projectName || newPO.projectName || null,

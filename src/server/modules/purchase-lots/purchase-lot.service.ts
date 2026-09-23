@@ -1,10 +1,12 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
   consumables,
+  departments,
   projectExpenseLines,
   purchaseLots,
+  purchaseOrderDepartments,
   stockMovements,
 } from "@/server/db/schema";
 import { getDb } from "@/server/db";
@@ -26,6 +28,10 @@ import { assetCategoryCodePrefix } from "@/lib/asset-category";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import { listActivePoDisbursements } from "./po-disbursement";
+import {
+  deletePoDepartmentLinks,
+  renamePoDepartmentLinks,
+} from "./po-departments";
 import {
   computePoDeleteImpact,
   deletePurchaseOrderWithRevert,
@@ -331,6 +337,73 @@ async function withDisbursementClaims(
   });
 }
 
+/**
+ * Attach sponsoring departments for project POs from purchase_order_departments.
+ * Falls back to the scalar departmentId/Name on the lot when no join rows exist.
+ */
+async function withPoDepartments(
+  dtos: PurchaseLotDTO[],
+  tenantId?: string,
+  session?: DbSession
+): Promise<PurchaseLotDTO[]> {
+  if (dtos.length === 0) return dtos;
+
+  const projectPoNumbers = [
+    ...new Set(
+      dtos
+        .filter((d) => Boolean(d.projectId) && Boolean(d.poNumber?.trim()))
+        .map((d) => d.poNumber.trim())
+    ),
+  ];
+  if (projectPoNumbers.length === 0) return dtos;
+
+  const db = session ?? getDb();
+  const conditions = [
+    inArray(purchaseOrderDepartments.poReference, projectPoNumbers),
+  ];
+  if (tenantId) {
+    conditions.push(eq(purchaseOrderDepartments.tenantId, tenantId));
+  }
+
+  const rows = await db
+    .select({
+      poReference: purchaseOrderDepartments.poReference,
+      departmentId: purchaseOrderDepartments.departmentId,
+      departmentName: departments.name,
+    })
+    .from(purchaseOrderDepartments)
+    .innerJoin(
+      departments,
+      eq(departments.id, purchaseOrderDepartments.departmentId)
+    )
+    .where(and(...conditions));
+
+  const byPo = new Map<string, Array<{ id: string; name: string }>>();
+  for (const row of rows) {
+    const key = row.poReference.trim().toLowerCase();
+    const list = byPo.get(key) ?? [];
+    if (!list.some((d) => d.id === row.departmentId)) {
+      list.push({ id: row.departmentId, name: row.departmentName });
+    }
+    byPo.set(key, list);
+  }
+
+  return dtos.map((dto) => {
+    if (!dto.projectId) return dto;
+    const fromJoin = byPo.get(dto.poNumber.trim().toLowerCase());
+    if (fromJoin && fromJoin.length > 0) {
+      return { ...dto, departments: fromJoin };
+    }
+    if (dto.departmentId && dto.departmentName) {
+      return {
+        ...dto,
+        departments: [{ id: dto.departmentId, name: dto.departmentName }],
+      };
+    }
+    return dto;
+  });
+}
+
 export class PurchaseLotService {
   private readonly auditLogs = new AuditLogService();
   private readonly assetModels = new AssetModelRepository();
@@ -364,6 +437,7 @@ export class PurchaseLotService {
     if (filters.status) {
       dtos = dtos.filter((d) => d.status === filters.status);
     }
+    dtos = await withPoDepartments(dtos, actorTenantId);
     return withDisbursementClaims(dtos, actorTenantId);
   }
 
@@ -371,10 +445,11 @@ export class PurchaseLotService {
     const id = purchaseLotIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", id);
-    const [dto] = await withDisbursementClaims(
+    const withDepts = await withPoDepartments(
       [toPurchaseLotDTO(row)],
       actorTenantId
     );
+    const [dto] = await withDisbursementClaims(withDepts, actorTenantId);
     return dto;
   }
 
@@ -385,10 +460,11 @@ export class PurchaseLotService {
     }
     const row = await this.repo.findByLotCode(parsed.code, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", parsed.code);
-    const [dto] = await withDisbursementClaims(
+    const withDepts = await withPoDepartments(
       [toPurchaseLotDTO(row)],
       actorTenantId
     );
+    const [dto] = await withDisbursementClaims(withDepts, actorTenantId);
     return dto;
   }
 
@@ -435,6 +511,64 @@ export class PurchaseLotService {
 
       const initialStatus: PurchaseOrderStatus = body.status || "pending_approval";
       const nowIso = new Date().toISOString();
+
+      const isProjectPo = Boolean(body.projectId);
+      const projectDepartmentIds = isProjectPo
+        ? [
+            ...new Set(
+              (body.departmentIds && body.departmentIds.length > 0
+                ? body.departmentIds
+                : body.departmentId
+                  ? [body.departmentId]
+                  : []
+              ).filter(Boolean)
+            ),
+          ]
+        : [];
+
+      let departmentId = body.departmentId ?? null;
+      let departmentName = body.departmentName?.trim() || null;
+      let projectDepartments: Array<{ id: string; name: string }> = [];
+
+      if (isProjectPo) {
+        if (projectDepartmentIds.length < 1) {
+          throw new BadRequestError(
+            "At least one target department is required for project purchase orders."
+          );
+        }
+        const deptRows = await db
+          .select({
+            id: departments.id,
+            name: departments.name,
+          })
+          .from(departments)
+          .where(
+            and(
+              inArray(departments.id, projectDepartmentIds),
+              actor.tenantId
+                ? eq(departments.tenantId, actor.tenantId)
+                : undefined
+            )
+          );
+        const byId = new Map(deptRows.map((d) => [d.id, d.name]));
+        for (const id of projectDepartmentIds) {
+          const name = byId.get(id);
+          if (!name) {
+            throw new NotFoundError("Department", id);
+          }
+          projectDepartments.push({ id, name });
+        }
+        departmentId = projectDepartments[0]?.id ?? null;
+        departmentName = projectDepartments[0]?.name ?? null;
+
+        await db.insert(purchaseOrderDepartments).values(
+          projectDepartments.map((d) => ({
+            tenantId: actor.tenantId,
+            poReference: poNumber,
+            departmentId: d.id,
+          }))
+        );
+      }
 
       const approvedByName =
         initialStatus === "approved" || initialStatus === "delivered"
@@ -758,10 +892,8 @@ export class PurchaseLotService {
         const lotCode = generateOperationalCode("PO");
 
         const lotPurposeRaw = (item.purpose || body.purpose || "").trim();
-        const departmentName = body.departmentName?.trim() || null;
-        const departmentId = body.departmentId ?? null;
         // Prefer body-level purpose with department prefix so [Dept] is preserved
-        // even when line items also send a purpose string.
+        // even when line items also send a purpose string. Primary dept only.
         const lotPurpose =
           departmentName && !lotPurposeRaw.startsWith("[")
             ? `[${departmentName}] ${lotPurposeRaw}`.trim()
@@ -808,7 +940,11 @@ export class PurchaseLotService {
           session
         );
 
-        results.push(toPurchaseLotDTO(row));
+        const dto = toPurchaseLotDTO(row);
+        if (projectDepartments.length > 0) {
+          dto.departments = projectDepartments;
+        }
+        results.push(dto);
       }
 
       await this.auditLogs.log(
@@ -1492,6 +1628,22 @@ export class PurchaseLotService {
         }
       }
 
+      const oldRef = (lot.reference || "").trim();
+      const newRef = (resolvedReference || "").trim();
+      if (
+        oldRef &&
+        newRef &&
+        oldRef !== newRef &&
+        (body.poNumber !== undefined || body.reference !== undefined)
+      ) {
+        await renamePoDepartmentLinks(
+          oldRef,
+          newRef,
+          actor.tenantId,
+          session
+        );
+      }
+
       const poCode = derivePONumber(
         lot.lotCode,
         resolvedReference ?? lot.reference
@@ -1528,7 +1680,13 @@ export class PurchaseLotService {
         session
       );
 
-      return toPurchaseLotDTO(updated ?? lot);
+      return (
+        await withPoDepartments(
+          [toPurchaseLotDTO(updated ?? lot)],
+          actor.tenantId,
+          session
+        )
+      )[0];
     });
   }
 
@@ -1554,6 +1712,19 @@ export class PurchaseLotService {
       }
 
       const ok = await this.repo.delete(id, session);
+
+      // If this was the last line for the PO number, drop multi-dept join rows.
+      const poRef = (lot.reference || "").trim();
+      if (ok && poRef) {
+        const siblings = await this.repo.listByPoNumber(
+          poRef,
+          session,
+          actor.tenantId
+        );
+        if (siblings.length === 0) {
+          await deletePoDepartmentLinks(poRef, actor.tenantId, session);
+        }
+      }
 
       await this.auditLogs.log(
         {
