@@ -1199,6 +1199,7 @@ export class AssetService {
       const mntCode = generateOperationalCode("MNT");
       await this.maintenanceRepo.create(
         {
+          tenantId: asset.tenantId ?? actor.tenantId,
           logCode: mntCode,
           assetId: asset.id,
           assetCode: asset.assetCode,
@@ -1310,6 +1311,7 @@ export class AssetService {
       const mntCode = generateOperationalCode("MNT");
       await this.maintenanceRepo.create(
         {
+          tenantId: next.tenantId ?? actor.tenantId,
           logCode: mntCode,
           assetId: next.id,
           assetCode: next.assetCode,
