@@ -2013,7 +2013,11 @@ export class PurchaseLotService {
     const supplierId = input.supplierId ?? null;
 
     if (supplierId) {
-      const supplier = await this.suppliers.findById(supplierId, session);
+      const supplier = await this.suppliers.findById(
+        supplierId,
+        session,
+        input.tenantId ?? undefined
+      );
       if (!supplier) {
         throw new NotFoundError("Supplier", supplierId);
       }
@@ -2040,7 +2044,8 @@ export class PurchaseLotService {
 
     const row = await this.repo.create(
       {
-        lotCode: generateOperationalCode("PO"),
+        tenantId: input.tenantId ?? undefined,
+        lotCode: generateOperationalCode("LOT"),
         itemType: input.itemType,
         consumableId: input.consumableId ?? null,
         assetId: input.assetId ?? null,

@@ -484,6 +484,7 @@ export class AssetService {
           if (input.value !== undefined) {
             await this.purchaseLots.recordLot(
               {
+                tenantId: actor.tenantId,
                 itemType: "asset",
                 assetId: row.id,
                 itemCode: row.assetCode,
@@ -754,6 +755,7 @@ export class AssetService {
         if (args.unitValue !== undefined) {
           await this.purchaseLots.recordLot(
             {
+              tenantId: actor.tenantId,
               itemType: "asset",
               assetId: row.id,
               itemCode: row.assetCode,
