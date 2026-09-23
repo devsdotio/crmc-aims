@@ -34,6 +34,8 @@ function getWorkersEnv(): { HYPERDRIVE?: HyperdriveBinding } | null {
   }
 }
 
+const dbByExecutionCtx = new WeakMap<object, Database>();
+
 function createHyperdriveDb(connectionString: string): Database {
   // Hyperdrive pools upstream. Never reuse this client across requests —
   // Workers throw "Cannot perform I/O on behalf of a different request".
@@ -44,6 +46,22 @@ function createHyperdriveDb(connectionString: string): Database {
     connect_timeout: 30,
   });
   return drizzle(client, { schema });
+}
+
+function getRequestScopedHyperdriveDb(connectionString: string): Database {
+  try {
+    const { ctx } = getCloudflareContext();
+    if (ctx) {
+      const existing = dbByExecutionCtx.get(ctx);
+      if (existing) return existing;
+      const created = createHyperdriveDb(connectionString);
+      dbByExecutionCtx.set(ctx, created);
+      return created;
+    }
+  } catch {
+    // Outside a Worker request (tests/scripts).
+  }
+  return createHyperdriveDb(connectionString);
 }
 
 /**
@@ -65,8 +83,8 @@ export function getDb(): Database {
       );
     }
 
-    // Fresh client per getDb() call — request-safe on Workers.
-    return createHyperdriveDb(connectionString);
+    // One client per Worker request — still request-scoped, not process-global.
+    return getRequestScopedHyperdriveDb(connectionString);
   }
 
   if (globalForDb.__crmcDb) {

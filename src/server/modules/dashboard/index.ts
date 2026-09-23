@@ -13,7 +13,12 @@ export class DashboardController {
       const tenantId = session.tenantId;
       const data = isAssetOperatorRole(session.role)
         ? await this.service.getSnapshot(5, tenantId)
-        : await this.service.getBorrowerSnapshot(session.userId, 5, tenantId);
+        : await this.service.getBorrowerSnapshot(
+            session.userId,
+            5,
+            tenantId,
+            session.departmentId
+          );
       if (request) {
         return okWithEtag(request, data, {
           cacheControl: { maxAge: 15, staleWhileRevalidate: 60 },
@@ -32,7 +37,11 @@ export class DashboardController {
       const tenantId = session.tenantId;
       const data = isAssetOperatorRole(session.role)
         ? await this.service.getSidebarSummary(undefined, tenantId)
-        : await this.service.getSidebarSummary(session.userId, tenantId);
+        : await this.service.getSidebarSummary(
+            session.userId,
+            tenantId,
+            session.departmentId
+          );
       if (request) {
         return okWithEtag(request, data, {
           cacheControl: { maxAge: 15, staleWhileRevalidate: 60 },
@@ -51,7 +60,12 @@ export class DashboardController {
       const tenantId = session.tenantId;
       const data = isAssetOperatorRole(session.role)
         ? await this.service.getNotifications(undefined, 8, tenantId)
-        : await this.service.getNotifications(session.userId, 8, tenantId);
+        : await this.service.getNotifications(
+            session.userId,
+            8,
+            tenantId,
+            session.departmentId
+          );
       if (request) {
         return okWithEtag(request, data, {
           cacheControl: { maxAge: 15, staleWhileRevalidate: 60 },

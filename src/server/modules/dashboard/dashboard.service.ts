@@ -15,6 +15,7 @@ import {
   dashboardMetricSnapshots,
   profiles,
   purchaseLots,
+  type ConsumableRow,
 } from "@/server/db/schema";
 import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
 import { getTenantContext } from "@/server/shared/tenant-context";
@@ -182,9 +183,17 @@ export class DashboardService {
     private readonly assets = new AssetRepository()
   ) {}
 
-  private async resolveBorrowerDeptContext(userId: string, actorTenantId?: string): Promise<{
+  private async resolveBorrowerDeptContext(
+    userId: string,
+    actorTenantId?: string,
+    knownDepartmentId?: string | null
+  ): Promise<{
     departmentId: string | null;
   }> {
+    if (knownDepartmentId !== undefined) {
+      return { departmentId: knownDepartmentId };
+    }
+
     const db = getDb();
     const resolvedTenantId = actorTenantId ?? getTenantContext()?.tenantId;
     const conditions = [eq(profiles.userId, userId)];
@@ -265,7 +274,11 @@ export class DashboardService {
    * Sidebar badges only — cheap COUNT queries, no full list payload.
    * Layout used to call getSnapshot() on every private page and exhaust the DB pool.
    */
-  async getSidebarSummary(userId?: string, actorTenantId?: string): Promise<DashboardSummaryDTO> {
+  async getSidebarSummary(
+    userId?: string,
+    actorTenantId?: string,
+    knownDepartmentId?: string | null
+  ): Promise<DashboardSummaryDTO> {
     const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
     const cacheKey = userId
       ? `tenant:${tenantId}:dashboard:sidebar:${userId}`
@@ -275,8 +288,11 @@ export class DashboardService {
       30_000,
       async () => {
         if (userId) {
-          const { departmentId } =
-            await this.resolveBorrowerDeptContext(userId, tenantId);
+          const { departmentId } = await this.resolveBorrowerDeptContext(
+            userId,
+            tenantId,
+            knownDepartmentId
+          );
 
           const [
             activeBorrows,
@@ -415,7 +431,12 @@ export class DashboardService {
     );
   }
 
-  async getBorrowerSnapshot(userId: string, limit = 5, actorTenantId?: string): Promise<DashboardSnapshotDTO> {
+  async getBorrowerSnapshot(
+    userId: string,
+    limit = 5,
+    actorTenantId?: string,
+    knownDepartmentId?: string | null
+  ): Promise<DashboardSnapshotDTO> {
     const isRealUuid = Boolean(
       userId &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -431,7 +452,11 @@ export class DashboardService {
       5_000,
       async () => {
         const { departmentId } = targetUserId
-          ? await this.resolveBorrowerDeptContext(targetUserId, tenantId)
+          ? await this.resolveBorrowerDeptContext(
+              targetUserId,
+              tenantId,
+              knownDepartmentId
+            )
           : { departmentId: null };
 
         const [
@@ -749,74 +774,197 @@ export class DashboardService {
 
   /**
    * Header bell feed — compact overdue / pending / low-stock alerts.
-   * Cheaper than full snapshot: same lists, no category chart or activity.
+   * Cheaper than full snapshot: same lists, no category chart, activity, or deltas.
    */
   async getNotifications(
     userId?: string,
     limit = 8,
-    actorTenantId?: string
+    actorTenantId?: string,
+    knownDepartmentId?: string | null
   ): Promise<DashboardNotificationItem[]> {
-    const snapshot = userId
-      ? await this.getBorrowerSnapshot(userId, limit, actorTenantId)
-      : await this.getSnapshot(limit, actorTenantId);
+    const tenantId = actorTenantId ?? getTenantContext()?.tenantId ?? "global";
+    const cacheKey = userId
+      ? `tenant:${tenantId}:dashboard:notifications:${userId}:${limit}`
+      : `tenant:${tenantId}:dashboard:notifications:all:${limit}`;
 
-    const items: DashboardNotificationItem[] = [];
+    return serverCache.wrap(
+      cacheKey,
+      30_000,
+      async () => {
+        const departmentId = userId
+          ? (
+              await this.resolveBorrowerDeptContext(
+                userId,
+                tenantId,
+                knownDepartmentId
+              )
+            ).departmentId
+          : undefined;
 
-    for (const row of snapshot.overdueAssets) {
-      items.push({
-        id: `overdue-${row.id}`,
-        title: "Overdue return",
-        message: `${row.assetName} (${row.assetCode}) is ${row.daysOverdue} day${
-          row.daysOverdue === 1 ? "" : "s"
-        } overdue — ${row.borrowerName}, ${row.department}.`,
-        href: userId ? "/borrower-db/inventory" : "/borrow-log?status=overdue",
-        type: "urgent",
-        relativeTime: `${row.daysOverdue}d overdue`,
-        sortAt: row.dueSince,
-      });
-    }
+        const [pendingRows, pendingSupplyRows, overdueRows, lowStockConsumables] =
+          await Promise.all([
+            this.requests
+              .list(
+                {
+                  status: "pending",
+                  ...(userId ? { requesterUserId: userId } : {}),
+                  limit,
+                },
+                undefined,
+                tenantId
+              )
+              .catch((err: unknown) => {
+                console.error("[dashboard] failed to list pending requests:", err);
+                return [];
+              }),
+            this.consumableRequests
+              .list(
+                {
+                  status: "pending",
+                  ...(userId ? { requesterUserId: userId } : {}),
+                  limit,
+                },
+                undefined,
+                tenantId
+              )
+              .catch((err: unknown) => {
+                console.error(
+                  "[dashboard] failed to list pending supply requests:",
+                  err
+                );
+                return [];
+              }),
+            (userId
+              ? departmentId
+                ? this.borrowLog.list(
+                    {
+                      status: "overdue",
+                      departmentId,
+                      excludeProjects: true,
+                      custodyKind: "all",
+                    },
+                    undefined,
+                    tenantId
+                  )
+                : Promise.resolve([])
+              : this.borrowLog.list({ status: "overdue" }, undefined, tenantId)
+            ).catch((err: unknown) => {
+              console.error("[dashboard] failed to list overdue assets:", err);
+              return [];
+            }),
+            userId
+              ? Promise.resolve([] as ConsumableRow[])
+              : this.consumables.getLowStockItems(limit, undefined, tenantId).catch(
+                  (err: unknown) => {
+                    console.error(
+                      "[dashboard] failed to get low stock items:",
+                      err
+                    );
+                    return [];
+                  }
+                ),
+          ]);
 
-    for (const row of snapshot.pendingRequests) {
-      const kindLabel =
-        row.kind === "supply"
-          ? "Supply request"
-          : row.kind === "assign"
-            ? "Assignment request"
-            : "Borrow request";
-      items.push({
-        id: `pending-${row.kind}-${row.id}`,
-        title: kindLabel,
-        message: `${row.requesterName} (${row.department}) — ${row.itemDescription}`,
-        href: userId
-          ? "/borrower-db/requests"
-          : `/borrow-requests/${
-              row.kind === "supply"
-                ? "supplies"
-                : row.kind === "assign"
-                  ? "assign"
-                  : "borrow"
-            }?status=pending&requestId=${row.id}`,
-        type: "info",
-        relativeTime: row.relativeTime,
-        sortAt: row.requestedAt,
-      });
-    }
+        const supplyLines = pendingSupplyRows.length
+          ? await this.consumableRequests
+              .listLinesByRequestIds(pendingSupplyRows.map((row) => row.id))
+              .catch(() => [])
+          : [];
+        const supplyLinesByRequestId = new Map<string, Array<{ itemName: string }>>();
+        for (const line of supplyLines) {
+          const list = supplyLinesByRequestId.get(line.requestId) ?? [];
+          list.push(line);
+          supplyLinesByRequestId.set(line.requestId, list);
+        }
 
-    for (const row of snapshot.lowStockItems) {
-      items.push({
-        id: `lowstock-${row.id}`,
-        title: "Low stock",
-        message: `${row.itemName} is at ${row.currentQty} ${row.unit} (min ${row.minThreshold}).`,
-        href: "/consumables",
-        type: "warning",
-        relativeTime: "stock alert",
-        sortAt: new Date().toISOString(),
-      });
-    }
+        const pendingRequests = this.mergePendingRequests(
+          pendingRows,
+          pendingSupplyRows,
+          limit,
+          supplyLinesByRequestId
+        );
+        const overdueAssets = overdueRows.slice(0, limit).map((row) => {
+          const dto = toBorrowLogDTO(row);
+          return {
+            id: dto.id,
+            assetName: dto.assetName,
+            assetCode: dto.assetCode,
+            borrowerName: dto.borrowerName,
+            department: dto.department,
+            daysOverdue: dto.daysOverdue ?? 0,
+            dueSince: `${dto.dueDate}T00:00:00Z`,
+          };
+        });
+        const lowStockItems: DashboardLowStockItem[] = lowStockConsumables.map(
+          (c) => ({
+            id: c.id,
+            itemName: c.name,
+            currentQty: c.currentQty,
+            minThreshold: c.minThreshold,
+            unit: c.unit,
+          })
+        );
 
-    return items
-      .sort((a, b) => Date.parse(b.sortAt) - Date.parse(a.sortAt))
-      .slice(0, limit);
+        const items: DashboardNotificationItem[] = [];
+
+        for (const row of overdueAssets) {
+          items.push({
+            id: `overdue-${row.id}`,
+            title: "Overdue return",
+            message: `${row.assetName} (${row.assetCode}) is ${row.daysOverdue} day${
+              row.daysOverdue === 1 ? "" : "s"
+            } overdue — ${row.borrowerName}, ${row.department}.`,
+            href: userId ? "/borrower-db/inventory" : "/borrow-log?status=overdue",
+            type: "urgent",
+            relativeTime: `${row.daysOverdue}d overdue`,
+            sortAt: row.dueSince,
+          });
+        }
+
+        for (const row of pendingRequests) {
+          const kindLabel =
+            row.kind === "supply"
+              ? "Supply request"
+              : row.kind === "assign"
+                ? "Assignment request"
+                : "Borrow request";
+          items.push({
+            id: `pending-${row.kind}-${row.id}`,
+            title: kindLabel,
+            message: `${row.requesterName} (${row.department}) — ${row.itemDescription}`,
+            href: userId
+              ? "/borrower-db/requests"
+              : `/borrow-requests/${
+                  row.kind === "supply"
+                    ? "supplies"
+                    : row.kind === "assign"
+                      ? "assign"
+                      : "borrow"
+                }?status=pending&requestId=${row.id}`,
+            type: "info",
+            relativeTime: row.relativeTime,
+            sortAt: row.requestedAt,
+          });
+        }
+
+        for (const row of lowStockItems) {
+          items.push({
+            id: `lowstock-${row.id}`,
+            title: "Low stock",
+            message: `${row.itemName} is at ${row.currentQty} ${row.unit} (min ${row.minThreshold}).`,
+            href: "/consumables",
+            type: "warning",
+            relativeTime: "stock alert",
+            sortAt: new Date().toISOString(),
+          });
+        }
+
+        return items
+          .sort((a, b) => Date.parse(b.sortAt) - Date.parse(a.sortAt))
+          .slice(0, limit);
+      },
+      ["dashboard", "dashboard:notifications", `tenant:${tenantId}:dashboard`]
+    );
   }
 
   /**

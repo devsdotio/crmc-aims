@@ -30,6 +30,7 @@ export function useBorrowerRealtimeSync(
     if (!enabled) return;
 
     const supabase = createClient();
+    let hasSubscribedOnce = false;
 
     const triggerInvalidation = () => {
       if (debounceTimerRef.current) {
@@ -62,9 +63,14 @@ export function useBorrowerRealtimeSync(
       .on("postgres_changes", supplyConfig, () => triggerInvalidation())
       .on("postgres_changes", custodyConfig, () => triggerInvalidation())
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          triggerInvalidation();
+        if (status !== "SUBSCRIBED") return;
+        // First subscribe races the page's own queries. Resync only after a
+        // reconnect so an error/timeout does not leave the UI on stale data.
+        if (!hasSubscribedOnce) {
+          hasSubscribedOnce = true;
+          return;
         }
+        triggerInvalidation();
       });
 
     return () => {

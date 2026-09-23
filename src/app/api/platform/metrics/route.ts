@@ -10,26 +10,49 @@ export async function GET() {
     await requireSuperAdmin();
     const db = getDb();
 
-    // 1. Total institutions
-    const [tenantCountResult] = await db
-      .select({ count: count(tenants.id) })
-      .from(tenants);
-    const totalInstitutions = Number(tenantCountResult?.count ?? 0);
+    const [
+      userCountResult,
+      roleCounts,
+      statusCounts,
+      allTenants,
+      tenantUserCounts,
+      adminProfiles,
+    ] = await Promise.all([
+      db.select({ count: count(profiles.userId) }).from(profiles).then((rows) => rows[0]),
+      db
+        .select({
+          role: profiles.role,
+          count: count(profiles.userId),
+        })
+        .from(profiles)
+        .groupBy(profiles.role),
+      db
+        .select({
+          status: profiles.status,
+          count: count(profiles.userId),
+        })
+        .from(profiles)
+        .groupBy(profiles.status),
+      db.select().from(tenants).orderBy(sql`${tenants.createdAt} DESC`),
+      db
+        .select({
+          tenantId: profiles.tenantId,
+          count: count(profiles.userId),
+        })
+        .from(profiles)
+        .groupBy(profiles.tenantId),
+      db
+        .select({
+          tenantId: profiles.tenantId,
+          fullName: profiles.fullName,
+          email: profiles.email,
+        })
+        .from(profiles)
+        .where(eq(profiles.role, "admin")),
+    ]);
 
-    // 2. Total users
-    const [userCountResult] = await db
-      .select({ count: count(profiles.userId) })
-      .from(profiles);
+    const totalInstitutions = allTenants.length;
     const totalUsers = Number(userCountResult?.count ?? 0);
-
-    // 3. Role breakdown
-    const roleCounts = await db
-      .select({
-        role: profiles.role,
-        count: count(profiles.userId),
-      })
-      .from(profiles)
-      .groupBy(profiles.role);
 
     const roles = {
       superadmin: 0,
@@ -43,15 +66,6 @@ export async function GET() {
       }
     }
 
-    // 4. Status breakdown
-    const statusCounts = await db
-      .select({
-        status: profiles.status,
-        count: count(profiles.userId),
-      })
-      .from(profiles)
-      .groupBy(profiles.status);
-
     const statuses = {
       active: 0,
       deactivated: 0,
@@ -62,36 +76,12 @@ export async function GET() {
       }
     }
 
-    // 5. Detailed institutions with user count
-    const allTenants = await db
-      .select()
-      .from(tenants)
-      .orderBy(sql`${tenants.createdAt} DESC`);
-
-    const tenantUserCounts = await db
-      .select({
-        tenantId: profiles.tenantId,
-        count: count(profiles.userId),
-      })
-      .from(profiles)
-      .groupBy(profiles.tenantId);
-
     const userCountByTenant = new Map<string, number>();
     for (const row of tenantUserCounts) {
       if (row.tenantId) {
         userCountByTenant.set(row.tenantId, Number(row.count));
       }
     }
-
-    // Find primary admin per tenant
-    const adminProfiles = await db
-      .select({
-        tenantId: profiles.tenantId,
-        fullName: profiles.fullName,
-        email: profiles.email,
-      })
-      .from(profiles)
-      .where(eq(profiles.role, "admin"));
 
     const adminByTenant = new Map<string, { fullName: string; email: string }>();
     for (const adm of adminProfiles) {
