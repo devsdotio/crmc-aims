@@ -145,6 +145,7 @@ export class MaintenanceRepository implements IMaintenanceRepository {
       status: string;
       notes: string | null;
       currentHolder: string | null;
+      tenantId: string;
     }>
   > {
     const db = this.db(session);
@@ -168,6 +169,7 @@ export class MaintenanceRepository implements IMaintenanceRepository {
         status: assets.status,
         notes: assets.notes,
         currentHolder: assets.currentHolder,
+        tenantId: assets.tenantId,
       })
       .from(assets)
       .where(and(...conditions));
@@ -191,13 +193,22 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     session?: DbSession
   ): Promise<MaintenanceLogRow> {
     const db = this.db(session);
+    // Prefer explicit tenantId — ALS getTenantContext() is not reliable inside
+    // postgres.js transactions on Node, and the column DEFAULT is the platform
+    // tenant (0000…0001), which hides logs from real workspace tenants on list.
     const resolvedTenantId =
-      (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+      (data as { tenantId?: string | null }).tenantId ??
+      getTenantContext()?.tenantId;
+    if (!resolvedTenantId) {
+      throw new Error(
+        "tenantId is required to create a maintenance log (pass actor.tenantId)."
+      );
+    }
     const [row] = await db
       .insert(maintenanceLogs)
       .values({
         ...data,
-        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+        tenantId: resolvedTenantId,
       })
       .returning();
     if (!row) throw new Error("Failed to create maintenance log.");

@@ -98,7 +98,7 @@ export class MaintenanceLogService {
         const logCode = generateOperationalCode("MNT");
         await this.repo.create(
           {
-            tenantId: actor.tenantId,
+            tenantId: asset.tenantId ?? actor.tenantId,
             logCode,
             assetId: asset.id,
             assetCode: asset.assetCode,
@@ -224,7 +224,7 @@ export class MaintenanceLogService {
 
       const row = await this.repo.create(
         {
-          tenantId: actor.tenantId,
+          tenantId: asset?.tenantId ?? actor.tenantId,
           logCode,
           assetId,
           assetCode: asset?.assetCode ?? input.assetCode,

@@ -731,6 +731,7 @@ export class BorrowLogService {
               const mntCode = generateOperationalCode("MNT");
               await this.maintenance.create(
                 {
+                  tenantId: asset.tenantId ?? actor.tenantId,
                   logCode: mntCode,
                   assetId: asset.id,
                   assetCode: asset.assetCode,
