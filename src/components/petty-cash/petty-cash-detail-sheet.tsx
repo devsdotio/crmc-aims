@@ -35,6 +35,7 @@ import {
   useDeletePettyCashMutation,
 } from "@/features/petty-cash/client";
 import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { formatPhp } from "@/components/projects/format-money";
 import { useToast } from "@/components/providers/toast-context";
@@ -121,6 +122,7 @@ export function PettyCashDetailSheet({
   const [editDate, setEditDate] = useState("");
   const [editCategory, setEditCategory] = useState("supplies");
   const [editDepartmentId, setEditDepartmentId] = useState<string | null>(null);
+  const [editDepartmentIds, setEditDepartmentIds] = useState<string[]>([]);
   const [editReceiptNumber, setEditReceiptNumber] = useState("");
   const [editPurchaseOrderNumber, setEditPurchaseOrderNumber] = useState("");
   const [editSupplierName, setEditSupplierName] = useState("");
@@ -141,6 +143,13 @@ export function PettyCashDetailSheet({
       setEditDate(voucher.voucherDate);
       setEditCategory(voucher.category || "supplies");
       setEditDepartmentId(voucher.departmentId);
+      setEditDepartmentIds(
+        voucher.departments && voucher.departments.length > 0
+          ? voucher.departments.map((d) => d.id)
+          : voucher.departmentId
+            ? [voucher.departmentId]
+            : []
+      );
       setEditReceiptNumber(voucher.receiptNumber || "");
       setEditPurchaseOrderNumber(voucher.purchaseOrderNumber || "");
       setEditSupplierName(voucher.supplierName || "");
@@ -198,7 +207,10 @@ export function PettyCashDetailSheet({
       return;
     }
 
-    const selectedDept = departments.find((d) => d.id === editDepartmentId);
+    const selectedDepts = editDepartmentIds
+      .map((id) => departments.find((d) => d.id === id))
+      .filter((d): d is NonNullable<typeof d> => Boolean(d));
+    const selectedDept = selectedDepts[0];
 
     try {
       await updateMutation.mutateAsync({
@@ -208,8 +220,11 @@ export function PettyCashDetailSheet({
           amount: numAmount.toFixed(2),
           voucherDate: editDate,
           category: editCategory,
-          departmentId: editDepartmentId || null,
-          departmentName: selectedDept ? selectedDept.name : null,
+          departmentId: selectedDept?.id || editDepartmentId || null,
+          departmentName:
+            selectedDepts.map((d) => d.name).join(", ") ||
+            (selectedDept ? selectedDept.name : null),
+          departmentIds: selectedDepts.map((d) => d.id),
           receiptNumber: editReceiptNumber.trim() || null,
           purchaseOrderNumber: editPurchaseOrderNumber.trim() || null,
           supplierName: editSupplierName.trim() || null,
@@ -599,18 +614,29 @@ export function PettyCashDetailSheet({
                           <label className="text-[11px] font-semibold text-text block mb-1">
                             Department
                           </label>
-                          <select
-                            value={editDepartmentId ?? ""}
-                            onChange={(e) => setEditDepartmentId(e.target.value || null)}
-                            className="w-full text-xs rounded-md border border-border bg-bg px-2.5 py-1.5 text-text"
-                          >
-                            <option value="">— None / General —</option>
-                            {departments.map((d) => (
-                              <option key={d.id} value={d.id}>
-                                {d.name} ({d.code})
-                              </option>
-                            ))}
-                          </select>
+                          <MultiSelectDropdown
+                            label="Departments"
+                            icon={Building2}
+                            variant="form"
+                            searchable
+                            selectedIds={editDepartmentIds}
+                            onToggle={(id) => {
+                              setEditDepartmentIds((prev) => {
+                                const next = prev.includes(id)
+                                  ? prev.filter((x) => x !== id)
+                                  : [...prev, id];
+                                setEditDepartmentId(next[0] || null);
+                                return next;
+                              });
+                            }}
+                            options={departments.map((d) => ({
+                              id: d.id,
+                              label: `${d.name} (${d.code})`,
+                            }))}
+                            placeholder="One or more departments…"
+                            emptyMessage="No departments available"
+                            triggerClassName="text-xs"
+                          />
                         </div>
                       </div>
 
@@ -779,7 +805,9 @@ export function PettyCashDetailSheet({
                         <span className="text-[11px] text-text-muted block">Charging Department:</span>
                         <span className="font-medium text-text mt-0.5 flex items-center gap-1">
                           <Building2 className="w-3 h-3 text-text-muted" />
-                          {voucher.departmentName || "General / None"}
+                          {(voucher.departments && voucher.departments.length > 0
+                            ? voucher.departments.map((d) => d.name).join(", ")
+                            : voucher.departmentName) || "General / None"}
                         </span>
                       </div>
                       <div>

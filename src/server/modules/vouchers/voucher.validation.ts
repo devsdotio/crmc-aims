@@ -53,6 +53,7 @@ export const createVoucherSchema = z.object({
   checkNumber: z.string().trim().max(100).optional().nullable(),
   departmentId: z.string().uuid("Invalid department ID").optional().nullable(),
   departmentName: z.string().trim().max(255).optional().nullable(),
+  departmentIds: z.array(z.string().uuid()).optional(),
   isLegacy: z.boolean().optional().default(false),
 });
 
@@ -79,6 +80,7 @@ export const updateVoucherSchema = z
     checkNumber: z.string().trim().max(100).optional().nullable(),
     departmentId: z.string().uuid().optional().nullable(),
     departmentName: z.string().trim().max(255).optional().nullable(),
+    departmentIds: z.array(z.string().uuid()).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field is required to update a voucher.",

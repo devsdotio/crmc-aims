@@ -19,6 +19,7 @@ export type CreateVoucherPayload = {
   checkNumber?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  departmentIds?: string[];
   isLegacy?: boolean;
 };
 

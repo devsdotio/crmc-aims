@@ -9,6 +9,7 @@ import {
   ListOrdered,
   Plus,
   Trash2,
+  Building2,
 } from "lucide-react";
 import type { Voucher } from "@/types/vouchers";
 import { useUpdateVoucherMutation } from "@/features/vouchers/client";
@@ -23,7 +24,7 @@ import {
   type ParticularLineItem,
 } from "@/lib/voucher-particulars";
 import { cn } from "@/lib/utils";
-import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 
 interface EditVoucherDialogProps {
   voucher: Voucher | null;
@@ -43,6 +44,7 @@ type FormState = {
   assetCode: string;
   purpose: string;
   departmentId: string;
+  departmentIds: string[];
 };
 
 function emptyParticulars(): ParticularLineItem[] {
@@ -92,6 +94,7 @@ export function EditVoucherDialog({
     assetCode: "",
     purpose: "",
     departmentId: "",
+    departmentIds: [],
   });
   const [listItems, setListItems] = useState<ParticularLineItem[]>(
     emptyParticulars()
@@ -114,6 +117,12 @@ export function EditVoucherDialog({
       assetCode: voucher.assetCode || "",
       purpose: voucher.purpose || "",
       departmentId: voucher.departmentId || "",
+      departmentIds:
+        voucher.departments && voucher.departments.length > 0
+          ? voucher.departments.map((d) => d.id)
+          : voucher.departmentId
+            ? [voucher.departmentId]
+            : [],
     };
     const parsed = parseParticulars(voucher.particulars);
     const nextItems =
@@ -126,7 +135,14 @@ export function EditVoucherDialog({
   const isDirty = useMemo(() => {
     if (!baseline) return false;
     const formChanged = (Object.keys(form) as Array<keyof FormState>).some(
-      (key) => form[key] !== baseline.form[key]
+      (key) => {
+        if (key === "departmentIds") {
+          const a = form.departmentIds;
+          const b = baseline.form.departmentIds;
+          return a.length !== b.length || a.some((id, i) => id !== b[i]);
+        }
+        return form[key] !== baseline.form[key];
+      }
     );
     return formChanged || !particularsEqual(listItems, baseline.listItems);
   }, [baseline, form, listItems]);
@@ -218,7 +234,10 @@ export function EditVoucherDialog({
     }
 
     try {
-      const selectedDept = departments.find((d) => d.id === form.departmentId);
+      const selectedDepts = form.departmentIds
+        .map((id) => departments.find((d) => d.id === id))
+        .filter((d): d is NonNullable<typeof d> => Boolean(d));
+      const selectedDept = selectedDepts[0];
       await updateMutation.mutateAsync({
         id: voucher.id,
         payload: {
@@ -232,8 +251,12 @@ export function EditVoucherDialog({
           assetCode: form.assetCode.trim() || null,
           purpose: form.purpose.trim(),
           particulars: serializeParticulars(listItems),
-          departmentId: form.departmentId || null,
-          departmentName: selectedDept?.name ?? null,
+          departmentId: selectedDept?.id || form.departmentId || null,
+          departmentName:
+            selectedDepts.map((d) => d.name).join(", ") ||
+            selectedDept?.name ||
+            null,
+          departmentIds: selectedDepts.map((d) => d.id),
         },
       });
       toast.success(
@@ -516,23 +539,34 @@ export function EditVoucherDialog({
               >
                 Requesting department
               </label>
-              <SearchableSelect
-                id="edit-voucher-department"
-                value={form.departmentId}
-                onValueChange={(next) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    departmentId: next,
-                  }))
+              <MultiSelectDropdown
+                label="Departments"
+                icon={Building2}
+                variant="form"
+                searchable
+                selectedIds={form.departmentIds}
+                onToggle={(id) =>
+                  setForm((prev) => {
+                    const next = prev.departmentIds.includes(id)
+                      ? prev.departmentIds.filter((x) => x !== id)
+                      : [...prev.departmentIds, id];
+                    return {
+                      ...prev,
+                      departmentIds: next,
+                      departmentId: next[0] || "",
+                    };
+                  })
                 }
-                options={departmentOptions}
+                options={departmentOptions.map((o) => ({
+                  id: o.value,
+                  label: o.label,
+                }))}
                 disabled={saving}
-                clearLabel="None / General Custodian Fund"
-                placeholder="Type to find a department…"
-                aria-describedby="edit-department-hint"
+                placeholder="Type to find one or more departments…"
+                emptyMessage="No departments available"
               />
               <p id="edit-department-hint" className="text-[11px] text-text-secondary">
-                Department or office this disbursement is charged to.
+                Department(s) this disbursement is charged to. First selected is primary.
               </p>
             </div>
           </fieldset>

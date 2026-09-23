@@ -343,7 +343,7 @@ async function withDisbursementClaims(
 }
 
 /**
- * Attach sponsoring departments for project POs from purchase_order_departments.
+ * Attach sponsoring departments from purchase_order_departments.
  * Falls back to the scalar departmentId/Name on the lot when no join rows exist.
  */
 async function withPoDepartments(
@@ -353,18 +353,18 @@ async function withPoDepartments(
 ): Promise<PurchaseLotDTO[]> {
   if (dtos.length === 0) return dtos;
 
-  const projectPoNumbers = [
+  const poNumbers = [
     ...new Set(
       dtos
-        .filter((d) => Boolean(d.projectId) && Boolean(d.poNumber?.trim()))
+        .filter((d) => Boolean(d.poNumber?.trim()))
         .map((d) => d.poNumber.trim())
     ),
   ];
-  if (projectPoNumbers.length === 0) return dtos;
+  if (poNumbers.length === 0) return dtos;
 
   const db = session ?? getDb();
   const conditions = [
-    inArray(purchaseOrderDepartments.poReference, projectPoNumbers),
+    inArray(purchaseOrderDepartments.poReference, poNumbers),
   ];
   if (tenantId) {
     conditions.push(eq(purchaseOrderDepartments.tenantId, tenantId));
@@ -394,7 +394,6 @@ async function withPoDepartments(
   }
 
   return dtos.map((dto) => {
-    if (!dto.projectId) return dto;
     const fromJoin = byPo.get(dto.poNumber.trim().toLowerCase());
     if (fromJoin && fromJoin.length > 0) {
       return { ...dto, departments: fromJoin };
@@ -522,29 +521,28 @@ export class PurchaseLotService {
       const nowIso = new Date().toISOString();
 
       const isProjectPo = Boolean(body.projectId);
-      const projectDepartmentIds = isProjectPo
-        ? [
-            ...new Set(
-              (body.departmentIds && body.departmentIds.length > 0
-                ? body.departmentIds
-                : body.departmentId
-                  ? [body.departmentId]
-                  : []
-              ).filter(Boolean)
-            ),
-          ]
-        : [];
+      const requestedDepartmentIds = [
+        ...new Set(
+          (body.departmentIds && body.departmentIds.length > 0
+            ? body.departmentIds
+            : body.departmentId
+              ? [body.departmentId]
+              : []
+          ).filter(Boolean)
+        ),
+      ];
 
       let departmentId = body.departmentId ?? null;
       let departmentName = body.departmentName?.trim() || null;
-      let projectDepartments: Array<{ id: string; name: string }> = [];
+      let poDepartments: Array<{ id: string; name: string }> = [];
 
-      if (isProjectPo) {
-        if (projectDepartmentIds.length < 1) {
-          throw new BadRequestError(
-            "At least one target department is required for project purchase orders."
-          );
-        }
+      if (isProjectPo && requestedDepartmentIds.length < 1) {
+        throw new BadRequestError(
+          "At least one target department is required for project purchase orders."
+        );
+      }
+
+      if (requestedDepartmentIds.length > 0) {
         const deptRows = await db
           .select({
             id: departments.id,
@@ -553,25 +551,25 @@ export class PurchaseLotService {
           .from(departments)
           .where(
             and(
-              inArray(departments.id, projectDepartmentIds),
+              inArray(departments.id, requestedDepartmentIds),
               actor.tenantId
                 ? eq(departments.tenantId, actor.tenantId)
                 : undefined
             )
           );
         const byId = new Map(deptRows.map((d) => [d.id, d.name]));
-        for (const id of projectDepartmentIds) {
+        for (const id of requestedDepartmentIds) {
           const name = byId.get(id);
           if (!name) {
             throw new NotFoundError("Department", id);
           }
-          projectDepartments.push({ id, name });
+          poDepartments.push({ id, name });
         }
-        departmentId = projectDepartments[0]?.id ?? null;
-        departmentName = projectDepartments[0]?.name ?? null;
+        departmentId = poDepartments[0]?.id ?? null;
+        departmentName = poDepartments[0]?.name ?? null;
 
         await db.insert(purchaseOrderDepartments).values(
-          projectDepartments.map((d) => ({
+          poDepartments.map((d) => ({
             tenantId: actor.tenantId,
             poReference: poNumber,
             departmentId: d.id,
@@ -978,8 +976,8 @@ export class PurchaseLotService {
         );
 
         const dto = toPurchaseLotDTO(row);
-        if (projectDepartments.length > 0) {
-          dto.departments = projectDepartments;
+        if (poDepartments.length > 0) {
+          dto.departments = poDepartments;
         }
         results.push(dto);
       }

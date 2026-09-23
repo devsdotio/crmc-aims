@@ -138,7 +138,50 @@ export type PoDepartmentSource = {
   departmentName?: string | null;
   purpose?: string | null;
   recordedByUserId?: string | null;
+  departments?: Array<{ id: string; name: string }>;
 };
+
+export function formatDepartmentList(
+  departments?: Array<{ name: string }> | null,
+  fallback?: string | null
+): string {
+  const names = (departments ?? [])
+    .map((d) => d.name.trim())
+    .filter(Boolean);
+  if (names.length > 0) return names.join(", ");
+  return fallback?.trim() || "";
+}
+
+/** All departments on a linked PO (join list, else primary department). */
+export function resolveDepartmentsFromPo(
+  sources: PoDepartmentSource | PoDepartmentSource[],
+  catalog: Array<{ id: string; name: string; code?: string | null }>,
+  users?: Array<{
+    id: string;
+    departmentId?: string | null;
+    department?: string | null;
+  }>
+): Array<{ id: string; name: string }> {
+  const list = Array.isArray(sources) ? sources : [sources];
+  const seen = new Map<string, string>();
+
+  for (const source of list) {
+    if (source.departments?.length) {
+      for (const d of source.departments) {
+        if (d.id && d.name) seen.set(d.id, d.name);
+      }
+    }
+  }
+
+  if (seen.size > 0) {
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  }
+
+  const primaryId = resolveDepartmentIdFromPo(list, catalog, users);
+  if (!primaryId) return [];
+  const match = catalog.find((d) => d.id === primaryId);
+  return match ? [{ id: match.id, name: match.name }] : [];
+}
 
 /**
  * Resolve a department id from a linked PO:
@@ -146,9 +189,9 @@ export type PoDepartmentSource = {
  * 2) departmentName / [Dept] purpose matched to catalog
  * 3) recorded-by user's departmentId (legacy fallback)
  *
- * Multi-department project POs still resolve a single charging department
- * (the primary departmentId). Callers should not expect all sponsoring
- * departments on a voucher / petty-cash record.
+ * Resolves the primary charging department (first on a multi-dept PO).
+ * Use `resolveDepartmentsFromPo` when the voucher / petty-cash row should
+ * inherit every sponsoring department.
  */
 export function resolveDepartmentIdFromPo(
   sources: PoDepartmentSource | PoDepartmentSource[],

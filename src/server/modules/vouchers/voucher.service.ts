@@ -5,6 +5,13 @@ import { serverCache } from "@/server/shared/cache";
 import type { VoucherType } from "@/types/vouchers";
 
 import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
+import {
+  fallbackDepartments,
+  listVoucherDepartmentLinks,
+  replaceVoucherDepartmentLinks,
+  requestedDepartmentIds,
+  resolveDepartmentRefs,
+} from "@/server/modules/disbursements/disbursement-departments";
 import { VoucherRepository } from "./voucher.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import type { VoucherDTO, ListVoucherFilters } from "./voucher.types";
@@ -52,7 +59,37 @@ function toDTO(row: VoucherRow): VoucherDTO {
     completedAt: row.completedAt ? row.completedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    departments: fallbackDepartments(row.departmentId, row.departmentName),
   };
+}
+
+function withDepartments(
+  dto: VoucherDTO,
+  departments?: Array<{ id: string; name: string }>
+): VoucherDTO {
+  const list =
+    departments && departments.length > 0
+      ? departments
+      : fallbackDepartments(dto.departmentId, dto.departmentName);
+  return {
+    ...dto,
+    departments: list,
+    departmentId: list[0]?.id ?? dto.departmentId,
+    departmentName:
+      list.map((d) => d.name).join(", ") || dto.departmentName,
+  };
+}
+
+async function attachVoucherDepartments(
+  dtos: VoucherDTO[],
+  tenantId?: string
+): Promise<VoucherDTO[]> {
+  if (dtos.length === 0) return dtos;
+  const links = await listVoucherDepartmentLinks(
+    dtos.map((d) => d.id),
+    tenantId
+  );
+  return dtos.map((dto) => withDepartments(dto, links.get(dto.id)));
 }
 
 export class VoucherService {
@@ -102,7 +139,10 @@ export class VoucherService {
       async () => {
         const { vouchers, total } = await this.repo.list(filters as ListVoucherFilters, undefined, tenantId);
         return {
-          vouchers: vouchers.map(toDTO),
+          vouchers: await attachVoucherDepartments(
+            vouchers.map(toDTO),
+            tenantId
+          ),
           total,
         };
       },
@@ -114,7 +154,8 @@ export class VoucherService {
     const id = voucherIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Voucher", id);
-    return toDTO(row);
+    const [dto] = await attachVoucherDepartments([toDTO(row)], actorTenantId);
+    return dto!;
   }
 
   async create(rawInput: unknown, actor: ActorContext): Promise<VoucherDTO> {
@@ -142,6 +183,12 @@ export class VoucherService {
       actor.tenantId
     );
 
+    const deptRefs = await resolveDepartmentRefs(
+      requestedDepartmentIds(input.departmentIds, input.departmentId),
+      actor.tenantId
+    );
+    const primaryDept = deptRefs[0];
+
     const row = await this.repo.create({
       tenantId: actor.tenantId,
       voucherCode,
@@ -159,8 +206,8 @@ export class VoucherService {
       purpose: input.purpose ?? "",
       particulars: input.particulars ?? "",
       checkNumber: emptyToNull(input.checkNumber),
-      departmentId: emptyToNull(input.departmentId),
-      departmentName: emptyToNull(input.departmentName),
+      departmentId: primaryDept?.id ?? emptyToNull(input.departmentId),
+      departmentName: primaryDept?.name ?? emptyToNull(input.departmentName),
       isLegacy: input.isLegacy ?? false,
       createdByUserId: actor.userId,
       createdByName: actor.displayName,
@@ -188,11 +235,17 @@ export class VoucherService {
       },
     });
 
+    await replaceVoucherDepartmentLinks(
+      row.id,
+      deptRefs.map((d) => d.id),
+      actor.tenantId
+    );
+
     serverCache.invalidateTag("vouchers");
     if (actor.tenantId) {
       serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
     }
-    return toDTO(row);
+    return withDepartments(toDTO(row), deptRefs);
   }
 
   async update(
@@ -249,6 +302,41 @@ export class VoucherService {
 
     if (!updated) throw new NotFoundError("Voucher", id);
 
+    let nextDepartments: Array<{ id: string; name: string }> | undefined;
+    if (input.departmentIds !== undefined || input.departmentId !== undefined) {
+      nextDepartments = await resolveDepartmentRefs(
+        requestedDepartmentIds(input.departmentIds, input.departmentId),
+        actor?.tenantId
+      );
+      await replaceVoucherDepartmentLinks(
+        id,
+        nextDepartments.map((d) => d.id),
+        actor?.tenantId
+      );
+      if (nextDepartments[0]) {
+        const patched = await this.repo.update(
+          id,
+          {
+            departmentId: nextDepartments[0].id,
+            departmentName: nextDepartments.map((d) => d.name).join(", "),
+          },
+          undefined,
+          actor?.tenantId
+        );
+        if (patched) {
+          return withDepartments(toDTO(patched), nextDepartments);
+        }
+      } else if (input.departmentId === null || input.departmentIds?.length === 0) {
+        const patched = await this.repo.update(
+          id,
+          { departmentId: null, departmentName: null },
+          undefined,
+          actor?.tenantId
+        );
+        if (patched) return withDepartments(toDTO(patched), []);
+      }
+    }
+
     await this.auditLogs.log({
       entityType: "voucher",
       entityId: id,
@@ -266,7 +354,11 @@ export class VoucherService {
     if (actor?.tenantId) {
       serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
     }
-    return toDTO(updated);
+    if (nextDepartments) {
+      return withDepartments(toDTO(updated), nextDepartments);
+    }
+    const [dto] = await attachVoucherDepartments([toDTO(updated)], actor?.tenantId);
+    return dto!;
   }
 
   async updateStatus(
@@ -314,7 +406,8 @@ export class VoucherService {
     if (actor.tenantId) {
       serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
     }
-    return toDTO(updated);
+    const [dto] = await attachVoucherDepartments([toDTO(updated)], actor.tenantId);
+    return dto!;
   }
 
   async delete(rawId: string, actor?: ActorContext): Promise<{ success: boolean }> {

@@ -29,7 +29,7 @@ export type PurchaseLotDTO = {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
-  /** Sponsoring departments for project POs (primary = departmentId). */
+  /** Sponsoring / requesting departments (primary = departmentId). */
   departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;

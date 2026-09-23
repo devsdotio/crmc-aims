@@ -17,6 +17,7 @@ export type PettyCashDTO = {
   purchaseOrderNumber: string | null;
   departmentId: string | null;
   departmentName: string | null;
+  departments?: Array<{ id: string; name: string }>;
   isLegacy: boolean;
   createdByUserId: string;
   createdByName: string;
