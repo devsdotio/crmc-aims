@@ -13,11 +13,23 @@ const globalForDb = globalThis as unknown as {
   __crmcPg?: ReturnType<typeof postgres>;
 };
 
+function isCloudflareWorkersRuntime(): boolean {
+  try {
+    return globalThis.navigator?.userAgent === "Cloudflare-Workers";
+  } catch {
+    return false;
+  }
+}
+
 function getWorkersEnv(): { HYPERDRIVE?: HyperdriveBinding } | null {
+  if (!isCloudflareWorkersRuntime()) {
+    // Node (`next dev`, scripts, next build) must not use Hyperdrive.
+    return null;
+  }
+
   try {
     return getCloudflareContext().env as { HYPERDRIVE?: HyperdriveBinding };
   } catch {
-    // Outside the Workers request context (local `next dev`, scripts, build).
     return null;
   }
 }
