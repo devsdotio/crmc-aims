@@ -30,6 +30,7 @@ import { useAssetOperator } from "@/hooks/use-asset-operator";
 import type { ConsumableItem } from "@/types/inventory";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 import type { PurchaseLot } from "@/types/purchase-lots";
+import { isInitialStockLot } from "@/types/grouped-purchase-order";
 import { useConsumableQuery } from "@/features/consumables/client/use-consumables";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
 import { useConsumableMovementsQuery } from "@/features/stock-movements/client";
@@ -39,6 +40,20 @@ import { StockLevelBar } from "./stock-level-bar";
 import { LotQrCodeDisplay } from "./lot-qr-code-display";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
+
+/** Flat list by consumableId — includes opening-balance / initial-stock lots. */
+function lotSecondaryLabel(
+  lot: PurchaseLot,
+  unit: string,
+  isBorrower: boolean
+): string {
+  if (isInitialStockLot(lot)) {
+    if (isBorrower) return "Opening balance";
+    return `Opening balance · ${formatPhp(Number(lot.unitCost))}/${unit}`;
+  }
+  if (isBorrower) return lot.supplierName || "Supplier lot";
+  return `${lot.supplierName || "No supplier"} · ${formatPhp(Number(lot.unitCost))}/${unit}`;
+}
 
 function formatDisplayDate(dateStr?: string | null): string {
   if (!dateStr) return "N/A";
@@ -465,6 +480,7 @@ export function ConsumableDetailPanel({
                 {lots.map((lot) => {
                   const expanded = expandedLotId === lot.id;
                   const depleted = lot.quantityRemaining <= 0;
+                  const openingBalance = isInitialStockLot(lot);
                   return (
                     <li
                       key={lot.id}
@@ -485,6 +501,11 @@ export function ConsumableDetailPanel({
                             <span className="font-mono text-[11px] font-bold text-text">
                               {lot.lotCode}
                             </span>
+                            {openingBalance && (
+                              <span className="text-[9px] uppercase font-bold tracking-wide px-1.5 py-0.5 rounded bg-bg-subtle text-text border border-border">
+                                Opening balance
+                              </span>
+                            )}
                             {depleted ? (
                               <span className="text-[9px] uppercase font-bold tracking-wide px-1.5 py-0.5 rounded bg-bg-subtle text-text-secondary border border-border">
                                 Depleted
@@ -496,9 +517,11 @@ export function ConsumableDetailPanel({
                             )}
                           </div>
                           <p className="text-[11px] text-text-secondary truncate">
-                            {isBorrower
-                              ? lot.supplierName || "Supplier lot"
-                              : `${lot.supplierName || "No supplier"} · ${formatPhp(Number(lot.unitCost))}/${displayItem.unit}`}
+                            {lotSecondaryLabel(
+                              lot,
+                              displayItem.unit,
+                              isBorrower
+                            )}
                           </p>
                           <p className="text-[11px] text-text">
                             <span className="font-semibold">
@@ -533,7 +556,11 @@ export function ConsumableDetailPanel({
                             <LotQrCodeDisplay
                               lotCode={lot.lotCode}
                               qrPayload={lot.qrPayload}
-                              label={`${lot.itemName} · ${lot.supplierName || "—"}`}
+                              label={
+                                openingBalance
+                                  ? `${lot.itemName} · Opening balance`
+                                  : `${lot.itemName} · ${lot.supplierName || "—"}`
+                              }
                               size={128}
                             />
                           )}

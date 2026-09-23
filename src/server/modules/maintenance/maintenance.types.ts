@@ -3,6 +3,7 @@ import type { MaintenanceLogRow, MaintenanceRepairPart } from "@/server/db/schem
 export type MaintenanceLogDTO = {
   id: string;
   logCode: string;
+  assetId: string | null;
   assetCode: string;
   assetName: string;
   category: string;
@@ -11,6 +12,8 @@ export type MaintenanceLogDTO = {
   dateLogged: string;
   loggedBy: string;
   notes: string;
+  /** Progressive work-performed notes while the log is open. */
+  workNotes: string | null;
   isResolved: boolean;
   resolutionDate?: string;
   resolutionNotes?: string;
@@ -27,6 +30,7 @@ export type ListMaintenanceFilters = {
   openOnly?: boolean;
   search?: string;
   condition?: MaintenanceLogDTO["condition"];
+  assetId?: string;
   includeSandbox?: boolean;
 };
 
@@ -45,6 +49,16 @@ export interface IMaintenanceRepository {
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
   ): Promise<number>;
+  countOpenByAssetId(
+    assetId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
+  listByAssetId(
+    assetId: string,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow[]>;
   countYear(
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string

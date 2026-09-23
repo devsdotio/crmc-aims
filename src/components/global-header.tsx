@@ -129,13 +129,18 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     category: "Overview",
   },
   "/borrower-db/assets": {
-    title: "Assets Registry",
-    subtitle: "Browse institutional fixed assets available for request",
+    title: "Inventory",
+    subtitle: "Assets currently borrowed or assigned to your department",
     category: "Operations",
   },
   "/borrower-db/supplies": {
-    title: "Supplies Catalog",
-    subtitle: "Browse consumable supplies available for requisition",
+    title: "Issued Supplies",
+    subtitle: "Supplies released to your department",
+    category: "Operations",
+  },
+  "/borrower-db/materials": {
+    title: "Issued Materials",
+    subtitle: "Materials released to your department",
     category: "Operations",
   },
   "/borrower-db/inventory": {

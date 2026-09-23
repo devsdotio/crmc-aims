@@ -35,8 +35,12 @@ export function BrowseTab() {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [page, setPage] = useState(1);
 
-  const { data: assets = [], isLoading: assetsLoading } = useAssetsQuery();
-  const { data: paginatedData, isLoading: consumablesLoading } = useConsumablesQuery();
+  const { data: assets = [], isLoading: assetsLoading } = useAssetsQuery(
+    undefined,
+    { catalog: true }
+  );
+  const { data: paginatedData, isLoading: consumablesLoading } =
+    useConsumablesQuery({ catalog: true });
   const consumables = useMemo(() => paginatedData?.data ?? [], [paginatedData?.data]);
   const loading = assetsLoading || consumablesLoading;
 

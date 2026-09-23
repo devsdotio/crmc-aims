@@ -798,9 +798,9 @@ export class BorrowRequestService {
           await this.borrowLogs.returnLog(
             open.id,
             {
-              condition: "good",
+              condition: input.condition ?? "good",
               conditionNotes: noteWithReturner,
-              flagMaintenance: false,
+              flagMaintenance: Boolean(input.flagMaintenance),
             },
             actor,
             tx,

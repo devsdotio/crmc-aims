@@ -297,14 +297,20 @@ export default function Sidebar({
           roles: ["admin", "staff"],
         },
         {
-          name: "Assets",
-          href: "/borrower-db/assets",
+          name: "Inventory",
+          href: "/borrower-db/inventory",
           icon: Package,
           roles: ["borrower"],
         },
         {
           name: "Supplies",
           href: "/borrower-db/supplies",
+          icon: Boxes,
+          roles: ["borrower"],
+        },
+        {
+          name: "Materials",
+          href: "/borrower-db/materials",
           icon: Boxes,
           roles: ["borrower"],
         },

@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import type { Asset } from "@/types/assets";
-import { projectAssetAssignments, type AssetModelRow, type AssetRow } from "@/server/db/schema";
+import type { Asset, MaintenanceLogEntry } from "@/types/assets";
+import { projectAssetAssignments, type AssetModelRow, type AssetRow, type MaintenanceLogRow } from "@/server/db/schema";
 import { getDb } from "@/server/db";
 import {
   BadRequestError,
@@ -100,8 +100,12 @@ const ASSET_CODE_ALLOC_ATTEMPTS = 12;
 /**
  * Maps a DB row → the frontend `Asset` contract (+ QR payload / model link).
  * Maintenance truth lives in `maintenance_logs` + lifecycle events — JSONB is unused.
+ * Pass `maintenanceHistory` when loading a single asset for detail/print.
  */
-export function toAssetDTO(row: AssetRow): AssetDTOWithMeta {
+export function toAssetDTO(
+  row: AssetRow,
+  maintenanceHistory: MaintenanceLogEntry[] = []
+): AssetDTOWithMeta {
   const base: Asset & { modelId?: string } = {
     id: row.id,
     assetCode: row.assetCode,
@@ -122,9 +126,25 @@ export function toAssetDTO(row: AssetRow): AssetDTOWithMeta {
     notes: row.notes ?? undefined,
     isSandbox: row.isSandbox,
     lastUpdated: toDateString(row.lastUpdated),
-    maintenanceHistory: [],
+    maintenanceHistory,
   };
   return withAssetMeta(base);
+}
+
+function maintenanceRowToHistoryEntry(row: MaintenanceLogRow): MaintenanceLogEntry {
+  const costRaw = row.repairCost != null ? Number(row.repairCost) : undefined;
+  return {
+    id: row.id,
+    date: row.dateLogged,
+    type: row.isResolved
+      ? "repair"
+      : row.source === "manual_flag"
+        ? "flagged"
+        : "maintenance",
+    description: row.notes?.trim() || row.logCode,
+    technician: row.resolvedByName ?? row.loggedByName,
+    cost: Number.isFinite(costRaw) ? costRaw : undefined,
+  };
 }
 
 export type AssetScanResolveDTO = {
@@ -204,10 +224,36 @@ export class AssetService {
     return `${prefix}-${padSeq(seq)}`;
   }
 
-  async listAssets(rawQuery: unknown, tenantId?: string): Promise<AssetDTOWithMeta[]> {
+  async listAssets(
+    rawQuery: unknown,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<AssetDTOWithMeta[]> {
     const filters: ListAssetsFilters = listAssetsQuerySchema.parse(rawQuery ?? {});
+
+    if (actor?.role === "borrower") {
+      // Never trust client department filters — session only.
+      delete (filters as { departmentHeldId?: string }).departmentHeldId;
+      if (!filters.catalog) {
+        if (!actor.departmentId) {
+          throw new BadRequestError(
+            "Your account is not linked to a department. Ask Property Custodian to assign one."
+          );
+        }
+        filters.departmentHeldId = actor.departmentId;
+      }
+    }
+
     const rows = await this.assetRepository.findMany(filters, undefined, tenantId);
-    return this.withOpenProjectCustodyHolders(rows.map(toAssetDTO));
+    const dtos = await this.withOpenProjectCustodyHolders(
+      rows.map((row) => toAssetDTO(row))
+    );
+
+    if (actor?.role === "borrower" && filters.catalog) {
+      // Narrow catalog: hide valuation for request pickers.
+      return dtos.map((d) => ({ ...d, value: undefined }));
+    }
+    return dtos;
   }
 
   async getAssetById(rawId: string, tenantId?: string): Promise<AssetDTOWithMeta> {
@@ -218,7 +264,10 @@ export class AssetService {
       throw new NotFoundError("Asset", id);
     }
 
-    const [dto] = await this.withOpenProjectCustodyHolders([toAssetDTO(row)]);
+    const maintRows = await this.maintenanceRepo.listByAssetId(id, undefined, tenantId);
+    const [dto] = await this.withOpenProjectCustodyHolders([
+      toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry)),
+    ]);
     return dto!;
   }
 
@@ -231,14 +280,21 @@ export class AssetService {
     if (!row) {
       throw new NotFoundError("Asset", parsed.code);
     }
-    const [dto] = await this.withOpenProjectCustodyHolders([toAssetDTO(row)]);
+    const maintRows = await this.maintenanceRepo.listByAssetId(
+      row.id,
+      undefined,
+      tenantId
+    );
+    const [dto] = await this.withOpenProjectCustodyHolders([
+      toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry)),
+    ]);
     return dto!;
   }
 
   async listUnitsForModel(rawModelId: string, tenantId?: string): Promise<AssetDTOWithMeta[]> {
     const model = await this.models.requireModel(rawModelId);
     const rows = await this.assetRepository.findByModelId(model.id, undefined, tenantId);
-    return this.withOpenProjectCustodyHolders(rows.map(toAssetDTO));
+    return this.withOpenProjectCustodyHolders(rows.map((row) => toAssetDTO(row)));
   }
 
   /**
@@ -1234,7 +1290,10 @@ export class AssetService {
       const notes =
         input.notes?.trim() ||
         input.description?.trim() ||
-        "Flagged for maintenance inspection by Property Custodian.";
+        "";
+      if (!notes) {
+        throw new ConflictError("Issue description is required to flag for maintenance.");
+      }
 
       const next = await this.assetRepository.update(
         id,
@@ -1254,7 +1313,7 @@ export class AssetService {
           assetCode: next.assetCode,
           assetName: next.name,
           category: next.category,
-          condition: "needs_maintenance",
+          condition: input.condition ?? "needs_maintenance",
           source: "manual_flag",
           dateLogged: todayDateString(),
           loggedByUserId: actor.userId,
@@ -1268,7 +1327,7 @@ export class AssetService {
           repairCost: null,
           repairParts: [],
           relatedBorrowLogCode: null,
-          scheduledDate: null,
+          scheduledDate: input.scheduledDate ?? null,
         },
         tx
       );

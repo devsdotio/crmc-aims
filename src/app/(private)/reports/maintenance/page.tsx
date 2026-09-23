@@ -184,6 +184,36 @@ export default function MaintenanceReportPage() {
       ),
     },
     {
+      key: "notes",
+      header: "Documentation",
+      render: (row) => {
+        const workSnippet = row.workNotes?.trim();
+        const partsCount = row.repairParts?.length ?? 0;
+        const partsNames =
+          partsCount > 0
+            ? row.repairParts!.map((p) => p.name).slice(0, 3).join(", ")
+            : null;
+        return (
+          <div className="min-w-40 max-w-72 space-y-0.5">
+            <div className="text-xs text-text line-clamp-2">
+              {row.notes?.trim() || "—"}
+            </div>
+            {workSnippet ? (
+              <div className="text-[10px] text-text-secondary line-clamp-1">
+                Work: {workSnippet}
+              </div>
+            ) : null}
+            {partsCount > 0 ? (
+              <div className="text-[10px] text-sky-700 dark:text-sky-400 font-medium truncate">
+                Parts ({partsCount}): {partsNames}
+                {partsCount > 3 ? "…" : ""}
+              </div>
+            ) : null}
+          </div>
+        );
+      },
+    },
+    {
       key: "resolutionDate",
       header: "Resolved On",
       render: (row) => (

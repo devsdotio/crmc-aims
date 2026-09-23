@@ -108,7 +108,16 @@ export const returnAssetSchema = z.object({
 
 export const flagMaintenanceSchema = z.object({
   description: z.string().trim().max(2000).optional(),
-  notes: z.string().trim().max(2000).optional(),
+  notes: z
+    .string()
+    .trim()
+    .min(1, "Issue description is required.")
+    .max(2000),
+  condition: z.enum(["needs_maintenance", "damaged"]).optional(),
+  scheduledDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 
 export const reportMissingSchema = z.object({
@@ -123,6 +132,15 @@ export const listAssetsQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
   assignmentType: assetAssignmentTypeSchema.optional(),
   availableOnly: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === "boolean") return v;
+      return v === "true" || v === "1";
+    }),
+  /** Request-wizard catalog: skip department custody scope for borrowers. */
+  catalog: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
     .optional()
     .transform((v) => {

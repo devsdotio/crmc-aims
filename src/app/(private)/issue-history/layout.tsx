@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const metadata = {
-  title: "Issue history | AIMS",
+  title: "Issue history",
   description: "Consumable supply issue and dispatch transaction codes.",
 };
 

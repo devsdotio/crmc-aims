@@ -72,6 +72,8 @@ export const consumablesApi = {
     search?: string;
     page?: number;
     limit?: number;
+    /** Request-wizard path for borrowers (warehouse catalog). */
+    catalog?: boolean;
   }): Promise<import("@/types/filters").PaginatedResponse<ConsumableItem>> {
     const sp = new URLSearchParams();
     if (params?.category) sp.set("category", params.category);
@@ -80,6 +82,7 @@ export const consumablesApi = {
     if (params?.search) sp.set("search", params.search);
     if (params?.page) sp.set("page", params.page.toString());
     if (params?.limit) sp.set("limit", params.limit.toString());
+    if (params?.catalog) sp.set("catalog", "1");
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<import("@/types/filters").PaginatedResponse<ConsumableItem>>>(
       qs ? `/api/consumables?${qs}` : "/api/consumables"

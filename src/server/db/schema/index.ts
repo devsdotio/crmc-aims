@@ -16,6 +16,7 @@ export * from "./project-expense-lines";
 export * from "./project-asset-assignments";
 export * from "./suppliers";
 export * from "./purchase-lots";
+export * from "./purchase-order-departments";
 export * from "./audit-logs";
 export * from "./dashboard-snapshots";
 export * from "./vouchers";

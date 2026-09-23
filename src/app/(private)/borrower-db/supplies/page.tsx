@@ -1,7 +1,7 @@
 "use client";
 
-import { ConsumablesView } from "@/components/consumables/consumables-view";
+import { DepartmentIssuedConsumablesView } from "@/components/borrower-db/department-issued-consumables-view";
 
 export default function BorrowerSuppliesPage() {
-  return <ConsumablesView lockedClassification="supply" />;
+  return <DepartmentIssuedConsumablesView classification="supply" />;
 }

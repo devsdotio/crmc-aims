@@ -113,6 +113,39 @@ export class PurchaseLotController {
     }
   }
 
+  /** TEMPORARY: preview force-delete impact for a whole PO. */
+  async deleteImpact(request: NextRequest | Request) {
+    try {
+      const session = await requireAssetOperator();
+      const url = new URL(request.url);
+      const poNumber = url.searchParams.get("poNumber") ?? "";
+      return ok(
+        await this.service.previewDeleteByPoNumber(
+          poNumber,
+          session.actor.tenantId
+        )
+      );
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  /** TEMPORARY: atomic delete-by-PO with inventory revert. */
+  async deleteByPo(request: NextRequest | Request) {
+    try {
+      const session = await requireAssetOperator();
+      const url = new URL(request.url);
+      const poNumber = url.searchParams.get("poNumber") ?? "";
+      const impact = await this.service.deleteByPoNumberWithRevert(
+        poNumber,
+        session.actor
+      );
+      return ok({ success: true, impact });
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   /**
    * Scan lot QR → enter qty → cost-snapshot checkout on the linked consumable.
    * Delegates to ConsumableService so stock + history stay in one place.
@@ -135,3 +168,8 @@ export { PurchaseLotService } from "./purchase-lot.service";
 export type { LotCostAllocation } from "./purchase-lot.service";
 export { PurchaseLotRepository } from "./purchase-lot.repository";
 export { toPurchaseLotDTO } from "./purchase-lot.service";
+export type {
+  PoDeleteImpact,
+  PoDeleteLineEffect,
+  PoDeleteBlocker,
+} from "./purchase-lot.types";

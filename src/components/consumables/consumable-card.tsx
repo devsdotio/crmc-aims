@@ -1,10 +1,10 @@
 "use client";
 
-import { PlusCircle, SlidersHorizontal, Tag, Trash2 } from "lucide-react";
+import { SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConsumableItem } from "@/types/inventory";
 import { StockLevelBar } from "./stock-level-bar";
-import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
+import { CategoryPill } from "./category-pill";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableCardProps {
@@ -20,9 +20,6 @@ export function ConsumableCard({
   onAdjust,
   onDelete,
 }: ConsumableCardProps) {
-  const { getCategoryStyle } = useCategoryStyleMap();
-  const categoryMeta = getCategoryStyle(item.category);
-
   return (
     <div
       onClick={() => onSelect(item)}
@@ -39,24 +36,21 @@ export function ConsumableCard({
         "hover:shadow-md hover:border-primary/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       )}
     >
-      <div className="flex items-center justify-between p-3.5 border-b border-border bg-bg-subtle/50 gap-2">
-        <span className="font-mono text-xs font-bold text-text bg-bg px-2 py-0.5 rounded border border-border shrink-0">
+      <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] items-center p-3.5 border-b border-border bg-bg-subtle/50 gap-2">
+        <span
+          title={item.itemCode}
+          className="block min-w-0 max-w-full truncate whitespace-nowrap font-mono text-xs font-bold text-text bg-bg px-2 py-0.5 rounded border border-border justify-self-start"
+        >
           {item.itemCode}
         </span>
-        <div className="flex flex-col items-end gap-0.5 min-w-0">
-          <span className="text-[10px] font-semibold text-text-secondary truncate max-w-36">
+        <div className="flex min-w-0 max-w-full flex-col items-end gap-0.5 justify-self-end">
+          <span
+            title={consumableClassificationLabel(item.classification)}
+            className="max-w-full truncate whitespace-nowrap text-[10px] font-semibold text-text-secondary"
+          >
             {consumableClassificationLabel(item.classification)}
           </span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-2xs",
-              categoryMeta.bg,
-              categoryMeta.text
-            )}
-          >
-            <Tag className="h-2.5 w-2.5 shrink-0" />
-            {categoryMeta.label}
-          </span>
+          <CategoryPill category={item.category} className="max-w-full" />
         </div>
       </div>
 

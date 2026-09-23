@@ -79,6 +79,8 @@ export type AssignProjectAssetPayload = {
 
 export type ReturnProjectAssetPayload = {
   notes?: string | null;
+  condition?: "good" | "damaged" | "needs_repair" | "lost" | "stolen";
+  flagMaintenance?: boolean;
 };
 
 export type ReportProjectAssetDamagePayload = {

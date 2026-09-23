@@ -29,6 +29,8 @@ export type PurchaseLotDTO = {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  /** Sponsoring departments for project POs (primary = departmentId). */
+  departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;
   notes: string | null;
@@ -116,6 +118,8 @@ export type CreatePurchaseOrderInput = {
   supplierName?: string;
   departmentId?: string;
   departmentName?: string;
+  /** Project POs only — first id is primary (also written to departmentId). */
+  departmentIds?: string[];
   projectId?: string | null;
   projectName?: string | null;
   purpose?: string;
@@ -135,6 +139,9 @@ export type UpdatePurchaseOrderInput = {
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;
+  itemName?: string;
+  quantity?: number;
+  unitCost?: string | number;
 };
 
 export type UpdatePurchaseOrderStatusInput = {
@@ -143,6 +150,46 @@ export type UpdatePurchaseOrderStatusInput = {
   receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
+};
+
+/** TEMPORARY: PO force-delete with inventory revert */
+export type PoDeleteAssetUnit = {
+  id: string;
+  assetCode: string;
+  name: string;
+  status: string;
+  currentHolder: string | null;
+  reservedForRequestId: string | null;
+};
+
+export type PoDeleteLineEffect = {
+  lotId: string;
+  lotCode: string;
+  itemName: string;
+  itemType: PurchaseLotItemType;
+  status: PurchaseOrderStatus;
+  projectId: string | null;
+  effects: string[];
+  qtyToReverse?: number;
+  assetsToDelete?: PoDeleteAssetUnit[];
+  movementsToRemove?: number;
+  expensesToRemove?: number;
+};
+
+export type PoDeleteBlocker = {
+  lotId: string;
+  itemName: string;
+  code: string;
+  message: string;
+};
+
+export type PoDeleteImpact = {
+  poNumber: string;
+  canDelete: boolean;
+  lineCount: number;
+  lines: PoDeleteLineEffect[];
+  blockers: PoDeleteBlocker[];
+  warnings: string[];
 };
 
 export interface IPurchaseLotRepository {

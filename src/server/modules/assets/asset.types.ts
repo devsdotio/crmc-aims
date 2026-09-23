@@ -31,6 +31,13 @@ export interface ListAssetsFilters extends PaginationParams {
   assignmentType?: "borrowable" | "assignable";
   /** When true, only units with no current holder and no approved reservation. */
   availableOnly?: boolean;
+  /** Request-wizard catalog: skip department custody scope for borrowers. */
+  catalog?: boolean;
+  /**
+   * Open department custody only (borrow + assignment-to-dept, no projects).
+   * Set from session for borrowers — never from client departmentId.
+   */
+  departmentHeldId?: string;
   /** Superadmin-only: include sandbox/testing catalog rows. */
   includeSandbox?: boolean;
 }

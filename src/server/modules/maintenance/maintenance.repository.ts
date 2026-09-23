@@ -50,6 +50,9 @@ export class MaintenanceRepository implements IMaintenanceRepository {
     if (filters.openOnly) {
       conditions.push(eq(maintenanceLogs.isResolved, false));
     }
+    if (filters.assetId) {
+      conditions.push(eq(maintenanceLogs.assetId, filters.assetId));
+    }
     if (filters.condition) {
       conditions.push(eq(maintenanceLogs.condition, filters.condition));
     }
@@ -104,6 +107,25 @@ export class MaintenanceRepository implements IMaintenanceRepository {
       .from(maintenanceLogs)
       .where(and(...conditions));
     return Number(row?.value ?? 0);
+  }
+
+  async listByAssetId(
+    assetId: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<MaintenanceLogRow[]> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(maintenanceLogs.assetId, assetId)];
+    if (resolvedTenantId) {
+      conditions.push(eq(maintenanceLogs.tenantId, resolvedTenantId));
+    }
+
+    return db
+      .select()
+      .from(maintenanceLogs)
+      .where(and(...conditions))
+      .orderBy(desc(maintenanceLogs.dateLogged));
   }
 
   /**

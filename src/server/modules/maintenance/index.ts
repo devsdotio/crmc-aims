@@ -21,6 +21,7 @@ export class MaintenanceController {
             openOnly: url.searchParams.get("openOnly") ?? undefined,
             search: url.searchParams.get("search") ?? undefined,
             condition: url.searchParams.get("condition") ?? undefined,
+            assetId: url.searchParams.get("assetId") ?? undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
               actor.role
@@ -48,6 +49,16 @@ export class MaintenanceController {
       const session = await requireAssetOperator();
       const body = await request.json();
       return created(await this.service.create(body, session.actor));
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async updateOpen(request: NextRequest | Request, id: string) {
+    try {
+      const session = await requireAssetOperator();
+      const body = await request.json();
+      return ok(await this.service.updateOpen(id, body, session.actor));
     } catch (error) {
       return handleError(error);
     }

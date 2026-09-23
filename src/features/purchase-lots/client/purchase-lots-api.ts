@@ -1,4 +1,8 @@
-import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
+import type {
+  PurchaseLot,
+  PurchaseOrderStatus,
+  PoDeleteImpact,
+} from "@/types/purchase-lots";
 import type { ConsumableItem } from "@/features/consumables/client/consumables-api";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 
@@ -47,6 +51,8 @@ export type CreatePurchaseOrderPayload = {
   supplierName?: string;
   departmentId?: string;
   departmentName?: string;
+  /** Project POs only — first id is primary. */
+  departmentIds?: string[];
   projectId?: string;
   projectName?: string;
   purpose?: string;
@@ -66,6 +72,9 @@ export type UpdatePurchaseOrderPayload = {
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;
+  itemName?: string;
+  quantity?: number;
+  unitCost?: string | number;
 };
 
 export type UpdatePOStatusPayload = {
@@ -152,6 +161,27 @@ export const purchaseLotsApi = {
       {
         method: "DELETE",
       }
+    );
+    return res.data;
+  },
+
+  /** TEMPORARY: preview force-delete impact for a whole PO. */
+  async getDeleteImpact(poNumber: string): Promise<PoDeleteImpact> {
+    const res = await fetchJson<ApiResponse<PoDeleteImpact>>(
+      `/api/purchase-lots/delete-impact?poNumber=${encodeURIComponent(poNumber)}`
+    );
+    return res.data;
+  },
+
+  /** TEMPORARY: atomic delete-by-PO with inventory revert. */
+  async deleteByPoNumber(
+    poNumber: string
+  ): Promise<{ success: boolean; impact: PoDeleteImpact }> {
+    const res = await fetchJson<
+      ApiResponse<{ success: boolean; impact: PoDeleteImpact }>
+    >(
+      `/api/purchase-lots/by-po?poNumber=${encodeURIComponent(poNumber)}`,
+      { method: "DELETE" }
     );
     return res.data;
   },

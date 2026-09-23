@@ -80,10 +80,13 @@ function restoreCachedAssetLists(
   });
 }
 
-export function useAssetsQuery(status?: AssetStatus): UseQueryResult<Asset[], Error> {
+export function useAssetsQuery(
+  status?: AssetStatus,
+  filters?: { catalog?: boolean }
+): UseQueryResult<Asset[], Error> {
   return useQuery({
-    queryKey: assetQueryKeys.list({ status }),
-    queryFn: () => assetsApi.listAssets(status),
+    queryKey: assetQueryKeys.list({ status, catalog: filters?.catalog }),
+    queryFn: () => assetsApi.listAssets(status, filters),
     // Custody changes constantly, so fall back to the global 30s stale window
     // and let the cached list render while the refresh runs behind it.
     // Surface timeouts quickly — default multi-retry looked like infinite skeleton
@@ -257,7 +260,7 @@ export function useReturnAssetMutation(): UseMutationResult<
 export function useFlagMaintenanceMutation(): UseMutationResult<
   Asset,
   Error,
-  { id: string; payload?: FlagMaintenanceInput }
+  { id: string; payload: FlagMaintenanceInput }
 > {
   const queryClient = useQueryClient();
 

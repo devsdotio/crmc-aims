@@ -29,12 +29,14 @@ export class ConsumableController {
             search: url.searchParams.get("search") ?? undefined,
             page: pageParam ? parseInt(pageParam, 10) : undefined,
             limit: limitParam ? parseInt(limitParam, 10) : undefined,
+            catalog: url.searchParams.get("catalog") ?? undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
               session.role
             ),
           },
-          session.tenantId
+          session.tenantId,
+          session
         )
       );
     } catch (error) {

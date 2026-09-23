@@ -172,8 +172,21 @@ export class ConsumableService {
     return found.name;
   }
 
-  async list(rawQuery: unknown, tenantId?: string): Promise<import("@/types/filters").PaginatedResponse<ConsumableDTO>> {
+  async list(
+    rawQuery: unknown,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<import("@/types/filters").PaginatedResponse<ConsumableDTO>> {
     const filters = listConsumablesQuerySchema.parse(rawQuery ?? {});
+
+    // Borrowers: warehouse list only via catalog=1 (request wizards). Default = empty
+    // (department-issued history lives on stock-movements, session-scoped).
+    if (actor?.role === "borrower" && !filters.catalog) {
+      const limit = filters.limit ?? 50;
+      const page = filters.page ?? 1;
+      return { data: [], total: 0, page, limit, totalPages: 0 };
+    }
+
     const result = await this.repo.list({
       category: filters.category,
       classification: filters.classification,
@@ -194,6 +207,15 @@ export class ConsumableService {
         if (filters.stockLevel === "critical") return severity === "critical";
         return true;
       });
+    }
+
+    if (actor?.role === "borrower" && filters.catalog) {
+      // Narrow catalog: no movement history / supplier for request pickers.
+      dtos = dtos.map((row) => ({
+        ...row,
+        history: [],
+        supplier: undefined,
+      }));
     }
 
     return {
@@ -256,6 +278,18 @@ export class ConsumableService {
       return toDTO(row);
     }
 
+    // Opening qty > 0 must create the item, FIFO lot, and intake movement atomically.
+    // Never persist the consumable if the opening-balance lot fails.
+    const openingUnitCost =
+      typeof input.unitCost === "number"
+        ? input.unitCost
+        : Number(input.unitCost);
+    if (!Number.isFinite(openingUnitCost) || openingUnitCost <= 0) {
+      throw new BadRequestError(
+        "Unit cost must be greater than zero when adding initial stock."
+      );
+    }
+
     return withTransaction(async (tx) => {
       const row = await this.repo.create(
         {
@@ -276,18 +310,23 @@ export class ConsumableService {
           supplierId: input.supplierId ?? null,
           supplierName: input.supplier ?? null,
           quantity: input.currentQty,
-          unitCost:
-            typeof input.unitCost === "number"
-              ? input.unitCost.toFixed(2)
-              : Number(input.unitCost).toFixed(2),
+          unitCost: openingUnitCost.toFixed(2),
           purchasedOn: todayDateString(),
           reference: "Initial stock",
+          purpose: "Opening balance",
           notes: input.notes ?? "Opening balance on item create",
           recordedByUserId: actor.userId,
           recordedByName: actor.displayName,
+          status: "delivered",
         },
         tx
       );
+
+      if (!lot?.id) {
+        throw new BadRequestError(
+          "Failed to record opening-balance lot for initial stock."
+        );
+      }
 
       let updated = row;
       if (lot.supplierName) {
@@ -306,7 +345,7 @@ export class ConsumableService {
           direction: "in",
           reason: "restock",
           actor,
-          notes: input.notes ?? "Initial stock",
+          notes: input.notes ?? "Opening balance",
           lines: [
             {
               qty: input.currentQty,
@@ -333,6 +372,7 @@ export class ConsumableService {
             category: updated.category,
             openingQty: input.currentQty,
             lotCode: lot.lotCode,
+            lotId: lot.id,
           },
         },
         tx

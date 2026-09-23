@@ -19,6 +19,9 @@ import { AddEditAssetDialog } from "@/components/assets/add-edit-asset-dialog";
 import { ScanAssetDialog } from "@/components/assets/scan-asset-dialog";
 import { IssueAssetDialog } from "@/components/assets/issue-asset-dialog";
 import { FlagMaintenanceDialog } from "@/components/assets/flag-maintenance-dialog";
+import { ResolveMaintenanceDialog } from "@/components/maintenance-logs/resolve-maintenance-dialog";
+import { useResolveMaintenanceLogMutation } from "@/features/maintenance-logs/client";
+import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-banner";
@@ -39,6 +42,7 @@ function AssetsViewContent() {
   const createMutation = useCreateAssetMutation();
   const updateMutation = useUpdateAssetMutation();
   const deleteMutation = useDeleteAssetMutation();
+  const resolveMaintenanceMutation = useResolveMaintenanceLogMutation();
   const toast = useToast();
   const { canOperate } = useAssetOperator();
 
@@ -63,6 +67,7 @@ function AssetsViewContent() {
   const [scanOpen, setScanOpen] = useState(false);
   const [issueAsset, setIssueAsset] = useState<Asset | null>(null);
   const [maintenanceAsset, setMaintenanceAsset] = useState<Asset | null>(null);
+  const [resolveLog, setResolveLog] = useState<MaintenanceLogRecord | null>(null);
 
   useEffect(() => {
     if (searchParamQuery) {
@@ -329,6 +334,14 @@ function AssetsViewContent() {
               }
             : undefined
         }
+        onMarkServiceable={
+          canOperate
+            ? (log) => {
+                setResolveLog(log);
+              }
+            : undefined
+        }
+        onRepairProgressSaved={(message) => toast.success(message)}
         onDelete={
           canOperate
             ? (asset) => {
@@ -352,6 +365,26 @@ function AssetsViewContent() {
             isOpen={Boolean(maintenanceAsset)}
             onClose={() => setMaintenanceAsset(null)}
             onSuccess={(message) => toast.success(message)}
+          />
+
+          <ResolveMaintenanceDialog
+            record={resolveLog}
+            isOpen={Boolean(resolveLog)}
+            onClose={() => setResolveLog(null)}
+            onConfirmResolve={async (rec, payload) => {
+              await resolveMaintenanceMutation.mutateAsync({
+                id: rec.id,
+                resolutionNotes: payload.resolutionNotes,
+                technician: payload.technician,
+                resolutionDate: payload.resolutionDate,
+                repairCost: payload.repairCost,
+                repairParts: payload.repairParts,
+                noPartsUsed: payload.noPartsUsed,
+              });
+              toast.success("Asset marked serviceable.");
+              setResolveLog(null);
+              setSelectedAsset(null);
+            }}
           />
 
           <AddEditAssetDialog

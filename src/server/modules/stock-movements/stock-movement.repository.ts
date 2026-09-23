@@ -9,6 +9,7 @@ import {
   type NewStockMovementRow,
   type StockMovementRow,
 } from "@/server/db/schema";
+import type { ConsumableClassification } from "@/lib/consumable-classification";
 
 export type StockMovementListRow = StockMovementRow & {
   itemCode: string;
@@ -212,6 +213,9 @@ export class StockMovementRepository {
     limit?: number;
     includeSandbox?: boolean;
     tenantId?: string;
+    /** Forced from session for borrowers — never trust client alone. */
+    departmentId?: string;
+    classification?: ConsumableClassification;
   }): Promise<StockMovementListRow[]> {
     const db = this.db();
     const resolvedTenantId = filters.tenantId ?? getTenantContext()?.tenantId;
@@ -245,6 +249,12 @@ export class StockMovementRepository {
     }
     if (filters.reason) {
       conditions.push(eq(stockMovements.reason, filters.reason));
+    }
+    if (filters.departmentId) {
+      conditions.push(eq(stockMovements.departmentId, filters.departmentId));
+    }
+    if (filters.classification) {
+      conditions.push(eq(consumables.classification, filters.classification));
     }
 
     const base = db

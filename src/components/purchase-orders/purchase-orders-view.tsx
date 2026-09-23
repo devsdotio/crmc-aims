@@ -43,6 +43,7 @@ import { POPrintSlipDialog } from "@/components/purchase-orders/po-print-slip-di
 import { LotPrintTagDialog } from "@/components/purchase-orders/lot-print-tag-dialog";
 import { LotReleaseDialog } from "@/components/purchase-orders/lot-release-dialog";
 import { FileNewPODialog } from "@/components/purchase-orders/file-new-po-dialog";
+import { DeletePoImpactDialog } from "@/components/purchase-orders/delete-po-impact-dialog";
 import { useConsumablesQuery } from "@/features/consumables/client";
 import type {
   POCategoryScope,
@@ -110,6 +111,9 @@ export function PurchaseOrdersView({
   const deleteMutation = useDeletePurchaseOrderMutation();
   const toast = useToast();
   const { confirm } = useConfirm();
+  const [deleteTarget, setDeleteTarget] = useState<GroupedPurchaseOrder | null>(
+    null
+  );
 
   const [filters, setFilters] = useState<PurchaseOrderFilterState>({
     search: searchParamQuery,
@@ -240,6 +244,22 @@ export function PurchaseOrdersView({
     }
     return releaseLot;
   }, [groupedPOs, releaseLot]);
+
+  const releaseCandidateLots = useMemo(() => {
+    if (!releaseLotSynced) return undefined;
+    for (const g of groupedPOs) {
+      if (g.lineItems.some((l) => l.id === releaseLotSynced.id)) {
+        const candidates = g.lineItems.filter(
+          (li) =>
+            li.itemType === "consumable" &&
+            li.status === "delivered" &&
+            li.quantityRemaining > 0
+        );
+        return candidates.length > 0 ? candidates : [releaseLotSynced];
+      }
+    }
+    return [releaseLotSynced];
+  }, [groupedPOs, releaseLotSynced]);
 
   const supplierOptions = useMemo(() => {
     const countMap = new Map<string, number>();
@@ -459,32 +479,30 @@ export function PurchaseOrdersView({
     });
   };
 
-  const requestDeleteGroup = async (group: GroupedPurchaseOrder) => {
-    const description =
-      group.itemCount > 1
-        ? `Are you sure you want to delete purchase order "${group.poNumber}" and all ${group.itemCount} line items? This will cancel the order and cannot be undone.`
-        : `Are you sure you want to delete purchase order "${group.poNumber}" (${group.representative.itemName})? This will cancel the order and cannot be undone.`;
+  const requestDeleteGroup = (group: GroupedPurchaseOrder) => {
+    setDeleteTarget(group);
+  };
 
+  const requestDeleteLine = async (line: PurchaseLot) => {
     await confirm({
-      title: "Delete Purchase Order?",
-      description,
-      confirmLabel: "Delete Order",
-      cancelLabel: "Keep order",
+      title: "Delete line item?",
+      description: `Remove "${line.itemName}" from purchase order "${line.poNumber || line.lotCode}"? Other lines on this PO are kept.`,
+      confirmLabel: "Delete line",
+      cancelLabel: "Keep line",
       variant: "destructive",
       action: async () => {
         try {
-          await Promise.all(
-            group.lineItems.map((li) => deleteMutation.mutateAsync(li.id))
-          );
-          toast.success(
-            `Purchase Order "${group.poNumber}" and all ${group.itemCount} line item(s) deleted.`
-          );
-          if (selectedLot && group.lineItems.some((li) => li.id === selectedLot.id)) {
+          await deleteMutation.mutateAsync(line.id);
+          toast.success(`Removed line "${line.itemName}".`);
+          const remaining = selectedLineItems?.filter((li) => li.id !== line.id) ?? [];
+          if (remaining.length === 0) {
             setSelectedLot(null);
+          } else if (selectedLot?.id === line.id) {
+            setSelectedLot(remaining[0]);
           }
         } catch (err) {
           toast.error(
-            err instanceof Error ? err.message : "Failed to delete Purchase Order."
+            err instanceof Error ? err.message : "Failed to delete line item."
           );
           throw err;
         }
@@ -815,6 +833,7 @@ export function PurchaseOrdersView({
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
             onDeleteGroup={canOperate ? (g) => void requestDeleteGroup(g) : undefined}
+            showProject={categoryScope === "projects"}
           />
         ) : (
           <PurchaseOrdersGrid
@@ -822,7 +841,7 @@ export function PurchaseOrdersView({
             loading={isLoading}
             onSelectLot={setSelectedLot}
             onPrintSlip={setPrintSlipLot}
-            onDeleteGroup={canOperate ? (g) => void requestDeleteGroup(g) : undefined}
+            onDeleteGroup={canOperate ? (g) => requestDeleteGroup(g) : undefined}
           />
         )}
       </div>
@@ -844,11 +863,28 @@ export function PurchaseOrdersView({
                     g.poNumber === (lot.poNumber || lot.lotCode) ||
                     g.lineItems.some((l) => l.id === lot.id)
                 );
-                if (grp) void requestDeleteGroup(grp);
+                if (grp) requestDeleteGroup(grp);
               }
             : undefined
         }
+        onDeleteLine={canOperate ? (line) => void requestDeleteLine(line) : undefined}
         canOperate={canOperate}
+      />
+
+      {/* TEMPORARY: delete with inventory revert preview */}
+      <DeletePoImpactDialog
+        poNumber={deleteTarget?.poNumber ?? null}
+        itemCount={deleteTarget?.itemCount}
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={() => {
+          if (
+            selectedLot &&
+            deleteTarget?.lineItems.some((li) => li.id === selectedLot.id)
+          ) {
+            setSelectedLot(null);
+          }
+        }}
       />
 
       {/* Official Form Print Preview */}
@@ -870,6 +906,7 @@ export function PurchaseOrdersView({
         <>
           <LotReleaseDialog
             lot={releaseLotSynced}
+            candidateLots={releaseCandidateLots}
             isOpen={Boolean(releaseLotSynced)}
             onClose={() => setReleaseLot(null)}
             onSuccess={() => {

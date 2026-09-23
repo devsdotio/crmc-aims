@@ -384,6 +384,9 @@ export class ReportRepository {
         loggedByName: maintenanceLogs.loggedByName,
         resolvedByName: maintenanceLogs.resolvedByName,
         notes: maintenanceLogs.notes,
+        workNotes: maintenanceLogs.workNotes,
+        resolutionNotes: maintenanceLogs.resolutionNotes,
+        repairParts: maintenanceLogs.repairParts,
       })
       .from(maintenanceLogs)
       .where(
@@ -429,7 +432,14 @@ export class ReportRepository {
         updatedAt: assetRow.updatedAt.toISOString(),
       },
       purchaseInfo: poLot ?? null,
-      maintenanceHistory: maintRows,
+      maintenanceHistory: maintRows.map((m) => ({
+        ...m,
+        workNotes: m.workNotes ?? null,
+        resolutionNotes: m.resolutionNotes ?? null,
+        repairParts: Array.isArray(m.repairParts) ? m.repairParts : [],
+        totalCost: m.repairCost,
+        serviceProvider: m.resolvedByName ?? "—",
+      })),
       custodyHistory: custodyRows.map((c) => ({
         ...c,
         purpose: "Equipment custody / loan",
@@ -923,6 +933,9 @@ export class ReportRepository {
         loggedByName: maintenanceLogs.loggedByName,
         resolvedByName: maintenanceLogs.resolvedByName,
         notes: maintenanceLogs.notes,
+        workNotes: maintenanceLogs.workNotes,
+        resolutionNotes: maintenanceLogs.resolutionNotes,
+        repairParts: maintenanceLogs.repairParts,
       })
       .from(maintenanceLogs)
       .where(whereClause)
@@ -957,6 +970,9 @@ export class ReportRepository {
 
         return {
           ...r,
+          workNotes: r.workNotes ?? null,
+          resolutionNotes: r.resolutionNotes ?? null,
+          repairParts: Array.isArray(r.repairParts) ? r.repairParts : [],
           mttrDays,
         };
       }),

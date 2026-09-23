@@ -24,6 +24,15 @@ export const listConsumablesQuerySchema = z.object({
   search: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+  /** Request-wizard catalog: allow warehouse browse for borrowers. */
+  catalog: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === "boolean") return v;
+      return v === "true" || v === "1";
+    }),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
     .optional()
