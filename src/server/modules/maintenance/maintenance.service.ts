@@ -91,7 +91,8 @@ export class MaintenanceLogService {
         const openBorrow = await this.borrowLogs.findActiveByAssetId(asset.id, tx, actor.tenantId);
         const openProject = await this.projectAssignments.findOpenByAssetId(
           asset.id,
-          tx
+          tx,
+          actor.tenantId
         );
         if (openBorrow || openProject) return;
 
@@ -168,13 +169,21 @@ export class MaintenanceLogService {
       let assetId = input.assetId ?? null;
       let asset =
         assetId != null
-          ? await this.assets.findByIdForUpdate(assetId, tx)
+          ? await this.assets.findByIdForUpdate(assetId, tx, actor.tenantId)
           : null;
 
       if (!asset && input.assetCode) {
-        const byCode = await this.assets.findByAssetCode(input.assetCode, tx);
+        const byCode = await this.assets.findByAssetCode(
+          input.assetCode,
+          tx,
+          actor.tenantId
+        );
         if (byCode) {
-          asset = await this.assets.findByIdForUpdate(byCode.id, tx);
+          asset = await this.assets.findByIdForUpdate(
+            byCode.id,
+            tx,
+            actor.tenantId
+          );
           assetId = asset?.id ?? null;
         }
       }
@@ -195,11 +204,13 @@ export class MaintenanceLogService {
 
         const openBorrow = await this.borrowLogs.findActiveByAssetId(
           asset.id,
-          tx
+          tx,
+          actor.tenantId
         );
         const openProject = await this.projectAssignments.findOpenByAssetId(
           asset.id,
-          tx
+          tx,
+          actor.tenantId
         );
 
         if (openProject || asset.currentHolder) {
@@ -350,7 +361,11 @@ export class MaintenanceLogService {
       if (!updated) throw new NotFoundError("Maintenance log", id);
 
       if (existing.assetId) {
-        const asset = await this.assets.findById(existing.assetId, tx);
+        const asset = await this.assets.findById(
+          existing.assetId,
+          tx,
+          actor.tenantId
+        );
         if (asset) {
           await this.lifecycle.record(
             {
@@ -433,9 +448,17 @@ export class MaintenanceLogService {
       };
 
       if (existing.assetId) {
-        const asset = await this.assets.findByIdForUpdate(existing.assetId, tx);
+        const asset = await this.assets.findByIdForUpdate(
+          existing.assetId,
+          tx,
+          actor.tenantId
+        );
         if (asset) {
-          const stillOpen = await this.repo.countOpenByAssetId(asset.id, tx);
+          const stillOpen = await this.repo.countOpenByAssetId(
+            asset.id,
+            tx,
+            actor.tenantId
+          );
           const canReactivate =
             asset.status === "needs_repair" && stillOpen === 0;
 
@@ -443,7 +466,8 @@ export class MaintenanceLogService {
             await this.assets.update(
               asset.id,
               { status: "active", lastUpdated: new Date() },
-              tx
+              tx,
+              actor.tenantId
             );
             await this.lifecycle.record(
               {

@@ -76,8 +76,10 @@ export class ProjectController {
 
   async listExpenses(projectId: string) {
     try {
-      await requireUserManager();
-      return ok(await this.expenses.listForProject(projectId));
+      const session = await requireUserManager();
+      return ok(
+        await this.expenses.listForProject(projectId, session.actor.tenantId)
+      );
     } catch (error) {
       return handleError(error);
     }
@@ -113,9 +115,11 @@ export class ProjectController {
     expenseId: string
   ) {
     try {
-      await requireUserManager();
+      const session = await requireUserManager();
       const body = await request.json();
-      return ok(await this.expenses.update(projectId, expenseId, body));
+      return ok(
+        await this.expenses.update(projectId, expenseId, body, session.actor)
+      );
     } catch (error) {
       return handleError(error);
     }
@@ -133,13 +137,14 @@ export class ProjectController {
 
   async listAssets(request: NextRequest | Request, projectId: string) {
     try {
-      await requireUserManager();
+      const session = await requireUserManager();
       const url = new URL(request.url);
       const status = url.searchParams.get("status") ?? undefined;
       return ok(
         await this.projectAssets.list(
           projectId,
-          status as "assigned" | "returned" | "written_off" | "all" | undefined
+          status as "assigned" | "returned" | "written_off" | "all" | undefined,
+          session.actor.tenantId
         )
       );
     } catch (error) {

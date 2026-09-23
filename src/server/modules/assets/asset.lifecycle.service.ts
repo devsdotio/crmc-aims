@@ -42,6 +42,7 @@ export class AssetLifecycleService {
   ): Promise<AssetLifecycleEventDTO> {
     const row = await this.lifecycleRepository.append(
       {
+        tenantId: input.actor.tenantId,
         assetId: input.assetId,
         assetCode: input.assetCode,
         eventType: input.eventType,
@@ -62,14 +63,27 @@ export class AssetLifecycleService {
 
   async listForAsset(
     assetId: string,
-    limit = 100
+    limit = 100,
+    tenantId?: string
   ): Promise<AssetLifecycleEventDTO[]> {
-    const rows = await this.lifecycleRepository.findByAssetId(assetId, limit);
+    const rows = await this.lifecycleRepository.findByAssetId(
+      assetId,
+      limit,
+      undefined,
+      tenantId
+    );
     return rows.map(toLifecycleDTO);
   }
 
-  async list(filters: ListLifecycleEventsFilters = {}): Promise<AssetLifecycleEventDTO[]> {
-    const rows = await this.lifecycleRepository.findMany(filters);
+  async list(
+    filters: ListLifecycleEventsFilters = {},
+    tenantId?: string
+  ): Promise<AssetLifecycleEventDTO[]> {
+    const rows = await this.lifecycleRepository.findMany(
+      filters,
+      undefined,
+      tenantId
+    );
     return rows.map(toLifecycleDTO);
   }
 }

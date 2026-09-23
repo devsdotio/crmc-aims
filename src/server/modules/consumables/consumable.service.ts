@@ -109,7 +109,8 @@ export class ConsumableService {
   private async resolveIssueDestination(
     departmentId: string | undefined,
     projectId: string | undefined,
-    tx?: DbSession
+    tx?: DbSession,
+    tenantId?: string
   ): Promise<{
     departmentId: string | null;
     projectId: string | null;
@@ -124,7 +125,7 @@ export class ConsumableService {
       );
     }
     if (projectId) {
-      const project = await this.projects.findById(projectId, tx);
+      const project = await this.projects.findById(projectId, tx, tenantId);
       if (!project) throw new NotFoundError("Project", projectId);
       if (project.status === "completed") {
         throw new ConflictError(
@@ -139,7 +140,7 @@ export class ConsumableService {
       };
     }
     if (departmentId) {
-      const dept = await this.departments.findById(departmentId, tx);
+      const dept = await this.departments.findById(departmentId, tx, tenantId);
       if (!dept) throw new NotFoundError("Department", departmentId);
       return {
         departmentId,
@@ -162,8 +163,16 @@ export class ConsumableService {
     }
   }
 
-  private async resolveConsumableCategoryName(rawName: string): Promise<string> {
-    const found = await this.taxonomy.findByTypeAndName("consumable", rawName);
+  private async resolveConsumableCategoryName(
+    rawName: string,
+    tenantId?: string
+  ): Promise<string> {
+    const found = await this.taxonomy.findByTypeAndName(
+      "consumable",
+      rawName,
+      undefined,
+      tenantId
+    );
     if (!found) {
       throw new BadRequestError(
         `Unknown consumable category “${rawName}”. Add it under Settings → Categories first.`
@@ -234,7 +243,10 @@ export class ConsumableService {
   async create(rawInput: unknown, actor: ActorContext): Promise<ConsumableDTO> {
     const input = createConsumableSchema.parse(rawInput);
     const itemCode = input.itemCode?.trim() || generateOperationalCode("CON");
-    const categoryName = await this.resolveConsumableCategoryName(input.category);
+    const categoryName = await this.resolveConsumableCategoryName(
+      input.category,
+      actor.tenantId
+    );
 
     const exists = await this.repo.findByCode(itemCode, undefined, actor.tenantId);
     if (exists) {
@@ -457,7 +469,10 @@ export class ConsumableService {
 
     let categoryName: string | undefined;
     if (input.category !== undefined) {
-      categoryName = await this.resolveConsumableCategoryName(input.category);
+      categoryName = await this.resolveConsumableCategoryName(
+        input.category,
+        actorTenantId
+      );
     }
 
     const updated = await this.repo.update(id, {
@@ -488,7 +503,7 @@ export class ConsumableService {
     const input = restockSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
       const purchasedOn = input.purchasedOn ?? todayDateString();
@@ -593,7 +608,7 @@ export class ConsumableService {
     return withTransaction(async (tx) => {
       // Resolve lot without consuming yet — then lock consumable stock first
       // so we never drain a lot when the stock item is short.
-      const preview = await this.purchaseLots.getByCode(parsed.code);
+      const preview = await this.purchaseLots.getByCode(parsed.code, actor.tenantId);
       if (preview.itemType !== "consumable") {
         throw new BadRequestError(
           "Only consumable purchase lots support quantity release via scan."
@@ -612,7 +627,8 @@ export class ConsumableService {
 
       const existing = await this.repo.findByIdForUpdate(
         preview.consumableId,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!existing) {
         throw new NotFoundError("Consumable", preview.consumableId);
@@ -633,13 +649,16 @@ export class ConsumableService {
       const dest = await this.resolveIssueDestination(
         input.departmentId,
         input.projectId,
-        tx
+        tx,
+        actor.tenantId
       );
 
       const { lot, allocation } = await this.purchaseLots.consumeFromLot(
         preview.lotCode,
         input.quantity,
-        tx
+        tx,
+        undefined,
+        actor.tenantId
       );
 
       const updated = await this.repo.update(
@@ -701,7 +720,7 @@ export class ConsumableService {
     const input = stockAdjustSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
       const next = existing.currentQty + input.quantityChange;
@@ -725,7 +744,8 @@ export class ConsumableService {
           const fifoAllocs = await this.purchaseLots.consumeFifo(
             existing.id,
             need,
-            tx
+            tx,
+            actor.tenantId
           );
           lotAllocations.push(...fifoAllocs);
         } else {
@@ -735,13 +755,15 @@ export class ConsumableService {
                   alloc.lotId,
                   alloc.quantity,
                   tx,
-                  existing.id
+                  existing.id,
+                  actor.tenantId
                 )
               : await this.purchaseLots.consumeFromLot(
                   alloc.lotCode!,
                   alloc.quantity,
                   tx,
-                  existing.id
+                  existing.id,
+                  actor.tenantId
                 );
             lotAllocations.push(result.allocation);
           }
@@ -751,7 +773,8 @@ export class ConsumableService {
           { lotId: input.attachLotId, lotCode: input.attachLotCode },
           input.quantityChange,
           tx,
-          existing.id
+          existing.id,
+          actor.tenantId
         );
         lotAllocations.push(result.allocation);
       } else {
@@ -841,7 +864,7 @@ export class ConsumableService {
     const input = issueConsumableSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
       if (existing.currentQty < input.quantity) {
@@ -859,7 +882,8 @@ export class ConsumableService {
       const dest = await this.resolveIssueDestination(
         input.departmentId,
         input.projectId,
-        tx
+        tx,
+        actor.tenantId
       );
 
       if (!input.lotId && !input.lotCode) {
@@ -870,13 +894,15 @@ export class ConsumableService {
             input.lotId,
             input.quantity,
             tx,
-            existing.id
+            existing.id,
+            actor.tenantId
           )
         : await this.purchaseLots.consumeFromLot(
             input.lotCode!,
             input.quantity,
             tx,
-            existing.id
+            existing.id,
+            actor.tenantId
           );
       const allocations: LotCostAllocation[] = [result.allocation];
 
@@ -988,7 +1014,7 @@ export class ConsumableService {
     const id = consumableIdSchema.parse(rawId);
     return withTransaction(async (session) => {
       const db = session ?? getDb();
-      const existing = await this.repo.findByIdForUpdate(id, session);
+      const existing = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
       if (!existing) {
         throw new NotFoundError("Consumable", id);
       }

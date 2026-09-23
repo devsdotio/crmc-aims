@@ -285,7 +285,11 @@ export class ConsumableRequestService {
 
     const items = await Promise.all(
       input.lines.map(async (line) => {
-        const item = await this.consumables.findById(line.consumableId);
+        const item = await this.consumables.findById(
+          line.consumableId,
+          undefined,
+          actor.tenantId
+        );
         if (!item) {
           throw new NotFoundError("Consumable", line.consumableId);
         }
@@ -407,7 +411,7 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
     const input = approveConsumableRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be approved.");
@@ -458,7 +462,8 @@ export class ConsumableRequestService {
       for (const line of linesToProcess) {
         const item = await this.consumables.findByIdForUpdate(
           line.consumableId,
-          tx
+          tx,
+          actor.tenantId
         );
         if (!item) throw new NotFoundError("Consumable", line.consumableId);
         const freeQty = Math.max(0, item.currentQty - (item.reservedQty ?? 0));
@@ -470,7 +475,8 @@ export class ConsumableRequestService {
         await this.consumables.update(
           item.id,
           { reservedQty: (item.reservedQty ?? 0) + line.quantityRequested },
-          tx
+          tx,
+          actor.tenantId
         );
       }
 
@@ -495,7 +501,8 @@ export class ConsumableRequestService {
           approvedByName: actor.displayName,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
@@ -525,7 +532,7 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
     const input = rejectConsumableRequestSchema.parse(rawInput);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be rejected.");
@@ -544,7 +551,8 @@ export class ConsumableRequestService {
           rejectionReason: input.reason,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
@@ -573,7 +581,7 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
     const input = cancelConsumableRequestSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
     if (existing.status !== "pending" && existing.status !== "approved") {
       throw new ConflictError("Only pending or approved requests can be cancelled.");
@@ -600,7 +608,8 @@ export class ConsumableRequestService {
         for (const line of lines) {
           const item = await this.consumables.findByIdForUpdate(
             line.consumableId,
-            tx
+            tx,
+            actor.tenantId
           );
           if (!item) continue;
           await this.consumables.update(
@@ -611,7 +620,8 @@ export class ConsumableRequestService {
                 (item.reservedQty ?? 0) - line.quantityRequested
               ),
             },
-            tx
+            tx,
+            actor.tenantId
           );
         }
       }
@@ -623,7 +633,8 @@ export class ConsumableRequestService {
           cancellationReason: reason || null,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
@@ -652,7 +663,7 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
     const input = undoConsumableRequestApprovalSchema.parse(rawInput ?? {});
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
     if (existing.status !== "approved") {
       throw new ConflictError("Only approved requests can have their approval undone.");
@@ -675,7 +686,8 @@ export class ConsumableRequestService {
       for (const line of lines) {
         const item = await this.consumables.findByIdForUpdate(
           line.consumableId,
-          tx
+          tx,
+          actor.tenantId
         );
         if (!item) continue;
         await this.consumables.update(
@@ -686,7 +698,8 @@ export class ConsumableRequestService {
               (item.reservedQty ?? 0) - line.quantityRequested
             ),
           },
-          tx
+          tx,
+          actor.tenantId
         );
       }
 
@@ -699,7 +712,8 @@ export class ConsumableRequestService {
           approvedByName: null,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
@@ -732,7 +746,7 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
     const input = releaseConsumableRequestSchema.parse(rawInput);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
     if (existing.status !== "approved") {
       throw new ConflictError("Only approved requests can be released.");
@@ -787,7 +801,8 @@ export class ConsumableRequestService {
         const releaseLine = releaseByLineId.get(line.id)!;
         const item = await this.consumables.findByIdForUpdate(
           line.consumableId,
-          tx
+          tx,
+          actor.tenantId
         );
         if (!item) {
           throw new NotFoundError("Consumable", line.consumableId);
@@ -817,13 +832,15 @@ export class ConsumableRequestService {
                 alloc.lotId,
                 alloc.quantity,
                 tx,
-                item.id
+                item.id,
+                actor.tenantId
               )
             : await this.purchaseLots.consumeFromLot(
                 alloc.lotCode!,
                 alloc.quantity,
                 tx,
-                item.id
+                item.id,
+                actor.tenantId
               );
 
           lotAllocations.push(result.allocation);
@@ -838,7 +855,8 @@ export class ConsumableRequestService {
               (item.reservedQty ?? 0) - line.quantityRequested
             ),
           },
-          tx
+          tx,
+          actor.tenantId
         );
 
         await this.movements.record(
@@ -895,7 +913,8 @@ export class ConsumableRequestService {
           releasedByName: actor.displayName,
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
@@ -927,7 +946,7 @@ export class ConsumableRequestService {
   ): Promise<ConsumableRequestDTO> {
     const id = consumableRequestIdSchema.parse(rawId);
     const input = updateConsumableRequestSchema.parse(rawInput);
-    const existing = await this.repo.findById(id);
+    const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be edited.");
@@ -976,7 +995,11 @@ export class ConsumableRequestService {
 
       lineRowsToInsert = await Promise.all(
         input.lines.map(async (line, index) => {
-          const item = await this.consumables.findById(line.consumableId);
+          const item = await this.consumables.findById(
+            line.consumableId,
+            undefined,
+            actor.tenantId
+          );
           if (!item) {
             throw new NotFoundError("Consumable", line.consumableId);
           }
@@ -1025,7 +1048,8 @@ export class ConsumableRequestService {
           ...(input.notes !== undefined ? { notes: input.notes } : {}),
           history,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 

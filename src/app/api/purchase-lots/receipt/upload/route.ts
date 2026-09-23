@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
       buffer,
       file.name,
       file.type,
-      poNumber
+      poNumber,
+      session.actor.tenantId
     );
 
     let updatedLot = null;

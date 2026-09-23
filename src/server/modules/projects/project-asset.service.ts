@@ -82,8 +82,8 @@ export class ProjectAssetService {
     private readonly borrowLogRepo = new BorrowLogRepository()
   ) {}
 
-  private async requireMutableProject(projectId: string) {
-    const project = await this.projects.findById(projectId);
+  private async requireMutableProject(projectId: string, tenantId?: string) {
+    const project = await this.projects.findById(projectId, undefined, tenantId);
     if (!project) throw new NotFoundError("Project", projectId);
     if (project.status === "completed") {
       throw new ConflictError(
@@ -95,10 +95,11 @@ export class ProjectAssetService {
 
   async list(
     rawProjectId: string,
-    status?: "assigned" | "returned" | "written_off" | "all"
+    status?: "assigned" | "returned" | "written_off" | "all",
+    tenantId?: string
   ): Promise<ProjectAssetAssignmentDTO[]> {
     const projectId = projectIdSchema.parse(rawProjectId);
-    const project = await this.projects.findById(projectId);
+    const project = await this.projects.findById(projectId, undefined, tenantId);
     if (!project) throw new NotFoundError("Project", projectId);
 
     const filter =
@@ -106,7 +107,12 @@ export class ProjectAssetService {
         ? undefined
         : (status as "assigned" | "returned" | "written_off");
 
-    const rows = await this.assignments.listByProject(projectId, filter);
+    const rows = await this.assignments.listByProject(
+      projectId,
+      filter,
+      undefined,
+      tenantId
+    );
     return rows.map(toDTO);
   }
 
@@ -116,7 +122,7 @@ export class ProjectAssetService {
     actor: ActorContext
   ): Promise<ProjectAssetAssignmentDTO> {
     const projectId = projectIdSchema.parse(rawProjectId);
-    const project = await this.requireMutableProject(projectId);
+    const project = await this.requireMutableProject(projectId, actor.tenantId);
     const input = assignAssetToProjectSchema.parse(rawInput);
 
     // Single TX: release creates borrow log + holder + project_asset_assignments.
@@ -136,7 +142,8 @@ export class ProjectAssetService {
 
       const assignment = await this.assignments.findOpenByAssetId(
         input.assetId,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!assignment) {
         throw new ConflictError(
@@ -156,11 +163,15 @@ export class ProjectAssetService {
   ): Promise<ProjectAssetAssignmentDTO> {
     const projectId = projectIdSchema.parse(rawProjectId);
     const assignmentId = assignmentIdSchema.parse(rawAssignmentId);
-    await this.requireMutableProject(projectId);
+    await this.requireMutableProject(projectId, actor.tenantId);
     const input = returnProjectAssetSchema.parse(rawInput ?? {});
 
     return withTransaction(async (tx) => {
-      const assignment = await this.assignments.findById(assignmentId, tx);
+      const assignment = await this.assignments.findById(
+        assignmentId,
+        tx,
+        actor.tenantId
+      );
       if (!assignment || assignment.projectId !== projectId) {
         throw new NotFoundError("Project asset assignment", assignmentId);
       }
@@ -170,7 +181,8 @@ export class ProjectAssetService {
 
       const openLog = await this.borrowLogRepo.findActiveByAssetId(
         assignment.assetId,
-        tx
+        tx,
+        actor.tenantId
       );
       const condition = input.condition ?? "good";
       const flagMaintenance = Boolean(input.flagMaintenance);
@@ -193,7 +205,11 @@ export class ProjectAssetService {
         );
       }
 
-      let updated = await this.assignments.findById(assignmentId, tx);
+      let updated = await this.assignments.findById(
+        assignmentId,
+        tx,
+        actor.tenantId
+      );
       if (updated?.status === "assigned") {
         updated = await this.assignments.update(
           assignment.id,
@@ -204,12 +220,17 @@ export class ProjectAssetService {
             returnedByName: actor.displayName,
             returnNotes: input.notes ?? null,
           },
-          tx
+          tx,
+          actor.tenantId
         );
       }
 
       // Always clear holder even if borrow log was already missing (legacy orphan).
-      const asset = await this.assets.findById(assignment.assetId, tx);
+      const asset = await this.assets.findById(
+        assignment.assetId,
+        tx,
+        actor.tenantId
+      );
       if (asset) {
         const patch: {
           currentHolder?: null;
@@ -225,14 +246,20 @@ export class ProjectAssetService {
         }
 
         if (patch.currentHolder !== undefined || patch.status !== undefined) {
-          await this.assets.update(assignment.assetId, patch, tx);
+          await this.assets.update(
+            assignment.assetId,
+            patch,
+            tx,
+            actor.tenantId
+          );
         }
 
         // No active borrow log → open MNT here (returnLog would have done it).
         if (!openLog && needsMaint) {
           const openCount = await this.maintenance.countOpenByAssetId(
             asset.id,
-            tx
+            tx,
+            actor.tenantId
           );
           if (openCount === 0) {
             const mntCode = generateOperationalCode("MNT");
@@ -334,11 +361,15 @@ export class ProjectAssetService {
   ): Promise<ProjectAssetDamageReportDTO> {
     const projectId = projectIdSchema.parse(rawProjectId);
     const assignmentId = assignmentIdSchema.parse(rawAssignmentId);
-    const project = await this.requireMutableProject(projectId);
+    const project = await this.requireMutableProject(projectId, actor.tenantId);
     const input = reportProjectAssetDamageSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const assignment = await this.assignments.findById(assignmentId, tx);
+      const assignment = await this.assignments.findById(
+        assignmentId,
+        tx,
+        actor.tenantId
+      );
       if (!assignment || assignment.projectId !== projectId) {
         throw new NotFoundError("Project asset assignment", assignmentId);
       }
@@ -348,7 +379,11 @@ export class ProjectAssetService {
         );
       }
 
-      const asset = await this.assets.findByIdForUpdate(assignment.assetId, tx);
+      const asset = await this.assets.findByIdForUpdate(
+        assignment.assetId,
+        tx,
+        actor.tenantId
+      );
       if (!asset) throw new NotFoundError("Asset", assignment.assetId);
 
       if (asset.status === "retired") {
@@ -372,7 +407,8 @@ export class ProjectAssetService {
             status: nextStatus,
             lastUpdated: new Date(),
           },
-          tx
+          tx,
+          actor.tenantId
         );
 
         await this.maintenance.create(
@@ -484,7 +520,8 @@ export class ProjectAssetService {
           returnedByName: actor.displayName,
           returnNotes: notes,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) {
         throw new NotFoundError("Project asset assignment", assignmentId);
@@ -497,7 +534,8 @@ export class ProjectAssetService {
           currentHolder: null,
           lastUpdated: new Date(),
         },
-        tx
+        tx,
+        actor.tenantId
       );
 
       await this.maintenance.create(
@@ -544,6 +582,7 @@ export class ProjectAssetService {
 
       const expense = await this.expenses.create(
         {
+          tenantId: actor.tenantId,
           projectId,
           lineType: "asset_writeoff",
           category: "broken_asset",

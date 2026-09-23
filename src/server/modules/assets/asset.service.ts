@@ -190,8 +190,16 @@ export class AssetService {
     private readonly models: AssetModelService = new AssetModelService()
   ) {}
 
-  private async resolveAssetCategoryName(rawName: string): Promise<string> {
-    const found = await this.taxonomy.findByTypeAndName("asset", rawName);
+  private async resolveAssetCategoryName(
+    rawName: string,
+    tenantId?: string
+  ): Promise<string> {
+    const found = await this.taxonomy.findByTypeAndName(
+      "asset",
+      rawName,
+      undefined,
+      tenantId
+    );
     if (!found) {
       throw new BadRequestError(
         `Unknown asset category “${rawName}”. Add it under Settings → Categories first.`
@@ -205,7 +213,10 @@ export class AssetService {
     assetCode: string;
     prefix: string;
   }> {
-    const categoryName = await this.resolveAssetCategoryName(categoryLabel);
+    const categoryName = await this.resolveAssetCategoryName(
+      categoryLabel,
+      tenantId
+    );
     const prefix = assetCategoryCodePrefix(categoryName);
     const assetCode = await this.nextAssetCodeForPrefix(prefix, undefined, tenantId);
     return { assetCode, prefix };
@@ -246,7 +257,8 @@ export class AssetService {
 
     const rows = await this.assetRepository.findMany(filters, undefined, tenantId);
     const dtos = await this.withOpenProjectCustodyHolders(
-      rows.map((row) => toAssetDTO(row))
+      rows.map((row) => toAssetDTO(row)),
+      tenantId
     );
 
     if (actor?.role === "borrower" && filters.catalog) {
@@ -265,9 +277,10 @@ export class AssetService {
     }
 
     const maintRows = await this.maintenanceRepo.listByAssetId(id, undefined, tenantId);
-    const [dto] = await this.withOpenProjectCustodyHolders([
-      toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry)),
-    ]);
+    const [dto] = await this.withOpenProjectCustodyHolders(
+      [toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry))],
+      tenantId
+    );
     return dto!;
   }
 
@@ -285,16 +298,20 @@ export class AssetService {
       undefined,
       tenantId
     );
-    const [dto] = await this.withOpenProjectCustodyHolders([
-      toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry)),
-    ]);
+    const [dto] = await this.withOpenProjectCustodyHolders(
+      [toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry))],
+      tenantId
+    );
     return dto!;
   }
 
   async listUnitsForModel(rawModelId: string, tenantId?: string): Promise<AssetDTOWithMeta[]> {
-    const model = await this.models.requireModel(rawModelId);
+    const model = await this.models.requireModel(rawModelId, tenantId);
     const rows = await this.assetRepository.findByModelId(model.id, undefined, tenantId);
-    return this.withOpenProjectCustodyHolders(rows.map((row) => toAssetDTO(row)));
+    return this.withOpenProjectCustodyHolders(
+      rows.map((row) => toAssetDTO(row)),
+      tenantId
+    );
   }
 
   /**
@@ -303,7 +320,8 @@ export class AssetService {
    * show "Available" / allow Issue.
    */
   private async withOpenProjectCustodyHolders(
-    dtos: AssetDTOWithMeta[]
+    dtos: AssetDTOWithMeta[],
+    tenantId?: string
   ): Promise<AssetDTOWithMeta[]> {
     const missingHolderIds = dtos
       .filter((d) => !d.currentHolder)
@@ -312,13 +330,19 @@ export class AssetService {
 
     const projectLabels =
       await this.projectAssignments.findOpenHolderLabelsByAssetIds(
-        missingHolderIds
+        missingHolderIds,
+        undefined,
+        tenantId
       );
     const stillMissing = missingHolderIds.filter((id) => !projectLabels.has(id));
     const borrowLabels =
       stillMissing.length === 0
         ? new Map<string, string>()
-        : await this.borrowLogRepo.findActiveHolderLabelsByAssetIds(stillMissing);
+        : await this.borrowLogRepo.findActiveHolderLabelsByAssetIds(
+            stillMissing,
+            undefined,
+            tenantId
+          );
 
     if (projectLabels.size === 0 && borrowLabels.size === 0) return dtos;
 
@@ -329,11 +353,17 @@ export class AssetService {
     });
   }
 
-  async resolveScan(rawCode: string): Promise<AssetScanResolveDTO> {
-    const asset = await this.getAssetByCode(rawCode);
-    const openBorrow = await this.borrowLogRepo.findActiveByAssetId(asset.id);
+  async resolveScan(rawCode: string, tenantId?: string): Promise<AssetScanResolveDTO> {
+    const asset = await this.getAssetByCode(rawCode, tenantId);
+    const openBorrow = await this.borrowLogRepo.findActiveByAssetId(
+      asset.id,
+      undefined,
+      tenantId
+    );
     const openProject = await this.projectAssignments.findOpenByAssetId(
-      asset.id
+      asset.id,
+      undefined,
+      tenantId
     );
 
     if (openProject) {
@@ -399,19 +429,26 @@ export class AssetService {
     actor: ActorContext
   ): Promise<AssetDTOWithMeta> {
     const input: CreateAssetBody = createAssetSchema.parse(rawInput);
-    const categoryName = await this.resolveAssetCategoryName(input.category);
+    const categoryName = await this.resolveAssetCategoryName(
+      input.category,
+      actor.tenantId
+    );
     const codePrefix = assetCategoryCodePrefix(categoryName);
     const preferredCode = input.assetCode?.trim().toUpperCase() || null;
 
     if (input.supplierId) {
-      const supplier = await this.suppliers.findById(input.supplierId);
+      const supplier = await this.suppliers.findById(
+        input.supplierId,
+        undefined,
+        actor.tenantId
+      );
       if (!supplier || supplier.status !== "active") {
         throw new NotFoundError("Supplier", input.supplierId);
       }
     }
 
     if (input.modelId) {
-      await this.models.requireModel(input.modelId);
+      await this.models.requireModel(input.modelId, actor.tenantId);
     }
 
     let lastError: unknown;
@@ -551,10 +588,17 @@ export class AssetService {
     actor: ActorContext
   ): Promise<BulkUnitsResult> {
     const input: BulkCreateAssetsBody = bulkCreateAssetsSchema.parse(rawInput);
-    const categoryName = await this.resolveAssetCategoryName(input.category);
+    const categoryName = await this.resolveAssetCategoryName(
+      input.category,
+      actor.tenantId
+    );
 
     if (input.supplierId) {
-      const supplier = await this.suppliers.findById(input.supplierId);
+      const supplier = await this.suppliers.findById(
+        input.supplierId,
+        undefined,
+        actor.tenantId
+      );
       if (!supplier || supplier.status !== "active") {
         throw new NotFoundError("Supplier", input.supplierId);
       }
@@ -562,6 +606,7 @@ export class AssetService {
 
     return withTransaction(async (tx) => {
       const modelRow = await this.models.repository.create({
+        tenantId: actor.tenantId,
         modelCode: input.modelCode,
         name: input.name,
         category: categoryName,
@@ -613,12 +658,16 @@ export class AssetService {
     rawInput: unknown,
     actor: ActorContext
   ): Promise<BulkUnitsResult> {
-    const model = await this.models.requireModel(rawModelId);
+    const model = await this.models.requireModel(rawModelId, actor.tenantId);
     const input = this.models.parseBulkUnits(rawInput);
     this.models.assertSerials(input.quantity, input.serialNumbers);
 
     if (input.supplierId) {
-      const supplier = await this.suppliers.findById(input.supplierId);
+      const supplier = await this.suppliers.findById(
+        input.supplierId,
+        undefined,
+        actor.tenantId
+      );
       if (!supplier || supplier.status !== "active") {
         throw new NotFoundError("Supplier", input.supplierId);
       }
@@ -794,31 +843,46 @@ export class AssetService {
     const id = assetIdSchema.parse(rawId);
     const input: UpdateAssetBody = updateAssetSchema.parse(rawInput);
 
-    const existing = await this.assetRepository.findById(id);
+    const existing = await this.assetRepository.findById(id, undefined, actor.tenantId);
     if (!existing) {
       throw new NotFoundError("Asset", id);
     }
 
     if (input.supplierId) {
-      const supplier = await this.suppliers.findById(input.supplierId);
+      const supplier = await this.suppliers.findById(
+        input.supplierId,
+        undefined,
+        actor.tenantId
+      );
       if (!supplier || supplier.status !== "active") {
         throw new NotFoundError("Supplier", input.supplierId);
       }
     }
 
     if (input.modelId) {
-      await this.models.requireModel(input.modelId);
+      await this.models.requireModel(input.modelId, actor.tenantId);
     }
 
     let categoryName: string | undefined;
     if (input.category !== undefined) {
-      categoryName = await this.resolveAssetCategoryName(input.category);
+      categoryName = await this.resolveAssetCategoryName(
+        input.category,
+        actor.tenantId
+      );
     }
 
     if (input.status !== undefined && input.status !== existing.status) {
       if (input.status === "retired" || input.status === "out_of_service") {
-        const open = await this.borrowLogRepo.findActiveByAssetId(id);
-        const openProject = await this.projectAssignments.findOpenByAssetId(id);
+        const open = await this.borrowLogRepo.findActiveByAssetId(
+          id,
+          undefined,
+          actor.tenantId
+        );
+        const openProject = await this.projectAssignments.findOpenByAssetId(
+          id,
+          undefined,
+          actor.tenantId
+        );
         if (open || openProject || existing.currentHolder) {
           throw new ConflictError(
             "Return the asset from custody (borrow log or project) before retiring or marking out of service."
@@ -968,7 +1032,7 @@ export class AssetService {
 
   async deleteAsset(rawId: string, actor: ActorContext): Promise<void> {
     const id = assetIdSchema.parse(rawId);
-    const existing = await this.assetRepository.findById(id);
+    const existing = await this.assetRepository.findById(id, undefined, actor.tenantId);
 
     if (!existing) {
       throw new NotFoundError("Asset", id);
@@ -1030,7 +1094,7 @@ export class AssetService {
   ): Promise<AssetDTOWithMeta> {
     const id = assetIdSchema.parse(rawId);
     const input: ReleaseAssetBody = releaseAssetSchema.parse(rawInput ?? {});
-    const existing = await this.assetRepository.findById(id);
+    const existing = await this.assetRepository.findById(id, undefined, actor.tenantId);
 
     if (!existing) {
       throw new NotFoundError("Asset", id);
@@ -1097,7 +1161,7 @@ export class AssetService {
     const id = assetIdSchema.parse(rawId);
     const input: ReturnAssetBody = returnAssetSchema.parse(rawInput);
 
-    const existing = await this.assetRepository.findById(id);
+    const existing = await this.assetRepository.findById(id, undefined, actor.tenantId);
     if (!existing) {
       throw new NotFoundError("Asset", id);
     }
@@ -1147,7 +1211,7 @@ export class AssetService {
 
     // Optional explicit status override after return (rare)
     if (input.status && input.status !== "needs_repair") {
-      const after = await this.assetRepository.findById(id);
+      const after = await this.assetRepository.findById(id, undefined, actor.tenantId);
       if (after && after.status !== input.status) {
         await this.assetRepository.update(id, {
           status: input.status,
@@ -1260,7 +1324,11 @@ export class AssetService {
     const input: FlagMaintenanceBody = flagMaintenanceSchema.parse(rawInput ?? {});
 
     const updated = await withTransaction(async (tx) => {
-      const existing = await this.assetRepository.findByIdForUpdate(id, tx);
+      const existing = await this.assetRepository.findByIdForUpdate(
+        id,
+        tx,
+        actor.tenantId
+      );
       if (!existing) {
         throw new NotFoundError("Asset", id);
       }
@@ -1406,7 +1474,11 @@ export class AssetService {
     const input: ReportMissingBody = reportMissingSchema.parse(rawInput ?? {});
 
     const updated = await withTransaction(async (tx) => {
-      const existing = await this.assetRepository.findByIdForUpdate(id, tx);
+      const existing = await this.assetRepository.findByIdForUpdate(
+        id,
+        tx,
+        actor.tenantId
+      );
       if (!existing) throw new NotFoundError("Asset", id);
 
       if (existing.status === "retired") {
@@ -1508,13 +1580,13 @@ export class AssetService {
     return toAssetDTO(updated);
   }
 
-  async listLifecycle(assetId: string, limit?: number) {
+  async listLifecycle(assetId: string, limit?: number, tenantId?: string) {
     const id = assetIdSchema.parse(assetId);
-    const existing = await this.assetRepository.findById(id);
+    const existing = await this.assetRepository.findById(id, undefined, tenantId);
     if (!existing) {
       throw new NotFoundError("Asset", id);
     }
-    return this.lifecycleService.listForAsset(id, limit);
+    return this.lifecycleService.listForAsset(id, limit, tenantId);
   }
 }
 

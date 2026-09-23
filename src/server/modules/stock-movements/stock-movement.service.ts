@@ -351,7 +351,7 @@ export class StockMovementService {
     const input = voidStockMovementSchema.parse(rawInput ?? {});
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Stock movement", id);
 
       if (existing.direction !== "out" || existing.reason !== "issue") {
@@ -363,14 +363,19 @@ export class StockMovementService {
         throw new ConflictError("This issue has already been undone.");
       }
 
-      const prior = await this.repo.findReversalOf(existing.id, tx);
+      const prior = await this.repo.findReversalOf(
+        existing.id,
+        tx,
+        actor.tenantId
+      );
       if (prior) {
         throw new ConflictError("This issue has already been undone.");
       }
 
       const item = await this.consumables.findByIdForUpdate(
         existing.consumableId,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!item) {
         throw new NotFoundError("Consumable", existing.consumableId);
@@ -379,13 +384,15 @@ export class StockMovementService {
       if (existing.purchaseLotId) {
         const lot = await this.lots.findByIdForUpdate(
           existing.purchaseLotId,
-          tx
+          tx,
+          actor.tenantId
         );
         if (lot) {
           await this.lots.updateRemaining(
             lot.id,
             lot.quantityRemaining + existing.qty,
-            tx
+            tx,
+            actor.tenantId
           );
         }
       }
@@ -393,7 +400,8 @@ export class StockMovementService {
       await this.consumables.update(
         item.id,
         { currentQty: item.currentQty + existing.qty },
-        tx
+        tx,
+        actor.tenantId
       );
 
       const reasonText = input.reason;
@@ -401,6 +409,7 @@ export class StockMovementService {
 
       const reversal = await this.repo.create(
         {
+          tenantId: existing.tenantId ?? actor.tenantId,
           movementCode: generateOperationalCode("MOV"),
           consumableId: existing.consumableId,
           qty: existing.qty,
@@ -423,7 +432,12 @@ export class StockMovementService {
       const nextNotes = [existing.notes?.trim(), `${voidedMarker()} ${reasonText}`]
         .filter(Boolean)
         .join(" · ");
-      const updated = await this.repo.updateNotes(existing.id, nextNotes, tx);
+      const updated = await this.repo.updateNotes(
+        existing.id,
+        nextNotes,
+        tx,
+        actor.tenantId
+      );
       if (!updated) throw new NotFoundError("Stock movement", id);
 
       if (existing.projectId) {
@@ -431,7 +445,11 @@ export class StockMovementService {
       }
 
       const labels = await destinationLabelsFor([updated]);
-      const consumable = await this.consumables.findById(item.id, tx);
+      const consumable = await this.consumables.findById(
+        item.id,
+        tx,
+        actor.tenantId
+      );
       return toDTO(
         {
           ...updated,
@@ -456,7 +474,8 @@ export class StockMovementService {
 
     const expenses = await this.projectExpenses.listByProject(
       movement.projectId,
-      tx
+      tx,
+      movement.tenantId
     );
     const candidates = expenses.filter((e) => {
       if (e.lineType !== "consumable") return false;
@@ -499,6 +518,10 @@ export class StockMovementService {
         Math.abs(new Date(b.createdAt).getTime() - movementTime)
     );
     // Repository delete only — stock already restored above (avoid double restock).
-    await this.projectExpenses.delete(candidates[0].id, tx);
+    await this.projectExpenses.delete(
+      candidates[0].id,
+      tx,
+      movement.tenantId
+    );
   }
 }

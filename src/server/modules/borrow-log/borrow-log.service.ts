@@ -250,7 +250,11 @@ export class BorrowLogService {
     notes: string | undefined,
     tx: DbSession
   ): Promise<void> {
-    const open = await this.repo.findActiveByAssetId(assetId, tx);
+    const open = await this.repo.findActiveByAssetId(
+      assetId,
+      tx,
+      actor.tenantId
+    );
     if (!open) return;
 
     await this.repo.update(
@@ -262,13 +266,15 @@ export class BorrowLogService {
         conditionNotes: notes ?? null,
         receivedByName: actor.displayName,
       },
-      tx
+      tx,
+      actor.tenantId
     );
   }
 
   private async resolveDestination(
     input: ReturnType<typeof releaseBorrowSchema.parse>,
-    tx: DbSession
+    tx: DbSession,
+    tenantId?: string
   ): Promise<{
     departmentId: string | null;
     projectId: string | null;
@@ -293,7 +299,7 @@ export class BorrowLogService {
     }
 
     if (projectId) {
-      const project = await this.projects.findById(projectId, tx);
+      const project = await this.projects.findById(projectId, tx, tenantId);
       if (!project) throw new NotFoundError("Project", projectId);
       return {
         departmentId: null,
@@ -305,7 +311,7 @@ export class BorrowLogService {
     }
 
     if (departmentId) {
-      const dept = await this.departments.findById(departmentId, tx);
+      const dept = await this.departments.findById(departmentId, tx, tenantId);
       if (!dept) throw new NotFoundError("Department", departmentId);
       return {
         departmentId,
@@ -326,14 +332,22 @@ export class BorrowLogService {
     actor: ActorContext,
     tx: DbSession
   ): Promise<BorrowLogDTO> {
-    const asset = await this.assets.findByIdForUpdate(input.assetId, tx);
+    const asset = await this.assets.findByIdForUpdate(
+      input.assetId,
+      tx,
+      actor.tenantId
+    );
     if (!asset) throw new NotFoundError("Asset", input.assetId);
 
     if (asset.status !== "active" || asset.currentHolder) {
       throw new ConflictError("Asset is not available for release.");
     }
 
-    const destination = await this.resolveDestination(input, tx);
+    const destination = await this.resolveDestination(
+      input,
+      tx,
+      actor.tenantId
+    );
 
     if (destination.custodyKind === "borrow" && asset.assignmentType !== "borrowable") {
       throw new BadRequestError(
@@ -349,14 +363,19 @@ export class BorrowLogService {
       );
     }
 
-    const open = await this.repo.findActiveByAssetId(asset.id, tx);
+    const open = await this.repo.findActiveByAssetId(
+      asset.id,
+      tx,
+      actor.tenantId
+    );
     if (open) {
       throw new ConflictError("Asset already has an active custody log.");
     }
 
     const openProject = await this.projectAssignments.findOpenByAssetId(
       asset.id,
-      tx
+      tx,
+      actor.tenantId
     );
     if (openProject) {
       // Orphaned ledger: assignment still "assigned" but asset is already back
@@ -372,7 +391,8 @@ export class BorrowLogService {
             returnNotes:
               "Auto-closed orphaned project assignment (asset already returned to stock).",
           },
-          tx
+          tx,
+          actor.tenantId
         );
       } else {
         throw new ConflictError(
@@ -385,7 +405,11 @@ export class BorrowLogService {
     let requestCode: string | null = input.requestCode ?? null;
 
     if (input.requestId) {
-      const req = await this.requests.findById(input.requestId, tx);
+      const req = await this.requests.findById(
+        input.requestId,
+        tx,
+        actor.tenantId
+      );
       if (!req) throw new NotFoundError("Borrow request", input.requestId);
       if (req.status !== "approved") {
         throw new ConflictError("Borrow request must be approved before release.");
@@ -441,7 +465,8 @@ export class BorrowLogService {
         reservedForRequestId: null,
         lastUpdated: new Date(),
       },
-      tx
+      tx,
+      actor.tenantId
     );
 
     // Keep project panel in sync whenever custody goes to a project
@@ -449,11 +474,13 @@ export class BorrowLogService {
     if (destination.projectId) {
       const alreadyOpen = await this.projectAssignments.findOpenByAssetId(
         asset.id,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!alreadyOpen) {
         await this.projectAssignments.create(
           {
+            tenantId: actor.tenantId,
             projectId: destination.projectId,
             assetId: asset.id,
             assetCode: asset.assetCode,
@@ -553,7 +580,7 @@ export class BorrowLogService {
     tx: DbSession,
     options?: { skipRequestClosure?: boolean }
   ): Promise<BorrowLogDTO> {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Borrow log", id);
       if (existing.status !== "active") {
         throw new ConflictError("Only active borrow logs can be returned.");
@@ -583,12 +610,17 @@ export class BorrowLogService {
           receivedByName: actor.displayName,
           receivedByUserId: actor.userId,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Borrow log", id);
 
       if (existing.assetId) {
-        const asset = await this.assets.findByIdForUpdate(existing.assetId, tx);
+        const asset = await this.assets.findByIdForUpdate(
+          existing.assetId,
+          tx,
+          actor.tenantId
+        );
         if (asset) {
           const nextStatus = isMissing
             ? ("missing" as const)
@@ -602,7 +634,8 @@ export class BorrowLogService {
           // release still blocked on the open project row.
           const openProject = await this.projectAssignments.findOpenByAssetId(
             asset.id,
-            tx
+            tx,
+            actor.tenantId
           );
           if (openProject) {
             await this.projectAssignments.update(
@@ -616,7 +649,8 @@ export class BorrowLogService {
                   input.conditionNotes?.trim() ||
                   `Returned via custody log ${existing.logCode}`,
               },
-              tx
+              tx,
+              actor.tenantId
             );
           }
 
@@ -627,7 +661,8 @@ export class BorrowLogService {
               status: nextStatus,
               lastUpdated: new Date(),
             },
-            tx
+            tx,
+            actor.tenantId
           );
 
           await this.lifecycle.record(
@@ -783,11 +818,16 @@ export class BorrowLogService {
       }
 
       if (existing.requestId && !options?.skipRequestClosure) {
-        const req = await this.requests.findById(existing.requestId, tx);
+        const req = await this.requests.findById(
+          existing.requestId,
+          tx,
+          actor.tenantId
+        );
         if (req && (req.status === "released" || req.status === "approved")) {
           const otherActive = await this.repo.list(
             { status: "active" },
-            tx
+            tx,
+            actor.tenantId
           );
           const hasRemaining = otherActive.some(
             (o) => o.requestId === existing.requestId && o.id !== existing.id
@@ -853,7 +893,7 @@ export class BorrowLogService {
     const input = voidBorrowSchema.parse(rawInput ?? {});
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Borrow log", id);
       if (existing.status !== "active") {
         throw new ConflictError("Only active custody issues can be voided.");
@@ -877,16 +917,22 @@ export class BorrowLogService {
           receivedByName: actor.displayName,
           receivedByUserId: actor.userId,
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Borrow log", id);
 
       if (existing.assetId) {
-        const asset = await this.assets.findByIdForUpdate(existing.assetId, tx);
+        const asset = await this.assets.findByIdForUpdate(
+          existing.assetId,
+          tx,
+          actor.tenantId
+        );
         if (asset) {
           const openProject = await this.projectAssignments.findOpenByAssetId(
             asset.id,
-            tx
+            tx,
+            actor.tenantId
           );
           if (openProject) {
             await this.projectAssignments.update(
@@ -898,7 +944,8 @@ export class BorrowLogService {
                 returnedByName: actor.displayName,
                 returnNotes: `Voided mistaken issue ${existing.logCode}: ${reason}`,
               },
-              tx
+              tx,
+              actor.tenantId
             );
           }
 
@@ -908,7 +955,8 @@ export class BorrowLogService {
               currentHolder: null,
               lastUpdated: now,
             },
-            tx
+            tx,
+            actor.tenantId
           );
 
           await this.lifecycle.record(
@@ -974,17 +1022,22 @@ export class BorrowLogService {
     const id = borrowLogIdSchema.parse(rawId);
 
     await withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Borrow log", id);
 
       const now = new Date();
 
       if (existing.status === "active" && existing.assetId) {
-        const asset = await this.assets.findByIdForUpdate(existing.assetId, tx);
+        const asset = await this.assets.findByIdForUpdate(
+          existing.assetId,
+          tx,
+          actor.tenantId
+        );
         if (asset) {
           const openProject = await this.projectAssignments.findOpenByAssetId(
             asset.id,
-            tx
+            tx,
+            actor.tenantId
           );
           if (openProject) {
             await this.projectAssignments.update(
@@ -996,7 +1049,8 @@ export class BorrowLogService {
                 returnedByName: actor.displayName,
                 returnNotes: `Hard-deleted custody log ${existing.logCode}`,
               },
-              tx
+              tx,
+              actor.tenantId
             );
           }
 
@@ -1006,7 +1060,8 @@ export class BorrowLogService {
               currentHolder: null,
               lastUpdated: now,
             },
-            tx
+            tx,
+            actor.tenantId
           );
 
           await this.lifecycle.record(
@@ -1051,7 +1106,7 @@ export class BorrowLogService {
         );
       }
 
-      const removed = await this.repo.delete(id, tx);
+      const removed = await this.repo.delete(id, tx, actor.tenantId);
       if (!removed) throw new NotFoundError("Borrow log", id);
     });
   }

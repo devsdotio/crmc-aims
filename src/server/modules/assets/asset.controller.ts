@@ -116,9 +116,7 @@ export class AssetController {
         typeof (body as { code: unknown }).code === "string"
           ? (body as { code: string }).code
           : new URL(request.url).searchParams.get("code") ?? "";
-      const data = await this.assetService.resolveScan(code);
-      // session gate keeps resolve limited to authenticated ops-shell users
-      void session;
+      const data = await this.assetService.resolveScan(code, session.actor.tenantId);
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -228,13 +226,14 @@ export class AssetController {
 
   async listLifecycle(request: NextRequest | Request, id: string) {
     try {
-      await requireActor();
+      const session = await requireActor();
       const url = new URL(request.url);
       const limitRaw = url.searchParams.get("limit");
       const limit = limitRaw ? Number(limitRaw) : undefined;
       const data = await this.assetService.listLifecycle(
         id,
-        Number.isFinite(limit) ? limit : undefined
+        Number.isFinite(limit) ? limit : undefined,
+        session.tenantId
       );
       return ok(data);
     } catch (error) {
