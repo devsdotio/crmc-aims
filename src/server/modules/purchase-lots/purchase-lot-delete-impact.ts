@@ -29,6 +29,7 @@ import {
 import type { ActorContext } from "@/server/shared/auth";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
+import { isVoidedNotes } from "@/server/modules/stock-movements/stock-movement.repository";
 import { findActivePoDisbursement } from "./po-disbursement";
 import { deletePoDepartmentLinks } from "./po-departments";
 import { PurchaseLotRepository } from "./purchase-lot.repository";
@@ -85,6 +86,38 @@ function receivedQtyForLot(lot: PurchaseLotRow): number {
 
 function lotStatus(lot: PurchaseLotRow): PurchaseOrderStatus {
   return parseLotNotes(lot.notes).status;
+}
+
+function signedOnHandQty(
+  movs: { direction: string; qty: number }[]
+): number {
+  let net = 0;
+  for (const m of movs) {
+    net += m.direction === "in" ? m.qty : -m.qty;
+  }
+  return net;
+}
+
+function isPoProjectDeliveryIssue(
+  m: { direction: string; reason: string; notes?: string | null },
+  poNumber: string
+): boolean {
+  return (
+    m.direction === "out" &&
+    m.reason === "issue" &&
+    Boolean(
+      m.notes?.includes("Direct project delivery") ||
+        m.notes?.includes(`via PO ${poNumber}`)
+    )
+  );
+}
+
+/** Delivered warehouse lot that never entered the catalog ledger. */
+function isGhostWarehouseLot(
+  lot: PurchaseLotRow,
+  movs: { id: string }[]
+): boolean {
+  return !lot.consumableId && movs.length === 0;
 }
 
 /** Resolve primary + sibling units minted for this PO line. */
@@ -266,6 +299,7 @@ async function buildLineImpact(
 ): Promise<{
   line: PoDeleteLineEffect;
   blockers: { lotId: string; itemName: string; code: string; message: string }[];
+  warnings: string[];
 }> {
   const db = session ?? getDb();
   const status = lotStatus(lot);
@@ -275,6 +309,7 @@ async function buildLineImpact(
     code: string;
     message: string;
   }[] = [];
+  const warnings: string[] = [];
   const effects: string[] = [];
   const receivedQty = receivedQtyForLot(lot);
 
@@ -326,21 +361,18 @@ async function buildLineImpact(
       }
     }
   } else if (lot.projectId) {
-    // Project direct delivery: net on-hand flat; reverse expense + PO movement pair only.
+    // Project direct delivery: net on-hand is flat unless the auto-issue was voided.
     const movs = await movementsForLot(lot.id, lot.lotCode, session);
     const expenses = await expensesForLot(lot.id, session);
     const allocs = await releaseAllocsForLot(lot.id, session);
+    const netOnHand = signedOnHandQty(movs);
 
-    const outBeyondPo = movs.filter(
+    const extraOut = movs.some(
       (m) =>
         m.direction === "out" &&
-        !(
-          m.reason === "issue" &&
-          (m.notes?.includes("Direct project delivery") ||
-            m.notes?.includes(`via PO ${poNumber}`))
-        )
+        !isVoidedNotes(m.notes) &&
+        !isPoProjectDeliveryIssue(m, poNumber)
     );
-    const extraOut = outBeyondPo.length > 0;
     const hasReleaseAllocs = allocs.length > 0;
 
     // Auto-issue sets remaining to 0 — that alone is NOT a blocker for project POs.
@@ -357,21 +389,73 @@ async function buildLineImpact(
 
     movementsToRemove = movs.length;
     expensesToRemove = expenses.length;
-    effects.push(
-      `Remove ${expenses.length} project expense line(s) and ${movs.length} stock movement(s) for direct project delivery (on-hand unchanged)`
-    );
+
+    if (netOnHand > 0) {
+      qtyToReverse = netOnHand;
+      effects.push(
+        `Subtract ${netOnHand} from on-hand (project issue was returned) and remove ${movs.length} stock movement(s)`
+      );
+      if (lot.consumableId) {
+        const [cons] = await db
+          .select({ id: consumables.id, currentQty: consumables.currentQty })
+          .from(consumables)
+          .where(eq(consumables.id, lot.consumableId))
+          .limit(1);
+        if (cons && cons.currentQty < netOnHand) {
+          blockers.push({
+            lotId: lot.id,
+            itemName: lot.itemName,
+            code: "insufficient_on_hand",
+            message: `On-hand qty (${cons.currentQty}) is less than returned qty (${netOnHand}) for "${lot.itemName}" — cannot reverse without going negative.`,
+          });
+        }
+      }
+    } else {
+      effects.push(
+        `Remove ${expenses.length} project expense line(s) and ${movs.length} stock movement(s) for direct project delivery (on-hand unchanged)`
+      );
+    }
   } else {
     // Warehouse delivered consumable
     const movs = await movementsForLot(lot.id, lot.lotCode, session);
     const allocs = await releaseAllocsForLot(lot.id, session);
 
-    if (lot.quantityRemaining < lot.quantity) {
-      blockers.push({
-        lotId: lot.id,
-        itemName: lot.itemName,
-        code: "lot_drawn",
-        message: `"${lot.itemName}" has been drawn or issued (${lot.quantityRemaining} of ${lot.quantity} remaining). Return stock to this lot before deleting.`,
-      });
+    if (isGhostWarehouseLot(lot, movs)) {
+      warnings.push(
+        `"${lot.itemName}" (${lot.lotCode}) was delivered but never linked to stock — deleting it will not change on-hand.`
+      );
+      effects.push(
+        "Delete purchase lot (delivered but never linked to stock — on-hand unchanged)"
+      );
+    } else {
+      if (lot.quantityRemaining < lot.quantity) {
+        blockers.push({
+          lotId: lot.id,
+          itemName: lot.itemName,
+          code: "lot_drawn",
+          message: `"${lot.itemName}" has been drawn or issued (${lot.quantityRemaining} of ${lot.quantity} remaining). Return stock to this lot before deleting.`,
+        });
+      } else {
+        qtyToReverse = receivedQty;
+        if (lot.consumableId) {
+          const [cons] = await db
+            .select({ id: consumables.id, currentQty: consumables.currentQty })
+            .from(consumables)
+            .where(eq(consumables.id, lot.consumableId))
+            .limit(1);
+          if (cons && cons.currentQty < receivedQty) {
+            blockers.push({
+              lotId: lot.id,
+              itemName: lot.itemName,
+              code: "insufficient_on_hand",
+              message: `On-hand qty (${cons.currentQty}) is less than received qty (${receivedQty}) for "${lot.itemName}" — cannot reverse without going negative.`,
+            });
+          }
+        }
+        effects.push(
+          `Subtract ${receivedQty} from on-hand and remove ${movs.length} stock movement(s)`
+        );
+      }
     }
     if (allocs.length > 0) {
       blockers.push({
@@ -382,27 +466,7 @@ async function buildLineImpact(
       });
     }
 
-    qtyToReverse = receivedQty;
-    if (lot.consumableId) {
-      const [cons] = await db
-        .select({ id: consumables.id, currentQty: consumables.currentQty })
-        .from(consumables)
-        .where(eq(consumables.id, lot.consumableId))
-        .limit(1);
-      if (cons && cons.currentQty < receivedQty) {
-        blockers.push({
-          lotId: lot.id,
-          itemName: lot.itemName,
-          code: "insufficient_on_hand",
-          message: `On-hand qty (${cons.currentQty}) is less than received qty (${receivedQty}) for "${lot.itemName}" — cannot reverse without going negative.`,
-        });
-      }
-    }
-
     movementsToRemove = movs.length;
-    effects.push(
-      `Subtract ${receivedQty} from on-hand and remove ${movs.length} stock movement(s)`
-    );
   }
 
   effects.push(`Delete purchase lot ${lot.lotCode}`);
@@ -415,6 +479,7 @@ async function buildLineImpact(
       itemType: lot.itemType as "consumable" | "asset",
       status,
       projectId: lot.projectId ?? null,
+      projectName: lot.projectName ?? null,
       effects,
       qtyToReverse,
       assetsToDelete,
@@ -422,6 +487,7 @@ async function buildLineImpact(
       expensesToRemove,
     },
     blockers,
+    warnings,
   };
 }
 
@@ -446,13 +512,14 @@ export async function computePoDeleteImpact(
   const warnings: string[] = [];
 
   for (const lot of lots) {
-    const { line, blockers: lineBlockers } = await buildLineImpact(
-      lot,
-      trimmed,
-      session
-    );
+    const {
+      line,
+      blockers: lineBlockers,
+      warnings: lineWarnings,
+    } = await buildLineImpact(lot, trimmed, session);
     lines.push(line);
     blockers.push(...lineBlockers);
+    warnings.push(...lineWarnings);
   }
 
   const disbursement = await findActivePoDisbursement(trimmed, tenantId);
@@ -510,10 +577,30 @@ async function revertLine(
           .delete(projectExpenseLines)
           .where(eq(projectExpenseLines.id, exp.id));
       }
+      const netOnHand = signedOnHandQty(movs);
+      if (netOnHand > 0 && lot.consumableId) {
+        const [cons] = await db
+          .select()
+          .from(consumables)
+          .where(eq(consumables.id, lot.consumableId))
+          .for("update")
+          .limit(1);
+        if (cons) {
+          const next = cons.currentQty - netOnHand;
+          if (next < 0) {
+            throw new ConflictError(
+              `Cannot reverse "${lot.itemName}": on-hand would go negative.`
+            );
+          }
+          await db
+            .update(consumables)
+            .set({ currentQty: next, updatedAt: new Date() })
+            .where(eq(consumables.id, lot.consumableId));
+        }
+      }
       if (movIds.length > 0) {
         await db.delete(stockMovements).where(inArray(stockMovements.id, movIds));
       }
-      // Net on-hand already flat — do not adjust currentQty.
     } else {
       if (lot.consumableId && receivedQty > 0) {
         const [cons] = await db
