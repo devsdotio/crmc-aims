@@ -65,9 +65,9 @@ export class ConsumableController {
 
   async update(request: NextRequest | Request, id: string) {
     try {
-      await requireAssetOperator();
+      const session = await requireAssetOperator();
       const body = await request.json();
-      return ok(await this.service.update(id, body));
+      return ok(await this.service.update(id, body, session.actor.tenantId));
     } catch (error) {
       return handleError(error);
     }

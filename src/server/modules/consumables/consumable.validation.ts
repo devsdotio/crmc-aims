@@ -50,7 +50,21 @@ export const createConsumableSchema = z
     category: consumableCategorySchema,
     classification: consumableClassificationSchema,
     unit: z.string().trim().min(1).max(40),
-    currentQty: z.number().int().min(0).optional().default(0),
+    currentQty: z
+      .union([z.number(), z.string()])
+      .optional()
+      .transform((value, ctx) => {
+        if (value === undefined || value === "") return 0;
+        const n = typeof value === "number" ? value : Number(value);
+        if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Opening quantity must be a whole number of 0 or more.",
+          });
+          return z.NEVER;
+        }
+        return n;
+      }),
     minThreshold: z.number().int().min(0).optional().default(0),
     location: z.string().trim().min(1).max(120),
     supplier: z.string().trim().max(255).optional(),

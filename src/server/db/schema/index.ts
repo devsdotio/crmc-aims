@@ -20,6 +20,8 @@ export * from "./purchase-order-departments";
 export * from "./audit-logs";
 export * from "./dashboard-snapshots";
 export * from "./vouchers";
+export * from "./voucher-departments";
 export * from "./petty-cash";
+export * from "./petty-cash-departments";
 export * from "./tenants";
 export * from "./project-progress-indicators";

@@ -257,7 +257,13 @@ export class UserService {
     rawQuery: unknown
   ): Promise<ProfileDTO[]> {
     const filters: ListUsersFilters = listUsersQuerySchema.parse(rawQuery ?? {});
-    const rows = await this.profileRepository.list(filters);
+    const scopedFilters: ListUsersFilters = { ...filters };
+    if (actor.role !== "superadmin") {
+      scopedFilters.tenantId = actor.tenantId;
+    } else if (!filters.tenantId && actor.tenantId && !actor.isCrossTenant) {
+      scopedFilters.tenantId = actor.tenantId;
+    }
+    const rows = await this.profileRepository.list(scopedFilters);
 
     return rows
       .filter((row) => {

@@ -412,8 +412,7 @@ export function FileNewPODialog({
       Boolean(generalPurpose.trim()) ||
       Boolean(generalNotes.trim()) ||
       Boolean(targetDepartmentId.trim() && targetDepartmentId !== (me?.departmentId || "")) ||
-      (destinationKind === "project" &&
-        targetDepartmentIds.some((id) => id !== (me?.departmentId || ""))) ||
+      targetDepartmentIds.some((id) => id !== (me?.departmentId || "")) ||
       items.some((i) => Boolean(i.name.trim()) || Boolean(i.consumableId) || Boolean(i.assetId));
 
     if (hasData) {
@@ -926,13 +925,8 @@ export function FileNewPODialog({
       setErrorMessage("Requested By is required.");
       return false;
     }
-    if (destinationKind === "project") {
-      if (targetDepartmentIds.length < 1) {
-        setErrorMessage("Select at least one target department.");
-        return false;
-      }
-    } else if (!targetDepartmentId.trim()) {
-      setErrorMessage("Target department is required.");
+    if (targetDepartmentIds.length < 1) {
+      setErrorMessage("Select at least one target department.");
       return false;
     }
     if (!generalPurpose.trim()) {
@@ -1052,17 +1046,16 @@ export function FileNewPODialog({
       const masterSupplierId =
         uniqueSuppliers.length === 1 ? items[0]?.supplierId : undefined;
 
-      const selectedDepartmentIds =
-        destinationKind === "project"
-          ? targetDepartmentIds
-          : targetDepartmentId
-            ? [targetDepartmentId]
-            : [];
+      const selectedDepartmentIds = targetDepartmentIds;
       const selectedDepartments = selectedDepartmentIds
         .map((id) => departments.find((d) => d.id === id))
         .filter((d): d is NonNullable<typeof d> => Boolean(d));
       const primaryDepartment = selectedDepartments[0];
       const departmentName = primaryDepartment?.name?.trim() || "";
+      const departmentLabel = selectedDepartments
+        .map((d) => d.name.trim())
+        .filter(Boolean)
+        .join(", ");
       if (!departmentName || selectedDepartments.length < 1) {
         setErrorMessage("Please select a valid target department.");
         return;
@@ -1070,8 +1063,8 @@ export function FileNewPODialog({
 
       const combinedPurpose =
         destinationKind === "project" && selectedProjectObj
-          ? `[Project: ${selectedProjectObj.projectCode || selectedProjectObj.name}] [${departmentName}] ${generalPurpose.trim()}`
-          : `[${departmentName}] ${generalPurpose.trim()}`;
+          ? `[Project: ${selectedProjectObj.projectCode || selectedProjectObj.name}] [${departmentLabel}] ${generalPurpose.trim()}`
+          : `[${departmentLabel}] ${generalPurpose.trim()}`;
 
       await createPOMutation.mutateAsync({
         poNumber: poNumberMode === "manual" ? customPoNumber.trim() : undefined,
@@ -1081,10 +1074,7 @@ export function FileNewPODialog({
         supplierName: masterSupplierName,
         departmentId: primaryDepartment.id,
         departmentName,
-        departmentIds:
-          destinationKind === "project"
-            ? selectedDepartments.map((d) => d.id)
-            : undefined,
+        departmentIds: selectedDepartments.map((d) => d.id),
         projectId: destinationKind === "project" ? targetProjectId : undefined,
         projectName: destinationKind === "project" ? (selectedProjectObj?.name || undefined) : undefined,
         purpose: combinedPurpose,
@@ -1704,7 +1694,7 @@ export function FileNewPODialog({
                     </p>
                   </div>
 
-                  {/* Target Department — multi for project POs, single otherwise */}
+                  {/* Target departments — one or more for every PO type */}
                   <div className="space-y-1">
                     <label className="font-semibold text-text flex items-center justify-between">
                       <span className="flex items-center gap-1">
@@ -1712,87 +1702,55 @@ export function FileNewPODialog({
                         <span>
                           {destinationKind === "project"
                             ? "Sponsoring Departments"
-                            : "Target Department"}
+                            : "Target Departments"}
                         </span>
                       </span>
                       <span className="text-[10px] text-rose-500 font-bold">* Required</span>
                     </label>
-                    {destinationKind === "project" ? (
-                      <>
-                        <MultiSelectDropdown
-                          label="Departments"
-                          icon={School}
-                          variant="form"
-                          searchable
-                          selectedIds={targetDepartmentIds}
-                          onToggle={(id) => {
-                            setTargetDepartmentIds((prev) => {
-                              const next = prev.includes(id)
-                                ? prev.filter((x) => x !== id)
-                                : [...prev, id];
-                              setTargetDepartmentId(next[0] || "");
-                              return next;
-                            });
-                          }}
-                          options={departmentOptions.map((o) => ({
-                            id: o.value,
-                            label: o.label,
-                          }))}
-                          placeholder={
-                            departmentsLoading
-                              ? "Loading departments…"
-                              : departmentsError
-                                ? "Failed to load departments"
-                                : "-- Choose one or more departments --"
-                          }
-                          emptyMessage={
-                            departmentsError
-                              ? "Failed to load departments"
-                              : "No departments found"
-                          }
-                          disabled={departmentsLoading}
-                          aria-required="true"
-                          triggerClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
-                        />
-                        {targetDepartmentIds.length > 0 && (
-                          <p className="text-[10px] text-text-secondary">
-                            Primary for vouchers / purpose:{" "}
-                            <span className="font-semibold text-text">
-                              {departments.find((d) => d.id === targetDepartmentIds[0])
-                                ?.name || "—"}
-                            </span>{" "}
-                            (first selected)
-                          </p>
-                        )}
-                      </>
-                    ) : (
-                      <SearchableSelect
-                        value={targetDepartmentId}
-                        onValueChange={setTargetDepartmentId}
-                        options={departmentOptions}
-                        clearLabel={
-                          departmentsLoading
-                            ? "Loading departments…"
-                            : departmentsError
-                              ? "Failed to load departments"
-                              : "-- Choose Department --"
-                        }
-                        placeholder={
-                          departmentsLoading
-                            ? "Loading departments…"
-                            : departmentsError
-                              ? "Failed to load departments"
-                              : "-- Choose Department --"
-                        }
-                        emptyMessage={
-                          departmentsError
+                    <MultiSelectDropdown
+                      label="Departments"
+                      icon={School}
+                      variant="form"
+                      searchable
+                      selectedIds={targetDepartmentIds}
+                      onToggle={(id) => {
+                        setTargetDepartmentIds((prev) => {
+                          const next = prev.includes(id)
+                            ? prev.filter((x) => x !== id)
+                            : [...prev, id];
+                          setTargetDepartmentId(next[0] || "");
+                          return next;
+                        });
+                      }}
+                      options={departmentOptions.map((o) => ({
+                        id: o.value,
+                        label: o.label,
+                      }))}
+                      placeholder={
+                        departmentsLoading
+                          ? "Loading departments…"
+                          : departmentsError
                             ? "Failed to load departments"
-                            : "No departments found"
-                        }
-                        disabled={departmentsLoading}
-                        aria-required="true"
-                        inputClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
-                      />
+                            : "-- Choose one or more departments --"
+                      }
+                      emptyMessage={
+                        departmentsError
+                          ? "Failed to load departments"
+                          : "No departments found"
+                      }
+                      disabled={departmentsLoading}
+                      aria-required="true"
+                      triggerClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                    />
+                    {targetDepartmentIds.length > 0 && (
+                      <p className="text-[10px] text-text-secondary">
+                        Primary for vouchers / purpose:{" "}
+                        <span className="font-semibold text-text">
+                          {departments.find((d) => d.id === targetDepartmentIds[0])
+                            ?.name || "—"}
+                        </span>{" "}
+                        (first selected)
+                      </p>
                     )}
                     {departmentsError && (
                       <button
@@ -2509,19 +2467,16 @@ export function FileNewPODialog({
                       <span className="text-[10px] text-text-secondary font-medium block">
                         {destinationKind === "project"
                           ? "Sponsoring Departments"
-                          : "Target Department"}
+                          : "Target Departments"}
                       </span>
                       <span className="font-bold text-text">
-                        {destinationKind === "project"
-                          ? targetDepartmentIds
-                              .map(
-                                (id) =>
-                                  departments.find((d) => d.id === id)?.name
-                              )
-                              .filter(Boolean)
-                              .join(", ") || "—"
-                          : departments.find((d) => d.id === targetDepartmentId)
-                              ?.name || "—"}
+                        {targetDepartmentIds
+                          .map(
+                            (id) =>
+                              departments.find((d) => d.id === id)?.name
+                          )
+                          .filter(Boolean)
+                          .join(", ") || "—"}
                       </span>
                     </div>
 

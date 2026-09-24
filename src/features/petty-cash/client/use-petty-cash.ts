@@ -44,6 +44,8 @@ export function usePettyCashRealtimeSync(enabled: boolean = true, tenantId?: str
       }, 200);
     };
 
+    let hasSubscribedOnce = false;
+
     const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
     const channel = supabase
       .channel(`petty-cash-realtime-sync${tenantId ? `-${tenantId}` : ""}`)
@@ -53,9 +55,12 @@ export function usePettyCashRealtimeSync(enabled: boolean = true, tenantId?: str
         () => triggerInvalidation()
       )
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          triggerInvalidation();
+        if (status !== "SUBSCRIBED") return;
+        if (!hasSubscribedOnce) {
+          hasSubscribedOnce = true;
+          return;
         }
+        triggerInvalidation();
       });
 
     return () => {

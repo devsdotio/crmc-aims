@@ -17,10 +17,14 @@ export class PurchaseLotController {
       const actor = await requireActor();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
+      const consumableId = url.searchParams.get("consumableId") ?? undefined;
+      if (consumableId) {
+        await this.consumables.ensureOpeningLotIfMissing(consumableId, actor);
+      }
       return ok(
         await this.service.list(
           {
-            consumableId: url.searchParams.get("consumableId") ?? undefined,
+            consumableId,
             assetId: url.searchParams.get("assetId") ?? undefined,
             supplierId: url.searchParams.get("supplierId") ?? undefined,
             itemType:

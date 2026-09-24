@@ -61,7 +61,7 @@ export const createPurchaseOrderSchema = z
     supplierName: z.string().trim().optional(),
     departmentId: z.string().uuid().optional(),
     departmentName: z.string().trim().max(255).optional(),
-    /** Project POs only — sponsoring departments (first = primary). */
+    /** Sponsoring / requesting departments (first = primary). */
     departmentIds: z.array(z.string().uuid()).optional(),
     projectId: z.string().uuid().optional(),
     projectName: z.string().trim().max(255).optional(),
@@ -100,15 +100,6 @@ export const createPurchaseOrderSchema = z
         }
       });
       return;
-    }
-
-    if (data.departmentIds && data.departmentIds.length > 0) {
-      ctx.addIssue({
-        code: "custom",
-        message:
-          "Multiple departments are only allowed on project purchase orders.",
-        path: ["departmentIds"],
-      });
     }
   });
 

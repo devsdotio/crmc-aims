@@ -29,7 +29,7 @@ export type PurchaseLotDTO = {
   purpose?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
-  /** Sponsoring departments for project POs (primary = departmentId). */
+  /** Sponsoring / requesting departments (primary = departmentId). */
   departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;
@@ -86,6 +86,8 @@ export type CreatePurchaseLotInput = {
   status?: PurchaseOrderStatus;
   recordedByUserId: string;
   recordedByName: string;
+  /** Required for tenant-scoped lot lists; falls back to request tenant context. */
+  tenantId?: string | null;
 };
 
 export type CreatePurchaseOrderItemInput = {

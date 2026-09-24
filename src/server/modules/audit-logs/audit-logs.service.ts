@@ -142,6 +142,7 @@ export class AuditLogService {
     actorUserId?: string | null;
     notes?: string | null;
     metadata?: Record<string, unknown> | null;
+    tenantId?: string | null;
   }, session?: DbSession): Promise<AuditLogRow> {
     return this.repo.create({
       entityType: data.entityType,
@@ -151,6 +152,7 @@ export class AuditLogService {
       actorUserId: data.actorUserId ?? null,
       notes: data.notes ?? null,
       metadata: compactAuditMetadata(data.metadata),
+      tenantId: data.tenantId ?? undefined,
     }, session);
   }
 }

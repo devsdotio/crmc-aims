@@ -26,7 +26,10 @@ export function TopRankedBarCard({
 }: TopRankedBarCardProps) {
   const { data: fetchedCategories, isLoading: queryLoading } = useTopCategoriesQuery({
     limit: 5,
-    enabled: !categoryDistribution || categoryDistribution.length === 0,
+    // Wait for the parent snapshot so we do not fire /api/dashboard/top-categories
+    // in parallel with /api/dashboard (same top-5 series). Fallback only if the
+    // snapshot finished empty.
+    enabled: !loading && (!categoryDistribution || categoryDistribution.length === 0),
   });
 
   const activeCategories =

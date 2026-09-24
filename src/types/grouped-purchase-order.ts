@@ -128,7 +128,7 @@ export function groupLotsByPO(
       }
     }
 
-    // Union sponsoring departments for project POs (multi-dept)
+    // Union sponsoring / requesting departments (multi-dept POs)
     const deptMap = new Map<string, string>();
     for (const li of lineItems) {
       if (li.departments?.length) {

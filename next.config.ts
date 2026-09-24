@@ -1,14 +1,13 @@
 import type { NextConfig } from "next";
-import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  agentRules: false,
 };
 
 export default nextConfig;
 
-// Bindings emulation for `next dev` only — must not run during CI/`next build`
-// or Hyperdrive will require CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_*.
-if (process.env.NODE_ENV === "development") {
-  initOpenNextCloudflareForDev();
-}
+// Do not call initOpenNextCloudflareForDev() during `next dev`.
+// Wrangler would emulate Hyperdrive and throw unless
+// CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE is set.
+// Local Next uses DATABASE_URL via src/server/db/index.ts.
+// Production Workers still bind Hyperdrive from wrangler.jsonc.

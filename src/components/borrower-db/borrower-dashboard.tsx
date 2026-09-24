@@ -312,7 +312,6 @@ export function BorrowerDashboard() {
     refetch,
   } = useDashboardSnapshotQuery({
     refetchInterval: false,
-    staleTime: 0,
   });
   const {
     data: custodyRows,

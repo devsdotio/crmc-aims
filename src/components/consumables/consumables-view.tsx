@@ -214,11 +214,11 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
           category: itemData.category || "",
           classification: itemData.classification || lockedClassification || "supply",
           unit: itemData.unit || (lockedClassification === "material" ? "pcs" : "reams"),
-          currentQty: itemData.currentQty ?? 0,
+          currentQty: Number(itemData.currentQty) || 0,
           minThreshold: itemData.minThreshold ?? 15,
           location: itemData.location || "Supply Storage",
           supplier: itemData.supplier || undefined,
-          supplierId: itemData.supplierId ?? undefined,
+          supplierId: itemData.supplierId || undefined,
           unitCost: itemData.unitCost,
           notes: itemData.notes,
         });

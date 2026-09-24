@@ -13,14 +13,28 @@ const globalForDb = globalThis as unknown as {
   __crmcPg?: ReturnType<typeof postgres>;
 };
 
+function isCloudflareWorkersRuntime(): boolean {
+  try {
+    return globalThis.navigator?.userAgent === "Cloudflare-Workers";
+  } catch {
+    return false;
+  }
+}
+
 function getWorkersEnv(): { HYPERDRIVE?: HyperdriveBinding } | null {
+  if (!isCloudflareWorkersRuntime()) {
+    // Node (`next dev`, scripts, next build) must not use Hyperdrive.
+    return null;
+  }
+
   try {
     return getCloudflareContext().env as { HYPERDRIVE?: HyperdriveBinding };
   } catch {
-    // Outside the Workers request context (local `next dev`, scripts, build).
     return null;
   }
 }
+
+const dbByExecutionCtx = new WeakMap<object, Database>();
 
 function createHyperdriveDb(connectionString: string): Database {
   // Hyperdrive pools upstream. Never reuse this client across requests —
@@ -32,6 +46,22 @@ function createHyperdriveDb(connectionString: string): Database {
     connect_timeout: 30,
   });
   return drizzle(client, { schema });
+}
+
+function getRequestScopedHyperdriveDb(connectionString: string): Database {
+  try {
+    const { ctx } = getCloudflareContext();
+    if (ctx) {
+      const existing = dbByExecutionCtx.get(ctx);
+      if (existing) return existing;
+      const created = createHyperdriveDb(connectionString);
+      dbByExecutionCtx.set(ctx, created);
+      return created;
+    }
+  } catch {
+    // Outside a Worker request (tests/scripts).
+  }
+  return createHyperdriveDb(connectionString);
 }
 
 /**
@@ -53,8 +83,8 @@ export function getDb(): Database {
       );
     }
 
-    // Fresh client per getDb() call — request-safe on Workers.
-    return createHyperdriveDb(connectionString);
+    // One client per Worker request — still request-scoped, not process-global.
+    return getRequestScopedHyperdriveDb(connectionString);
   }
 
   if (globalForDb.__crmcDb) {

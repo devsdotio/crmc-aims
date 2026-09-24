@@ -2,6 +2,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   assetLifecycleEvents,
   type AssetLifecycleEventRow,
@@ -24,7 +25,15 @@ export class AssetLifecycleRepository {
     session?: DbSession
   ): Promise<AssetLifecycleEventRow> {
     const db = this.db(session);
-    const [row] = await db.insert(assetLifecycleEvents).values(event).returning();
+    const tenantId =
+      event.tenantId ?? getTenantContext()?.tenantId;
+    const [row] = await db
+      .insert(assetLifecycleEvents)
+      .values({
+        ...event,
+        ...(tenantId ? { tenantId } : {}),
+      })
+      .returning();
 
     if (!row) {
       throw new Error("Failed to append lifecycle event: no row returned.");
@@ -36,24 +45,35 @@ export class AssetLifecycleRepository {
   async findByAssetId(
     assetId: string,
     limit = 100,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetLifecycleEventRow[]> {
     const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(assetLifecycleEvents.assetId, assetId)];
+    if (resolvedTenantId) {
+      conditions.push(eq(assetLifecycleEvents.tenantId, resolvedTenantId));
+    }
     return db
       .select()
       .from(assetLifecycleEvents)
-      .where(eq(assetLifecycleEvents.assetId, assetId))
+      .where(and(...conditions))
       .orderBy(desc(assetLifecycleEvents.createdAt))
       .limit(limit);
   }
 
   async findMany(
     filters: ListLifecycleEventsFilters = {},
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ): Promise<AssetLifecycleEventRow[]> {
     const db = this.db(session);
     const limit = Math.min(filters.limit ?? 100, 500);
     const conditions = [];
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    if (resolvedTenantId) {
+      conditions.push(eq(assetLifecycleEvents.tenantId, resolvedTenantId));
+    }
 
     if (filters.assetId) {
       conditions.push(eq(assetLifecycleEvents.assetId, filters.assetId));
