@@ -92,6 +92,7 @@ export type PoDeleteLineEffect = {
   itemType: PurchaseLotItemType;
   status: PurchaseOrderStatus;
   projectId: string | null;
+  projectName?: string | null;
   effects: string[];
   qtyToReverse?: number;
   assetsToDelete?: PoDeleteAssetUnit[];
