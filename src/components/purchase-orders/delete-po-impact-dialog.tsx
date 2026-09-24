@@ -64,7 +64,8 @@ function lineEffectParts(line: PoDeleteLineEffect): EffectPart[] {
   if (
     line.projectId &&
     line.status === "delivered" &&
-    line.itemType === "consumable"
+    line.itemType === "consumable" &&
+    !(line.qtyToReverse != null && line.qtyToReverse > 0)
   ) {
     parts.push({ label: "on-hand unchanged", tone: "info" });
   }
@@ -333,7 +334,9 @@ export function DeletePoImpactDialog({
                 <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-2.5 py-2">
                   <p className="text-[11px] leading-snug">
                     <span className="font-semibold text-destructive">
-                      This deletion will remove:
+                      {impact.canDelete
+                        ? "This deletion will remove:"
+                        : "If allowed, this would remove:"}
                     </span>{" "}
                     <span className="text-text">{overview}</span>
                   </p>
@@ -346,8 +349,15 @@ export function DeletePoImpactDialog({
                     key={line.lotId}
                     className="flex items-center gap-2 px-2.5 py-1.5 text-[11px]"
                   >
-                    <span className="font-semibold text-text truncate min-w-0 flex-1">
-                      {line.itemName}
+                    <span className="min-w-0 flex-1">
+                      <span className="font-semibold text-text truncate block">
+                        {line.itemName}
+                      </span>
+                      <span className="text-[10px] text-text-secondary truncate block">
+                        {line.lotCode}
+                        {" · "}
+                        {line.projectName?.trim() || "Warehouse"}
+                      </span>
                     </span>
                     <LineEffects line={line} />
                   </li>
