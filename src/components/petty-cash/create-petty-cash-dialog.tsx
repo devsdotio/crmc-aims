@@ -41,10 +41,11 @@ import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
 import { cn } from "@/lib/utils";
 import { filterMoneyInput } from "@/lib/numeric-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 import {
   serializeParticulars,
   sumParticularAmounts,
-  resolveDepartmentIdFromPo,
+  resolveDepartmentsFromPo,
   particularsFromPurchaseOrderLines,
   type ParticularLineItem,
 } from "@/lib/voucher-particulars";
@@ -77,6 +78,7 @@ export function CreatePettyCashDialog({
   const [supplierName, setSupplierName] = useState("");
   const [purchaseOrderNumber, setPurchaseOrderNumber] = useState("");
   const [departmentId, setDepartmentId] = useState<string | null>(null);
+  const [departmentIds, setDepartmentIds] = useState<string[]>([]);
   const [receiptNumber, setReceiptNumber] = useState("");
   const [purpose, setPurpose] = useState("");
   const [listItems, setListItems] = useState<ParticularLineItem[]>([
@@ -149,6 +151,7 @@ export function CreatePettyCashDialog({
       setSupplierName("");
       setPurchaseOrderNumber("");
       setDepartmentId(null);
+      setDepartmentIds([]);
       setReceiptNumber("");
       setPurpose("");
       setListItems([{ description: "", amount: "" }]);
@@ -214,12 +217,13 @@ export function CreatePettyCashDialog({
     setAmount(lineTotal > 0 ? lineTotal.toFixed(2) : fallbackAmount);
     setPurpose(`Petty cash disbursement for Purchase Order #${po.poNumber}`);
 
-    const resolvedDeptId = resolveDepartmentIdFromPo(
+    const resolvedDepts = resolveDepartmentsFromPo(
       [po.representative, ...po.lineItems],
       departments,
       users
     );
-    setDepartmentId(resolvedDeptId);
+    setDepartmentIds(resolvedDepts.map((d) => d.id));
+    setDepartmentId(resolvedDepts[0]?.id ?? null);
   };
 
   const handleSelectPO = (po: GroupedPurchaseOrder) => {
@@ -232,13 +236,18 @@ export function CreatePettyCashDialog({
     if (departments.length === 0) return;
     const po = groupedPOs.find((p) => p.poNumber === purchaseOrderNumber);
     if (!po) return;
-    const resolvedDeptId = resolveDepartmentIdFromPo(
+    const resolvedDepts = resolveDepartmentsFromPo(
       [po.representative, ...po.lineItems],
       departments,
       users
     );
-    if (resolvedDeptId && resolvedDeptId !== departmentId) {
-      setDepartmentId(resolvedDeptId);
+    const nextIds = resolvedDepts.map((d) => d.id);
+    const same =
+      nextIds.length === departmentIds.length &&
+      nextIds.every((id, i) => id === departmentIds[i]);
+    if (!same) {
+      setDepartmentIds(nextIds);
+      setDepartmentId(nextIds[0] ?? null);
     }
   }, [
     isOpen,
@@ -247,7 +256,7 @@ export function CreatePettyCashDialog({
     departments,
     users,
     groupedPOs,
-    departmentId,
+    departmentIds,
   ]);
 
   const handleClearPO = () => {
@@ -259,6 +268,7 @@ export function CreatePettyCashDialog({
     setSupplierId(null);
     setSupplierName("");
     setDepartmentId(null);
+    setDepartmentIds([]);
   };
 
   const isPoLinked = Boolean(purchaseOrderNumber) && !isLegacy;
@@ -337,7 +347,10 @@ export function CreatePettyCashDialog({
 
     const finalParticulars = serializeParticulars(listItems);
 
-    const selectedDept = departments.find((d) => d.id === departmentId);
+    const selectedDepts = departmentIds
+      .map((id) => departments.find((d) => d.id === id))
+      .filter((d): d is NonNullable<typeof d> => Boolean(d));
+    const selectedDept = selectedDepts[0];
 
     try {
       const created = await createMutation.mutateAsync({
@@ -350,8 +363,12 @@ export function CreatePettyCashDialog({
         supplierId: supplierId || null,
         supplierName: supplierName.trim() || null,
         purchaseOrderNumber: purchaseOrderNumber.trim() || null,
-        departmentId: departmentId || null,
-        departmentName: selectedDept?.name || null,
+        departmentId: selectedDept?.id || departmentId || null,
+        departmentName:
+          selectedDepts.map((d) => d.name).join(", ") ||
+          selectedDept?.name ||
+          null,
+        departmentIds: selectedDepts.map((d) => d.id),
         receiptNumber: receiptNumber.trim() || null,
         purpose: purpose.trim(),
         particulars: finalParticulars,
@@ -692,28 +709,51 @@ export function CreatePettyCashDialog({
                         </span>
                       )}
                     </div>
-                    <SearchableSelect
-                      value={departmentId || ""}
-                      onValueChange={(next) => setDepartmentId(next || null)}
-                      options={departmentOptions}
+                    <MultiSelectDropdown
+                      label="Departments"
+                      icon={Building2}
+                      variant="form"
+                      searchable
+                      selectedIds={departmentIds}
+                      onToggle={(id) => {
+                        if (isPoLinked) return;
+                        setDepartmentIds((prev) => {
+                          const next = prev.includes(id)
+                            ? prev.filter((x) => x !== id)
+                            : [...prev, id];
+                          setDepartmentId(next[0] || null);
+                          return next;
+                        });
+                      }}
+                      options={departmentOptions.map((o) => ({
+                        id: o.value,
+                        label: o.label,
+                      }))}
                       disabled={isPoLinked}
-                      placeholder="Type to find a department…"
-                      clearLabel={
+                      placeholder={
                         isPoLinked
-                          ? "No department on linked PO"
-                          : "None / General Custodian Fund"
+                          ? departmentIds.length > 0
+                            ? "From linked PO"
+                            : "No department on linked PO"
+                          : "Type to find one or more departments…"
                       }
                       emptyMessage="No departments available"
-                      inputClassName={cn(
+                      triggerClassName={cn(
                         "text-sm py-2",
                         isPoLinked && "opacity-75 bg-bg-subtle"
                       )}
                     />
                     {isPoLinked ? (
                       <p className="mt-1 text-[11px] text-text-secondary">
-                        Department is taken from the linked purchase order and cannot be changed until the PO link is cleared.
+                        {departmentIds.length > 1
+                          ? "All sponsoring departments from the linked purchase order."
+                          : "Department is taken from the linked purchase order and cannot be changed until the PO link is cleared."}
                       </p>
-                    ) : null}
+                    ) : (
+                      <p className="mt-1 text-[11px] text-text-secondary">
+                        First selected department is primary.
+                      </p>
+                    )}
                   </div>
 
                   {/* Purpose (paragraph) + Particulars (itemized with costs) */}

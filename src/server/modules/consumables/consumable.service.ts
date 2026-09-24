@@ -109,7 +109,8 @@ export class ConsumableService {
   private async resolveIssueDestination(
     departmentId: string | undefined,
     projectId: string | undefined,
-    tx?: DbSession
+    tx?: DbSession,
+    tenantId?: string
   ): Promise<{
     departmentId: string | null;
     projectId: string | null;
@@ -124,7 +125,7 @@ export class ConsumableService {
       );
     }
     if (projectId) {
-      const project = await this.projects.findById(projectId, tx);
+      const project = await this.projects.findById(projectId, tx, tenantId);
       if (!project) throw new NotFoundError("Project", projectId);
       if (project.status === "completed") {
         throw new ConflictError(
@@ -139,7 +140,7 @@ export class ConsumableService {
       };
     }
     if (departmentId) {
-      const dept = await this.departments.findById(departmentId, tx);
+      const dept = await this.departments.findById(departmentId, tx, tenantId);
       if (!dept) throw new NotFoundError("Department", departmentId);
       return {
         departmentId,
@@ -162,8 +163,16 @@ export class ConsumableService {
     }
   }
 
-  private async resolveConsumableCategoryName(rawName: string): Promise<string> {
-    const found = await this.taxonomy.findByTypeAndName("consumable", rawName);
+  private async resolveConsumableCategoryName(
+    rawName: string,
+    tenantId?: string
+  ): Promise<string> {
+    const found = await this.taxonomy.findByTypeAndName(
+      "consumable",
+      rawName,
+      undefined,
+      tenantId
+    );
     if (!found) {
       throw new BadRequestError(
         `Unknown consumable category “${rawName}”. Add it under Settings → Categories first.`
@@ -234,7 +243,10 @@ export class ConsumableService {
   async create(rawInput: unknown, actor: ActorContext): Promise<ConsumableDTO> {
     const input = createConsumableSchema.parse(rawInput);
     const itemCode = input.itemCode?.trim() || generateOperationalCode("CON");
-    const categoryName = await this.resolveConsumableCategoryName(input.category);
+    const categoryName = await this.resolveConsumableCategoryName(
+      input.category,
+      actor.tenantId
+    );
 
     const exists = await this.repo.findByCode(itemCode, undefined, actor.tenantId);
     if (exists) {
@@ -278,8 +290,8 @@ export class ConsumableService {
       return toDTO(row);
     }
 
-    // Opening qty > 0 must create the item, FIFO lot, and intake movement atomically.
-    // Never persist the consumable if the opening-balance lot fails.
+    // Opening qty > 0 must create a costed lot. Persist the SKU at qty 0 first so a
+    // failed lot never leaves on-hand stock that cannot be issued.
     const openingUnitCost =
       typeof input.unitCost === "number"
         ? input.unitCost
@@ -294,50 +306,37 @@ export class ConsumableService {
       const row = await this.repo.create(
         {
           ...baseRow,
-          currentQty: input.currentQty,
-          lastRestocked: new Date(),
+          currentQty: 0,
+          lastRestocked: null,
           history: [],
         },
         tx
       );
 
-      const lot = await this.purchaseLots.recordLot(
+      const lot = await this.recordOpeningLot(
         {
-          itemType: "consumable",
-          consumableId: row.id,
-          itemCode: row.itemCode,
-          itemName: row.name,
-          supplierId: input.supplierId ?? null,
-          supplierName: input.supplier ?? null,
+          row,
           quantity: input.currentQty,
           unitCost: openingUnitCost.toFixed(2),
-          purchasedOn: todayDateString(),
-          reference: "Initial stock",
-          purpose: "Opening balance",
+          supplierId: input.supplierId ?? null,
+          supplierName: input.supplier ?? null,
           notes: input.notes ?? "Opening balance on item create",
-          recordedByUserId: actor.userId,
-          recordedByName: actor.displayName,
-          status: "delivered",
+          actor,
         },
         tx
       );
 
-      if (!lot?.id) {
-        throw new BadRequestError(
-          "Failed to record opening-balance lot for initial stock."
-        );
-      }
-
-      let updated = row;
-      if (lot.supplierName) {
-        const next = await this.repo.update(
-          row.id,
-          { supplier: lot.supplierName },
-          tx
-        );
-        if (!next) throw new NotFoundError("Consumable", row.id);
-        updated = next;
-      }
+      const next = await this.repo.update(
+        row.id,
+        {
+          currentQty: input.currentQty,
+          lastRestocked: new Date(),
+          ...(lot.supplierName ? { supplier: lot.supplierName } : {}),
+        },
+        tx,
+        actor.tenantId
+      );
+      if (!next) throw new NotFoundError("Consumable", row.id);
 
       await this.movements.record(
         {
@@ -362,14 +361,14 @@ export class ConsumableService {
       await this.auditLogs.log(
         {
           entityType: AUDIT_ENTITY.consumable,
-          entityId: updated.itemCode,
+          entityId: next.itemCode,
           action: "created",
           actorName: actor.displayName,
           actorUserId: actor.userId,
-          notes: `Created consumable ${updated.itemCode} with opening stock (${input.currentQty}).`,
+          notes: `Created consumable ${next.itemCode} with opening stock (${input.currentQty}).`,
           metadata: {
-            itemCode: updated.itemCode,
-            category: updated.category,
+            itemCode: next.itemCode,
+            category: next.category,
             openingQty: input.currentQty,
             lotCode: lot.lotCode,
             lotId: lot.id,
@@ -378,7 +377,87 @@ export class ConsumableService {
         tx
       );
 
-      return toDTO(updated);
+      return toDTO(next);
+    });
+  }
+
+  /**
+   * Costed opening-balance lot for on-hand qty that has no purchase lot yet.
+   * Used on manual create and to repair older items registered with stock only.
+   */
+  private async recordOpeningLot(
+    input: {
+      row: ConsumableRow;
+      quantity: number;
+      unitCost: string;
+      supplierId?: string | null;
+      supplierName?: string | null;
+      notes?: string | null;
+      actor: ActorContext;
+    },
+    tx?: DbSession
+  ): Promise<PurchaseLotDTO> {
+    const lot = await this.purchaseLots.recordLot(
+      {
+        tenantId: input.actor.tenantId,
+        itemType: "consumable",
+        consumableId: input.row.id,
+        itemCode: input.row.itemCode,
+        itemName: input.row.name,
+        supplierId: input.supplierId ?? null,
+        supplierName: input.supplierName ?? input.row.supplier ?? null,
+        quantity: input.quantity,
+        unitCost: input.unitCost,
+        purchasedOn: todayDateString(),
+        reference: "Initial stock",
+        purpose: "Opening balance",
+        notes: input.notes ?? "Opening balance on item create",
+        recordedByUserId: input.actor.userId,
+        recordedByName: input.actor.displayName,
+        status: "delivered",
+      },
+      tx
+    );
+
+    if (!lot?.id) {
+      throw new BadRequestError(
+        "Failed to record opening-balance lot for initial stock."
+      );
+    }
+
+    return lot;
+  }
+
+  /**
+   * If the item has on-hand qty but no lots, create an opening lot so issue /
+   * request release have a batch to draw from.
+   */
+  async ensureOpeningLotIfMissing(
+    consumableId: string,
+    actor: ActorContext
+  ): Promise<void> {
+    const id = consumableIdSchema.parse(consumableId);
+    const row = await this.repo.findById(id, undefined, actor.tenantId);
+    if (!row || row.currentQty <= 0) return;
+
+    const existing = await this.purchaseLots.list(
+      { consumableId: id, itemType: "consumable" },
+      actor.tenantId
+    );
+    if (existing.length > 0) return;
+
+    await withTransaction(async (tx) => {
+      await this.recordOpeningLot(
+        {
+          row,
+          quantity: row.currentQty,
+          unitCost: "0.00",
+          supplierName: row.supplier,
+          notes: "Backfilled opening lot for on-hand quantity",
+          actor,
+        },
+        tx
+      );
     });
   }
 
@@ -390,7 +469,10 @@ export class ConsumableService {
 
     let categoryName: string | undefined;
     if (input.category !== undefined) {
-      categoryName = await this.resolveConsumableCategoryName(input.category);
+      categoryName = await this.resolveConsumableCategoryName(
+        input.category,
+        actorTenantId
+      );
     }
 
     const updated = await this.repo.update(id, {
@@ -421,12 +503,13 @@ export class ConsumableService {
     const input = restockSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
       const purchasedOn = input.purchasedOn ?? todayDateString();
       const lot = await this.purchaseLots.recordLot(
         {
+          tenantId: actor.tenantId,
           itemType: "consumable",
           consumableId: existing.id,
           itemCode: existing.itemCode,
@@ -525,7 +608,7 @@ export class ConsumableService {
     return withTransaction(async (tx) => {
       // Resolve lot without consuming yet — then lock consumable stock first
       // so we never drain a lot when the stock item is short.
-      const preview = await this.purchaseLots.getByCode(parsed.code);
+      const preview = await this.purchaseLots.getByCode(parsed.code, actor.tenantId);
       if (preview.itemType !== "consumable") {
         throw new BadRequestError(
           "Only consumable purchase lots support quantity release via scan."
@@ -544,7 +627,8 @@ export class ConsumableService {
 
       const existing = await this.repo.findByIdForUpdate(
         preview.consumableId,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!existing) {
         throw new NotFoundError("Consumable", preview.consumableId);
@@ -565,13 +649,16 @@ export class ConsumableService {
       const dest = await this.resolveIssueDestination(
         input.departmentId,
         input.projectId,
-        tx
+        tx,
+        actor.tenantId
       );
 
       const { lot, allocation } = await this.purchaseLots.consumeFromLot(
         preview.lotCode,
         input.quantity,
-        tx
+        tx,
+        undefined,
+        actor.tenantId
       );
 
       const updated = await this.repo.update(
@@ -633,7 +720,7 @@ export class ConsumableService {
     const input = stockAdjustSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
       const next = existing.currentQty + input.quantityChange;
@@ -657,7 +744,8 @@ export class ConsumableService {
           const fifoAllocs = await this.purchaseLots.consumeFifo(
             existing.id,
             need,
-            tx
+            tx,
+            actor.tenantId
           );
           lotAllocations.push(...fifoAllocs);
         } else {
@@ -667,13 +755,15 @@ export class ConsumableService {
                   alloc.lotId,
                   alloc.quantity,
                   tx,
-                  existing.id
+                  existing.id,
+                  actor.tenantId
                 )
               : await this.purchaseLots.consumeFromLot(
                   alloc.lotCode!,
                   alloc.quantity,
                   tx,
-                  existing.id
+                  existing.id,
+                  actor.tenantId
                 );
             lotAllocations.push(result.allocation);
           }
@@ -683,13 +773,15 @@ export class ConsumableService {
           { lotId: input.attachLotId, lotCode: input.attachLotCode },
           input.quantityChange,
           tx,
-          existing.id
+          existing.id,
+          actor.tenantId
         );
         lotAllocations.push(result.allocation);
       } else {
         // Correction lot (found stock / uncosted correction)
         const lot = await this.purchaseLots.recordLot(
           {
+            tenantId: actor.tenantId,
             itemType: "consumable",
             consumableId: existing.id,
             itemCode: existing.itemCode,
@@ -772,7 +864,7 @@ export class ConsumableService {
     const input = issueConsumableSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
-      const existing = await this.repo.findByIdForUpdate(id, tx);
+      const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
       if (existing.currentQty < input.quantity) {
@@ -790,7 +882,8 @@ export class ConsumableService {
       const dest = await this.resolveIssueDestination(
         input.departmentId,
         input.projectId,
-        tx
+        tx,
+        actor.tenantId
       );
 
       if (!input.lotId && !input.lotCode) {
@@ -801,13 +894,15 @@ export class ConsumableService {
             input.lotId,
             input.quantity,
             tx,
-            existing.id
+            existing.id,
+            actor.tenantId
           )
         : await this.purchaseLots.consumeFromLot(
             input.lotCode!,
             input.quantity,
             tx,
-            existing.id
+            existing.id,
+            actor.tenantId
           );
       const allocations: LotCostAllocation[] = [result.allocation];
 
@@ -919,7 +1014,7 @@ export class ConsumableService {
     const id = consumableIdSchema.parse(rawId);
     return withTransaction(async (session) => {
       const db = session ?? getDb();
-      const existing = await this.repo.findByIdForUpdate(id, session);
+      const existing = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
       if (!existing) {
         throw new NotFoundError("Consumable", id);
       }

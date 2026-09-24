@@ -16,6 +16,7 @@ export type CreatePettyCashPayload = {
   supplierName?: string | null;
   departmentId?: string | null;
   departmentName?: string | null;
+  departmentIds?: string[];
   isLegacy?: boolean;
 };
 

@@ -100,8 +100,8 @@ export class ProjectExpenseService {
     private readonly movementRepo = new StockMovementRepository()
   ) {}
 
-  private async requireMutableProject(projectId: string) {
-    const project = await this.projects.findById(projectId);
+  private async requireMutableProject(projectId: string, tenantId?: string) {
+    const project = await this.projects.findById(projectId, undefined, tenantId);
     if (!project) throw new NotFoundError("Project", projectId);
     if (project.status === "completed") {
       throw new ConflictError(
@@ -114,11 +114,16 @@ export class ProjectExpenseService {
   /** Resolve an expense for a project; list fallback if by-id lookup misses. */
   private async requireExpenseForProject(
     projectId: string,
-    expenseId: string
+    expenseId: string,
+    tenantId?: string
   ): Promise<ProjectExpenseLineRow> {
-    let existing = await this.expenses.findById(expenseId);
+    let existing = await this.expenses.findById(expenseId, undefined, tenantId);
     if (!existing || existing.projectId !== projectId) {
-      const listed = await this.expenses.listByProject(projectId);
+      const listed = await this.expenses.listByProject(
+        projectId,
+        undefined,
+        tenantId
+      );
       existing =
         listed.find((row) => row.id === expenseId) ??
         listed.find(
@@ -132,11 +137,14 @@ export class ProjectExpenseService {
     return existing;
   }
 
-  async listForProject(rawProjectId: string): Promise<ProjectExpenseLineDTO[]> {
+  async listForProject(
+    rawProjectId: string,
+    tenantId?: string
+  ): Promise<ProjectExpenseLineDTO[]> {
     const projectId = projectIdSchema.parse(rawProjectId);
-    const project = await this.projects.findById(projectId);
+    const project = await this.projects.findById(projectId, undefined, tenantId);
     if (!project) throw new NotFoundError("Project", projectId);
-    const rows = await this.expenses.listByProject(projectId);
+    const rows = await this.expenses.listByProject(projectId, undefined, tenantId);
     return rows.map(toDTO);
   }
 
@@ -146,7 +154,7 @@ export class ProjectExpenseService {
     actor: ActorContext
   ): Promise<ProjectExpenseLineDTO> {
     const projectId = projectIdSchema.parse(rawProjectId);
-    await this.requireMutableProject(projectId);
+    await this.requireMutableProject(projectId, actor.tenantId);
     const input = createProjectExpenseSchema.parse(rawInput);
 
     const lineType = input.lineType;
@@ -174,6 +182,7 @@ export class ProjectExpenseService {
     }
 
     const row = await this.expenses.create({
+      tenantId: actor.tenantId,
       projectId,
       lineType,
       category,
@@ -199,7 +208,7 @@ export class ProjectExpenseService {
     actor: ActorContext
   ): Promise<ProjectExpenseLineDTO[]> {
     const projectId = projectIdSchema.parse(rawProjectId);
-    await this.requireMutableProject(projectId);
+    await this.requireMutableProject(projectId, actor.tenantId);
     const { items } = batchManualMaterialsSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
@@ -249,13 +258,14 @@ export class ProjectExpenseService {
     actor: ActorContext
   ): Promise<ProjectExpenseLineDTO> {
     const projectId = projectIdSchema.parse(rawProjectId);
-    const project = await this.requireMutableProject(projectId);
+    const project = await this.requireMutableProject(projectId, actor.tenantId);
     const input = useConsumableOnProjectSchema.parse(rawInput);
 
     return withTransaction(async (tx) => {
       const item = await this.consumables.findByIdForUpdate(
         input.consumableId,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!item) throw new NotFoundError("Consumable", input.consumableId);
 
@@ -278,7 +288,11 @@ export class ProjectExpenseService {
       > = [];
 
       if (input.purchaseLotId) {
-        const lot = await this.lots.findById(input.purchaseLotId, tx);
+        const lot = await this.lots.findById(
+          input.purchaseLotId,
+          tx,
+          actor.tenantId
+        );
         if (!lot) throw new NotFoundError("Purchase lot", input.purchaseLotId);
         if (lot.consumableId !== item.id) {
           throw new BadRequestError(
@@ -305,13 +319,15 @@ export class ProjectExpenseService {
         await this.lots.updateRemaining(
           lot.id,
           lot.quantityRemaining - input.quantity,
-          tx
+          tx,
+          actor.tenantId
         );
         remaining = 0;
       } else {
         const availableLots = await this.lots.listAvailableForConsumableFifo(
           item.id,
-          tx
+          tx,
+          actor.tenantId
         );
 
         for (const lot of availableLots) {
@@ -333,7 +349,8 @@ export class ProjectExpenseService {
           await this.lots.updateRemaining(
             lot.id,
             lot.quantityRemaining - take,
-            tx
+            tx,
+            actor.tenantId
           );
           remaining -= take;
         }
@@ -398,6 +415,7 @@ export class ProjectExpenseService {
 
       const row = await this.expenses.create(
         {
+          tenantId: actor.tenantId,
           projectId,
           lineType: "consumable",
           category: "miscellaneous",
@@ -423,13 +441,18 @@ export class ProjectExpenseService {
   async update(
     rawProjectId: string,
     rawExpenseId: string,
-    rawInput: unknown
+    rawInput: unknown,
+    actor: ActorContext
   ): Promise<ProjectExpenseLineDTO> {
     const projectId = projectIdSchema.parse(rawProjectId);
     const expenseId = expenseIdSchema.parse(rawExpenseId);
-    await this.requireMutableProject(projectId);
+    await this.requireMutableProject(projectId, actor.tenantId);
 
-    const existing = await this.requireExpenseForProject(projectId, expenseId);
+    const existing = await this.requireExpenseForProject(
+      projectId,
+      expenseId,
+      actor.tenantId
+    );
 
     if (
       existing.lineType !== "miscellaneous" &&
@@ -529,11 +552,15 @@ export class ProjectExpenseService {
   ): Promise<void> {
     const projectId = projectIdSchema.parse(rawProjectId);
     const expenseId = expenseIdSchema.parse(rawExpenseId);
-    await this.requireMutableProject(projectId);
+    await this.requireMutableProject(projectId, actor.tenantId);
 
     // Prefer list-scoped lookup — same source as GET /expenses — then delete by
     // the row's own id. Avoids by-id misses that still appear in the project ledger.
-    const listed = await this.expenses.listByProject(projectId);
+    const listed = await this.expenses.listByProject(
+      projectId,
+      undefined,
+      actor.tenantId
+    );
     const existing =
       listed.find((row) => row.id === expenseId) ??
       listed.find((row) => row.id.toLowerCase() === expenseId.toLowerCase()) ??
@@ -548,7 +575,7 @@ export class ProjectExpenseService {
       existing.lineType === "adjustment" ||
       existing.lineType === "material"
     ) {
-      await this.expenses.delete(existing.id);
+      await this.expenses.delete(existing.id, undefined, actor.tenantId);
       return;
     }
 
@@ -568,18 +595,19 @@ export class ProjectExpenseService {
   ): Promise<void> {
     const qty = Math.round(Number(existing.quantity ?? 0));
     if (!existing.consumableId || !Number.isFinite(qty) || qty <= 0) {
-      await this.expenses.delete(existing.id);
+      await this.expenses.delete(existing.id, undefined, actor.tenantId);
       return;
     }
 
     await withTransaction(async (tx) => {
       const item = await this.consumables.findByIdForUpdate(
         existing.consumableId!,
-        tx
+        tx,
+        actor.tenantId
       );
       if (!item) {
         // Item removed — still remove expense so ledger matches project
-        await this.expenses.delete(existing.id, tx);
+        await this.expenses.delete(existing.id, tx, actor.tenantId);
         return;
       }
 
@@ -591,18 +619,26 @@ export class ProjectExpenseService {
       // Issue History undo already restocked — drop the charge without double-restock.
       let alreadyUndone = false;
       for (const movementId of linkedIds) {
-        const mov = await this.movementRepo.findById(movementId, tx);
+        const mov = await this.movementRepo.findById(
+          movementId,
+          tx,
+          actor.tenantId
+        );
         if (!mov) continue;
         if (
           isVoidedNotes(mov.notes) ||
-          (await this.movementRepo.findReversalOf(movementId, tx))
+          (await this.movementRepo.findReversalOf(
+            movementId,
+            tx,
+            actor.tenantId
+          ))
         ) {
           alreadyUndone = true;
           break;
         }
       }
       if (alreadyUndone) {
-        await this.expenses.delete(existing.id, tx);
+        await this.expenses.delete(existing.id, tx, actor.tenantId);
         return;
       }
 
@@ -610,12 +646,13 @@ export class ProjectExpenseService {
 
       for (const alloc of allocations) {
         if (!alloc.lotId || alloc.quantity <= 0) continue;
-        const lot = await this.lots.findById(alloc.lotId, tx);
+        const lot = await this.lots.findById(alloc.lotId, tx, actor.tenantId);
         if (!lot) continue;
         await this.lots.updateRemaining(
           lot.id,
           lot.quantityRemaining + alloc.quantity,
-          tx
+          tx,
+          actor.tenantId
         );
       }
 
@@ -632,7 +669,8 @@ export class ProjectExpenseService {
         {
           currentQty: item.currentQty + qty,
         },
-        tx
+        tx,
+        actor.tenantId
       );
 
       // Issue-history / stock_movements ledger must mirror the stock return.
@@ -653,7 +691,11 @@ export class ProjectExpenseService {
       );
 
       for (const movementId of linkedIds) {
-        const mov = await this.movementRepo.findById(movementId, tx);
+        const mov = await this.movementRepo.findById(
+          movementId,
+          tx,
+          actor.tenantId
+        );
         if (!mov || isVoidedNotes(mov.notes)) continue;
         const nextNotes = [
           mov.notes?.trim(),
@@ -661,10 +703,15 @@ export class ProjectExpenseService {
         ]
           .filter(Boolean)
           .join(" · ");
-        await this.movementRepo.updateNotes(movementId, nextNotes, tx);
+        await this.movementRepo.updateNotes(
+          movementId,
+          nextNotes,
+          tx,
+          actor.tenantId
+        );
       }
 
-      await this.expenses.delete(existing.id, tx);
+      await this.expenses.delete(existing.id, tx, actor.tenantId);
     });
   }
 }

@@ -43,6 +43,8 @@ export function useVouchersRealtimeSync(enabled = true, tenantId?: string) {
       }, 200);
     };
 
+    let hasSubscribedOnce = false;
+
     const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
     const channel = supabase
       .channel(`vouchers-realtime-sync${tenantId ? `-${tenantId}` : ""}`)
@@ -52,9 +54,12 @@ export function useVouchersRealtimeSync(enabled = true, tenantId?: string) {
         () => triggerInvalidation()
       )
       .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          triggerInvalidation();
+        if (status !== "SUBSCRIBED") return;
+        if (!hasSubscribedOnce) {
+          hasSubscribedOnce = true;
+          return;
         }
+        triggerInvalidation();
       });
 
     return () => {

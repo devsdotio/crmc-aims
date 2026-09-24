@@ -71,20 +71,30 @@ export async function getCachedTenantBySlug(
   slug: string
 ): Promise<TenantRow | null> {
   const normalizedSlug = slug.trim().toLowerCase();
-  return serverCache.wrap(
+  const row = await serverCache.wrap(
     `tenant:slug:${normalizedSlug}`,
     TENANT_CACHE_TTL_MS,
     async () => {
       const db = getDb();
-      const [row] = await db
+      const [found] = await db
         .select()
         .from(tenants)
         .where(eq(tenants.slug, normalizedSlug))
         .limit(1);
-      return row ?? null;
+      return found ?? null;
     },
     [`tenant:slug:${normalizedSlug}`, "tenants"]
   );
+
+  // requireSession looks up by id after slug resolution — share the same row.
+  if (row && serverCache.get(`tenant:id:${row.id}`) === undefined) {
+    serverCache.set(`tenant:id:${row.id}`, row, TENANT_CACHE_TTL_MS, [
+      `tenant:id:${row.id}`,
+      "tenants",
+    ]);
+  }
+
+  return row;
 }
 
 /**

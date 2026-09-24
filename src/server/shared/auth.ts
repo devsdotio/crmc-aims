@@ -1,5 +1,5 @@
 import type { JwtPayload, User } from "@supabase/supabase-js";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { headers } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
@@ -128,7 +128,12 @@ export async function resolveDepartmentSnapshot(opts: {
     const [dept] = await db
       .select({ id: departments.id, name: departments.name })
       .from(departments)
-      .where(sql`lower(trim(${departments.name})) = ${submittedName.toLowerCase()}`)
+      .where(
+        and(
+          sql`lower(trim(${departments.name})) = ${submittedName.toLowerCase()}`,
+          eq(departments.tenantId, opts.actor.tenantId)
+        )
+      )
       .limit(1);
     if (dept) {
       return { departmentId: dept.id, departmentName: dept.name };
@@ -149,18 +154,23 @@ export async function resolveDepartmentSnapshot(opts: {
   }
 
   const row = await serverCache.wrap(
-    `department:${departmentId}`,
+    `department:${opts.actor.tenantId}:${departmentId}`,
     10 * 60 * 1000,
     async () => {
       const db = getDb();
       const [dept] = await db
         .select({ id: departments.id, name: departments.name })
         .from(departments)
-        .where(eq(departments.id, departmentId!))
+        .where(
+          and(
+            eq(departments.id, departmentId!),
+            eq(departments.tenantId, opts.actor.tenantId)
+          )
+        )
         .limit(1);
       return dept ?? null;
     },
-    ["departments", `department:${departmentId}`]
+    ["departments", `department:${opts.actor.tenantId}:${departmentId}`]
   );
   if (!row) {
     throw new BadRequestError("Unknown department.");

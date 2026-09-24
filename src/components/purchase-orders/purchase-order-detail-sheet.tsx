@@ -1450,7 +1450,9 @@ export function PurchaseOrderDetailSheet({
                     </p>
                     <span className="text-[10px] text-text-secondary block">
                       {lot.departments && lot.departments.length > 1
-                        ? "Sponsoring departments (project PO)"
+                        ? lot.projectId
+                          ? "Sponsoring departments (project PO)"
+                          : "Requesting departments"
                         : "Target Requisitioning Unit"}
                     </span>
                   </div>

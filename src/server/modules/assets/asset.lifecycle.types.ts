@@ -85,7 +85,7 @@ export interface RecordLifecycleEventInput {
   assetCode: string;
   eventType: AssetLifecycleEventType;
   /** Role is allowed on ActorContext but not persisted on ledger for privacy flexibility. */
-  actor: Pick<ActorContext, "userId" | "email" | "displayName">;
+  actor: Pick<ActorContext, "userId" | "email" | "displayName" | "tenantId">;
   fromStatus?: string | null;
   toStatus?: string | null;
   fromHolder?: string | null;

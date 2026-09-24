@@ -45,6 +45,7 @@ export const createPettyCashSchema = z.object({
   supplierName: z.string().trim().max(255).optional().nullable(),
   departmentId: z.string().uuid("Invalid department ID").optional().nullable(),
   departmentName: z.string().trim().max(255).optional().nullable(),
+  departmentIds: z.array(z.string().uuid()).optional(),
   isLegacy: z.boolean().optional().default(false),
 });
 
@@ -70,6 +71,7 @@ export const updatePettyCashSchema = z
     supplierName: z.string().trim().max(255).optional().nullable(),
     departmentId: z.string().uuid("Invalid department ID").optional().nullable(),
     departmentName: z.string().trim().max(255).optional().nullable(),
+    departmentIds: z.array(z.string().uuid()).optional(),
     isLegacy: z.boolean().optional(),
   })
   .strict();

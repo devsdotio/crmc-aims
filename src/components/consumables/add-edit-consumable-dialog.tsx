@@ -234,9 +234,7 @@ function AddEditConsumableDialogForm({
       setErrorField(null);
       await onSave({
         id: initialItem ? initialItem.id : undefined,
-        itemCode: initialItem
-          ? initialItem.itemCode
-          : `CON-${Math.floor(1000 + Math.random() * 9000)}`,
+        itemCode: initialItem?.itemCode,
         name: name.trim(),
         category: category as ConsumableCategory,
         classification: isTypeLocked
@@ -248,7 +246,7 @@ function AddEditConsumableDialogForm({
         location: location.trim() || "Supply Storage Bay",
         supplier: supplierName ?? (isEditing ? null : undefined),
         supplierId: needsOpeningLot ? supplierId : supplierId || null,
-        unitCost: needsOpeningLot ? unitCost : undefined,
+        unitCost: needsOpeningLot && costValue !== null ? costValue : undefined,
         notes: notes.trim() || undefined,
         lastRestocked: new Date().toISOString().split("T")[0],
       });

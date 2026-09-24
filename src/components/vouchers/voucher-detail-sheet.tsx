@@ -235,6 +235,9 @@ export function VoucherDetailSheet({
     voucher.createdByName?.trim() || matchedUser?.name || "Authorized Staff";
 
   const displayDepartment =
+    (voucher.departments && voucher.departments.length > 0
+      ? voucher.departments.map((d) => d.name).filter(Boolean).join(", ")
+      : "") ||
     voucher.departmentName?.trim() ||
     extractedDeptFromPurpose ||
     extractedDeptFromParticulars ||

@@ -56,12 +56,13 @@ export async function PATCH(
         { status: 400 }
       );
     }
-    await requireUserManager();
+    const session = await requireUserManager();
     const body = await request.json();
     const updated = await new ProjectExpenseService().update(
       projectId,
       expenseId,
-      body
+      body,
+      session.actor
     );
     return ok(updated);
   } catch (error) {

@@ -20,6 +20,7 @@ import {
 } from "@/server/shared/errors";
 import { encodeLotQr, parseScanPayload } from "@/server/shared/qr";
 import type { ActorContext } from "@/server/shared/auth";
+import { getTenantContext } from "@/server/shared/tenant-context";
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
@@ -61,6 +62,10 @@ function formatMoney(value: string | number): string {
 
 function padAssetSeq(n: number, width = 3): string {
   return String(n).padStart(width, "0");
+}
+
+function byTenantId<T>(column: T, tenantId?: string | null) {
+  return tenantId ? eq(column as typeof consumables.tenantId, tenantId) : undefined;
 }
 
 /** PO-level placeholder when line items have different dealers — never store on a lot/item. */
@@ -338,7 +343,7 @@ async function withDisbursementClaims(
 }
 
 /**
- * Attach sponsoring departments for project POs from purchase_order_departments.
+ * Attach sponsoring departments from purchase_order_departments.
  * Falls back to the scalar departmentId/Name on the lot when no join rows exist.
  */
 async function withPoDepartments(
@@ -348,18 +353,18 @@ async function withPoDepartments(
 ): Promise<PurchaseLotDTO[]> {
   if (dtos.length === 0) return dtos;
 
-  const projectPoNumbers = [
+  const poNumbers = [
     ...new Set(
       dtos
-        .filter((d) => Boolean(d.projectId) && Boolean(d.poNumber?.trim()))
+        .filter((d) => Boolean(d.poNumber?.trim()))
         .map((d) => d.poNumber.trim())
     ),
   ];
-  if (projectPoNumbers.length === 0) return dtos;
+  if (poNumbers.length === 0) return dtos;
 
   const db = session ?? getDb();
   const conditions = [
-    inArray(purchaseOrderDepartments.poReference, projectPoNumbers),
+    inArray(purchaseOrderDepartments.poReference, poNumbers),
   ];
   if (tenantId) {
     conditions.push(eq(purchaseOrderDepartments.tenantId, tenantId));
@@ -389,7 +394,6 @@ async function withPoDepartments(
   }
 
   return dtos.map((dto) => {
-    if (!dto.projectId) return dto;
     const fromJoin = byPo.get(dto.poNumber.trim().toLowerCase());
     if (fromJoin && fromJoin.length > 0) {
       return { ...dto, departments: fromJoin };
@@ -499,7 +503,11 @@ export class PurchaseLotService {
       const supplierId = body.supplierId ?? null;
 
       if (supplierId) {
-        const sup = await this.suppliers.findById(supplierId, session);
+        const sup = await this.suppliers.findById(
+          supplierId,
+          session,
+          actor.tenantId
+        );
         if (sup) {
           resolvedSupplierName = sup.name;
         }
@@ -513,29 +521,28 @@ export class PurchaseLotService {
       const nowIso = new Date().toISOString();
 
       const isProjectPo = Boolean(body.projectId);
-      const projectDepartmentIds = isProjectPo
-        ? [
-            ...new Set(
-              (body.departmentIds && body.departmentIds.length > 0
-                ? body.departmentIds
-                : body.departmentId
-                  ? [body.departmentId]
-                  : []
-              ).filter(Boolean)
-            ),
-          ]
-        : [];
+      const requestedDepartmentIds = [
+        ...new Set(
+          (body.departmentIds && body.departmentIds.length > 0
+            ? body.departmentIds
+            : body.departmentId
+              ? [body.departmentId]
+              : []
+          ).filter(Boolean)
+        ),
+      ];
 
       let departmentId = body.departmentId ?? null;
       let departmentName = body.departmentName?.trim() || null;
-      let projectDepartments: Array<{ id: string; name: string }> = [];
+      let poDepartments: Array<{ id: string; name: string }> = [];
 
-      if (isProjectPo) {
-        if (projectDepartmentIds.length < 1) {
-          throw new BadRequestError(
-            "At least one target department is required for project purchase orders."
-          );
-        }
+      if (isProjectPo && requestedDepartmentIds.length < 1) {
+        throw new BadRequestError(
+          "At least one target department is required for project purchase orders."
+        );
+      }
+
+      if (requestedDepartmentIds.length > 0) {
         const deptRows = await db
           .select({
             id: departments.id,
@@ -544,25 +551,25 @@ export class PurchaseLotService {
           .from(departments)
           .where(
             and(
-              inArray(departments.id, projectDepartmentIds),
+              inArray(departments.id, requestedDepartmentIds),
               actor.tenantId
                 ? eq(departments.tenantId, actor.tenantId)
                 : undefined
             )
           );
         const byId = new Map(deptRows.map((d) => [d.id, d.name]));
-        for (const id of projectDepartmentIds) {
+        for (const id of requestedDepartmentIds) {
           const name = byId.get(id);
           if (!name) {
             throw new NotFoundError("Department", id);
           }
-          projectDepartments.push({ id, name });
+          poDepartments.push({ id, name });
         }
-        departmentId = projectDepartments[0]?.id ?? null;
-        departmentName = projectDepartments[0]?.name ?? null;
+        departmentId = poDepartments[0]?.id ?? null;
+        departmentName = poDepartments[0]?.name ?? null;
 
         await db.insert(purchaseOrderDepartments).values(
-          projectDepartments.map((d) => ({
+          poDepartments.map((d) => ({
             tenantId: actor.tenantId,
             poReference: poNumber,
             departmentId: d.id,
@@ -599,7 +606,11 @@ export class PurchaseLotService {
         let lineSupplierId = item.supplierId ?? null;
         let lineSupplierName = item.suggestedDealer?.trim() || null;
         if (lineSupplierId) {
-          const lineSup = await this.suppliers.findById(lineSupplierId, session);
+          const lineSup = await this.suppliers.findById(
+            lineSupplierId,
+            session,
+            actor.tenantId
+          );
           if (lineSup) lineSupplierName = lineSup.name;
         }
         if (!lineSupplierName && resolvedSupplierName) {
@@ -618,7 +629,12 @@ export class PurchaseLotService {
             const [existing] = await db
               .select()
               .from(consumables)
-              .where(eq(consumables.id, consumableId))
+              .where(
+                and(
+                  eq(consumables.id, consumableId),
+                  byTenantId(consumables.tenantId, actor.tenantId)
+                )
+              )
               .limit(1);
             if (!existing) {
               throw new NotFoundError("Consumable", consumableId);
@@ -631,7 +647,12 @@ export class PurchaseLotService {
               await db
                 .update(consumables)
                 .set({ classification: "material", updatedAt: new Date() })
-                .where(eq(consumables.id, consumableId));
+                .where(
+                  and(
+                    eq(consumables.id, consumableId),
+                    byTenantId(consumables.tenantId, actor.tenantId)
+                  )
+                );
             }
 
             // If created directly in "delivered" state
@@ -639,6 +660,7 @@ export class PurchaseLotService {
               if (targetProjectId) {
                 // Auto-issue movement for direct project material delivery (currentQty unchanged)
                 await db.insert(stockMovements).values({
+                  tenantId: actor.tenantId,
                   movementCode: generateOperationalCode("MOV"),
                   consumableId,
                   projectId: targetProjectId,
@@ -680,10 +702,16 @@ export class PurchaseLotService {
                     updatedAt: new Date(),
                     ...(lineSupplierName ? { supplier: lineSupplierName } : {}),
                   })
-                  .where(eq(consumables.id, consumableId));
+                  .where(
+                    and(
+                      eq(consumables.id, consumableId),
+                      byTenantId(consumables.tenantId, actor.tenantId)
+                    )
+                  );
 
                 // Record stock movement
                 await db.insert(stockMovements).values({
+                  tenantId: actor.tenantId,
                   movementCode: generateOperationalCode("MOV"),
                   consumableId,
                   qty: item.quantity,
@@ -744,6 +772,7 @@ export class PurchaseLotService {
             if (targetProjectId) {
               // Auto-issue movement for direct project material delivery
               await db.insert(stockMovements).values({
+                tenantId: actor.tenantId,
                 movementCode: generateOperationalCode("MOV"),
                 consumableId,
                 projectId: targetProjectId,
@@ -778,6 +807,7 @@ export class PurchaseLotService {
               });
             } else {
               await db.insert(stockMovements).values({
+                tenantId: actor.tenantId,
                 movementCode: generateOperationalCode("MOV"),
                 consumableId,
                 qty: item.quantity,
@@ -811,7 +841,12 @@ export class PurchaseLotService {
             const [existing] = await db
               .select()
               .from(assets)
-              .where(eq(assets.id, assetId))
+              .where(
+                and(
+                  eq(assets.id, assetId),
+                  byTenantId(assets.tenantId, actor.tenantId)
+                )
+              )
               .limit(1);
             if (!existing) {
               throw new NotFoundError("Asset", assetId);
@@ -941,8 +976,8 @@ export class PurchaseLotService {
         );
 
         const dto = toPurchaseLotDTO(row);
-        if (projectDepartments.length > 0) {
-          dto.departments = projectDepartments;
+        if (poDepartments.length > 0) {
+          dto.departments = poDepartments;
         }
         results.push(dto);
       }
@@ -987,7 +1022,7 @@ export class PurchaseLotService {
 
     return withTransaction(async (session) => {
       const db = session ?? getDb();
-      const lot = await this.repo.findByIdForUpdate(id, session);
+      const lot = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
       if (!lot) {
         throw new NotFoundError("Purchase Order lot", id);
       }
@@ -1100,7 +1135,12 @@ export class PurchaseLotService {
           const [consumable] = await db
             .select()
             .from(consumables)
-            .where(eq(consumables.id, consumableId))
+            .where(
+              and(
+                eq(consumables.id, consumableId),
+                byTenantId(consumables.tenantId, lot.tenantId ?? actor.tenantId)
+              )
+            )
             .for("update")
             .limit(1);
 
@@ -1120,7 +1160,12 @@ export class PurchaseLotService {
                   classification: "material",
                   updatedAt: new Date(),
                 })
-                .where(eq(consumables.id, consumableId));
+                .where(
+                  and(
+                    eq(consumables.id, consumableId),
+                    byTenantId(consumables.tenantId, lot.tenantId ?? actor.tenantId)
+                  )
+                );
             }
 
             await db
@@ -1133,7 +1178,12 @@ export class PurchaseLotService {
                   ? { supplier: lot.supplierName }
                   : {}),
               })
-              .where(eq(consumables.id, consumableId));
+              .where(
+                and(
+                  eq(consumables.id, consumableId),
+                  byTenantId(consumables.tenantId, lot.tenantId ?? actor.tenantId)
+                )
+              );
 
             await db.insert(stockMovements).values({
               tenantId: lot.tenantId,
@@ -1157,7 +1207,12 @@ export class PurchaseLotService {
                 currentQty: sql`${consumables.currentQty} - ${receivedQty}`,
                 updatedAt: new Date(),
               })
-              .where(eq(consumables.id, consumableId));
+              .where(
+                and(
+                  eq(consumables.id, consumableId),
+                  byTenantId(consumables.tenantId, lot.tenantId ?? actor.tenantId)
+                )
+              );
 
             await db.insert(stockMovements).values({
               tenantId: lot.tenantId,
@@ -1214,7 +1269,12 @@ export class PurchaseLotService {
                   ? { supplier: lot.supplierName }
                   : {}),
               })
-              .where(eq(consumables.id, consumableId));
+              .where(
+                and(
+                  eq(consumables.id, consumableId),
+                  byTenantId(consumables.tenantId, lot.tenantId ?? actor.tenantId)
+                )
+              );
 
             await db.insert(stockMovements).values({
               tenantId: lot.tenantId,
@@ -1249,7 +1309,12 @@ export class PurchaseLotService {
             const [existingAsset] = await db
               .select()
               .from(assets)
-              .where(eq(assets.id, primaryAssetId))
+              .where(
+                and(
+                  eq(assets.id, primaryAssetId),
+                  byTenantId(assets.tenantId, lot.tenantId ?? actor.tenantId)
+                )
+              )
               .for("update")
               .limit(1);
 
@@ -1267,7 +1332,12 @@ export class PurchaseLotService {
                 lastUpdated: new Date(),
                 updatedAt: new Date(),
               })
-              .where(eq(assets.id, primaryAssetId));
+              .where(
+                and(
+                  eq(assets.id, primaryAssetId),
+                  byTenantId(assets.tenantId, lot.tenantId ?? actor.tenantId)
+                )
+              );
 
             // Mint remaining units when PO ordered/received more than one physical asset
             for (let i = 1; i < unitsToEnsure; i++) {
@@ -1468,7 +1538,7 @@ export class PurchaseLotService {
 
     return withTransaction(async (session) => {
       const db = session ?? getDb();
-      const lot = await this.repo.findByIdForUpdate(id, session);
+      const lot = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
       if (!lot) {
         throw new NotFoundError("Purchase Order lot", id);
       }
@@ -1479,7 +1549,11 @@ export class PurchaseLotService {
         body.supplierId !== undefined ? body.supplierId : lot.supplierId;
 
       if (supplierId && supplierId !== lot.supplierId) {
-        const sup = await this.suppliers.findById(supplierId, session);
+        const sup = await this.suppliers.findById(
+          supplierId,
+          session,
+          actor.tenantId
+        );
         if (sup) supplierName = sup.name;
       } else if (body.supplierName !== undefined) {
         supplierName = body.supplierName;
@@ -1696,7 +1770,7 @@ export class PurchaseLotService {
    */
   async deletePurchaseOrder(id: string, actor: ActorContext): Promise<boolean> {
     return withTransaction(async (session) => {
-      const lot = await this.repo.findByIdForUpdate(id, session);
+      const lot = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
       if (!lot) {
         throw new NotFoundError("Purchase Order lot", id);
       }
@@ -1771,17 +1845,28 @@ export class PurchaseLotService {
   /** Exposed for project FIFO / repo-level callers. */
   listAvailableForConsumableFifo(
     consumableId: string,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ) {
-    return this.repo.listAvailableForConsumableFifo(consumableId, session);
+    return this.repo.listAvailableForConsumableFifo(
+      consumableId,
+      session,
+      tenantId ?? getTenantContext()?.tenantId
+    );
   }
 
   updateRemaining(
     id: string,
     quantityRemaining: number,
-    session?: DbSession
+    session?: DbSession,
+    tenantId?: string
   ) {
-    return this.repo.updateRemaining(id, quantityRemaining, session);
+    return this.repo.updateRemaining(
+      id,
+      quantityRemaining,
+      session,
+      tenantId ?? getTenantContext()?.tenantId
+    );
   }
 
   /**
@@ -1791,18 +1876,20 @@ export class PurchaseLotService {
     lotCode: string,
     quantity: number,
     session: DbSession,
-    expectedConsumableId?: string
+    expectedConsumableId?: string,
+    tenantId?: string
   ): Promise<{ lot: PurchaseLotDTO; allocation: LotCostAllocation }> {
     if (quantity <= 0) {
       throw new BadRequestError("quantity must be positive.");
     }
 
-    const lot = await this.repo.findByLotCodeForUpdate(lotCode, session);
+    const scope = tenantId ?? getTenantContext()?.tenantId;
+    const lot = await this.repo.findByLotCodeForUpdate(lotCode, session, scope);
     if (!lot) {
       throw new NotFoundError("Purchase lot", lotCode);
     }
 
-    return this.drawFromLockedLot(lot, quantity, session, expectedConsumableId);
+    return this.drawFromLockedLot(lot, quantity, session, expectedConsumableId, scope);
   }
 
   /** Same as consumeFromLot but keyed by lot id. */
@@ -1810,25 +1897,28 @@ export class PurchaseLotService {
     lotId: string,
     quantity: number,
     session: DbSession,
-    expectedConsumableId?: string
+    expectedConsumableId?: string,
+    tenantId?: string
   ): Promise<{ lot: PurchaseLotDTO; allocation: LotCostAllocation }> {
     if (quantity <= 0) {
       throw new BadRequestError("quantity must be positive.");
     }
 
-    const lot = await this.repo.findByIdForUpdate(lotId, session);
+    const scope = tenantId ?? getTenantContext()?.tenantId;
+    const lot = await this.repo.findByIdForUpdate(lotId, session, scope);
     if (!lot) {
       throw new NotFoundError("Purchase lot", lotId);
     }
 
-    return this.drawFromLockedLot(lot, quantity, session, expectedConsumableId);
+    return this.drawFromLockedLot(lot, quantity, session, expectedConsumableId, scope);
   }
 
   private async drawFromLockedLot(
     lot: PurchaseLotRow,
     quantity: number,
     session: DbSession,
-    expectedConsumableId?: string
+    expectedConsumableId?: string,
+    tenantId?: string
   ): Promise<{ lot: PurchaseLotDTO; allocation: LotCostAllocation }> {
     if (lot.itemType !== "consumable") {
       throw new BadRequestError(
@@ -1855,7 +1945,8 @@ export class PurchaseLotService {
     await this.repo.updateRemaining(
       lot.id,
       lot.quantityRemaining - quantity,
-      session
+      session,
+      tenantId
     );
 
     const unit = Number(lot.unitCost);
@@ -1870,7 +1961,7 @@ export class PurchaseLotService {
       supplierName: lot.supplierName,
     };
 
-    const refreshed = await this.repo.findById(lot.id, session);
+    const refreshed = await this.repo.findById(lot.id, session, tenantId);
     return {
       lot: toPurchaseLotDTO(refreshed ?? lot),
       allocation,
@@ -1884,17 +1975,19 @@ export class PurchaseLotService {
     opts: { lotId?: string; lotCode?: string },
     quantity: number,
     session: DbSession,
-    expectedConsumableId?: string
+    expectedConsumableId?: string,
+    tenantId?: string
   ): Promise<{ lot: PurchaseLotDTO; allocation: LotCostAllocation }> {
     if (quantity <= 0) {
       throw new BadRequestError("quantity must be positive.");
     }
 
+    const scope = tenantId ?? getTenantContext()?.tenantId;
     let lot: PurchaseLotRow | null = null;
     if (opts.lotId) {
-      lot = await this.repo.findByIdForUpdate(opts.lotId, session);
+      lot = await this.repo.findByIdForUpdate(opts.lotId, session, scope);
     } else if (opts.lotCode) {
-      lot = await this.repo.findByLotCodeForUpdate(opts.lotCode, session);
+      lot = await this.repo.findByLotCodeForUpdate(opts.lotCode, session, scope);
     } else {
       throw new BadRequestError("lotId or lotCode is required.");
     }
@@ -1924,7 +2017,7 @@ export class PurchaseLotService {
 
     const nextQty = lot.quantity + quantity;
     const nextRemaining = lot.quantityRemaining + quantity;
-    await this.repo.updateQuantities(lot.id, nextQty, nextRemaining, session);
+    await this.repo.updateQuantities(lot.id, nextQty, nextRemaining, session, scope);
 
     const unit = Number(lot.unitCost);
     const allocation: LotCostAllocation = {
@@ -1937,7 +2030,7 @@ export class PurchaseLotService {
       supplierName: lot.supplierName,
     };
 
-    const refreshed = await this.repo.findById(lot.id, session);
+    const refreshed = await this.repo.findById(lot.id, session, scope);
     return {
       lot: toPurchaseLotDTO(refreshed ?? lot),
       allocation,
@@ -1950,7 +2043,8 @@ export class PurchaseLotService {
   async consumeFifo(
     consumableId: string,
     quantity: number,
-    session: DbSession
+    session: DbSession,
+    tenantId?: string
   ): Promise<LotCostAllocation[]> {
     if (quantity <= 0) {
       throw new BadRequestError("quantity must be positive.");
@@ -1958,9 +2052,11 @@ export class PurchaseLotService {
 
     let remaining = quantity;
     const allocations: LotCostAllocation[] = [];
+    const scope = tenantId ?? getTenantContext()?.tenantId;
     const available = await this.repo.listAvailableForConsumableFifo(
       consumableId,
-      session
+      session,
+      scope
     );
 
     for (const lot of available) {
@@ -1983,7 +2079,8 @@ export class PurchaseLotService {
       await this.repo.updateRemaining(
         lot.id,
         lot.quantityRemaining - take,
-        session
+        session,
+        scope
       );
       remaining -= take;
     }
@@ -2013,7 +2110,11 @@ export class PurchaseLotService {
     const supplierId = input.supplierId ?? null;
 
     if (supplierId) {
-      const supplier = await this.suppliers.findById(supplierId, session);
+      const supplier = await this.suppliers.findById(
+        supplierId,
+        session,
+        input.tenantId ?? undefined
+      );
       if (!supplier) {
         throw new NotFoundError("Supplier", supplierId);
       }
@@ -2040,7 +2141,8 @@ export class PurchaseLotService {
 
     const row = await this.repo.create(
       {
-        lotCode: generateOperationalCode("PO"),
+        tenantId: input.tenantId ?? undefined,
+        lotCode: generateOperationalCode("LOT"),
         itemType: input.itemType,
         consumableId: input.consumableId ?? null,
         assetId: input.assetId ?? null,

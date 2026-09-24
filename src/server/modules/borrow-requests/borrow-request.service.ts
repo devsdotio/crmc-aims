@@ -184,7 +184,10 @@ export class BorrowRequestService {
   }
 
   /** Shared gate: unit must be free of holder and open project custody. */
-  private async assertAssetFreeForRequest(asset: AssetRow): Promise<void> {
+  private async assertAssetFreeForRequest(
+    asset: AssetRow,
+    tenantId?: string
+  ): Promise<void> {
     if (asset.status !== "active") {
       throw new ConflictError(
         `Asset ${asset.assetCode} is not available (${asset.status.replace(/_/g, " ")}).`
@@ -195,13 +198,21 @@ export class BorrowRequestService {
         `Asset ${asset.assetCode} is currently in custody (${asset.currentHolder}).`
       );
     }
-    const openProject = await this.projectAssignments.findOpenByAssetId(asset.id);
+    const openProject = await this.projectAssignments.findOpenByAssetId(
+      asset.id,
+      undefined,
+      tenantId
+    );
     if (openProject) {
       throw new ConflictError(
         `Asset ${asset.assetCode} is assigned to a project. Return it from the project panel first.`
       );
     }
-    const openBorrow = await this.borrowLogRepo.findActiveByAssetId(asset.id);
+    const openBorrow = await this.borrowLogRepo.findActiveByAssetId(
+      asset.id,
+      undefined,
+      tenantId
+    );
     if (openBorrow) {
       throw new ConflictError(
         `Asset ${asset.assetCode} already has an active custody log. Return it first.`
@@ -493,7 +504,7 @@ export class BorrowRequestService {
 
         const asset = await this.assetRepo.findById(assetId, undefined, actor.tenantId);
         if (!asset) throw new NotFoundError("Asset", assetId);
-        await this.assertAssetFreeForRequest(asset);
+        await this.assertAssetFreeForRequest(asset, actor.tenantId);
         if (asset.assignmentType !== expectedAssignmentType) {
           throw new ConflictError(
             `Asset ${asset.assetCode} is not ${expectedAssignmentType}.`

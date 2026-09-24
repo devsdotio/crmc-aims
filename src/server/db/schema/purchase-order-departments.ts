@@ -11,9 +11,9 @@ import { tenants } from "./tenants";
 import { departments } from "./departments";
 
 /**
- * Multi-department sponsorship for project purchase orders only.
+ * Multi-department sponsorship for purchase orders (project and warehouse).
  * Keyed by PO number (`purchase_lots.reference`), not per line.
- * Warehouse POs continue to use a single `purchase_lots.department_id`.
+ * `purchase_lots.department_id` remains the primary (first selected) department.
  */
 export const purchaseOrderDepartments = pgTable(
   "purchase_order_departments",
