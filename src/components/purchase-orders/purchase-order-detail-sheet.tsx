@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { Fragment, useEffect, useRef, useState, useMemo } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
   FileText,
@@ -48,6 +48,12 @@ import { useToast } from "@/components/providers/toast-context";
 import { POReceiptUploader } from "./po-receipt-uploader";
 import { PoDisbursementBadge } from "./po-disbursement-badge";
 import { AddPoLinesDialog } from "./add-po-lines-dialog";
+import { EditPoLinesDialog } from "./edit-po-lines-dialog";
+import {
+  buildPoPurposePrefix,
+  stripPoPurposePrefix,
+} from "@/lib/po-purpose";
+import { groupByPurpose } from "@/lib/request-purpose";
 
 interface PurchaseOrderDetailSheetProps {
   lot: PurchaseLot | null;
@@ -127,6 +133,9 @@ export function PurchaseOrderDetailSheet({
     unitCost: string;
   }>({ itemName: "", quantity: "1", unitCost: "0" });
   const [isAddLinesOpen, setIsAddLinesOpen] = useState(false);
+  const [editDialogStep, setEditDialogStep] = useState<
+    null | "items" | "purposes"
+  >(null);
   const [cancelReasonError, setCancelReasonError] = useState<string | null>(null);
 
   const updateStatusMutation = useUpdatePOStatusMutation();
@@ -361,14 +370,26 @@ export function PurchaseOrderDetailSheet({
     return "Staff Requester";
   })();
 
-  const cleanPurpose = (() => {
-    if (!lot.purpose) return "General Operations Replenishment";
-    if (purposeDeptMatch) {
-      const remainder = lot.purpose.replace(/^\[(.*?)\]\s*/, "").trim();
-      return remainder || "General Operations Replenishment";
-    }
-    return lot.purpose;
-  })();
+  const purposeSections = groupByPurpose(
+    lotsToUpdate.map((li) => ({
+      ...li,
+      purpose: stripPoPurposePrefix(li.purpose) || "General",
+    })),
+    stripPoPurposePrefix(lot.purpose) || "General"
+  );
+  const isMultiPurpose = purposeSections.length > 1;
+
+  const purposePrefix = buildPoPurposePrefix({
+    departmentLabel:
+      (lot.departments && lot.departments.length > 0
+        ? lot.departments.map((d) => d.name).join(", ")
+        : lot.departmentName) || "",
+    projectLabel: lot.projectId ? lot.projectName : null,
+  });
+
+  const openEditDialog = (step: "items" | "purposes" = "items") => {
+    setEditDialogStep(step);
+  };
 
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
     if (nextStatus === "cancelled") {
@@ -1116,251 +1137,165 @@ export function PurchaseOrderDetailSheet({
                       ? `Line Items (${lotsToUpdate.length})`
                       : "Item & Cost Specifications"}
                   </span>
-                  {canAddLines && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAddLinesOpen(true)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 cursor-pointer shadow-2xs"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add items
-                    </button>
-                  )}
-                  {canOperate &&
-                    effectiveStatus === "pending_approval" &&
-                    lot.disbursement && (
-                    <span className="text-[10px] text-text-secondary max-w-48 text-right">
-                      Items cannot be added while this PO is linked to{" "}
-                      {lot.disbursement.code}.
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {canEditLines && isMultiLotPo && (
+                      <button
+                        type="button"
+                        onClick={() => openEditDialog("items")}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg border border-border text-text hover:bg-bg-subtle cursor-pointer shadow-2xs"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Edit Items and Purposes
+                      </button>
+                    )}
+                    {canAddLines && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAddLinesOpen(true)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 cursor-pointer shadow-2xs"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        Add items
+                      </button>
+                    )}
+                    {canOperate &&
+                      effectiveStatus === "pending_approval" &&
+                      lot.disbursement && (
+                      <span className="text-[10px] text-text-secondary max-w-48 text-right">
+                        Items cannot be added while this PO is linked to{" "}
+                        {lot.disbursement.code}.
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {isMultiLotPo ? (
                   /* Multi-item PO — line items table */
                   <div className="space-y-3">
-                    <div className="rounded-lg border border-border overflow-hidden">
-                      <table className="w-full text-xs text-left">
+                    <div className="rounded-lg border border-border overflow-hidden shadow-xs">
+                      <table className="w-full text-xs text-left border-collapse table-fixed">
                         <thead className="bg-bg-subtle text-text-secondary border-b border-border font-bold uppercase tracking-wider text-[10px]">
                           <tr>
-                            <th className="px-3 py-2">#</th>
-                            <th className="px-3 py-2">Item</th>
-                            <th className="px-3 py-2 text-center">Qty</th>
-                            <th className="px-3 py-2 text-center">Remaining</th>
-                            <th className="px-3 py-2 text-right">Unit Cost</th>
-                            <th className="px-3 py-2 text-right">Total</th>
-                            {(canEditLines || canRelease) && (
-                              <th className="px-3 py-2 text-right">
-                                <span className="sr-only">Actions</span>
-                              </th>
-                            )}
+                            <th className="px-3 py-2.5 w-10">#</th>
+                            <th className="px-3 py-2.5">Item</th>
+                            <th className="px-3 py-2.5 text-center w-14">Qty</th>
+                            <th className="pl-4 pr-3 py-2.5 text-right w-[18%]">
+                              Unit Cost
+                            </th>
+                            <th className="pl-5 pr-4 py-2.5 text-right w-[20%] border-l border-border">
+                              Total
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          {lotsToUpdate.map((item, idx) => {
-                            const iUnitCost = parseFloat(item.unitCost) || 0;
-                            const iTotalCost = parseFloat(item.totalCost) || 0;
-                            const isEditing = editingLineId === item.id;
-                            const lineCanRelease =
-                              canRelease &&
-                              item.itemType === "consumable" &&
-                              item.status === "delivered" &&
-                              item.quantityRemaining > 0;
-                            return (
-                              <tr key={item.id} className="hover:bg-bg-subtle/50 transition-colors">
-                                <td className="px-3 py-2.5 text-text-secondary font-mono text-[10px]">{idx + 1}</td>
-                                <td className="px-3 py-2.5">
-                                  {isEditing ? (
-                                    <input
-                                      type="text"
-                                      value={lineDraft.itemName}
-                                      onChange={(e) =>
-                                        setLineDraft((d) => ({
-                                          ...d,
-                                          itemName: e.target.value,
-                                        }))
-                                      }
-                                      className="w-full h-8 px-2 rounded-md border border-border bg-bg text-xs font-semibold"
-                                    />
-                                  ) : (
-                                    <>
-                                      <span className="font-semibold text-text block">{item.itemName}</span>
-                                      <div className="flex items-center gap-1.5 mt-0.5">
-                                        <span className="font-mono text-[10px] text-text-secondary">{item.itemCode}</span>
-                                        {item.lotCode && (
-                                          <span className="font-mono text-[10px] text-text-muted">· {item.lotCode}</span>
-                                        )}
-                                        <span className={cn(
-                                          "inline-flex items-center rounded-full px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider border shadow-2xs",
-                                          item.itemType === "asset"
-                                            ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25"
-                                            : "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/25"
-                                        )}>
-                                          {item.itemType}
-                                        </span>
-                                      </div>
-                                    </>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
-                                  {isEditing ? (
-                                    <input
-                                      type="number"
-                                      min={1}
-                                      step={1}
-                                      value={lineDraft.quantity}
-                                      onChange={(e) =>
-                                        setLineDraft((d) => ({
-                                          ...d,
-                                          quantity: e.target.value,
-                                        }))
-                                      }
-                                      className="w-16 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono text-center"
-                                    />
-                                  ) : (
-                                    item.quantity
-                                  )}
-                                </td>
-                                <td className="px-3 py-2.5 text-center font-mono text-text">
-                                  {item.itemType === "consumable" &&
-                                  item.status === "delivered" ? (
-                                    <span
-                                      className={cn(
-                                        "font-bold",
-                                        item.quantityRemaining <= 0
-                                          ? "text-status-retired-text"
-                                          : item.quantityRemaining <=
-                                              Math.ceil(item.quantity * 0.2)
-                                            ? "text-amber-600 dark:text-amber-400"
-                                            : "text-status-active-text"
-                                      )}
+                          {(() => {
+                            let lineNo = 0;
+                            const colCount = 5;
+                            return purposeSections.map((section) => (
+                              <Fragment key={section.purpose}>
+                                {isMultiPurpose && (
+                                  <tr className="bg-indigo-500/6">
+                                    <td
+                                      colSpan={colCount}
+                                      className="px-0 py-0"
                                     >
-                                      {item.quantityRemaining}
-                                    </span>
-                                  ) : (
-                                    <span className="text-text-secondary">—</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono text-text">
-                                  {isEditing ? (
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step="0.01"
-                                      value={lineDraft.unitCost}
-                                      onChange={(e) =>
-                                        setLineDraft((d) => ({
-                                          ...d,
-                                          unitCost: e.target.value,
-                                        }))
-                                      }
-                                      className="w-24 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono text-right ml-auto"
-                                    />
-                                  ) : (
-                                    formatPhp(iUnitCost)
-                                  )}
-                                </td>
-                                <td className="px-3 py-2.5 text-right font-mono font-bold text-status-active-text">
-                                  {isEditing
-                                    ? formatPhp(
-                                        (Number.parseInt(lineDraft.quantity, 10) || 0) *
-                                          (Number.parseFloat(lineDraft.unitCost) || 0)
-                                      )
-                                    : formatPhp(iTotalCost)}
-                                </td>
-                                {(canEditLines || canRelease) && (
-                                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                                    {isEditing ? (
-                                      <div className="inline-flex items-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => void handleSaveLine(item)}
-                                          disabled={updatePOMutation.isPending}
-                                          className="p-1.5 rounded-md bg-accent text-accent-foreground cursor-pointer"
-                                          title="Save line"
-                                        >
-                                          <Check className="h-3.5 w-3.5" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingLineId(null)}
-                                          className="p-1.5 rounded-md border border-border text-text-secondary cursor-pointer"
-                                          title="Cancel"
-                                        >
-                                          <X className="h-3.5 w-3.5" />
-                                        </button>
+                                      <div className="flex items-start gap-2.5 border-l-[3px] border-indigo-500/60 bg-indigo-500/5 px-3 py-2.5">
+                                        <Layers className="h-3.5 w-3.5 mt-0.5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                                              Purpose
+                                            </p>
+                                            <span className="inline-flex items-center rounded-md bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                              {section.lines.length}{" "}
+                                              {section.lines.length === 1
+                                                ? "item"
+                                                : "items"}
+                                            </span>
+                                          </div>
+                                          <p className="text-xs font-semibold text-text mt-0.5 leading-snug">
+                                            {section.purpose}
+                                          </p>
+                                        </div>
                                       </div>
-                                    ) : (
-                                      <div className="inline-flex items-center gap-1">
-                                        {lineCanRelease && (
-                                          <button
-                                            type="button"
-                                            onClick={() => onReleaseStock?.(item)}
-                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/20 text-[10px] font-bold cursor-pointer"
-                                            title="Release from this stock"
-                                          >
-                                            <Send className="h-3 w-3" />
-                                            <span>Release</span>
-                                          </button>
-                                        )}
-                                        {canEditLines && (
-                                          <>
-                                            <button
-                                              type="button"
-                                              onClick={() => startEditLine(item)}
-                                              className="p-1.5 rounded-md border border-border text-text-secondary hover:text-text cursor-pointer"
-                                              title="Edit line"
-                                            >
-                                              <Edit3 className="h-3.5 w-3.5" />
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => void handleDeleteLine(item)}
-                                              disabled={deletePOMutation.isPending}
-                                              className="p-1.5 rounded-md border border-border text-rose-600 hover:bg-rose-500/10 cursor-pointer"
-                                              title="Delete line item"
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                          </>
-                                        )}
-                                      </div>
-                                    )}
-                                  </td>
+                                    </td>
+                                  </tr>
                                 )}
-                              </tr>
-                            );
-                          })}
+                                {section.lines.map((item) => {
+                                  lineNo += 1;
+                                  const iUnitCost = parseFloat(item.unitCost) || 0;
+                                  const iTotalCost =
+                                    parseFloat(item.totalCost) || 0;
+                                  return (
+                                    <tr
+                                      key={item.id}
+                                      className="hover:bg-bg-subtle/50 transition-colors"
+                                    >
+                                      <td className="px-3 py-2.5 text-text-secondary font-mono text-[10px] tabular-nums">
+                                        {lineNo}
+                                      </td>
+                                      <td className="px-3 py-2.5 min-w-0">
+                                        <span className="font-semibold text-text block truncate">
+                                          {item.itemName}
+                                        </span>
+                                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                                          <span className="font-mono text-[10px] text-text-secondary truncate">
+                                            {item.itemCode}
+                                          </span>
+                                          {item.lotCode && (
+                                            <span className="font-mono text-[10px] text-text-muted truncate">
+                                              · {item.lotCode}
+                                            </span>
+                                          )}
+                                          <span
+                                            className={cn(
+                                              "inline-flex items-center shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border shadow-2xs",
+                                              item.itemType === "asset"
+                                                ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25"
+                                                : "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/25"
+                                            )}
+                                          >
+                                            {item.itemType}
+                                          </span>
+                                        </div>
+                                      </td>
+                                      <td className="px-3 py-2.5 text-center font-mono font-bold text-text tabular-nums">
+                                        {item.quantity}
+                                      </td>
+                                      <td className="pl-4 pr-3 py-2.5 text-right font-mono text-text tabular-nums">
+                                        {formatPhp(iUnitCost)}
+                                      </td>
+                                      <td className="pl-5 pr-4 py-2.5 text-right font-mono font-bold text-status-active-text tabular-nums border-l border-border">
+                                        {formatPhp(iTotalCost)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </Fragment>
+                            ));
+                          })()}
                         </tbody>
-                        <tfoot className="border-t-2 border-border bg-bg-subtle/50">
+                        <tfoot className="border-t-2 border-border bg-bg-subtle/60">
                           <tr>
-                            <td colSpan={2} className="px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-text-secondary">Grand Total</td>
-                            <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
+                            <td
+                              colSpan={2}
+                              className="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider text-text-secondary"
+                            >
+                              Grand Total
+                            </td>
+                            <td className="px-3 py-3 text-center font-mono font-bold text-text tabular-nums">
                               {lotsToUpdate.reduce((sum, li) => sum + li.quantity, 0)}
                             </td>
-                            <td className="px-3 py-2.5 text-center font-mono font-bold text-text">
-                              {lotsToUpdate.some(
-                                (li) =>
-                                  li.itemType === "consumable" &&
-                                  li.status === "delivered"
-                              )
-                                ? lotsToUpdate
-                                    .filter(
-                                      (li) =>
-                                        li.itemType === "consumable" &&
-                                        li.status === "delivered"
-                                    )
-                                    .reduce(
-                                      (sum, li) => sum + li.quantityRemaining,
-                                      0
-                                    )
-                                : "—"}
+                            <td className="pl-4 pr-3 py-3"></td>
+                            <td className="pl-5 pr-4 py-3 text-right font-mono font-bold text-base text-status-active-text tabular-nums border-l border-border">
+                              {formatPhp(
+                                lotsToUpdate.reduce(
+                                  (sum, li) =>
+                                    sum + (parseFloat(li.totalCost) || 0),
+                                  0
+                                )
+                              )}
                             </td>
-                            <td className="px-3 py-2.5"></td>
-                            <td className="px-3 py-2.5 text-right font-mono font-bold text-base text-status-active-text">
-                              {formatPhp(lotsToUpdate.reduce((sum, li) => sum + (parseFloat(li.totalCost) || 0), 0))}
-                            </td>
-                            {(canEditLines || canRelease) && <td />}
                           </tr>
                         </tfoot>
                       </table>
@@ -1371,9 +1306,29 @@ export function PurchaseOrderDetailSheet({
                         <span className="text-[10px] uppercase font-bold text-text-secondary">Dealer / Supplier</span>
                         <p className="font-semibold text-text">{displayDealer}</p>
                       </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] uppercase font-bold text-text-secondary">Purpose / Usage</span>
-                        <p className="font-medium text-text">{cleanPurpose}</p>
+                      <div className="space-y-1 col-span-2 sm:col-span-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] uppercase font-bold text-text-secondary">
+                            Purpose / Usage
+                            {isMultiPurpose ? ` (${purposeSections.length})` : ""}
+                          </span>
+                          {canEditLines && (
+                            <button
+                              type="button"
+                              onClick={() => openEditDialog("purposes")}
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent hover:underline cursor-pointer"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                        {!isMultiPurpose && (
+                          <p className="font-medium text-text mt-0.5">
+                            {purposeSections[0]?.purpose ||
+                              "General Operations Replenishment"}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1455,8 +1410,25 @@ export function PurchaseOrderDetailSheet({
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-text-secondary">Purpose / Usage</span>
-                      <p className="font-medium text-text">{cleanPurpose}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] uppercase font-bold text-text-secondary">
+                          Purpose / Usage
+                        </span>
+                        {canEditLines && (
+                          <button
+                            type="button"
+                            onClick={() => openEditDialog("purposes")}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent hover:underline cursor-pointer"
+                          >
+                            <Edit3 className="h-3 w-3" />
+                            Edit
+                          </button>
+                        )}
+                      </div>
+                      <p className="font-medium text-text">
+                        {purposeSections[0]?.purpose ||
+                          "General Operations Replenishment"}
+                      </p>
                     </div>
 
                     <div className="space-y-1">
@@ -2131,12 +2103,7 @@ export function PurchaseOrderDetailSheet({
     {/* Modal for Status Confirmation / Notes */}
     {showStatusModal && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-        <div
-          className={cn(
-            "w-full rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto",
-            showStatusModal === "delivered" && isMultiLotPo ? "max-w-lg" : "max-w-sm"
-          )}
-        >
+        <div className="w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between border-b border-border pb-2">
             <h3 className="font-bold text-text text-sm capitalize flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4 text-accent" />
@@ -2157,11 +2124,11 @@ export function PurchaseOrderDetailSheet({
                   const deliverTargets =
                     receivableLots.length > 0 ? receivableLots : lotsToUpdate;
                   if (deliverTargets.length > 1) {
-                    return `Confirm the actual quantity received for each of the ${deliverTargets.length} line items. Supplies/materials are stocked into inventory; assets are activated as physical units.`;
+                    return `Receive ${deliverTargets.length} line items at their ordered quantities. Supplies/materials are stocked into inventory; assets are activated as physical units.`;
                   }
                   return deliverTargets[0]?.itemType === "consumable"
-                    ? "Confirm the actual quantity received. That amount will be added to inventory (it can differ from the ordered quantity)."
-                    : "Confirm how many physical units were received. That count will be activated in inventory (it can differ from the ordered quantity).";
+                    ? "Receive this line at the ordered quantity into inventory."
+                    : "Receive and activate this asset at the ordered quantity.";
                 })()
               : showStatusModal === "approved"
               ? "Approve this purchase order to authorize supplier issuance and procurement."
@@ -2169,100 +2136,6 @@ export function PurchaseOrderDetailSheet({
               ? "This cannot be undone from the workflow. Enter why you are cancelling so the reason stays on this PO."
               : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
           </p>
-
-          {showStatusModal === "delivered" && (
-            <div className="space-y-2">
-              {(() => {
-                const deliverTargets =
-                  receivableLots.length > 0 ? receivableLots : lotsToUpdate;
-                const multi = deliverTargets.length > 1;
-                return (
-                  <>
-              <label className="text-[11px] font-semibold text-text">
-                {multi ? "Line Items to Receive" : "Actual Quantity Received"}
-                <span className="text-accent"> *</span>
-              </label>
-              <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
-                {deliverTargets.map((li, idx) => {
-                  const orderedQty = li.orderedQuantity ?? li.quantity;
-                  const qtyValue =
-                    receivedQuantities[li.id] ?? String(orderedQty);
-                  const parsedQty = Number.parseInt(qtyValue, 10);
-                  const differsFromOrdered =
-                    Number.isFinite(parsedQty) && parsedQty !== orderedQty;
-
-                  return (
-                    <div
-                      key={li.id}
-                      className="p-3 bg-bg space-y-2"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {multi && (
-                              <span className="text-[10px] font-mono text-text-secondary shrink-0">
-                                #{idx + 1}
-                              </span>
-                            )}
-                            <span className="text-xs font-semibold text-text truncate">
-                              {li.itemName}
-                            </span>
-                            <span
-                              className={cn(
-                                "inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border shrink-0",
-                                li.itemType === "asset"
-                                  ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-500/25"
-                                  : "bg-teal-500/10 text-teal-700 dark:text-teal-400 border-teal-500/25"
-                              )}
-                            >
-                              {li.itemType}
-                            </span>
-                          </div>
-                          <span className="font-mono text-[10px] text-text-secondary">
-                            {li.itemCode}
-                            {li.lotCode ? ` · ${li.lotCode}` : ""}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <input
-                            id={`po-received-qty-${li.id}`}
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={qtyValue}
-                            onChange={(e) =>
-                              setReceivedQuantities((prev) => ({
-                                ...prev,
-                                [li.id]: e.target.value,
-                              }))
-                            }
-                            aria-label={`Actual quantity received for ${li.itemName}`}
-                            className="w-full max-w-28 p-2 text-xs rounded-lg border border-border bg-bg text-text font-mono focus:ring-1 focus:ring-accent focus:outline-hidden"
-                          />
-                          <span className="text-[11px] text-text-secondary shrink-0">
-                            of {orderedQty} ordered
-                          </span>
-                        </div>
-                        {differsFromOrdered && (
-                          <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                            {li.itemType === "consumable"
-                              ? "Inventory will be adjusted to the received quantity, not the ordered amount."
-                              : "Only the received number of asset units will be activated in inventory."}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-                  </>
-                );
-              })()}
-            </div>
-          )}
 
           {showStatusModal === "delivered" && (
             <div className="space-y-1.5">
@@ -2377,6 +2250,16 @@ export function PurchaseOrderDetailSheet({
       onClose={() => setIsAddLinesOpen(false)}
       lot={lot}
       existingLots={lotsToUpdate}
+    />
+    <EditPoLinesDialog
+      isOpen={editDialogStep !== null}
+      onClose={() => setEditDialogStep(null)}
+      lot={lot}
+      lines={lotsToUpdate}
+      purposePrefix={purposePrefix}
+      initialStep={editDialogStep ?? "items"}
+      onDeleteLine={onDeleteLine}
+      onLastLineDeleted={onClose}
     />
     </>
   );
