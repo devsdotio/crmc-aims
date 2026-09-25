@@ -86,7 +86,6 @@ function UsersContent() {
   const deactivateUser = useDeactivateUserMutation();
   const reactivateUser = useReactivateUserMutation();
   const toast = useToast();
-  const { data: departments = [] } = useDepartmentsQuery();
 
   const currentUserId = me?.id ?? "";
   const canInviteAdmin = me?.role === "superadmin";
@@ -98,6 +97,9 @@ function UsersContent() {
   const [deactivateDialogUser, setDeactivateDialogUser] =
     useState<UserAccount | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
+  const { data: departments = [] } = useDepartmentsQuery({
+    enabled: inviteDialogOpen || Boolean(editDialogUser),
+  });
 
   // Filter and automatically sort users:
   // 1. Role hierarchy (Superadmin -> Admin -> Staff -> Borrower)

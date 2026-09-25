@@ -50,6 +50,14 @@ export const maintenanceLogsApi = {
     return res.data;
   },
 
+  async syncOrphans(): Promise<{ created: number }> {
+    const res = await fetchJson<ApiResponse<{ created: number }>>(
+      "/api/maintenance-logs/sync-orphans",
+      { method: "POST" }
+    );
+    return res.data;
+  },
+
   async getById(id: string): Promise<MaintenanceLog> {
     const res = await fetchJson<ApiResponse<MaintenanceLog>>(
       `/api/maintenance-logs/${id}`

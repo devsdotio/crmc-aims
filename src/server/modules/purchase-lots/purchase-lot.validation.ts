@@ -12,10 +12,36 @@ export const purchaseOrderStatusSchema = z.enum([
 
 export const listPurchaseLotsQuerySchema = z.object({
   consumableId: z.string().uuid().optional(),
+  consumableIds: z
+    .union([z.array(z.string().uuid()), z.string().uuid()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      return Array.isArray(v) ? v : [v];
+    }),
   assetId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
   itemType: purchaseLotItemTypeSchema.optional(),
   status: purchaseOrderStatusSchema.optional(),
+  /** Comma-separated or array — preferred over single `status` for widgets. */
+  statuses: z
+    .union([
+      z.array(purchaseOrderStatusSchema).max(5),
+      z.string().transform((value) =>
+        value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      ),
+    ])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) return undefined;
+      const parsed = z.array(purchaseOrderStatusSchema).max(5).safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    }),
+  /** Max distinct PO numbers after status filter (keeps multi-line POs intact). */
+  limit: z.coerce.number().int().positive().max(200).optional(),
   search: z.string().trim().max(200).optional(),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])

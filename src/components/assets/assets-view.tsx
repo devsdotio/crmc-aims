@@ -9,6 +9,7 @@ import {
   useUpdateAssetMutation,
   useDeleteAssetMutation,
 } from "@/features/assets/client/use-assets";
+import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import type { Asset, ViewMode, AssetFilterState, AssetStatus } from "@/types/assets";
 import { AssetFilters } from "@/components/assets/asset-filters";
 import { AssetViewToggle } from "@/components/assets/asset-view-toggle";
@@ -32,19 +33,7 @@ import { isAssetAvailableForRequest } from "@/lib/assets-custody";
 function AssetsViewContent() {
   const searchParams = useSearchParams();
   const searchParamQuery = searchParams.get("search");
-  const {
-    data: assets = [],
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useAssetsQuery();
-  const createMutation = useCreateAssetMutation();
-  const updateMutation = useUpdateAssetMutation();
-  const deleteMutation = useDeleteAssetMutation();
-  const resolveMaintenanceMutation = useResolveMaintenanceLogMutation();
-  const toast = useToast();
-  const { canOperate } = useAssetOperator();
+  const { getCategoryStyle } = useCategoryStyleMap();
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
@@ -57,6 +46,31 @@ function AssetsViewContent() {
     sortBy: "name",
     sortOrder: "asc",
   });
+
+  const serverStatus =
+    filters.statuses.length === 1 ? filters.statuses[0] : undefined;
+  const serverCategory =
+    filters.categories.length === 1 ? filters.categories[0] : undefined;
+
+  const {
+    data: assets = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useAssetsQuery(serverStatus, {
+    search: filters.searchQuery?.trim() || undefined,
+    category: serverCategory,
+    availableOnly: filters.availability === "available" ? true : undefined,
+    assignmentType:
+      filters.assignmentType !== "all" ? filters.assignmentType : undefined,
+  });
+  const createMutation = useCreateAssetMutation();
+  const updateMutation = useUpdateAssetMutation();
+  const deleteMutation = useDeleteAssetMutation();
+  const resolveMaintenanceMutation = useResolveMaintenanceLogMutation();
+  const toast = useToast();
+  const { canOperate } = useAssetOperator();
 
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [assetToDelete, setAssetToDelete] = useState<Asset | null>(null);
@@ -86,19 +100,19 @@ function AssetsViewContent() {
 
   const filteredAssets = useMemo(() => {
     const result = assets.filter((asset) => {
-      if (filters.searchQuery?.trim()) {
-        const query = filters.searchQuery.toLowerCase();
-        const matchName = asset.name.toLowerCase().includes(query);
-        const matchCode = asset.assetCode.toLowerCase().includes(query);
-        const matchSerial = asset.serialNumber?.toLowerCase().includes(query) ?? false;
-        if (!matchName && !matchCode && !matchSerial) return false;
-      }
-
-      if (filters.categories.length > 0 && !filters.categories.includes(asset.category)) {
+      // Multi-select category/status still need client filtering; single values
+      // and search / availableOnly / assignmentType are applied server-side.
+      if (
+        filters.categories.length > 1 &&
+        !filters.categories.includes(asset.category)
+      ) {
         return false;
       }
 
-      if (filters.statuses.length > 0 && !filters.statuses.includes(asset.status)) {
+      if (
+        filters.statuses.length > 1 &&
+        !filters.statuses.includes(asset.status)
+      ) {
         return false;
       }
 
@@ -295,12 +309,14 @@ function AssetsViewContent() {
               assets={filteredAssets}
               loading={isLoading && !isError}
               onSelect={setSelectedAsset}
+              getCategoryStyle={getCategoryStyle}
             />
           ) : (
             <AssetTable
               assets={filteredAssets}
               loading={isLoading && !isError}
               onSelect={setSelectedAsset}
+              getCategoryStyle={getCategoryStyle}
             />
           )}
         </main>

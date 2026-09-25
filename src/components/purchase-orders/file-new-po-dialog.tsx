@@ -183,13 +183,19 @@ export function FileNewPODialog({
     enabled: isOpen,
   });
   const { data: allCategories = [] } = useCategoriesQuery({ enabled: isOpen });
-  const { data: consumablePage } = useConsumablesQuery({ limit: 100 });
+  const { data: consumablePage } = useConsumablesQuery({
+    limit: 200,
+    catalog: true,
+    enabled: isOpen,
+  });
   const consumables = useMemo(
     () => consumablePage?.data ?? [],
     [consumablePage?.data]
   );
-  const { data: assetsList = [] } = useAssetsQuery();
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: assetsList = [] } = useAssetsQuery(undefined, {
+    enabled: isOpen,
+  });
+  const { data: projects = [] } = useProjectsQuery({ enabled: isOpen });
   const activeProjects = useMemo(
     () => projects.filter((p) => p.status !== "completed"),
     [projects]

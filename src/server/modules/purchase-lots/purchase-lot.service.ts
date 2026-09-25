@@ -438,9 +438,34 @@ export class PurchaseLotService {
     const rows = await this.repo.list(filters, undefined, actorTenantId);
     let dtos = rows.map(toPurchaseLotDTO);
 
-    if (filters.status) {
-      dtos = dtos.filter((d) => d.status === filters.status);
+    const statusSet =
+      filters.statuses && filters.statuses.length > 0
+        ? new Set(filters.statuses)
+        : filters.status
+          ? new Set([filters.status])
+          : null;
+    if (statusSet) {
+      dtos = dtos.filter((d) => statusSet.has(d.status));
     }
+
+    // Cap by distinct PO so multi-line orders stay complete for lean widgets.
+    if (filters.limit && filters.limit > 0) {
+      const order: string[] = [];
+      const byPo = new Map<string, typeof dtos>();
+      for (const dto of dtos) {
+        const key = dto.poNumber || dto.lotCode;
+        const existing = byPo.get(key);
+        if (existing) {
+          existing.push(dto);
+          continue;
+        }
+        if (order.length >= filters.limit) continue;
+        order.push(key);
+        byPo.set(key, [dto]);
+      }
+      dtos = order.flatMap((key) => byPo.get(key) ?? []);
+    }
+
     dtos = await withPoDepartments(dtos, actorTenantId);
     return withDisbursementClaims(dtos, actorTenantId);
   }

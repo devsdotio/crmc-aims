@@ -5,6 +5,7 @@ import type {
   DashboardAssetRowDTO,
   StockVolumeResponseDTO,
   DashboardCategoryCount,
+  DashboardPendingRequest as DashboardPendingRequestDTO,
 } from "@/server/modules/dashboard/dashboard.service";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 
@@ -12,6 +13,7 @@ export type DashboardSnapshot = DashboardSnapshotDTO;
 export type DashboardSummary = DashboardSummaryDTO;
 export type DashboardNotification = DashboardNotificationItem;
 export type DashboardAssetRow = DashboardAssetRowDTO;
+export type DashboardPendingRequest = DashboardPendingRequestDTO;
 export type StockVolumeData = StockVolumeResponseDTO;
 export type TopCategoryItem = DashboardCategoryCount;
 

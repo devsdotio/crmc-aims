@@ -42,15 +42,18 @@ export function useConsumablesQuery(filters?: {
   page?: number;
   limit?: number;
   catalog?: boolean;
+  enabled?: boolean;
 }): UseQueryResult<
   PaginatedResponse<ConsumableItem>,
   Error
 > {
+  const { enabled = true, ...listFilters } = filters ?? {};
   return useQuery({
     // Stock levels move with every issue and restock, so this rides the global
     // 30s stale window instead of holding a five-minute snapshot.
-    queryKey: consumableQueryKeys.list(filters),
-    queryFn: () => consumablesApi.list(filters),
+    queryKey: consumableQueryKeys.list(listFilters),
+    queryFn: () => consumablesApi.list(listFilters),
+    enabled,
   });
 }
 

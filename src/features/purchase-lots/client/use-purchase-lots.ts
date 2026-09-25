@@ -32,14 +32,24 @@ const PO_DOMAINS = [
 
 export function usePurchaseLotsQuery(params?: {
   consumableId?: string;
+  consumableIds?: string[];
   assetId?: string;
   supplierId?: string;
   itemType?: "consumable" | "asset";
   status?: PurchaseOrderStatus;
+  statuses?: PurchaseOrderStatus[];
+  limit?: number;
   search?: string;
   enabled?: boolean;
 }): UseQueryResult<PurchaseLot[], Error> {
-  const { enabled = true, ...filters } = params ?? {};
+  const { enabled = true, consumableIds, ...rest } = params ?? {};
+  const sortedConsumableIds = consumableIds?.length
+    ? [...consumableIds].sort()
+    : undefined;
+  const filters = {
+    ...rest,
+    ...(sortedConsumableIds ? { consumableIds: sortedConsumableIds } : {}),
+  };
   return useQuery({
     queryKey: purchaseLotQueryKeys.list(filters),
     queryFn: () => purchaseLotsApi.list(filters),

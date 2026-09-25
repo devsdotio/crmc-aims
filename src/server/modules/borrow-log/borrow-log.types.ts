@@ -32,7 +32,7 @@ export type BorrowLogDTO = {
 };
 
 export type ListBorrowLogFilters = {
-  status?: "active" | "overdue" | "returned" | "voided";
+  status?: "active" | "overdue" | "returned" | "voided" | "closed";
   department?: string;
   /** UUID — preferred over free-text department label. */
   departmentId?: string;
@@ -45,6 +45,8 @@ export type ListBorrowLogFilters = {
   /** Exclude project-destination rows. */
   excludeProjects?: boolean;
   includeSandbox?: boolean;
+  page?: number;
+  limit?: number;
 };
 
 export interface IBorrowLogRepository {
@@ -63,6 +65,11 @@ export interface IBorrowLogRepository {
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
   ): Promise<BorrowTransactionRow[]>;
+  count(
+    filters?: ListBorrowLogFilters,
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<number>;
   countActive(
     session?: import("@/server/db/transaction").DbSession,
     userId?: string,

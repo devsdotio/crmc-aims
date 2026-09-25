@@ -80,17 +80,29 @@ function restoreCachedAssetLists(
   });
 }
 
+export type AssetsListFilters = {
+  catalog?: boolean;
+  enabled?: boolean;
+  search?: string;
+  category?: string;
+  availableOnly?: boolean;
+  assignmentType?: "borrowable" | "assignable";
+  modelId?: string;
+};
+
 export function useAssetsQuery(
   status?: AssetStatus,
-  filters?: { catalog?: boolean }
+  filters?: AssetsListFilters
 ): UseQueryResult<Asset[], Error> {
+  const { enabled = true, ...listFilters } = filters ?? {};
   return useQuery({
-    queryKey: assetQueryKeys.list({ status, catalog: filters?.catalog }),
-    queryFn: () => assetsApi.listAssets(status, filters),
+    queryKey: assetQueryKeys.list({ status, ...listFilters }),
+    queryFn: () => assetsApi.listAssets(status, listFilters),
     // Custody changes constantly, so fall back to the global 30s stale window
     // and let the cached list render while the refresh runs behind it.
     // Surface timeouts quickly — default multi-retry looked like infinite skeleton
     retry: 0,
+    enabled,
   });
 }
 

@@ -22,7 +22,7 @@ import {
   formatRelativeTime,
   AuditNoteDisplay,
 } from "@/components/audit-logs/audit-log-utils";
-import { useBorrowLogQuery } from "@/features/borrow-log/client/use-borrow-log";
+import { useBorrowLogPageQuery } from "@/features/borrow-log/client/use-borrow-log";
 
 type HistoryStatusFilter = "all" | "active" | "overdue" | "returned";
 
@@ -109,40 +109,64 @@ export function BorrowHistoryTab() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>("all");
   const [search, setSearch] = useState("");
-  const { data: rawRecords = [], isLoading: loading } = useBorrowLogQuery();
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
 
-  const records = useMemo(() => {
-    return rawRecords.filter((r) => r.custodyKind !== "assignment");
-  }, [rawRecords]);
+  const listStatus =
+    statusFilter === "all" ? undefined : statusFilter;
+
+  const { data: pageData, isLoading: loading } = useBorrowLogPageQuery({
+    custodyKind: "borrow",
+    status: listStatus,
+    search: search.trim() || undefined,
+    page,
+    limit: pageSize,
+  });
+
+  const { data: countAll } = useBorrowLogPageQuery({
+    custodyKind: "borrow",
+    search: search.trim() || undefined,
+    page: 1,
+    limit: 1,
+  });
+  const { data: countActive } = useBorrowLogPageQuery({
+    custodyKind: "borrow",
+    status: "active",
+    search: search.trim() || undefined,
+    page: 1,
+    limit: 1,
+  });
+  const { data: countOverdue } = useBorrowLogPageQuery({
+    custodyKind: "borrow",
+    status: "overdue",
+    search: search.trim() || undefined,
+    page: 1,
+    limit: 1,
+  });
+  const { data: countReturned } = useBorrowLogPageQuery({
+    custodyKind: "borrow",
+    status: "returned",
+    search: search.trim() || undefined,
+    page: 1,
+    limit: 1,
+  });
+
+  const filteredRecords = pageData?.data ?? [];
+  const totalPages = pageData?.totalPages ?? 1;
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
-  const searchedRecords = useMemo(() => {
-    if (!search.trim()) return records;
-    const q = search.toLowerCase();
-    return records.filter((r) => {
-      const code = (r.logCode || "").toLowerCase();
-      const assetName = (r.assetName || "").toLowerCase();
-      const assetCode = (r.assetCode || "").toLowerCase();
-      return code.includes(q) || assetName.includes(q) || assetCode.includes(q);
-    });
-  }, [records, search]);
-
-  const counts = useMemo(() => {
-    return {
-      all: searchedRecords.length,
-      active: searchedRecords.filter((r) => r.status === "active").length,
-      overdue: searchedRecords.filter((r) => r.status === "overdue").length,
-      returned: searchedRecords.filter((r) => r.status === "returned").length,
-    };
-  }, [searchedRecords]);
-
-  const filteredRecords = useMemo(() => {
-    if (statusFilter === "all") return searchedRecords;
-    return searchedRecords.filter((r) => r.status === statusFilter);
-  }, [searchedRecords, statusFilter]);
+  const counts = useMemo(
+    () => ({
+      all: countAll?.total ?? 0,
+      active: countActive?.total ?? 0,
+      overdue: countOverdue?.total ?? 0,
+      returned: countReturned?.total ?? 0,
+    }),
+    [countAll?.total, countActive?.total, countOverdue?.total, countReturned?.total]
+  );
 
   return (
     <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col min-h-0">
@@ -163,7 +187,10 @@ export function BorrowHistoryTab() {
                 <button
                   key={f.key}
                   type="button"
-                  onClick={() => setStatusFilter(f.key)}
+                  onClick={() => {
+                    setStatusFilter(f.key);
+                    setPage(1);
+                  }}
                   className={cn(
                     "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-150 cursor-pointer whitespace-nowrap select-none",
                     isSelected
@@ -205,7 +232,10 @@ export function BorrowHistoryTab() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             placeholder="Search asset, LOG code, or serial…"
             className={cn(
               "w-full h-9 pl-8.5 pr-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
@@ -436,6 +466,33 @@ export function BorrowHistoryTab() {
           })
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 md:px-6 py-3 border-t border-border bg-bg shrink-0">
+          <span className="text-xs text-text-secondary">
+            Page <span className="font-bold text-text">{page}</span> of{" "}
+            <span className="font-bold text-text">{totalPages}</span>
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 text-xs font-semibold text-text bg-bg border border-border rounded-md hover:bg-bg-subtle disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-3 py-1.5 text-xs font-semibold text-text bg-bg border border-border rounded-md hover:bg-bg-subtle disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

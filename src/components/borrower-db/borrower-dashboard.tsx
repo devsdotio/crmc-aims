@@ -18,14 +18,11 @@ import { useCategoryStyleMap } from "@/features/categories/client/use-categories
 import { useBorrowerPortal } from "./context";
 import type { PortalBorrowRequest } from "./types";
 import {
-  mapBorrowRequestToPortal,
-  mapConsumableRequestToPortal,
   portalRequestKindLabel,
 } from "./map-portal-request";
 import { useDashboardSnapshotQuery } from "@/features/dashboard/client/use-dashboard";
+import type { DashboardPendingRequest } from "@/features/dashboard/client/dashboard-api";
 import { useMeQuery } from "@/features/users/client";
-import { useBorrowRequests } from "@/features/borrow-requests/client/use-borrow-requests";
-import { useConsumableRequests } from "@/features/consumable-requests/client";
 import { useBorrowLogQuery } from "@/features/borrow-log/client/use-borrow-log";
 import type { BorrowLogRecord } from "@/features/borrow-log/client/borrow-log-api";
 import {
@@ -232,6 +229,42 @@ function requestItemTitle(request: PortalBorrowRequest) {
   return first;
 }
 
+function mapSnapshotPendingToPortal(
+  row: DashboardPendingRequest
+): PortalBorrowRequest {
+  return {
+    id: row.id,
+    requestCode: row.requestCode ?? "",
+    requesterName: row.requesterName,
+    requesterEmail: "",
+    requesterPhone: "",
+    department: row.department,
+    requestType:
+      row.kind === "assign"
+        ? "assignable"
+        : row.kind === "borrow"
+          ? "borrowable"
+          : null,
+    items: [
+      {
+        itemDescription: row.itemDescription,
+        category: "office_supplies",
+        quantity: 1,
+        itemType: row.kind === "supply" ? "consumable" : "asset",
+      },
+    ],
+    purpose: row.itemDescription,
+    requestedAt: row.requestedAt,
+    relativeTime: row.relativeTime,
+    expectedReturnDate: null,
+    status: "pending",
+    history: [],
+    requestedDateFrom: row.requestedAt.slice(0, 10),
+    requestedDateTo: row.requestedAt.slice(0, 10),
+    portalKind: row.kind === "supply" ? "supply" : undefined,
+  };
+}
+
 function requestKindHref(kind: ReturnType<typeof portalRequestKindLabel>) {
   if (kind === "Supplies") return "/borrower-db/requests/supplies";
   if (kind === "Assignment") return "/borrower-db/requests/assignment";
@@ -320,14 +353,6 @@ export function BorrowerDashboard() {
     scope: "department",
     enabled: Boolean(me?.departmentId),
   });
-  const { data: pendingBorrowRes, isLoading: pendingBorrowLoading } = useBorrowRequests({
-    status: "pending",
-    limit: 20,
-  });
-  const { data: pendingSupplyRes, isLoading: pendingSupplyLoading } = useConsumableRequests({
-    status: "pending",
-    limit: 20,
-  });
 
   const onHandItems = useMemo(
     () =>
@@ -345,17 +370,14 @@ export function BorrowerDashboard() {
         .sort(sortOverdue),
     [custodyRows]
   );
-  const pendingRequests = useMemo(() => {
-    const assets = (pendingBorrowRes?.data ?? []).map(mapBorrowRequestToPortal);
-    const supplies = (pendingSupplyRes?.data ?? []).map(mapConsumableRequestToPortal);
-    return [...assets, ...supplies].sort((a, b) =>
-      b.requestedAt.localeCompare(a.requestedAt)
-    );
-  }, [pendingBorrowRes?.data, pendingSupplyRes?.data]);
+  const pendingRequests = useMemo(
+    () => (snapshot?.pendingRequests ?? []).map(mapSnapshotPendingToPortal),
+    [snapshot?.pendingRequests]
+  );
 
   const snapshotSummary = snapshot?.summary;
   const hasCustody = Boolean(custodyRows);
-  const hasPending = Boolean(pendingBorrowRes && pendingSupplyRes);
+  const hasSnapshotPending = Boolean(snapshot?.pendingRequests);
 
   const onHandCount = hasCustody
     ? onHandItems.length
@@ -363,16 +385,12 @@ export function BorrowerDashboard() {
   const overdueCount = hasCustody
     ? overdueItems.length
     : (snapshotSummary?.overdueAssets ?? 0);
-  const pendingCount = hasPending
-    ? (pendingBorrowRes?.meta.total ?? 0) + (pendingSupplyRes?.meta.total ?? 0)
-    : (snapshotSummary?.pendingApprovals ?? 0);
+  const pendingCount = snapshotSummary?.pendingApprovals ?? pendingRequests.length;
   const totalRequests = snapshotSummary?.totalRequests ?? 0;
 
   const statsLoading = snapshotLoading && !snapshot && !hasCustody;
   const custodyLoading = Boolean(me?.departmentId) && custodyQueryLoading && !custodyRows;
-  const pendingLoading =
-    (pendingBorrowLoading && !pendingBorrowRes) ||
-    (pendingSupplyLoading && !pendingSupplyRes);
+  const pendingLoading = snapshotLoading && !hasSnapshotPending;
 
   const statCards: StatCardProps[] = [
     {

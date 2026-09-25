@@ -88,18 +88,30 @@ export type UpdatePOStatusPayload = {
 export const purchaseLotsApi = {
   async list(params?: {
     consumableId?: string;
+    consumableIds?: string[];
     assetId?: string;
     supplierId?: string;
     itemType?: "consumable" | "asset";
     status?: PurchaseOrderStatus;
+    statuses?: PurchaseOrderStatus[];
+    limit?: number;
     search?: string;
   }): Promise<PurchaseLot[]> {
     const sp = new URLSearchParams();
     if (params?.consumableId) sp.set("consumableId", params.consumableId);
+    if (params?.consumableIds?.length) {
+      for (const id of params.consumableIds) {
+        sp.append("consumableIds", id);
+      }
+    }
     if (params?.assetId) sp.set("assetId", params.assetId);
     if (params?.supplierId) sp.set("supplierId", params.supplierId);
     if (params?.itemType) sp.set("itemType", params.itemType);
     if (params?.status) sp.set("status", params.status);
+    if (params?.statuses && params.statuses.length > 0) {
+      sp.set("statuses", params.statuses.join(","));
+    }
+    if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.search) sp.set("search", params.search);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<PurchaseLot[]>>(

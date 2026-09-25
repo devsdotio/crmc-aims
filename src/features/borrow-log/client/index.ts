@@ -12,6 +12,7 @@ export type {
 export { borrowLogQueryKeys } from "./query-keys";
 export {
   useBorrowLogQuery,
+  useBorrowLogPageQuery,
   useBorrowLogRecordQuery,
   useReleaseBorrowMutation,
   useReturnBorrowMutation,

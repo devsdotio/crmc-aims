@@ -100,6 +100,17 @@ export const listStockMovementsQuerySchema = z.object({
   /** Optional for staff filters; borrowers always use session departmentId. */
   departmentId: z.string().uuid().optional(),
   classification: z.enum(["supply", "material"]).optional(),
+  /** ISO date or YYYY-MM-DD — only movements on/after this instant. */
+  fromDate: z.string().trim().min(1).optional(),
+  /** When true, exclude rows whose notes contain [VOIDED]. */
+  excludeVoided: z
+    .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === "boolean") return v;
+      return v === "true" || v === "1";
+    }),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
     .optional()
@@ -307,6 +318,8 @@ export class StockMovementService {
       tenantId: actor?.tenantId,
       departmentId,
       classification: query.classification,
+      fromDate: query.fromDate,
+      excludeVoided: query.excludeVoided,
     });
     const labels = await destinationLabelsFor(rows, actor?.tenantId);
     const issueIds = rows

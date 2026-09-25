@@ -1,4 +1,4 @@
-import { and, asc, count, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -215,6 +215,23 @@ export class AssetRepository implements IAssetRepository {
       .where(and(...conditions))
       .limit(1);
     return row ?? null;
+  }
+
+  async findByIds(
+    ids: string[],
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<AssetRow[]> {
+    if (ids.length === 0) return [];
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [inArray(assets.id, ids)];
+    if (resolvedTenantId) conditions.push(eq(assets.tenantId, resolvedTenantId));
+
+    return db
+      .select()
+      .from(assets)
+      .where(and(...conditions));
   }
 
   /** Row lock for custody mutations (release/return). */

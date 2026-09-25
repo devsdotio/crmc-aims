@@ -157,16 +157,21 @@ export class BorrowLogService {
     private readonly projectAssignments = new ProjectAssetAssignmentRepository()
   ) {}
 
-  async list(rawQuery: unknown, actor?: ActorContext): Promise<BorrowLogDTO[]> {
+  async list(rawQuery: unknown, actor?: ActorContext): Promise<
+    | import("@/types/filters").PaginatedResponse<BorrowLogDTO>
+    | BorrowLogDTO[]
+  > {
     const parsed = listBorrowLogQuerySchema.parse(rawQuery ?? {});
     const filters: import("./borrow-log.types").ListBorrowLogFilters = {
-      status: parsed.status,
+      status: parsed.status as import("./borrow-log.types").ListBorrowLogFilters["status"],
       department: parsed.department,
       search: parsed.search,
       borrowerUserId: parsed.borrowerUserId,
       borrowerEmail: parsed.borrowerEmail,
       custodyKind: parsed.custodyKind,
       includeSandbox: parsed.includeSandbox,
+      page: parsed.page,
+      limit: parsed.limit,
     };
 
     if (actor && !isAssetOperatorRole(actor.role)) {
@@ -191,6 +196,29 @@ export class BorrowLogService {
           filters.borrowerEmail = actor.email;
         }
       }
+    }
+
+    const paginate = parsed.page != null || parsed.limit != null;
+    if (paginate) {
+      const page = parsed.page ?? 1;
+      const limit = parsed.limit ?? 25;
+      filters.page = page;
+      filters.limit = limit;
+      const [rows, total] = await Promise.all([
+        this.repo.list(filters, undefined, actor?.tenantId),
+        this.repo.count(
+          { ...filters, page: undefined, limit: undefined },
+          undefined,
+          actor?.tenantId
+        ),
+      ]);
+      return {
+        data: rows.map((row) => toBorrowLogDTO(row)),
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      };
     }
 
     const rows = await this.repo.list(filters, undefined, actor?.tenantId);

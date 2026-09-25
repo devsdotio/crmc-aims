@@ -23,7 +23,7 @@ export const listConsumablesQuerySchema = z.object({
   stockLevel: stockLevelSchema.optional(),
   search: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
   /** Request-wizard catalog: allow warehouse browse for borrowers. */
   catalog: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])

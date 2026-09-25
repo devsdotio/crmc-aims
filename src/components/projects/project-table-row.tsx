@@ -2,12 +2,13 @@
 
 import { MoreHorizontal, Pencil, Trash2, Eye, Loader2, MapPin, Building2 } from "lucide-react";
 import type { Project } from "@/types/projects";
-import { useProjectProgressQuery } from "@/features/projects/client";
+import type { ProjectProgressCounts } from "@/features/projects/client/use-projects";
 import { ProjectStatusBadge } from "./project-status-badge";
 import { formatPhp } from "./format-money";
 
 export interface ProjectTableRowProps {
   project: Project;
+  progress?: ProjectProgressCounts | null;
   deleting?: boolean;
   onSelect: (project: Project) => void;
   onEdit: (project: Project) => void;
@@ -16,13 +17,12 @@ export interface ProjectTableRowProps {
 
 export function ProjectTableRow({
   project,
+  progress,
   deleting = false,
   onSelect,
   onEdit,
   onDelete,
 }: ProjectTableRowProps) {
-  const { data: progress } = useProjectProgressQuery(project.id);
-
   const canDelete =
     project.isMutable &&
     (project.status === "draft" || project.status === "cancelled");

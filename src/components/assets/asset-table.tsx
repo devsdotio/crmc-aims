@@ -2,12 +2,14 @@
 
 import { PackageSearch } from "lucide-react";
 import type { Asset } from "@/types/assets";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import { AssetTableRow } from "./asset-table-row";
 
 export interface AssetTableProps {
   assets: Asset[];
   loading?: boolean;
   onSelect: (asset: Asset) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 // ─── Matched Skeleton Row for Table View ─────────────────────────────────────
@@ -52,6 +54,7 @@ export function AssetTable({
   assets,
   loading = false,
   onSelect,
+  getCategoryStyle,
 }: AssetTableProps) {
   if (loading) {
     return (
@@ -116,6 +119,7 @@ export function AssetTable({
               key={asset.id}
               asset={asset}
               onSelect={onSelect}
+              getCategoryStyle={getCategoryStyle}
             />
           ))}
         </tbody>

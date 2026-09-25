@@ -8,6 +8,7 @@ import { ProjectRepository } from "./project.repository";
 import type {
   ProjectProgressIndicatorDTO,
   ProjectProgressSummaryDTO,
+  ProjectProgressCountsDTO,
 } from "./project-progress.types";
 import {
   createIndicatorSchema,
@@ -73,6 +74,38 @@ export class ProjectProgressService {
       progressPercentage,
       indicators,
     };
+  }
+
+  /** Batch lean progress for the projects table — one SQL group-by. */
+  async getProgressCountsForProjects(
+    actor: ActorContext
+  ): Promise<ProjectProgressCountsDTO[]> {
+    const projects = await this.projectRepo.list({}, undefined, actor.tenantId);
+    const projectIds = projects.map((p) => p.id);
+    const counts = await this.repo.countByProjectIds(
+      projectIds,
+      undefined,
+      actor.tenantId
+    );
+    const byId = new Map(counts.map((c) => [c.projectId, c]));
+
+    return projectIds.map((projectId) => {
+      const row = byId.get(projectId);
+      const totalIndicators = row?.totalIndicators ?? 0;
+      const completedIndicators = row?.completedIndicators ?? 0;
+      const pendingIndicators = totalIndicators - completedIndicators;
+      const progressPercentage =
+        totalIndicators > 0
+          ? Math.round((completedIndicators / totalIndicators) * 100)
+          : 0;
+      return {
+        projectId,
+        totalIndicators,
+        completedIndicators,
+        pendingIndicators,
+        progressPercentage,
+      };
+    });
   }
 
   async createIndicator(

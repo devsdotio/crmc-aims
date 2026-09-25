@@ -61,76 +61,153 @@ export class AuditLogService {
       actor.tenantId ? [eq(col as typeof borrowRequests.tenantId, actor.tenantId)] : [];
 
     const validBorrowUuids = borrowRequestIds.filter(isUuid);
-    if (validBorrowUuids.length > 0) {
-      const conditions = [inArray(borrowRequests.id, validBorrowUuids), ...tenantCondition(borrowRequests.tenantId)];
-      const rows = await db.select({ id: borrowRequests.id, code: borrowRequests.requestCode }).from(borrowRequests).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code);
-    }
-
     const validConsumableReqUuids = consumableRequestIds.filter(isUuid);
-    if (validConsumableReqUuids.length > 0) {
-      const conditions = [inArray(consumableRequests.id, validConsumableReqUuids), ...tenantCondition(consumableRequests.tenantId)];
-      const rows = await db.select({ id: consumableRequests.id, code: consumableRequests.requestCode }).from(consumableRequests).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code);
-    }
-
     const validAssetUuids = assetIds.filter(isUuid);
-    if (validAssetUuids.length > 0) {
-      const conditions = [inArray(assets.id, validAssetUuids), ...tenantCondition(assets.tenantId)];
-      const rows = await db.select({ id: assets.id, code: assets.assetCode }).from(assets).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code);
-    }
-
     const validConsumableUuids = consumableIds.filter(isUuid);
-    if (validConsumableUuids.length > 0) {
-      const conditions = [inArray(consumables.id, validConsumableUuids), ...tenantCondition(consumables.tenantId)];
-      const rows = await db.select({ id: consumables.id, code: consumables.itemCode }).from(consumables).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code);
-    }
-
     const validLotUuids = lotIds.filter(isUuid);
-    if (validLotUuids.length > 0) {
-      const conditions = [inArray(purchaseLots.id, validLotUuids), ...tenantCondition(purchaseLots.tenantId)];
-      const rows = await db.select({ id: purchaseLots.id, code: purchaseLots.lotCode }).from(purchaseLots).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code);
-    }
-
     const validMaintenanceUuids = maintenanceIds.filter(isUuid);
-    if (validMaintenanceUuids.length > 0) {
-      const conditions = [inArray(maintenanceLogs.id, validMaintenanceUuids), ...tenantCondition(maintenanceLogs.tenantId)];
-      const rows = await db.select({ id: maintenanceLogs.id, code: maintenanceLogs.logCode }).from(maintenanceLogs).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code);
-    }
-
     const validUserUuids = userIds.filter(isUuid);
-    if (validUserUuids.length > 0) {
-      const conditions = [inArray(profiles.userId, validUserUuids), ...tenantCondition(profiles.tenantId)];
-      const rows = await db.select({ id: profiles.userId, code: profiles.email, name: profiles.fullName }).from(profiles).where(and(...conditions));
-      for (const r of rows) codeMap.set(r.id, r.code || r.name || r.id);
-    }
+
+    await Promise.all([
+      validBorrowUuids.length > 0
+        ? db
+            .select({ id: borrowRequests.id, code: borrowRequests.requestCode })
+            .from(borrowRequests)
+            .where(
+              and(
+                inArray(borrowRequests.id, validBorrowUuids),
+                ...tenantCondition(borrowRequests.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code);
+            })
+        : Promise.resolve(),
+      validConsumableReqUuids.length > 0
+        ? db
+            .select({
+              id: consumableRequests.id,
+              code: consumableRequests.requestCode,
+            })
+            .from(consumableRequests)
+            .where(
+              and(
+                inArray(consumableRequests.id, validConsumableReqUuids),
+                ...tenantCondition(consumableRequests.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code);
+            })
+        : Promise.resolve(),
+      validAssetUuids.length > 0
+        ? db
+            .select({ id: assets.id, code: assets.assetCode })
+            .from(assets)
+            .where(
+              and(
+                inArray(assets.id, validAssetUuids),
+                ...tenantCondition(assets.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code);
+            })
+        : Promise.resolve(),
+      validConsumableUuids.length > 0
+        ? db
+            .select({ id: consumables.id, code: consumables.itemCode })
+            .from(consumables)
+            .where(
+              and(
+                inArray(consumables.id, validConsumableUuids),
+                ...tenantCondition(consumables.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code);
+            })
+        : Promise.resolve(),
+      validLotUuids.length > 0
+        ? db
+            .select({ id: purchaseLots.id, code: purchaseLots.lotCode })
+            .from(purchaseLots)
+            .where(
+              and(
+                inArray(purchaseLots.id, validLotUuids),
+                ...tenantCondition(purchaseLots.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code);
+            })
+        : Promise.resolve(),
+      validMaintenanceUuids.length > 0
+        ? db
+            .select({ id: maintenanceLogs.id, code: maintenanceLogs.logCode })
+            .from(maintenanceLogs)
+            .where(
+              and(
+                inArray(maintenanceLogs.id, validMaintenanceUuids),
+                ...tenantCondition(maintenanceLogs.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code);
+            })
+        : Promise.resolve(),
+      validUserUuids.length > 0
+        ? db
+            .select({
+              id: profiles.userId,
+              code: profiles.email,
+              name: profiles.fullName,
+            })
+            .from(profiles)
+            .where(
+              and(
+                inArray(profiles.userId, validUserUuids),
+                ...tenantCondition(profiles.tenantId)
+              )
+            )
+            .then((rows) => {
+              for (const r of rows) codeMap.set(r.id, r.code || r.name || r.id);
+            })
+        : Promise.resolve(),
+    ]);
 
     return logs.map(log => {
+      let entityCode: string | undefined;
+
       // 1. If resolved in DB codeMap
       if (codeMap.has(log.entityId)) {
-        return { ...log, entityId: codeMap.get(log.entityId)! };
-      }
-
-      // 2. Fallback to metadata code fields if entity was deleted or id was already a code
-      const meta = log.metadata as Record<string, unknown> | null;
-      if (meta) {
-        const metaCode =
-          (meta.assetCode as string) ||
-          (meta.itemCode as string) ||
-          (meta.requestCode as string) ||
-          (meta.lotCode as string) ||
-          (meta.logCode as string) ||
-          (meta.code as string);
-        if (metaCode) {
-          return { ...log, entityId: metaCode };
+        entityCode = codeMap.get(log.entityId);
+      } else {
+        // 2. Fallback to metadata code fields if entity was deleted or id was already a code
+        const meta = log.metadata as Record<string, unknown> | null;
+        if (meta) {
+          const metaCode =
+            (meta.assetCode as string) ||
+            (meta.itemCode as string) ||
+            (meta.requestCode as string) ||
+            (meta.lotCode as string) ||
+            (meta.logCode as string) ||
+            (meta.code as string);
+          if (metaCode) entityCode = metaCode;
         }
       }
 
-      return log;
+      // Keep entityId as stored (UUID/code) so filters/timeline keep working;
+      // expose a display code via metadata.entityCode for the UI.
+      if (!entityCode || entityCode === log.entityId) return log;
+      const meta =
+        log.metadata && typeof log.metadata === "object"
+          ? (log.metadata as Record<string, unknown>)
+          : {};
+      return {
+        ...log,
+        metadata: { ...meta, entityCode },
+      };
     });
   }
 

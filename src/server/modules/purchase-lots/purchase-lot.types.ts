@@ -56,10 +56,14 @@ export type PurchaseLotDTO = {
 
 export type ListPurchaseLotFilters = {
   consumableId?: string;
+  consumableIds?: string[];
   assetId?: string;
   supplierId?: string;
   itemType?: PurchaseLotItemType;
   status?: PurchaseOrderStatus;
+  statuses?: PurchaseOrderStatus[];
+  /** Max distinct PO numbers after status filter. */
+  limit?: number;
   search?: string;
   includeSandbox?: boolean;
 };
