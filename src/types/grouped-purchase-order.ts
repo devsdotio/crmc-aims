@@ -98,7 +98,7 @@ export function groupLotsByPO(
 
     // Attach all line items to representative and all lots in the group
     // so downstream components (detail sheet, print slip) can access them reliably
-    if (lineItems.length > 1) {
+    {
       const mappedItems = lineItems.map((li) => ({
         id: li.id,
         itemType: li.itemType,
@@ -147,6 +147,14 @@ export function groupLotsByPO(
       representative.departments = departments;
       for (const li of lineItems) {
         li.departments = departments;
+      }
+    }
+
+    const cancelReason = lineItems.find((li) => li.cancellationReason)?.cancellationReason;
+    if (cancelReason) {
+      representative.cancellationReason = cancelReason;
+      for (const li of lineItems) {
+        if (!li.cancellationReason) li.cancellationReason = cancelReason;
       }
     }
 

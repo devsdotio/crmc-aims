@@ -16,5 +16,6 @@ export {
   useMaintenanceLogsQuery,
   useOpenMaintenanceLogForAssetQuery,
   useResolveMaintenanceLogMutation,
+  useSyncMaintenanceOrphansMutation,
   useUpdateMaintenanceLogMutation,
 } from "./use-maintenance-logs";

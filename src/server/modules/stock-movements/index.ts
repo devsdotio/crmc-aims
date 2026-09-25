@@ -34,6 +34,8 @@ export class StockMovementController {
             // Client departmentId is ignored for borrowers inside the service.
             departmentId: url.searchParams.get("departmentId") ?? undefined,
             classification: url.searchParams.get("classification") ?? undefined,
+            fromDate: url.searchParams.get("fromDate") ?? undefined,
+            excludeVoided: url.searchParams.get("excludeVoided") ?? undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
               actor.role

@@ -41,6 +41,8 @@ export type PurchaseLotDTO = {
   approvedAt?: string | null;
   orderedAt?: string | null;
   deliveredAt?: string | null;
+  /** Set when the PO (or line) is cancelled — shown on the cancelled record. */
+  cancellationReason?: string | null;
   createdAt: string;
   updatedAt: string;
   items?: POLineItemDetail[];
@@ -56,10 +58,14 @@ export type PurchaseLotDTO = {
 
 export type ListPurchaseLotFilters = {
   consumableId?: string;
+  consumableIds?: string[];
   assetId?: string;
   supplierId?: string;
   itemType?: PurchaseLotItemType;
   status?: PurchaseOrderStatus;
+  statuses?: PurchaseOrderStatus[];
+  /** Max distinct PO numbers after status filter. */
+  limit?: number;
   search?: string;
   includeSandbox?: boolean;
 };
@@ -138,6 +144,8 @@ export type UpdatePurchaseOrderInput = {
   reference?: string | null;
   notes?: string | null;
   purpose?: string | null;
+  /** Batch-update purpose on sibling lots (multi-purpose PO edit). */
+  linePurposes?: Array<{ lotId: string; purpose: string }>;
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;
@@ -152,6 +160,11 @@ export type UpdatePurchaseOrderStatusInput = {
   receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
+  cancellationReason?: string;
+};
+
+export type AddPurchaseOrderLinesInput = {
+  items: CreatePurchaseOrderItemInput[];
 };
 
 /** TEMPORARY: PO force-delete with inventory revert */

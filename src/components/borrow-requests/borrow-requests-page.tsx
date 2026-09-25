@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useMemo, useEffect, useRef } from "react";
+import { Suspense, useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   useBorrowRequests,
@@ -39,10 +39,7 @@ import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { OperatorReadOnlyBanner } from "@/components/shared/operator-read-only-banner";
 import { useToast } from "@/components/providers/toast-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
-import {
-  useConsumableRequests,
-  type ConsumableRequest,
-} from "@/features/consumable-requests/client";
+import type { ConsumableRequest } from "@/features/consumable-requests/client";
 import { RotateCcw, X, Loader2 } from "lucide-react";
 
 type RequestKind = "borrow" | "assign" | "supply";
@@ -121,19 +118,39 @@ function BorrowRequestsContent({ kind }: { kind: RequestKind }) {
     enabled: kind !== "supply",
   });
 
-  const { data: supplyPendingMeta } = useConsumableRequests({
-    department:
-      filters.department !== "All Departments" ? filters.department : undefined,
-    search: filters.searchQuery || undefined,
-    limit: 1,
-  });
-
-  const requests = useMemo(() => response?.data ?? [], [response?.data]);
-  const meta = response?.meta;
-
   const [supplyStatus, setSupplyStatus] = useState<
     ConsumableRequest["status"] | undefined
   >("pending");
+  const [supplyCounts, setSupplyCounts] = useState({
+    pending: 0,
+    approved: 0,
+    released: 0,
+    rejected: 0,
+    cancelled: 0,
+  });
+  const handleSupplyCountsChange = useCallback(
+    (counts: {
+      pending: number;
+      approved: number;
+      released: number;
+      rejected: number;
+      cancelled: number;
+    }) => {
+      setSupplyCounts((prev) =>
+        prev.pending === counts.pending &&
+        prev.approved === counts.approved &&
+        prev.released === counts.released &&
+        prev.rejected === counts.rejected &&
+        prev.cancelled === counts.cancelled
+          ? prev
+          : counts
+      );
+    },
+    []
+  );
+
+  const requests = useMemo(() => response?.data ?? [], [response?.data]);
+  const meta = response?.meta;
 
   // Modal & Drawer State
   const [selectedRequest, setSelectedRequest] =
@@ -206,17 +223,6 @@ function BorrowRequestsContent({ kind }: { kind: RequestKind }) {
   const totalCount = meta?.counts
     ? Object.values(meta.counts).reduce((a, b) => a + (b || 0), 0)
     : 0;
-
-  const supplyCounts = useMemo(
-    () => ({
-      pending: supplyPendingMeta?.meta?.counts?.pending ?? 0,
-      approved: supplyPendingMeta?.meta?.counts?.approved ?? 0,
-      released: supplyPendingMeta?.meta?.counts?.released ?? 0,
-      rejected: supplyPendingMeta?.meta?.counts?.rejected ?? 0,
-      cancelled: supplyPendingMeta?.meta?.counts?.cancelled ?? 0,
-    }),
-    [supplyPendingMeta?.meta?.counts]
-  );
 
   // Handlers for state updates
   const handleFilterChange = (
@@ -431,6 +437,7 @@ function BorrowRequestsContent({ kind }: { kind: RequestKind }) {
           status={supplyStatus}
           searchQuery={filters.searchQuery}
           department={filters.department}
+          onCountsChange={handleSupplyCountsChange}
         />
       ) : (
         <>

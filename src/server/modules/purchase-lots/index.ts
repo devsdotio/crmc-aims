@@ -18,13 +18,30 @@ export class PurchaseLotController {
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       const consumableId = url.searchParams.get("consumableId") ?? undefined;
-      if (consumableId) {
-        await this.consumables.ensureOpeningLotIfMissing(consumableId, actor);
+      const consumableIdsRaw = url.searchParams.getAll("consumableIds");
+      const consumableIds =
+        consumableIdsRaw.length > 0
+          ? consumableIdsRaw.flatMap((value) =>
+              value
+                .split(",")
+                .map((id) => id.trim())
+                .filter(Boolean)
+            )
+          : undefined;
+      const ensureIds = [
+        ...new Set([
+          ...(consumableId ? [consumableId] : []),
+          ...(consumableIds ?? []),
+        ]),
+      ];
+      for (const id of ensureIds) {
+        await this.consumables.ensureOpeningLotIfMissing(id, actor);
       }
       return ok(
         await this.service.list(
           {
             consumableId,
+            consumableIds,
             assetId: url.searchParams.get("assetId") ?? undefined,
             supplierId: url.searchParams.get("supplierId") ?? undefined,
             itemType:
@@ -40,6 +57,15 @@ export class PurchaseLotController {
                 | "delivered"
                 | "cancelled"
                 | null) ?? undefined,
+            statuses: (() => {
+              const parts = url.searchParams
+                .getAll("statuses")
+                .flatMap((v) => v.split(","))
+                .map((s) => s.trim())
+                .filter(Boolean);
+              return parts.length > 0 ? parts : undefined;
+            })(),
+            limit: url.searchParams.get("limit") ?? undefined,
             search: url.searchParams.get("search") ?? undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
@@ -101,6 +127,21 @@ export class PurchaseLotController {
       const session = await requireAssetOperator();
       const body = await request.json();
       const result = await this.service.updatePurchaseOrder(id, body, session.actor);
+      return ok(result);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async addLines(id: string, request: NextRequest | Request) {
+    try {
+      const session = await requireAssetOperator();
+      const body = await request.json();
+      const result = await this.service.addPurchaseOrderLines(
+        id,
+        body,
+        session.actor
+      );
       return ok(result);
     } catch (error) {
       return handleError(error);

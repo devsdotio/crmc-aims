@@ -46,6 +46,20 @@ export function useMaintenanceLogsQuery(filters?: {
   });
 }
 
+export function useSyncMaintenanceOrphansMutation(): UseMutationResult<
+  { created: number },
+  Error,
+  void
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => maintenanceLogsApi.syncOrphans(),
+    onSuccess: () => {
+      void invalidateDomains(queryClient, MAINTENANCE_DOMAINS);
+    },
+  });
+}
+
 export function useOpenMaintenanceLogForAssetQuery(
   assetId: string | undefined
 ): UseQueryResult<MaintenanceLog | null, Error> {

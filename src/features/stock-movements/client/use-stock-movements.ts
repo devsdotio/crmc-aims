@@ -25,6 +25,8 @@ export function useStockMovementsQuery(filters?: {
   limit?: number;
   departmentId?: string;
   classification?: "supply" | "material";
+  fromDate?: string;
+  excludeVoided?: boolean;
   enabled?: boolean;
 }): UseQueryResult<StockMovement[], Error> {
   const { enabled = true, ...params } = filters ?? {};

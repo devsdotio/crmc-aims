@@ -21,6 +21,11 @@ import type { GroupedPurchaseOrder } from "@/types/grouped-purchase-order";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/components/audit-logs/audit-log-utils";
 import { PoDisbursementBadge } from "./po-disbursement-badge";
+import {
+  poJustificationPurposes,
+  stripPoPurposePrefix,
+} from "@/lib/po-purpose";
+import { purposePreviewLabel } from "@/lib/request-purpose";
 
 interface PurchaseOrdersGridProps {
   groups: GroupedPurchaseOrder[];
@@ -250,6 +255,26 @@ export function PurchaseOrdersGrid({
                 <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                   <StatusBadge status={lot.status} />
                   <PoDisbursementBadge disbursement={lot.disbursement} />
+                  {(() => {
+                    const justifications = poJustificationPurposes(
+                      group.lineItems.map((li) => li.purpose)
+                    );
+                    const label = purposePreviewLabel(
+                      justifications[0] ||
+                        stripPoPurposePrefix(lot.purpose) ||
+                        undefined,
+                      justifications
+                    );
+                    if (!label) return null;
+                    return (
+                      <span
+                        title={justifications.join("; ") || label}
+                        className="inline-flex items-center max-w-36 truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/25"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -347,6 +372,14 @@ export function PurchaseOrdersGrid({
                 <div className="truncate text-[10px] text-text-secondary">
                   <span>Req by: <strong className="text-text font-medium">{lot.recordedByName}</strong></span>
                 </div>
+                {lot.status === "cancelled" && lot.cancellationReason && (
+                  <p
+                    className="text-[10px] text-rose-700 dark:text-rose-300 line-clamp-2"
+                    title={lot.cancellationReason}
+                  >
+                    Reason: {lot.cancellationReason}
+                  </p>
+                )}
               </div>
             </div>
 

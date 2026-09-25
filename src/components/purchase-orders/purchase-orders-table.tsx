@@ -27,6 +27,11 @@ import {
   formatRelativeTime,
 } from "@/components/audit-logs/audit-log-utils";
 import { PoDisbursementBadge } from "./po-disbursement-badge";
+import {
+  poJustificationPurposes,
+  stripPoPurposePrefix,
+} from "@/lib/po-purpose";
+import { purposePreviewLabel } from "@/lib/request-purpose";
 
 type SortField =
   | "createdAt"
@@ -461,6 +466,34 @@ export function PurchaseOrdersTable({
                   <div className="flex flex-col items-start gap-1">
                     <StatusBadge status={lot.status} />
                     <PoDisbursementBadge disbursement={lot.disbursement} />
+                    {(() => {
+                      const justifications = poJustificationPurposes(
+                        group.lineItems.map((li) => li.purpose)
+                      );
+                      const label = purposePreviewLabel(
+                        justifications[0] ||
+                          stripPoPurposePrefix(lot.purpose) ||
+                          undefined,
+                        justifications
+                      );
+                      if (!label) return null;
+                      return (
+                        <span
+                          title={justifications.join("; ") || label}
+                          className="inline-flex items-center max-w-36 truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/25"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })()}
+                    {lot.status === "cancelled" && lot.cancellationReason && (
+                      <span
+                        className="text-[10px] text-rose-700 dark:text-rose-300 line-clamp-2 max-w-36"
+                        title={lot.cancellationReason}
+                      >
+                        {lot.cancellationReason}
+                      </span>
+                    )}
                   </div>
                   {/* On small mobile screens (< sm), show inline quantity badge here */}
                   <div className="sm:hidden mt-1 font-mono text-[11px] text-text-secondary font-medium">

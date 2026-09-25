@@ -12,10 +12,36 @@ export const purchaseOrderStatusSchema = z.enum([
 
 export const listPurchaseLotsQuerySchema = z.object({
   consumableId: z.string().uuid().optional(),
+  consumableIds: z
+    .union([z.array(z.string().uuid()), z.string().uuid()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      return Array.isArray(v) ? v : [v];
+    }),
   assetId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
   itemType: purchaseLotItemTypeSchema.optional(),
   status: purchaseOrderStatusSchema.optional(),
+  /** Comma-separated or array — preferred over single `status` for widgets. */
+  statuses: z
+    .union([
+      z.array(purchaseOrderStatusSchema).max(5),
+      z.string().transform((value) =>
+        value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      ),
+    ])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) return undefined;
+      const parsed = z.array(purchaseOrderStatusSchema).max(5).safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    }),
+  /** Max distinct PO numbers after status filter (keeps multi-line POs intact). */
+  limit: z.coerce.number().int().positive().max(200).optional(),
   search: z.string().trim().max(200).optional(),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
@@ -103,13 +129,34 @@ export const createPurchaseOrderSchema = z
     }
   });
 
-export const updatePurchaseOrderStatusSchema = z.object({
-  status: purchaseOrderStatusSchema,
-  notes: z.string().trim().max(2000).optional(),
-  receiptUrl: z.string().trim().nullable().optional(),
-  approvedBy: z.string().trim().max(255).optional(),
-  /** Actual qty received on deliver (consumables). Defaults to ordered qty when omitted. */
-  receivedQuantity: z.number().int().positive().optional(),
+export const updatePurchaseOrderStatusSchema = z
+  .object({
+    status: purchaseOrderStatusSchema,
+    notes: z.string().trim().max(2000).optional(),
+    receiptUrl: z.string().trim().nullable().optional(),
+    approvedBy: z.string().trim().max(255).optional(),
+    /** Actual qty received on deliver (consumables). Defaults to ordered qty when omitted. */
+    receivedQuantity: z.number().int().positive().optional(),
+    /** Required when transitioning to cancelled. */
+    cancellationReason: z.string().trim().max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status !== "cancelled") return;
+    const reason = (data.cancellationReason ?? "").trim();
+    if (reason.length < 3) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "A cancellation reason is required (at least 3 characters) so the order can be reviewed later.",
+        path: ["cancellationReason"],
+      });
+    }
+  });
+
+export const addPurchaseOrderLinesSchema = z.object({
+  items: z
+    .array(createPurchaseOrderItemSchema)
+    .min(1, "Please provide at least one line item to add."),
 });
 
 export const updatePurchaseOrderSchema = z.object({
@@ -119,6 +166,19 @@ export const updatePurchaseOrderSchema = z.object({
   reference: z.string().trim().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
   purpose: z.string().trim().nullable().optional(),
+  /**
+   * Batch-update purpose on sibling lots (multi-purpose PO edit).
+   * Each entry updates that lot's notes JSON purpose only.
+   */
+  linePurposes: z
+    .array(
+      z.object({
+        lotId: z.string().uuid(),
+        purpose: z.string().trim().min(1).max(1000),
+      })
+    )
+    .max(200)
+    .optional(),
   receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
   recordedByName: z.string().trim().nullable().optional(),
@@ -157,4 +217,7 @@ export type UpdatePurchaseOrderStatusBody = z.infer<
   typeof updatePurchaseOrderStatusSchema
 >;
 export type UpdatePurchaseOrderBody = z.infer<typeof updatePurchaseOrderSchema>;
+export type AddPurchaseOrderLinesBody = z.infer<
+  typeof addPurchaseOrderLinesSchema
+>;
 export type ScanReleaseLotBody = z.infer<typeof scanReleaseLotSchema>;

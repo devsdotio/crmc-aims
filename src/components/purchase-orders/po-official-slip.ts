@@ -1,6 +1,8 @@
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import type { PurchaseLot, POLineItemDetail } from "@/types/purchase-lots";
+import { stripPoPurposePrefix } from "@/lib/po-purpose";
+import { groupByPurpose } from "@/lib/request-purpose";
 
 export interface PoSlipRenderData {
   lot: PurchaseLot;
@@ -11,6 +13,170 @@ export interface PoSlipRenderData {
   displayDealer: string;
   displayLotCode: string | undefined;
   logoUrl: string;
+}
+
+/** Purpose card(s) kept for callers; slip table now carries purpose column + groups. */
+export function buildPoPurposeCardsHtml(lot: PurchaseLot): string {
+  const groups = getSlipPurposeGroups(lot);
+  if (groups.length <= 1) {
+    const text =
+      groups[0]?.purpose ||
+      stripPoPurposePrefix(lot.purpose) ||
+      "Institutional Inventory & Operations";
+    return `<div class="purpose-card">
+        <div class="purpose-label">Purpose:</div>
+        <div class="purpose-text">${escapeHtml(text)}</div>
+      </div>`;
+  }
+  return groups
+    .map(
+      (g) => `<div class="purpose-card">
+        <div class="purpose-label">Purpose:</div>
+        <div class="purpose-text">${escapeHtml(g.purpose)}</div>
+        <div class="purpose-lines">${g.lines
+          .map((l) => escapeHtml(l.itemName))
+          .join(", ")}</div>
+      </div>`
+    )
+    .join("\n");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function resolveLinePurpose(
+  item: { purpose?: string | null },
+  lot: PurchaseLot
+): string {
+  return (
+    stripPoPurposePrefix(item.purpose) ||
+    stripPoPurposePrefix(lot.purpose) ||
+    "General"
+  );
+}
+
+type SlipLine = POLineItemDetail & { purposeLabel: string };
+
+function getSlipLines(lot: PurchaseLot): SlipLine[] {
+  if (lot.items && lot.items.length > 0) {
+    return lot.items.map((item) => ({
+      ...item,
+      purposeLabel: resolveLinePurpose(item, lot),
+    }));
+  }
+  return [
+    {
+      id: lot.id,
+      itemType: lot.itemType,
+      consumableId: lot.consumableId,
+      assetId: lot.assetId,
+      itemCode: lot.itemCode,
+      itemName: lot.itemName,
+      quantity: lot.quantity,
+      unitCost: lot.unitCost,
+      totalCost: lot.totalCost,
+      purpose: lot.purpose,
+      suggestedDealer: lot.supplierName,
+      lotCode: lot.lotCode,
+      purposeLabel: resolveLinePurpose(lot, lot),
+    },
+  ];
+}
+
+function getSlipPurposeGroups(lot: PurchaseLot) {
+  const lines = getSlipLines(lot).map((l) => ({
+    ...l,
+    purpose: l.purposeLabel,
+  }));
+  return groupByPurpose(
+    lines,
+    stripPoPurposePrefix(lot.purpose) || "Institutional Inventory & Operations"
+  );
+}
+
+/** Shared grouping for print preview + official slip PDF. */
+export function getPoSlipPurposeGroups(lot: PurchaseLot) {
+  return getSlipPurposeGroups(lot);
+}
+
+function formatMoney(value: number): string {
+  return value.toLocaleString("en-US", { minimumFractionDigits: 2 });
+}
+
+function buildItemCellsHtml(
+  item: SlipLine,
+  lot: PurchaseLot,
+  purposeCell: string
+): string {
+  const iUnit = parseFloat(item.unitCost) || 0;
+  const iTotal = parseFloat(item.totalCost) || 0;
+  return `<tr>
+            <td class="col-qty">${item.quantity}</td>
+            <td class="col-desc">
+              <strong>${escapeHtml(item.itemName)}</strong>
+              <div style="font-size: 10px; color: #555; margin-top: 2px;">Code: ${escapeHtml(item.itemCode)}${item.lotCode ? ` &nbsp;·&nbsp; Lot: <span style="font-family: monospace;">${escapeHtml(item.lotCode)}</span>` : ""}</div>
+            </td>
+            ${purposeCell}
+            <td class="col-dealer">${escapeHtml(item.suggestedDealer || lot.supplierName || "Direct Procurement")}</td>
+            <td class="col-unit-price" style="text-align: right;">₱${formatMoney(iUnit)}</td>
+            <td class="col-estimated">₱${formatMoney(iTotal)}</td>
+          </tr>`;
+}
+
+function buildLineItemsRows(lot: PurchaseLot): string {
+  const groups = getSlipPurposeGroups(lot);
+  const allLines = groups.flatMap((g) => g.lines);
+
+  const body = groups
+    .map((group) => {
+      const rowspan = group.lines.length;
+      return group.lines
+        .map((item, index) => {
+          const purposeCell =
+            index === 0
+              ? `<td class="col-purpose" rowspan="${rowspan}">${escapeHtml(group.purpose)}</td>`
+              : "";
+          return buildItemCellsHtml(item, lot, purposeCell);
+        })
+        .join("");
+    })
+    .join("");
+
+  const qtyTotal = allLines.reduce((s, i) => s + i.quantity, 0);
+  const costTotal = allLines.reduce(
+    (s, i) => s + (parseFloat(i.totalCost) || 0),
+    0
+  );
+
+  const footer = `<tr>
+        <td colspan="6" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
+      </tr>
+      <tr style="border-top: 2px solid #222; font-weight: bold;">
+        <td class="col-qty">${qtyTotal}</td>
+        <td class="col-desc" style="text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Grand Total</td>
+        <td class="col-purpose"></td>
+        <td class="col-dealer"></td>
+        <td class="col-unit-price"></td>
+        <td class="col-estimated" style="font-size: 13px;">₱${formatMoney(costTotal)}</td>
+      </tr>`;
+
+  // Pad a few empty rows for single-line slips (print form aesthetics)
+  const pad =
+    allLines.length < 3
+      ? Array.from({ length: 3 - allLines.length })
+          .map(
+            () =>
+              `<tr class="empty-row"><td></td><td></td><td></td><td></td><td></td><td></td></tr>`
+          )
+          .join("")
+      : "";
+
+  return body + footer + pad;
 }
 
 export function buildPoSlipStyles(): string {
@@ -135,11 +301,26 @@ export function buildPoSlipStyles(): string {
       background: #fafafa;
       text-transform: capitalize;
     }
-    .col-qty { width: 10%; text-align: center; font-weight: bold; }
-    .col-desc { width: 36%; }
-    .col-dealer { width: 22%; }
-    .col-unit-price { width: 16%; text-align: right; font-family: Arial, Helvetica, sans-serif; }
-    .col-estimated { width: 16%; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; }
+    .col-qty { width: 8%; text-align: center; font-weight: bold; }
+    .col-desc { width: 28%; }
+    .col-purpose {
+      width: 18%;
+      font-size: 10.5px;
+      color: #222;
+      line-height: 1.35;
+      vertical-align: middle;
+      text-align: left;
+    }
+    .col-dealer { width: 18%; }
+    .col-unit-price { width: 14%; text-align: right; font-family: Arial, Helvetica, sans-serif; padding-left: 12px; }
+    .col-estimated {
+      width: 16%;
+      text-align: right;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: bold;
+      padding-left: 16px;
+      white-space: nowrap;
+    }
     .po-number-highlight {
       display: inline-block;
       font-size: 14px;
@@ -170,6 +351,12 @@ export function buildPoSlipStyles(): string {
       font-size: 12px;
       color: #111;
       line-height: 1.5;
+    }
+    .purpose-card .purpose-lines {
+      margin-top: 4px;
+      font-size: 10px;
+      color: #555;
+      font-style: italic;
     }
     .nothing-follows {
       text-align: center;
@@ -233,63 +420,6 @@ export function buildPoSlipStyles(): string {
   `;
 }
 
-function buildLineItemsRows(lot: PurchaseLot): string {
-  const unitCostNum = parseFloat(lot.unitCost) || 0;
-  const totalCostNum = parseFloat(lot.totalCost) || 0;
-
-  if (lot.items && lot.items.length > 1) {
-    return (
-      lot.items
-        .map((item: POLineItemDetail) => {
-          const iUnit = parseFloat(item.unitCost) || 0;
-          const iTotal = parseFloat(item.totalCost) || 0;
-          return `<tr>
-            <td class="col-qty">${item.quantity}</td>
-            <td class="col-desc">
-              <strong>${item.itemName}</strong>
-              <div style="font-size: 10px; color: #555; margin-top: 2px;">Code: ${item.itemCode}${item.lotCode ? ` &nbsp;·&nbsp; Lot: <span style="font-family: monospace;">${item.lotCode}</span>` : ""}</div>
-            </td>
-            <td class="col-dealer">${item.suggestedDealer || lot.supplierName || "Direct Procurement"}</td>
-            <td class="col-unit-price" style="text-align: right;">₱${iUnit.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-            <td class="col-estimated">₱${iTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-          </tr>`;
-        })
-        .join("") +
-      `<tr>
-        <td colspan="5" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
-      </tr>` +
-      `<tr style="border-top: 2px solid #222; font-weight: bold;">
-        <td class="col-qty">${lot.items.reduce((s: number, i: POLineItemDetail) => s + i.quantity, 0)}</td>
-        <td class="col-desc" style="text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Grand Total</td>
-        <td class="col-dealer"></td>
-        <td class="col-unit-price"></td>
-        <td class="col-estimated" style="font-size: 13px;">₱${lot.items.reduce((s: number, i: POLineItemDetail) => s + (parseFloat(i.totalCost) || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-      </tr>`
-    );
-  }
-
-  return `<tr>
-      <td class="col-qty">${lot.quantity}</td>
-      <td class="col-desc">
-        <strong>${lot.itemName}</strong>
-        <div style="font-size: 10px; color: #555; margin-top: 2px;">
-          Code: ${lot.itemCode} &nbsp;·&nbsp; Lot: <span style="font-family: monospace;">${lot.lotCode}</span>
-        </div>
-      </td>
-      <td class="col-dealer">${lot.supplierName || "Direct Procurement"}</td>
-      <td class="col-unit-price" style="text-align: right;">₱${unitCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}</td>
-      <td class="col-estimated">
-        ₱${totalCostNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-      </td>
-    </tr>
-    <tr>
-      <td colspan="5" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
-    </tr>
-    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>
-    <tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>`;
-}
-
 export function buildPoSlipBodyHtml(data: PoSlipRenderData): string {
   const { lot, requestedBy, requestedByTitle, poDate, poTimestamp, displayDealer, displayLotCode, logoUrl } =
     data;
@@ -336,6 +466,7 @@ export function buildPoSlipBodyHtml(data: PoSlipRenderData): string {
           <tr>
             <th class="col-qty">Quantity</th>
             <th class="col-desc">Description</th>
+            <th class="col-purpose">Purpose</th>
             <th class="col-dealer">Suggested Dealer</th>
             <th class="col-unit-price">Unit Price</th>
             <th class="col-estimated">Estimated</th>
@@ -345,11 +476,6 @@ export function buildPoSlipBodyHtml(data: PoSlipRenderData): string {
           ${buildLineItemsRows(lot)}
         </tbody>
       </table>
-
-      <div class="purpose-card">
-        <div class="purpose-label">Purpose:</div>
-        <div class="purpose-text">${lot.purpose || "Institutional Inventory & Operations"}</div>
-      </div>
 
       <div class="signatures-container">
         <div class="sig-block">

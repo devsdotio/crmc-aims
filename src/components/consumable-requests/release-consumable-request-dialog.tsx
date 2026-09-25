@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
 import type { ReleaseConsumableRequestPayload } from "@/features/consumable-requests/client/consumable-requests-api";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import type { PurchaseLot } from "@/types/purchase-lots";
 
 export interface ReleaseConsumableRequestDialogProps {
   request: ConsumableRequest | null;
@@ -35,24 +36,27 @@ export interface ReleaseConsumableRequestDialogProps {
 
 function ReleaseLineLotRow({
   line,
+  lots,
+  isLoading,
   selectedLotId,
   onChange,
 }: {
   line: ConsumableRequest["lines"][number];
+  lots: PurchaseLot[];
+  isLoading: boolean;
   selectedLotId?: string;
   onChange: (lotId: string) => void;
 }) {
-  const { data: lots = [], isLoading } = usePurchaseLotsQuery({
-    consumableId: line.consumableId,
-    itemType: "consumable",
-    enabled: Boolean(line.consumableId),
-  });
   const resolveCategoryStyle = useCategoryStyleResolver();
   const catStyle = resolveCategoryStyle(line.category);
 
   const availableLots = useMemo(
-    () => lots.filter((lot) => lot.quantityRemaining > 0),
-    [lots]
+    () =>
+      lots.filter(
+        (lot) =>
+          lot.consumableId === line.consumableId && lot.quantityRemaining > 0
+      ),
+    [lots, line.consumableId]
   );
 
   const lotOptions = useMemo(
@@ -224,6 +228,23 @@ export function ReleaseConsumableRequestDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lotByLine, setLotByLine] = useState<Record<string, string>>({});
 
+  const consumableIds = useMemo(() => {
+    if (!request) return [];
+    return [
+      ...new Set(
+        request.lines
+          .map((line) => line.consumableId)
+          .filter((id): id is string => Boolean(id))
+      ),
+    ];
+  }, [request]);
+
+  const { data: lots = [], isLoading: lotsLoading } = usePurchaseLotsQuery({
+    consumableIds,
+    itemType: "consumable",
+    enabled: isOpen && consumableIds.length > 0,
+  });
+
   useEffect(() => {
     if (!isOpen || !request) return;
     setReceivedBy(request.requesterName || request.department || "");
@@ -372,6 +393,8 @@ export function ReleaseConsumableRequestDialog({
                   <ReleaseLineLotRow
                     key={line.id}
                     line={line}
+                    lots={lots}
+                    isLoading={lotsLoading}
                     selectedLotId={lotByLine[line.id]}
                     onChange={(lotId) =>
                       setLotByLine((prev) => ({ ...prev, [line.id]: lotId }))

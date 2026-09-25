@@ -88,17 +88,21 @@ export function useVouchersQuery(filters?: {
     queryFn: () => vouchersApi.list(filters),
     staleTime: 5 * 1000,
     gcTime: 5 * 60 * 1000,
-    refetchInterval: 10 * 1000, // 10s live polling fallback
+    // Realtime sync (useVouchersRealtimeSync) owns live updates — no polling.
     refetchOnWindowFocus: true,
   });
 }
 
-export function useVoucherQuery(id: string): UseQueryResult<Voucher, Error> {
+export function useVoucherQuery(
+  id: string,
+  options?: { initialData?: Voucher; enabled?: boolean }
+): UseQueryResult<Voucher, Error> {
   return useQuery({
     queryKey: voucherQueryKeys.detail(id),
     queryFn: () => vouchersApi.get(id),
-    enabled: Boolean(id),
-    refetchInterval: 10 * 1000,
+    enabled: Boolean(id) && (options?.enabled ?? true),
+    initialData: options?.initialData,
+    // Realtime sync owns live updates — no polling.
   });
 }
 

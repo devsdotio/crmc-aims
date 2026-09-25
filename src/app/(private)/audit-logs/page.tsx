@@ -117,7 +117,6 @@ function entityBadgeClass(entityType: string): string {
 
 export default function AuditLogsPage() {
   const { data: me, isLoading: meLoading } = useMeQuery();
-  const { data: logs = [], isLoading, error } = useAuditLogsQuery();
   const [mode, setMode] = useState<"critical" | "all">("critical");
   const [group, setGroup] = useState<GroupId | "all">("all");
   const [search, setSearch] = useState("");
@@ -130,41 +129,23 @@ export default function AuditLogsPage() {
     search || actorFilter || entityFilter || entityTypeFilter || startDate || endDate || group !== "all"
   );
 
+  const { data: logs = [], isLoading, error } = useAuditLogsQuery({
+    criticalOnly: mode === "critical",
+    search: search.trim() || undefined,
+    from: startDate || undefined,
+    to: endDate || undefined,
+    entityType: entityTypeFilter || undefined,
+    entityId: entityFilter || undefined,
+    limit: 200,
+  });
+
   const filtered = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
     return logs.filter((log) => {
-      if (mode === "critical" && !CRITICAL_AUDIT_ACTIONS.has(log.action)) return false;
       if (group !== "all" && !inGroup(log.action, group)) return false;
       if (actorFilter && log.actorName !== actorFilter) return false;
-      if (entityTypeFilter && log.entityType !== entityTypeFilter) return false;
-      if (entityFilter && log.entityId !== entityFilter) return false;
-
-      if (startDate) {
-        const stamp = new Date(log.timestamp).getTime();
-        const start = new Date(`${startDate}T00:00:00`).getTime();
-        if (stamp < start) return false;
-      }
-      if (endDate) {
-        const stamp = new Date(log.timestamp).getTime();
-        const end = new Date(`${endDate}T23:59:59`).getTime();
-        if (stamp > end) return false;
-      }
-
-      if (!normalizedSearch) return true;
-      const haystack = `${log.actorName} ${log.action} ${log.entityType} ${log.entityId} ${log.notes ?? ""}`.toLowerCase();
-      return haystack.includes(normalizedSearch);
+      return true;
     });
-  }, [
-    actorFilter,
-    endDate,
-    entityFilter,
-    entityTypeFilter,
-    group,
-    logs,
-    mode,
-    search,
-    startDate,
-  ]);
+  }, [actorFilter, group, logs]);
 
   const actorOptions = useMemo(
     () => Array.from(new Set(logs.map((log) => log.actorName))).sort((a, b) => a.localeCompare(b)),
@@ -556,7 +537,12 @@ export default function AuditLogsPage() {
                         </span>
                       </div>
                       <div className="inline-flex rounded-md border border-border bg-bg-subtle px-2 py-0.5 font-mono text-[11px] text-text-secondary max-w-60 truncate">
-                        {log.entityId}
+                        {(typeof log.metadata === "object" &&
+                          log.metadata &&
+                          "entityCode" in log.metadata &&
+                          typeof (log.metadata as { entityCode?: unknown }).entityCode === "string"
+                          ? (log.metadata as { entityCode: string }).entityCode
+                          : null) || log.entityId}
                       </div>
                     </td>
                     <td className="px-4 py-3.5 align-middle text-text-secondary">

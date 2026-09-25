@@ -142,7 +142,8 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     }
     function handleOnline() {
       toast.success("Connection restored. You are back online.");
-      queryClient.invalidateQueries();
+      // Active queries only — avoid a full-cache refetch storm across shell + pages.
+      void queryClient.refetchQueries({ type: "active" });
     }
 
     window.addEventListener("offline", handleOffline);

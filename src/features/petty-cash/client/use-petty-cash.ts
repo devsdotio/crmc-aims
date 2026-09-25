@@ -87,17 +87,21 @@ export function usePettyCashListQuery(filters?: {
     queryFn: () => pettyCashApi.list(filters),
     staleTime: 5 * 1000,
     gcTime: 5 * 60 * 1000,
-    refetchInterval: 10 * 1000, // 10s live polling fallback
+    // Realtime sync (usePettyCashRealtimeSync) owns live updates — no polling.
     refetchOnWindowFocus: true,
   });
 }
 
-export function usePettyCashQuery(id: string): UseQueryResult<PettyCashVoucher, Error> {
+export function usePettyCashQuery(
+  id: string,
+  options?: { initialData?: PettyCashVoucher; enabled?: boolean }
+): UseQueryResult<PettyCashVoucher, Error> {
   return useQuery({
     queryKey: pettyCashQueryKeys.detail(id),
     queryFn: () => pettyCashApi.get(id),
-    enabled: Boolean(id),
-    refetchInterval: 10 * 1000,
+    enabled: Boolean(id) && (options?.enabled ?? true),
+    initialData: options?.initialData,
+    // Realtime sync owns live updates — no polling.
   });
 }
 

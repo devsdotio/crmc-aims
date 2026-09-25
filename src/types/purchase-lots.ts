@@ -57,6 +57,8 @@ export interface PurchaseLot {
   approvedAt?: string | null;
   orderedAt?: string | null;
   deliveredAt?: string | null;
+  /** Set when the PO (or line) is cancelled — shown on the cancelled record. */
+  cancellationReason?: string | null;
   createdAt: string;
   updatedAt: string;
   /** Line items if this record represents a multi-item PO batch */

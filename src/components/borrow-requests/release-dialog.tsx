@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { formatAssetCodeDisplay, formatItemDescription } from "@/lib/sanitize-display";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { assetsApi } from "@/features/assets/client/assets-api";
+import { assetQueryKeys } from "@/features/assets/client/query-keys";
 import type { BorrowRequest } from "@/types/borrow-requests";
 import type { ReleaseBorrowRequestPayload } from "@/features/borrow-requests/client/borrow-requests-api";
 import type { Asset } from "@/types/assets";
@@ -87,7 +88,11 @@ function ReleaseLineAssetPicker({
   const catStyle = resolveCategoryStyle(item.category);
 
   const { data: assets = [], isLoading } = useQuery({
-    queryKey: ["assets", "release-picker", item.category, assignmentType],
+    queryKey: assetQueryKeys.list({
+      category: item.category,
+      availableOnly: true,
+      assignmentType,
+    }),
     queryFn: () =>
       assetsApi.listAssets(undefined, {
         category: item.category,

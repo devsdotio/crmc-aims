@@ -600,7 +600,7 @@ export class DashboardService {
         const [
           activeBorrows,
           activeAssignments,
-          pendingApprovals,
+          pendingCounts,
           lowStockItems,
           overdueAssets,
           totalAssignable,
@@ -621,15 +621,24 @@ export class DashboardService {
             return 0;
           }),
           Promise.all([
-            this.requests.countPending(undefined, undefined, tenantId).catch((err: unknown) => {
-              console.error("[dashboard] failed to count pending requests:", err);
+            this.requests.countPending(undefined, undefined, tenantId, "assignable").catch((err: unknown) => {
+              console.error("[dashboard] failed to count pending assign requests:", err);
+              return 0;
+            }),
+            this.requests.countPending(undefined, undefined, tenantId, "borrowable").catch((err: unknown) => {
+              console.error("[dashboard] failed to count pending borrow requests:", err);
               return 0;
             }),
             this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err: unknown) => {
               console.error("[dashboard] failed to count pending supply requests:", err);
               return 0;
             }),
-          ]).then(([a, b]) => a + b),
+          ]).then(([assign, borrow, supply]) => ({
+            pendingAssignRequests: assign,
+            pendingBorrowRequests: borrow,
+            pendingSupplyRequests: supply,
+            pendingApprovals: assign + borrow + supply,
+          })),
           this.consumables.countLowStock(undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count low stock items:", err);
             return 0;
@@ -672,6 +681,13 @@ export class DashboardService {
           }),
         ]);
 
+        const {
+          pendingAssignRequests,
+          pendingBorrowRequests,
+          pendingSupplyRequests,
+          pendingApprovals,
+        } = pendingCounts;
+
         const lowStock: DashboardLowStockItem[] = lowStockConsumables.map((c) => ({
           id: c.id,
           itemName: c.name,
@@ -692,6 +708,9 @@ export class DashboardService {
             activeBorrows,
             activeAssignments,
             pendingApprovals,
+            pendingAssignRequests,
+            pendingBorrowRequests,
+            pendingSupplyRequests,
             lowStockItems,
             overdueAssets,
             totalAssignable,

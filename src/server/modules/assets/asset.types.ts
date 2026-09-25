@@ -86,6 +86,11 @@ export interface IAssetRepository {
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
   ): Promise<AssetRow | null>;
+  findByIds(
+    ids: string[],
+    session?: import("@/server/db/transaction").DbSession,
+    tenantId?: string
+  ): Promise<AssetRow[]>;
   findByAssetCode(
     assetCode: string,
     session?: import("@/server/db/transaction").DbSession,

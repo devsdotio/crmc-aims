@@ -28,6 +28,8 @@ import {
   Lock,
   FolderKanban,
   HardHat,
+  Layers,
+  GripVertical,
 } from "lucide-react";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useSuppliersQuery } from "@/features/suppliers/client";
@@ -48,6 +50,11 @@ import {
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import {
+  buildPoPurposePrefix,
+  stampPoPurpose,
+} from "@/lib/po-purpose";
+import { summarizePurposes } from "@/lib/request-purpose";
 import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 import {
   CONSUMABLE_CLASSIFICATIONS,
@@ -91,35 +98,58 @@ interface POLineItemForm {
   purpose: string;
 }
 
-type WizardStep = "routing" | "metadata" | "items" | "review";
+type WizardStep = "routing" | "metadata" | "items" | "purposes" | "review";
+
+/** Purpose group — lines share one free-text justification (destination prefix stamped on submit). */
+type PoPurposeGroup = {
+  id: string;
+  purpose: string;
+  lineIds: string[];
+};
+
+function newPoPurposeGroup(purpose = ""): PoPurposeGroup {
+  return { id: crypto.randomUUID(), purpose, lineIds: [] };
+}
 
 const STEPS: Array<{
   id: WizardStep;
   label: string;
+  shortLabel: string;
   description: string;
   icon: React.ElementType;
 }> = [
   {
     id: "routing",
     label: "Classification",
+    shortLabel: "Class",
     description: "Type & destination",
     icon: Tag,
   },
   {
     id: "metadata",
     label: "Order Info",
-    description: "Number, dept & purpose",
+    shortLabel: "Order",
+    description: "Number, dept & notes",
     icon: FileText,
   },
   {
     id: "items",
     label: "Line Items",
+    shortLabel: "Items",
     description: "Catalog, qty & costs",
     icon: Boxes,
   },
   {
+    id: "purposes",
+    label: "Purpose Assignment",
+    shortLabel: "Purpose",
+    description: "Group lines & purposes",
+    icon: Layers,
+  },
+  {
     id: "review",
     label: "Review",
+    shortLabel: "Review",
     description: "Confirm & file",
     icon: CheckCircle2,
   },
@@ -183,13 +213,19 @@ export function FileNewPODialog({
     enabled: isOpen,
   });
   const { data: allCategories = [] } = useCategoriesQuery({ enabled: isOpen });
-  const { data: consumablePage } = useConsumablesQuery({ limit: 100 });
+  const { data: consumablePage } = useConsumablesQuery({
+    limit: 200,
+    catalog: true,
+    enabled: isOpen,
+  });
   const consumables = useMemo(
     () => consumablePage?.data ?? [],
     [consumablePage?.data]
   );
-  const { data: assetsList = [] } = useAssetsQuery();
-  const { data: projects = [] } = useProjectsQuery();
+  const { data: assetsList = [] } = useAssetsQuery(undefined, {
+    enabled: isOpen,
+  });
+  const { data: projects = [] } = useProjectsQuery({ enabled: isOpen });
   const activeProjects = useMemo(
     () => projects.filter((p) => p.status !== "completed"),
     [projects]
@@ -288,8 +324,16 @@ export function FileNewPODialog({
   const [requestedByName, setRequestedByName] = useState(accountDefaultName);
   const [targetDepartmentId, setTargetDepartmentId] = useState("");
   const [targetDepartmentIds, setTargetDepartmentIds] = useState<string[]>([]);
-  const [generalPurpose, setGeneralPurpose] = useState("");
+  const [purposeGroups, setPurposeGroups] = useState<PoPurposeGroup[]>(() => [
+    newPoPurposeGroup(),
+  ]);
   const [generalNotes, setGeneralNotes] = useState("");
+  /** Kanban drag state for purpose assignment */
+  const [dragLineId, setDragLineId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
+  const isMultiPurpose = purposeGroups.length > 1;
+  const primaryPurpose = purposeGroups[0]?.purpose ?? "";
 
   const catalogCategoryOptions = useMemo(() => {
     const cats = poType === "asset" ? assetCategoryOptions : consumableCategoryOptions;
@@ -319,61 +363,70 @@ export function FileNewPODialog({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      const isProj = Boolean(defaultProjectId) || lockedScope === "project";
-      const initialType: POType =
-        lockedScope === "asset"
-          ? "asset"
-          : lockedScope === "supply" ||
-            lockedScope === "material" ||
-            lockedScope === "project"
-          ? "consumable"
-          : isProj
-          ? "consumable"
-          : defaultPoType || "consumable";
-      const initialClassification: ConsumableClassification =
-        lockedScope === "supply"
-          ? "supply"
-          : lockedScope === "material" || lockedScope === "project" || isProj
-          ? "material"
-          : defaultClassification || DEFAULT_CONSUMABLE_CLASSIFICATION;
-      const initialDestination: "department" | "project" =
-        lockedScope === "project" || isProj ? "project" : "department";
+    if (!isOpen) return;
 
-      setCurrentStep("routing");
-      setPoType(initialType);
-      setDestinationKind(initialDestination);
-      setPoClassification(initialClassification);
-      setTargetProjectId(defaultProjectId || "");
-      setPoNumberMode("auto");
-      setCustomPoNumber("");
-      setPoDate(new Date().toISOString().split("T")[0]);
-      setRequestedByName(me?.name || me?.email || "Authorized Staff");
-      setItems([generateInitialRow(initialType, false, initialClassification)]);
-      setCatalogSearch("");
-      setCatalogCategoryFilter("all");
-      setErrorMessage(null);
+    const isProj = Boolean(defaultProjectId) || lockedScope === "project";
+    const initialType: POType =
+      lockedScope === "asset"
+        ? "asset"
+        : lockedScope === "supply" ||
+          lockedScope === "material" ||
+          lockedScope === "project"
+        ? "consumable"
+        : isProj
+        ? "consumable"
+        : defaultPoType || "consumable";
+    const initialClassification: ConsumableClassification =
+      lockedScope === "supply"
+        ? "supply"
+        : lockedScope === "material" || lockedScope === "project" || isProj
+        ? "material"
+        : defaultClassification || DEFAULT_CONSUMABLE_CLASSIFICATION;
+    const initialDestination: "department" | "project" =
+      lockedScope === "project" || isProj ? "project" : "department";
 
-      const matchedProj = defaultProjectId ? projects.find((p) => p.id === defaultProjectId) : null;
-      const matchedDept = matchedProj?.department
-        ? departments.find(
-            (d) =>
-              d.id === matchedProj.department ||
-              d.name.toLowerCase() === matchedProj.department?.toLowerCase() ||
-              (d.code && d.code.toLowerCase() === matchedProj.department?.toLowerCase())
-          )
-        : null;
-      setTargetDepartmentId(matchedDept?.id || me?.departmentId || "");
-      setTargetDepartmentIds(
-        matchedDept?.id
-          ? [matchedDept.id]
-          : me?.departmentId
-            ? [me.departmentId]
-            : []
-      );
-      setGeneralPurpose(defaultPurpose || "");
-      setGeneralNotes("");
-    }
+    setCurrentStep("routing");
+    setPoType(initialType);
+    setDestinationKind(initialDestination);
+    setPoClassification(initialClassification);
+    setTargetProjectId(defaultProjectId || "");
+    setPoNumberMode("auto");
+    setCustomPoNumber("");
+    setPoDate(new Date().toISOString().split("T")[0]);
+    setRequestedByName(me?.name || me?.email || "Authorized Staff");
+    setItems([generateInitialRow(initialType, false, initialClassification)]);
+    setCatalogSearch("");
+    setCatalogCategoryFilter("all");
+    setErrorMessage(null);
+
+    const matchedProj = defaultProjectId
+      ? projects.find((p) => p.id === defaultProjectId)
+      : null;
+    const matchedDept = matchedProj?.department
+      ? departments.find(
+          (d) =>
+            d.id === matchedProj.department ||
+            d.name.toLowerCase() === matchedProj.department?.toLowerCase() ||
+            (d.code &&
+              d.code.toLowerCase() === matchedProj.department?.toLowerCase())
+        )
+      : null;
+    setTargetDepartmentId(matchedDept?.id || me?.departmentId || "");
+    setTargetDepartmentIds(
+      matchedDept?.id
+        ? [matchedDept.id]
+        : me?.departmentId
+          ? [me.departmentId]
+          : []
+    );
+    setGeneralNotes("");
+    setPurposeGroups([newPoPurposeGroup(defaultPurpose || "")]);
+    setDragLineId(null);
+    setDropTargetId(null);
+    // Reset only when the dialog opens (or open-relevant props change).
+    // Do not depend on `projects` / `departments` arrays — query defaults like
+    // `data ?? []` are new references every render and cause update-depth loops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open-gate
   }, [
     isOpen,
     me?.departmentId,
@@ -384,8 +437,6 @@ export function FileNewPODialog({
     defaultProjectId,
     defaultClassification,
     lockedScope,
-    projects,
-    departments,
   ]);
 
   const isScopeLocked = Boolean(lockedScope);
@@ -409,7 +460,7 @@ export function FileNewPODialog({
     if (isSubmitting) return;
     const hasData =
       Boolean(customPoNumber.trim()) ||
-      Boolean(generalPurpose.trim()) ||
+      purposeGroups.some((g) => Boolean(g.purpose.trim()) || g.lineIds.length > 0) ||
       Boolean(generalNotes.trim()) ||
       Boolean(targetDepartmentId.trim() && targetDepartmentId !== (me?.departmentId || "")) ||
       targetDepartmentIds.some((id) => id !== (me?.departmentId || "")) ||
@@ -683,7 +734,7 @@ export function FileNewPODialog({
       unitCost: "",
       suggestedDealer: c.supplier || matchedSup?.name || "",
       supplierId: matchedSup?.id,
-      purpose: generalPurpose || "",
+      purpose: "",
     };
 
     if (isBlankInitial) {
@@ -728,7 +779,7 @@ export function FileNewPODialog({
       unitCost: a.value ? String(a.value) : "",
       suggestedDealer: "",
       supplierId: undefined,
-      purpose: generalPurpose || "",
+      purpose: "",
     };
 
     if (isBlankInitial) {
@@ -929,10 +980,6 @@ export function FileNewPODialog({
       setErrorMessage("Select at least one target department.");
       return false;
     }
-    if (!generalPurpose.trim()) {
-      setErrorMessage("Procurement purpose is required.");
-      return false;
-    }
     return true;
   };
 
@@ -965,12 +1012,109 @@ export function FileNewPODialog({
     return true;
   };
 
+  // Step 4 — purpose assignment
+  const validatePurposes = (): boolean => {
+    setErrorMessage(null);
+    if (purposeGroups.length < 1) {
+      setErrorMessage("Add at least one purpose group.");
+      return false;
+    }
+    for (let i = 0; i < purposeGroups.length; i++) {
+      if (!purposeGroups[i].purpose.trim()) {
+        setErrorMessage(
+          purposeGroups.length === 1
+            ? "Procurement purpose is required."
+            : `Purpose ${i + 1} text is required.`
+        );
+        return false;
+      }
+    }
+    const assigned = new Set(purposeGroups.flatMap((g) => g.lineIds));
+    const namedItems = items.filter((it) => it.name.trim());
+    const unassigned = namedItems.filter((it) => !assigned.has(it.id));
+    if (unassigned.length > 0) {
+      setErrorMessage(
+        `Assign every line item to a purpose (${unassigned.length} unassigned).`
+      );
+      return false;
+    }
+    for (let i = 0; i < purposeGroups.length; i++) {
+      if (purposeGroups[i].lineIds.length === 0) {
+        setErrorMessage(`Purpose ${i + 1} needs at least one line item.`);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const seedPurposeGroupLines = (groups: PoPurposeGroup[], lineItems: POLineItemForm[]) => {
+    const ids = lineItems.map((it) => it.id);
+    if (groups.length === 1) {
+      return [{ ...groups[0], lineIds: ids }];
+    }
+    // Keep existing assignments; drop stale ids
+    const idSet = new Set(ids);
+    const pruned = groups.map((g) => ({
+      ...g,
+      lineIds: g.lineIds.filter((id) => idSet.has(id)),
+    }));
+    // Heuristic: if nothing assigned yet, put all lines in Purpose 1
+    const anyAssigned = pruned.some((g) => g.lineIds.length > 0);
+    if (!anyAssigned && pruned.length > 0) {
+      return pruned.map((g, idx) =>
+        idx === 0 ? { ...g, lineIds: ids } : g
+      );
+    }
+    return pruned;
+  };
+
+  const assignLineToPurpose = (groupId: string, lineId: string) => {
+    setPurposeGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === groupId) {
+          if (g.lineIds.includes(lineId)) return g;
+          return { ...g, lineIds: [...g.lineIds, lineId] };
+        }
+        return { ...g, lineIds: g.lineIds.filter((id) => id !== lineId) };
+      })
+    );
+  };
+
+  /** Remove a purpose column; its lines move to the first remaining purpose. */
+  const removePurposeGroup = (groupId: string) => {
+    setPurposeGroups((prev) => {
+      if (prev.length <= 1) return prev;
+      const removing = prev.find((g) => g.id === groupId);
+      const kept = prev.filter((g) => g.id !== groupId);
+      if (!removing || kept.length === 0) return prev;
+      const orphanIds = removing.lineIds;
+      if (orphanIds.length === 0) return kept;
+      return kept.map((g, idx) =>
+        idx === 0
+          ? {
+              ...g,
+              lineIds: [
+                ...g.lineIds,
+                ...orphanIds.filter((id) => !g.lineIds.includes(id)),
+              ],
+            }
+          : g
+      );
+    });
+  };
+
+  const clearKanbanDrag = () => {
+    setDragLineId(null);
+    setDropTargetId(null);
+  };
+
   const canJumpToStep = (target: WizardStep): boolean => {
     const targetIdx = STEPS.findIndex((s) => s.id === target);
     if (targetIdx <= 0) return true;
     if (targetIdx >= 1 && !validateRouting()) return false;
     if (targetIdx >= 2 && !validateMetadata()) return false;
     if (targetIdx >= 3 && !validateItems()) return false;
+    if (targetIdx >= 4 && !validatePurposes()) return false;
     return true;
   };
 
@@ -983,12 +1127,19 @@ export function FileNewPODialog({
   };
 
   const handleNextFromItems = () => {
-    if (validateItems()) setCurrentStep("review");
+    if (!validateItems()) return;
+    setPurposeGroups((prev) => seedPurposeGroupLines(prev, items));
+    setCurrentStep("purposes");
+  };
+
+  const handleNextFromPurposes = () => {
+    if (validatePurposes()) setCurrentStep("review");
   };
 
   const handleBack = () => {
     setErrorMessage(null);
-    if (currentStep === "review") setCurrentStep("items");
+    if (currentStep === "review") setCurrentStep("purposes");
+    else if (currentStep === "purposes") setCurrentStep("items");
     else if (currentStep === "items") setCurrentStep("metadata");
     else if (currentStep === "metadata") setCurrentStep("routing");
   };
@@ -997,7 +1148,12 @@ export function FileNewPODialog({
     if (e) e.preventDefault();
     setErrorMessage(null);
 
-    if (!validateRouting() || !validateMetadata() || !validateItems()) {
+    if (
+      !validateRouting() ||
+      !validateMetadata() ||
+      !validateItems() ||
+      !validatePurposes()
+    ) {
       return;
     }
 
@@ -1008,10 +1164,52 @@ export function FileNewPODialog({
           ? projects.find((p) => p.id === targetProjectId)
           : null;
 
+      const selectedDepartmentIds = targetDepartmentIds;
+      const selectedDepartments = selectedDepartmentIds
+        .map((id) => departments.find((d) => d.id === id))
+        .filter((d): d is NonNullable<typeof d> => Boolean(d));
+      const primaryDepartment = selectedDepartments[0];
+      const departmentName = primaryDepartment?.name?.trim() || "";
+      const departmentLabel = selectedDepartments
+        .map((d) => d.name.trim())
+        .filter(Boolean)
+        .join(", ");
+      if (!departmentName || selectedDepartments.length < 1) {
+        setErrorMessage("Please select a valid target department.");
+        return;
+      }
+
+      const purposePrefix = buildPoPurposePrefix({
+        departmentLabel,
+        projectLabel:
+          destinationKind === "project" && selectedProjectObj
+            ? selectedProjectObj.projectCode || selectedProjectObj.name
+            : null,
+      });
+
+      // Ensure single-purpose binds all lines; resolve purpose per line from groups
+      const groupsForSubmit = seedPurposeGroupLines(purposeGroups, items);
+      const purposeByLineId = new Map<string, string>();
+      for (const g of groupsForSubmit) {
+        const stamped = stampPoPurpose(purposePrefix, g.purpose);
+        for (const lineId of g.lineIds) {
+          purposeByLineId.set(lineId, stamped);
+        }
+      }
+      const justifications = groupsForSubmit.map((g) => g.purpose.trim());
+      const headerPurpose = stampPoPurpose(
+        purposePrefix,
+        summarizePurposes(justifications)
+      );
+
       const formattedItems = items.map((item) => {
         const isAsset = poType === "asset";
         const qty = parseUnsignedInt(item.quantity, 1);
         const unitCostNum = parseMoney(item.unitCost) ?? 0;
+        const linePurpose =
+          purposeByLineId.get(item.id) ||
+          stampPoPurpose(purposePrefix, primaryPurpose) ||
+          undefined;
 
         return {
           itemType: poType,
@@ -1028,7 +1226,7 @@ export function FileNewPODialog({
           model: item.model || undefined,
           quantity: qty,
           unitCost: unitCostNum,
-          purpose: item.purpose || generalPurpose || undefined,
+          purpose: linePurpose,
           suggestedDealer: item.suggestedDealer || undefined,
           supplierId: item.supplierId || undefined,
           projectId: destinationKind === "project" ? targetProjectId : undefined,
@@ -1046,26 +1244,6 @@ export function FileNewPODialog({
       const masterSupplierId =
         uniqueSuppliers.length === 1 ? items[0]?.supplierId : undefined;
 
-      const selectedDepartmentIds = targetDepartmentIds;
-      const selectedDepartments = selectedDepartmentIds
-        .map((id) => departments.find((d) => d.id === id))
-        .filter((d): d is NonNullable<typeof d> => Boolean(d));
-      const primaryDepartment = selectedDepartments[0];
-      const departmentName = primaryDepartment?.name?.trim() || "";
-      const departmentLabel = selectedDepartments
-        .map((d) => d.name.trim())
-        .filter(Boolean)
-        .join(", ");
-      if (!departmentName || selectedDepartments.length < 1) {
-        setErrorMessage("Please select a valid target department.");
-        return;
-      }
-
-      const combinedPurpose =
-        destinationKind === "project" && selectedProjectObj
-          ? `[Project: ${selectedProjectObj.projectCode || selectedProjectObj.name}] [${departmentLabel}] ${generalPurpose.trim()}`
-          : `[${departmentLabel}] ${generalPurpose.trim()}`;
-
       await createPOMutation.mutateAsync({
         poNumber: poNumberMode === "manual" ? customPoNumber.trim() : undefined,
         poDate,
@@ -1077,7 +1255,7 @@ export function FileNewPODialog({
         departmentIds: selectedDepartments.map((d) => d.id),
         projectId: destinationKind === "project" ? targetProjectId : undefined,
         projectName: destinationKind === "project" ? (selectedProjectObj?.name || undefined) : undefined,
-        purpose: combinedPurpose,
+        purpose: headerPurpose,
         notes: generalNotes.trim() || undefined,
         status: "pending_approval",
         items: formattedItems,
@@ -1111,74 +1289,64 @@ export function FileNewPODialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="new-po-title"
-        className="relative w-full max-w-5xl h-[88vh] max-h-200 min-h-140 rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-3xl h-[78vh] max-h-180 min-h-120 rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
       >
-        {/* Header with Title */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-bg-subtle/50 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-accent/10 border border-accent/20 text-accent">
-              <FilePlus2 className="h-5 w-5" />
+        {/* Header + stepper */}
+        <div className="shrink-0 border-b border-border bg-bg-subtle/50">
+          <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-3 pb-2">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20 text-accent shrink-0">
+                <FilePlus2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <h2
+                  id="new-po-title"
+                  className="text-sm font-bold text-text truncate"
+                >
+                  File New Purchase Order
+                </h2>
+                <p className="text-[10px] text-text-secondary truncate">
+                  {STEPS[currentStepIdx]?.label}
+                  <span className="text-text-secondary/80">
+                    {" "}
+                    — {STEPS[currentStepIdx]?.description}
+                  </span>
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 id="new-po-title" className="text-base font-bold text-text flex items-center gap-2">
-                File New Purchase Order
-              </h2>
-              <p className="text-[11px] text-text-secondary">
-                Official Cebu Roosevelt Memorial Colleges Property Acquisition Slip
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => void handleSafeClose()}
+              aria-label="Close dialog"
+              className="p-1 rounded-lg text-text-secondary hover:text-text hover:bg-border/60 transition-colors cursor-pointer shrink-0"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleSafeClose()}
-            aria-label="Close dialog"
-            className="p-1 rounded-lg text-text-secondary hover:text-text hover:bg-border/60 transition-colors cursor-pointer"
+
+          <nav
+            aria-label="Purchase order steps"
+            className="flex items-center gap-2 px-4 sm:px-5 pb-2.5 min-w-0"
           >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+            <span className="shrink-0 inline-flex items-center rounded-md bg-accent/10 border border-accent/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent tabular-nums">
+              {currentStepIdx + 1}/{STEPS.length}
+            </span>
 
-        {/* 4-Step Wizard Timeline */}
-        <div className="px-5 sm:px-8 py-4 bg-card border-b border-border shrink-0">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <p className="text-[11px] font-semibold text-text-secondary uppercase tracking-wider">
-              Step {currentStepIdx + 1} of {STEPS.length}
-            </p>
-            <p className="text-[11px] text-text-secondary truncate">
-              {STEPS[currentStepIdx]?.label}
-              <span className="hidden sm:inline text-text-secondary/80">
-                {" "}
-                · {STEPS[currentStepIdx]?.description}
-              </span>
-            </p>
-          </div>
-
-          <div className="relative">
-            {/* Track — inset to align with step circle centers */}
-            <div
-              className="absolute left-[12.5%] right-[12.5%] top-5 h-1 rounded-full bg-border"
-              aria-hidden="true"
-            />
-            {/* Progress fill */}
-            <div
-              className="absolute left-[12.5%] top-5 h-1 rounded-full bg-accent transition-all duration-300 ease-out"
-              style={{
-                width:
-                  STEPS.length <= 1
-                    ? "0%"
-                    : `calc(${(currentStepIdx / (STEPS.length - 1)) * 75}%)`,
-              }}
-              aria-hidden="true"
-            />
-
-            <ol className="relative grid grid-cols-4 gap-2">
+            <ol className="flex items-center flex-1 min-w-0 gap-0">
               {STEPS.map((step, idx) => {
                 const Icon = step.icon;
                 const isPassed = currentStepIdx > idx;
                 const isCurrent = currentStepIdx === idx;
+                const isLast = idx === STEPS.length - 1;
 
                 return (
-                  <li key={step.id} className="flex flex-col items-center text-center">
+                  <li
+                    key={step.id}
+                    className={cn(
+                      "flex items-center min-w-0",
+                      isLast ? "shrink-0" : "flex-1"
+                    )}
+                  >
                     <button
                       type="button"
                       onClick={() => {
@@ -1190,46 +1358,58 @@ export function FileNewPODialog({
                         if (canJumpToStep(step.id)) setCurrentStep(step.id);
                       }}
                       aria-current={isCurrent ? "step" : undefined}
+                      title={`${step.label} — ${step.description}`}
                       className={cn(
-                        "group flex flex-col items-center gap-1.5 cursor-pointer transition-all",
-                        isCurrent ? "opacity-100" : isPassed ? "opacity-95" : "opacity-55 hover:opacity-80"
+                        "group inline-flex items-center gap-1 rounded-full pl-0.5 pr-1 sm:pr-1.5 py-0.5 cursor-pointer transition-all duration-200",
+                        isCurrent
+                          ? "bg-accent/10 ring-1 ring-accent/25"
+                          : "hover:bg-bg/80"
                       )}
                     >
                       <span
                         className={cn(
-                          "relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-2 font-bold text-xs transition-all",
+                          "h-6 w-6 rounded-full flex items-center justify-center border-2 shrink-0 transition-all duration-200",
                           isPassed
-                            ? "bg-emerald-500 text-white border-emerald-500 shadow-xs"
+                            ? "bg-emerald-500 text-white border-emerald-500"
                             : isCurrent
-                            ? "bg-accent text-accent-foreground border-accent shadow-md ring-4 ring-accent/20 scale-105"
-                            : "bg-card text-text-secondary border-border"
+                              ? "bg-accent text-accent-foreground border-accent"
+                              : "bg-bg text-text-secondary border-border group-hover:border-accent/40"
                         )}
                       >
                         {isPassed ? (
-                          <Check className="h-4 w-4" />
+                          <Check className="h-2.5 w-2.5" strokeWidth={2.5} />
                         ) : (
-                          <Icon className="h-4 w-4" />
+                          <Icon className="h-2.5 w-2.5" />
                         )}
                       </span>
-                      <span className="min-w-0 px-0.5">
-                        <span
-                          className={cn(
-                            "block text-[11px] font-bold leading-tight",
-                            isCurrent ? "text-text" : "text-text-secondary"
-                          )}
-                        >
-                          {step.label}
-                        </span>
-                        <span className="hidden md:block text-[10px] text-text-secondary leading-tight mt-0.5">
-                          {step.description}
-                        </span>
+                      <span
+                        className={cn(
+                          "hidden md:inline text-[10px] font-semibold leading-none whitespace-nowrap",
+                          isCurrent ? "text-text" : "text-text-secondary"
+                        )}
+                      >
+                        {step.shortLabel}
                       </span>
                     </button>
+
+                    {!isLast && (
+                      <div
+                        className="flex-1 mx-0.5 sm:mx-1 h-0.5 rounded-full bg-border overflow-hidden min-w-1"
+                        aria-hidden="true"
+                      >
+                        <div
+                          className={cn(
+                            "h-full rounded-full bg-accent transition-all duration-300 ease-out",
+                            isPassed ? "w-full" : "w-0"
+                          )}
+                        />
+                      </div>
+                    )}
                   </li>
                 );
               })}
             </ol>
-          </div>
+          </nav>
         </div>
 
         {/* Form Body Area */}
@@ -1771,39 +1951,22 @@ export function FileNewPODialog({
                   </div>
                 </div>
 
-                {/* Row 2: Purpose & Notes Side-by-Side */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2 border-t border-border/60">
-                  <div className="space-y-1">
-                    <label className="font-semibold text-text flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <FileText className="h-3.5 w-3.5 text-text-secondary" />
-                        <span>Procurement Purpose</span>
-                      </span>
-                      <span className="text-[10px] text-rose-500 font-bold">* Required</span>
-                    </label>
-                    <textarea
-                      value={generalPurpose}
-                      onChange={(e) => setGeneralPurpose(e.target.value)}
-                      placeholder="e.g. Replenishment of registrar office stocks, paper reams, and semester exam supplies..."
-                      required
-                      rows={4}
-                      className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed min-h-24"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-semibold text-text flex items-center gap-1">
-                      <Tag className="h-3.5 w-3.5 text-text-secondary" />
-                      <span>Order Notes / Budget Justification</span>
-                    </label>
-                    <textarea
-                      value={generalNotes}
-                      onChange={(e) => setGeneralNotes(e.target.value)}
-                      placeholder="e.g. Approved under Semester 1 Supply Budget Allocation / Urgently required for midterm examinations..."
-                      rows={4}
-                      className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed min-h-24"
-                    />
-                  </div>
+                {/* Row 2: Order notes */}
+                <div className="pt-2 border-t border-border/60 space-y-1">
+                  <label className="font-semibold text-text flex items-center gap-1">
+                    <Tag className="h-3.5 w-3.5 text-text-secondary" />
+                    <span>Order Notes / Budget Justification</span>
+                  </label>
+                  <textarea
+                    value={generalNotes}
+                    onChange={(e) => setGeneralNotes(e.target.value)}
+                    placeholder="e.g. Approved under Semester 1 Supply Budget Allocation / Urgently required for midterm examinations..."
+                    rows={4}
+                    className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed min-h-24"
+                  />
+                  <p className="text-[10px] text-text-secondary">
+                    Procurement purpose is assigned to line items in a later step.
+                  </p>
                 </div>
               </div>
             </div>
@@ -2366,7 +2529,162 @@ export function FileNewPODialog({
             </div>
           )}
 
-          {/* ================= STEP 3: FINAL REVIEW ================= */}
+          {/* ================= STEP: PURPOSE ASSIGNMENT ================= */}
+          {currentStep === "purposes" && (
+            <div className="space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-start justify-between flex-wrap gap-2">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <div className="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 shrink-0">
+                    <Layers className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-bold text-xs text-text">
+                      Purpose Assignment
+                    </h3>
+                    <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
+                      Drag line items between purpose columns. Every line stays
+                      under a purpose.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPurposeGroups((prev) => [...prev, newPoPurposeGroup()])
+                  }
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" />
+                  Add purpose
+                </button>
+              </div>
+
+              {/* Kanban — purpose columns only */}
+              <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 min-h-56">
+                {purposeGroups.map((group, groupIdx) => {
+                  const namedItems = items.filter((it) => it.name.trim());
+                  const assignedItems = namedItems.filter((it) =>
+                    group.lineIds.includes(it.id)
+                  );
+                  const isOver = dropTargetId === group.id;
+
+                  return (
+                    <div
+                      key={group.id}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        if (dropTargetId !== group.id) {
+                          setDropTargetId(group.id);
+                        }
+                      }}
+                      onDragLeave={(e) => {
+                        if (e.currentTarget.contains(e.relatedTarget as Node)) {
+                          return;
+                        }
+                        if (dropTargetId === group.id) setDropTargetId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const lineId =
+                          e.dataTransfer.getData("text/plain") || dragLineId;
+                        if (lineId) assignLineToPurpose(group.id, lineId);
+                        clearKanbanDrag();
+                      }}
+                      className={cn(
+                        "w-52 sm:w-56 shrink-0 rounded-xl border bg-bg flex flex-col overflow-hidden transition-colors",
+                        isOver
+                          ? "border-indigo-500/50 ring-2 ring-indigo-500/20 bg-indigo-500/5"
+                          : "border-border"
+                      )}
+                    >
+                      <div className="px-2.5 py-2 border-b border-indigo-500/20 bg-indigo-500/5 space-y-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                            Purpose {groupIdx + 1} ({assignedItems.length})
+                          </p>
+                          {purposeGroups.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removePurposeGroup(group.id)}
+                              className="text-[10px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          value={group.purpose}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setPurposeGroups((prev) =>
+                              prev.map((g) =>
+                                g.id === group.id
+                                  ? { ...g, purpose: value }
+                                  : g
+                              )
+                            );
+                          }}
+                          onDragOver={(e) => e.stopPropagation()}
+                          placeholder={
+                            groupIdx === 0
+                              ? "Purpose — e.g. office replenishment…"
+                              : "Purpose text…"
+                          }
+                          rows={2}
+                          className="w-full p-1.5 rounded-md border border-border bg-bg text-[11px] focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed"
+                        />
+                      </div>
+                      <div className="p-2 space-y-1.5 flex-1 min-h-36 max-h-64 overflow-y-auto">
+                        {assignedItems.length > 0 ? (
+                          assignedItems.map((it) => {
+                            const isDragging = dragLineId === it.id;
+                            return (
+                              <div
+                                key={it.id}
+                                draggable
+                                onDragStart={(e) => {
+                                  setDragLineId(it.id);
+                                  e.dataTransfer.setData("text/plain", it.id);
+                                  e.dataTransfer.effectAllowed = "move";
+                                }}
+                                onDragEnd={clearKanbanDrag}
+                                className={cn(
+                                  "flex items-start gap-1.5 px-2 py-1.5 rounded-md border bg-card text-xs cursor-grab active:cursor-grabbing select-none shadow-2xs transition-opacity",
+                                  isDragging
+                                    ? "opacity-40 border-accent"
+                                    : "border-border hover:border-accent/40"
+                                )}
+                              >
+                                <GripVertical className="h-3.5 w-3.5 text-text-secondary shrink-0 mt-0.5" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-text truncate leading-snug">
+                                    {it.name || "Untitled"}
+                                  </p>
+                                  <p className="text-[10px] text-text-secondary truncate">
+                                    Qty {it.quantity || "1"}
+                                    {it.suggestedDealer
+                                      ? ` · ${it.suggestedDealer}`
+                                      : ""}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-[10px] text-text-secondary px-1 py-6 text-center border border-dashed border-border/80 rounded-md">
+                            {isOver ? "Drop here" : "Drag items here"}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ================= STEP: FINAL REVIEW ================= */}
           {currentStep === "review" && (
             <div className="space-y-4 animate-in fade-in duration-200">
               {/* Review Master PO Details Card */}
@@ -2394,6 +2712,14 @@ export function FileNewPODialog({
                     >
                       <Edit3 className="h-3 w-3" />
                       Edit Order Info
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep("purposes")}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      Edit Purposes
                     </button>
                   </div>
                 </div>
@@ -2493,8 +2819,31 @@ export function FileNewPODialog({
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <span className="text-[10px] text-text-secondary font-medium block">Procurement Purpose</span>
-                      <p className="text-text font-medium leading-relaxed mt-0.5">{generalPurpose}</p>
+                      <span className="text-[10px] text-text-secondary font-medium block">
+                        Procurement Purpose
+                        {isMultiPurpose ? `s (${purposeGroups.length})` : ""}
+                      </span>
+                      {isMultiPurpose ? (
+                        <ul className="mt-1 space-y-1.5">
+                          {purposeGroups.map((g, idx) => (
+                            <li key={g.id} className="text-text text-xs leading-relaxed">
+                              <span className="font-bold text-indigo-700 dark:text-indigo-400">
+                                {idx + 1}.
+                              </span>{" "}
+                              {g.purpose.trim()}
+                              <span className="text-text-secondary">
+                                {" "}
+                                ({g.lineIds.length} line
+                                {g.lineIds.length === 1 ? "" : "s"})
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-text font-medium leading-relaxed mt-0.5">
+                          {primaryPurpose}
+                        </p>
+                      )}
                     </div>
                     {generalNotes && (
                       <div>
@@ -2694,6 +3043,17 @@ export function FileNewPODialog({
               <button
                 type="button"
                 onClick={handleNextFromItems}
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+              >
+                <span>Continue to Purpose Assignment</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            )}
+
+            {currentStep === "purposes" && (
+              <button
+                type="button"
+                onClick={handleNextFromPurposes}
                 className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <span>Review Order Details</span>

@@ -28,6 +28,7 @@ export {
   useProjectExpensesQuery,
   useProjectMaterialMutation,
   useProjectProgressQuery,
+  useProjectsProgressSummariesQuery,
   useProjectsQuery,
   useReportProjectAssetDamageMutation,
   useReturnProjectAssetMutation,

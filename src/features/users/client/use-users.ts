@@ -19,6 +19,7 @@ import {
   type UpdateUserPayload,
 } from "@/features/users/client/users-api";
 import { userQueryKeys } from "@/features/users/client/query-keys";
+import { LOOKUP_QUERY_OPTIONS } from "@/features/shared/lookup-query-options";
 
 export function useMeQuery(options?: {
   enabled?: boolean;
@@ -70,6 +71,7 @@ export function useUsersQuery(filters?: {
       const profiles = await usersApi.listUsers(tenantId ? { tenantId } : undefined);
       return profiles.map(toUserAccount);
     },
+    ...LOOKUP_QUERY_OPTIONS,
     enabled,
   });
 }

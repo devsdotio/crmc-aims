@@ -69,6 +69,8 @@ export type UpdatePurchaseOrderPayload = {
   reference?: string | null;
   notes?: string | null;
   purpose?: string | null;
+  /** Batch-update purpose on sibling lots (multi-purpose PO edit). */
+  linePurposes?: Array<{ lotId: string; purpose: string }>;
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;
@@ -83,23 +85,40 @@ export type UpdatePOStatusPayload = {
   receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
+  cancellationReason?: string;
+};
+
+export type AddPurchaseOrderLinesPayload = {
+  items: CreatePurchaseOrderItemPayload[];
 };
 
 export const purchaseLotsApi = {
   async list(params?: {
     consumableId?: string;
+    consumableIds?: string[];
     assetId?: string;
     supplierId?: string;
     itemType?: "consumable" | "asset";
     status?: PurchaseOrderStatus;
+    statuses?: PurchaseOrderStatus[];
+    limit?: number;
     search?: string;
   }): Promise<PurchaseLot[]> {
     const sp = new URLSearchParams();
     if (params?.consumableId) sp.set("consumableId", params.consumableId);
+    if (params?.consumableIds?.length) {
+      for (const id of params.consumableIds) {
+        sp.append("consumableIds", id);
+      }
+    }
     if (params?.assetId) sp.set("assetId", params.assetId);
     if (params?.supplierId) sp.set("supplierId", params.supplierId);
     if (params?.itemType) sp.set("itemType", params.itemType);
     if (params?.status) sp.set("status", params.status);
+    if (params?.statuses && params.statuses.length > 0) {
+      sp.set("statuses", params.statuses.join(","));
+    }
+    if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.search) sp.set("search", params.search);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<PurchaseLot[]>>(
@@ -147,6 +166,20 @@ export const purchaseLotsApi = {
   async updateStatus(id: string, payload: UpdatePOStatusPayload): Promise<PurchaseLot> {
     const res = await fetchJson<ApiResponse<PurchaseLot>>(
       `/api/purchase-lots/${id}/status`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return res.data;
+  },
+
+  async addLines(
+    id: string,
+    payload: AddPurchaseOrderLinesPayload
+  ): Promise<PurchaseLot[]> {
+    const res = await fetchJson<ApiResponse<PurchaseLot[]>>(
+      `/api/purchase-lots/${id}/lines`,
       {
         method: "POST",
         body: JSON.stringify(payload),

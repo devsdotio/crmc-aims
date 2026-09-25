@@ -2,12 +2,14 @@
 
 import { PackageSearch } from "lucide-react";
 import type { Asset } from "@/types/assets";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import { AssetCard } from "./asset-card";
 
 export interface AssetGridProps {
   assets: Asset[];
   loading?: boolean;
   onSelect: (asset: Asset) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 // ─── Matched Skeleton Card for Grid View ─────────────────────────────────────
@@ -40,6 +42,7 @@ export function AssetGrid({
   assets,
   loading = false,
   onSelect,
+  getCategoryStyle,
 }: AssetGridProps) {
   if (loading) {
     return (
@@ -74,6 +77,7 @@ export function AssetGrid({
           key={asset.id}
           asset={asset}
           onSelect={onSelect}
+          getCategoryStyle={getCategoryStyle}
         />
       ))}
     </div>

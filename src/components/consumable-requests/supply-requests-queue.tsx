@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   ClipboardCheck,
@@ -76,6 +76,14 @@ export interface SupplyRequestsQueueProps {
   status?: ConsumableRequest["status"];
   searchQuery?: string;
   department?: string;
+  /** Lift list meta.counts so the parent can drop a duplicate limit:1 meta query. */
+  onCountsChange?: (counts: {
+    pending: number;
+    approved: number;
+    released: number;
+    rejected: number;
+    cancelled: number;
+  }) => void;
 }
 
 const SUPPLY_STATUS_THEMES: Record<
@@ -185,6 +193,7 @@ export function SupplyRequestsQueue({
   status = "pending",
   searchQuery = "",
   department,
+  onCountsChange,
 }: SupplyRequestsQueueProps) {
   const { canOperate } = useAssetOperator();
   const toast = useToast();
@@ -211,6 +220,18 @@ export function SupplyRequestsQueue({
       limit: 50,
     });
   const rows = data?.data ?? [];
+
+  useEffect(() => {
+    if (!onCountsChange || !data?.meta?.counts) return;
+    const counts = data.meta.counts;
+    onCountsChange({
+      pending: counts.pending ?? 0,
+      approved: counts.approved ?? 0,
+      released: counts.released ?? 0,
+      rejected: counts.rejected ?? 0,
+      cancelled: counts.cancelled ?? 0,
+    });
+  }, [data?.meta?.counts, onCountsChange]);
   const approve = useApproveConsumableRequestMutation();
   const reject = useRejectConsumableRequestMutation();
   const cancel = useCancelConsumableRequestMutation();

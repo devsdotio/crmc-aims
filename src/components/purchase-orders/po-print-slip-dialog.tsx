@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import Image from "next/image";
 import { X, Printer, FileText, Download, Loader2 } from "lucide-react";
 import type { PurchaseLot } from "@/types/purchase-lots";
@@ -9,6 +9,7 @@ import { useToast } from "@/components/providers/toast-context";
 import {
   buildPoSlipFullHtml,
   downloadPoSlipPdf,
+  getPoSlipPurposeGroups,
   type PoSlipRenderData,
 } from "@/components/purchase-orders/po-official-slip";
 
@@ -69,8 +70,6 @@ export function POPrintSlipDialog({
     second: "2-digit",
     hour12: true,
   });
-  const unitCostNum = parseFloat(lot.unitCost) || 0;
-  const totalCostNum = parseFloat(lot.totalCost) || 0;
   const effectiveRequestedBy =
     requestedBy.trim() || lot.recordedByName || "Authorized Staff";
 
@@ -334,184 +333,123 @@ export function POPrintSlipDialog({
               <table className="w-full text-xs text-left border-collapse">
                 <thead className="bg-bg-subtle text-text border-b border-border font-bold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="px-3 py-2 text-center w-16 border-r border-border">
-                      Quantity
+                    <th className="px-2.5 py-2 text-center w-14 border-r border-border">
+                      Qty
                     </th>
-                    <th className="px-3 py-2 border-r border-border">
+                    <th className="px-2.5 py-2 border-r border-border">
                       Description
                     </th>
-                    <th className="px-3 py-2 border-r border-border">
+                    <th className="px-2.5 py-2 border-r border-border w-[18%]">
+                      Purpose
+                    </th>
+                    <th className="px-2.5 py-2 border-r border-border">
                       Suggested Dealer
                     </th>
-                    <th className="px-3 py-2 text-right w-24 border-r border-border">
+                    <th className="px-2.5 py-2 text-right w-20 border-r border-border">
                       Unit Price
                     </th>
-                    <th className="px-3 py-2 text-right w-28">Estimated</th>
+                    <th className="pl-4 pr-2.5 py-2 text-right min-w-24 whitespace-nowrap">
+                      Estimated
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {lot.items && lot.items.length > 1 ? (
-                    <>
-                      {lot.items.map((item) => {
-                        const iUnit = parseFloat(item.unitCost) || 0;
-                        const iTotal = parseFloat(item.totalCost) || 0;
-                        return (
-                          <tr key={item.id}>
-                            <td className="px-3.5 py-2.5 text-center font-bold text-text border-r border-border text-sm">
-                              {item.quantity}
-                            </td>
-                            <td className="px-3.5 py-2.5 border-r border-border">
-                              <strong className="text-text block text-sm">
-                                {item.itemName}
-                              </strong>
-                              <span className="text-[10px] text-text-secondary">
-                                Code: {item.itemCode}
-                                {item.lotCode && (
-                                  <>
-                                    {" "}
-                                    · Lot:{" "}
-                                    <span className="font-mono text-text">
-                                      {item.lotCode}
-                                    </span>
-                                  </>
+                  {(() => {
+                    const groups = getPoSlipPurposeGroups(lot);
+                    const allLines = groups.flatMap((g) => g.lines);
+                    const qtyTotal = allLines.reduce((s, i) => s + i.quantity, 0);
+                    const costTotal = allLines.reduce(
+                      (s, i) => s + (parseFloat(i.totalCost) || 0),
+                      0
+                    );
+
+                    return (
+                      <>
+                        {groups.map((group) =>
+                          group.lines.map((item, index) => {
+                            const iUnit = parseFloat(item.unitCost) || 0;
+                            const iTotal = parseFloat(item.totalCost) || 0;
+                            return (
+                              <tr key={item.id}>
+                                <td className="px-2.5 py-2 text-center font-bold text-text border-r border-border text-sm">
+                                  {item.quantity}
+                                </td>
+                                <td className="px-2.5 py-2 border-r border-border">
+                                  <strong className="text-text block text-sm">
+                                    {item.itemName}
+                                  </strong>
+                                  <span className="text-[10px] text-text-secondary">
+                                    Code: {item.itemCode}
+                                    {item.lotCode && (
+                                      <>
+                                        {" "}
+                                        · Lot:{" "}
+                                        <span className="font-mono text-text">
+                                          {item.lotCode}
+                                        </span>
+                                      </>
+                                    )}
+                                  </span>
+                                </td>
+                                {index === 0 && (
+                                  <td
+                                    rowSpan={group.lines.length}
+                                    className="px-2.5 py-2 text-[11px] text-text leading-snug border-r border-border align-middle"
+                                  >
+                                    {group.purpose}
+                                  </td>
                                 )}
-                              </span>
-                            </td>
-                            <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
-                              {item.suggestedDealer ||
-                                lot.supplierName ||
-                                "Direct Procurement"}
-                            </td>
-                            <td className="px-3.5 py-2.5 text-right font-mono text-text border-r border-border">
-                              ₱
-                              {iUnit.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
-                              ₱
-                              {iTotal.toLocaleString("en-US", {
-                                minimumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {/* Nothing Follows Prompt */}
-                      <tr className="bg-bg-subtle/30 border-t border-border">
-                        <td
-                          colSpan={5}
-                          className="px-3.5 py-1.5 text-center font-bold tracking-widest text-[11px] text-text-secondary italic select-none"
-                        >
-                          *** NOTHING FOLLOWS ***
-                        </td>
-                      </tr>
-                      {/* Grand Total Row */}
-                      <tr className="border-t-2 border-border bg-bg-subtle/50 font-bold">
-                        <td className="px-3.5 py-2.5 text-center font-mono font-bold text-text border-r border-border text-sm">
-                          {lot.items.reduce((s, i) => s + i.quantity, 0)}
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right text-xs font-bold uppercase tracking-wider text-text-secondary border-r border-border">
-                          Grand Total
-                        </td>
-                        <td className="border-r border-border"></td>
-                        <td className="border-r border-border"></td>
-                        <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
-                          ₱
-                          {lot.items
-                            .reduce(
-                              (s, i) => s + (parseFloat(i.totalCost) || 0),
-                              0,
-                            )
-                            .toLocaleString("en-US", {
+                                <td className="px-2.5 py-2 text-text-secondary border-r border-border">
+                                  {item.suggestedDealer ||
+                                    lot.supplierName ||
+                                    "Direct Procurement"}
+                                </td>
+                                <td className="px-2.5 py-2 text-right font-mono text-text border-r border-border">
+                                  ₱
+                                  {iUnit.toLocaleString("en-US", {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
+                                <td className="pl-4 pr-2.5 py-2 text-right font-bold text-sm text-status-active-text whitespace-nowrap tabular-nums">
+                                  ₱
+                                  {iTotal.toLocaleString("en-US", {
+                                    minimumFractionDigits: 2,
+                                  })}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                        <tr className="bg-bg-subtle/30 border-t border-border">
+                          <td
+                            colSpan={6}
+                            className="px-2.5 py-1.5 text-center font-bold tracking-widest text-[11px] text-text-secondary italic select-none"
+                          >
+                            *** NOTHING FOLLOWS ***
+                          </td>
+                        </tr>
+                        <tr className="border-t-2 border-border bg-bg-subtle/50 font-bold">
+                          <td className="px-2.5 py-2 text-center font-mono font-bold text-text border-r border-border text-sm">
+                            {qtyTotal}
+                          </td>
+                          <td className="px-2.5 py-2 text-right text-xs font-bold uppercase tracking-wider text-text-secondary border-r border-border">
+                            Grand Total
+                          </td>
+                          <td className="border-r border-border" />
+                          <td className="border-r border-border" />
+                          <td className="border-r border-border" />
+                          <td className="pl-4 pr-2.5 py-2 text-right font-bold text-sm text-status-active-text whitespace-nowrap tabular-nums">
+                            ₱
+                            {costTotal.toLocaleString("en-US", {
                               minimumFractionDigits: 2,
                             })}
-                        </td>
-                      </tr>
-                      {lot.items.length < 4 &&
-                        Array.from({ length: 4 - lot.items.length }).map(
-                          (_, i) => (
-                            <tr key={`pad-${i}`} className="h-7.5">
-                              <td className="border-r border-border"></td>
-                              <td className="border-r border-border"></td>
-                              <td className="border-r border-border"></td>
-                              <td className="border-r border-border"></td>
-                              <td></td>
-                            </tr>
-                          ),
-                        )}
-                    </>
-                  ) : (
-                    <>
-                      <tr>
-                        <td className="px-3.5 py-2.5 text-center font-bold text-text border-r border-border text-sm">
-                          {lot.quantity}
-                        </td>
-                        <td className="px-3.5 py-2.5 border-r border-border">
-                          <strong className="text-text block text-sm">
-                            {lot.itemName}
-                          </strong>
-                          <span className="text-[10px] text-text-secondary">
-                            Code: {lot.itemCode}
-                            {lot.lotCode && (
-                              <>
-                                {" "}
-                                · Lot:{" "}
-                                <span className="font-mono text-text">
-                                  {lot.lotCode}
-                                </span>
-                              </>
-                            )}
-                          </span>
-                        </td>
-                        <td className="px-3.5 py-2.5 text-text-secondary border-r border-border">
-                          {lot.supplierName || "Direct / Internal Procurement"}
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-mono text-text border-r border-border">
-                          ₱
-                          {unitCostNum.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td className="px-3.5 py-2.5 text-right font-bold text-sm text-status-active-text">
-                          ₱
-                          {totalCostNum.toLocaleString("en-US", {
-                            minimumFractionDigits: 2,
-                          })}
-                        </td>
-                      </tr>
-                      {/* Nothing Follows Prompt */}
-                      <tr className="bg-bg-subtle/30 border-t border-border">
-                        <td
-                          colSpan={5}
-                          className="px-3.5 py-1.5 text-center font-bold tracking-widest text-[11px] text-text-secondary italic select-none"
-                        >
-                          *** NOTHING FOLLOWS ***
-                        </td>
-                      </tr>
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <tr key={i} className="h-7.5">
-                          <td className="border-r border-border"></td>
-                          <td className="border-r border-border"></td>
-                          <td className="border-r border-border"></td>
-                          <td className="border-r border-border"></td>
-                          <td></td>
+                          </td>
                         </tr>
-                      ))}
-                    </>
-                  )}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
-            </div>
-
-            {/* Purpose Card */}
-            <div className="border border-border rounded-lg px-4 py-2.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
-                Purpose:
-              </span>
-              <p className="text-xs text-text leading-relaxed">
-                {lot.purpose || "Institutional Inventory & Operations"}
-              </p>
             </div>
 
             {/* Official Signatures matching form */}

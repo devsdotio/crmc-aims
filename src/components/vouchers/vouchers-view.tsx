@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Receipt,
   FilePlus2,
@@ -27,19 +27,25 @@ export function VouchersView() {
   useVouchersRealtimeSync();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<VoucherStatus | "all">("all");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  // Fetch vouchers query (specifically for disbursement vouchers with live polling)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Fetch vouchers query (realtime sync handles live updates)
   const {
     data,
     isLoading,
     refetch,
   } = useVouchersQuery({
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     status: selectedStatus === "all" ? undefined : selectedStatus,
     type: "disbursement",
     limit: 100,

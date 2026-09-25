@@ -12,6 +12,7 @@ import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 import { userQueryKeys } from "@/features/users/client/query-keys";
 
 import { departmentQueryKeys } from "./query-keys";
+import { LOOKUP_QUERY_OPTIONS } from "@/features/shared/lookup-query-options";
 
 export type DepartmentDTO = {
   id: string;
@@ -57,9 +58,7 @@ export function useDepartmentsQuery(options?: {
   return useQuery({
     queryKey: departmentQueryKeys.list(),
     queryFn: () => fetchDepartments(),
-    staleTime: 10 * 60 * 1000,
-    gcTime: 30 * 60 * 1000,
-    refetchOnWindowFocus: false,
+    ...LOOKUP_QUERY_OPTIONS,
     // Remote DB + pool contention can stretch the first list call; one retry
     // is enough — multi-retry with a 60s client timeout looked like an empty dropdown.
     retry: 1,

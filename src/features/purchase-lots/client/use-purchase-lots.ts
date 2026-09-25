@@ -19,6 +19,7 @@ import {
   type CreatePurchaseOrderPayload,
   type UpdatePurchaseOrderPayload,
   type UpdatePOStatusPayload,
+  type AddPurchaseOrderLinesPayload,
 } from "./purchase-lots-api";
 import { purchaseLotQueryKeys } from "./query-keys";
 
@@ -32,14 +33,24 @@ const PO_DOMAINS = [
 
 export function usePurchaseLotsQuery(params?: {
   consumableId?: string;
+  consumableIds?: string[];
   assetId?: string;
   supplierId?: string;
   itemType?: "consumable" | "asset";
   status?: PurchaseOrderStatus;
+  statuses?: PurchaseOrderStatus[];
+  limit?: number;
   search?: string;
   enabled?: boolean;
 }): UseQueryResult<PurchaseLot[], Error> {
-  const { enabled = true, ...filters } = params ?? {};
+  const { enabled = true, consumableIds, ...rest } = params ?? {};
+  const sortedConsumableIds = consumableIds?.length
+    ? [...consumableIds].sort()
+    : undefined;
+  const filters = {
+    ...rest,
+    ...(sortedConsumableIds ? { consumableIds: sortedConsumableIds } : {}),
+  };
   return useQuery({
     queryKey: purchaseLotQueryKeys.list(filters),
     queryFn: () => purchaseLotsApi.list(filters),
@@ -206,6 +217,21 @@ export function useUpdatePurchaseOrderMutation(): UseMutationResult<
   });
 }
 
+export function useAddPurchaseOrderLinesMutation(): UseMutationResult<
+  PurchaseLot[],
+  Error,
+  { id: string; payload: AddPurchaseOrderLinesPayload }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }) => purchaseLotsApi.addLines(id, payload),
+    onSettled: (_data, _err, { id }) => {
+      void invalidateDomains(qc, PO_DOMAINS);
+      qc.invalidateQueries({ queryKey: purchaseLotQueryKeys.detail(id) });
+    },
+  });
+}
+
 export function useUpdatePOStatusMutation(): UseMutationResult<
   PurchaseLot,
   Error,
@@ -225,7 +251,16 @@ export function useUpdatePOStatusMutation(): UseMutationResult<
         (old) => {
           if (!old || !Array.isArray(old)) return old;
           return old.map((lot) =>
-            lot.id === id ? { ...lot, status: payload.status } : lot
+            lot.id === id
+              ? {
+                  ...lot,
+                  status: payload.status,
+                  cancellationReason:
+                    payload.status === "cancelled"
+                      ? payload.cancellationReason ?? lot.cancellationReason
+                      : lot.cancellationReason,
+                }
+              : lot
           );
         }
       );

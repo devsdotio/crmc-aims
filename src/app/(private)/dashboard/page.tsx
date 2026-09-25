@@ -1,6 +1,11 @@
 "use client";
 
-import { useDashboardSnapshotQuery } from "@/features/dashboard/client/use-dashboard";
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useDashboardSnapshotQuery,
+} from "@/features/dashboard/client/use-dashboard";
+import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 import { CompactStatCards } from "@/components/dashboard/compact-stat-cards";
 import { StockVolumeAreaChart } from "@/components/dashboard/stock-volume-area-chart";
 import { InventoryProportionDonutCard } from "@/components/dashboard/inventory-proportion-donut-card";
@@ -10,10 +15,21 @@ import { PendingPurchaseOrdersCard } from "@/components/dashboard/pending-purcha
 import { RecentActivityFeed } from "@/components/dashboard/recent-activity-feed";
 
 export default function DashboardPage() {
+  const queryClient = useQueryClient();
   const {
     data: snapshot,
     isLoading,
   } = useDashboardSnapshotQuery();
+
+  // Seed sidebar badge cache from the full snapshot so /dashboard does not
+  // also hit ?scope=sidebar (same summary fields, consistent badges).
+  useEffect(() => {
+    if (!snapshot?.summary) return;
+    queryClient.setQueryData(
+      dashboardQueryKeys.sidebarSummary(),
+      snapshot.summary
+    );
+  }, [snapshot?.summary, queryClient]);
 
   // Only true while the first fetch is in flight — never !snapshot after error.
   const loading = isLoading && !snapshot;
@@ -72,4 +88,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -28,6 +28,8 @@ export class BorrowLogController {
               url.searchParams.get("scope") === "department"
                 ? "department"
                 : undefined,
+            page: url.searchParams.get("page") ?? undefined,
+            limit: url.searchParams.get("limit") ?? undefined,
             includeSandbox: parseIncludeSandbox(
               url.searchParams.get("includeSandbox"),
               actor.role
