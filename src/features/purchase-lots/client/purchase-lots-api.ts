@@ -69,6 +69,8 @@ export type UpdatePurchaseOrderPayload = {
   reference?: string | null;
   notes?: string | null;
   purpose?: string | null;
+  /** Batch-update purpose on sibling lots (multi-purpose PO edit). */
+  linePurposes?: Array<{ lotId: string; purpose: string }>;
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;

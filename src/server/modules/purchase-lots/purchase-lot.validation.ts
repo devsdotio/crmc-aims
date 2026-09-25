@@ -166,6 +166,19 @@ export const updatePurchaseOrderSchema = z.object({
   reference: z.string().trim().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
   purpose: z.string().trim().nullable().optional(),
+  /**
+   * Batch-update purpose on sibling lots (multi-purpose PO edit).
+   * Each entry updates that lot's notes JSON purpose only.
+   */
+  linePurposes: z
+    .array(
+      z.object({
+        lotId: z.string().uuid(),
+        purpose: z.string().trim().min(1).max(1000),
+      })
+    )
+    .max(200)
+    .optional(),
   receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
   recordedByName: z.string().trim().nullable().optional(),
