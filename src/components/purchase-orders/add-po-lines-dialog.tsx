@@ -37,6 +37,12 @@ import {
   DEFAULT_CONSUMABLE_CLASSIFICATION,
   type ConsumableClassification,
 } from "@/lib/consumable-classification";
+import {
+  buildPoPurposePrefix,
+  poJustificationPurposes,
+  stampPoPurpose,
+  stripPoPurposePrefix,
+} from "@/lib/po-purpose";
 import type { PurchaseLot } from "@/types/purchase-lots";
 
 type POType = "consumable" | "asset";
@@ -125,14 +131,54 @@ export function AddPoLinesDialog({
   const [items, setItems] = useState<LineDraft[]>([]);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  /** Selected justification (stripped); `__new__` = custom field. */
+  const [purposeChoice, setPurposeChoice] = useState<string>("");
+  const [newPurposeText, setNewPurposeText] = useState("");
+
+  const existingJustifications = useMemo(() => {
+    const raw = poJustificationPurposes(existingLots.map((l) => l.purpose));
+    const unique: string[] = [];
+    const seen = new Set<string>();
+    for (const j of raw) {
+      const key = j.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(j);
+    }
+    return unique;
+  }, [existingLots]);
+
+  const purposePrefix = useMemo(() => {
+    const deptLabel =
+      (lot.departments && lot.departments.length > 0
+        ? lot.departments.map((d) => d.name).join(", ")
+        : lot.departmentName) || "";
+    const built = buildPoPurposePrefix({
+      departmentLabel: deptLabel,
+      projectLabel: lot.projectId ? lot.projectName : null,
+    });
+    if (built) return built;
+    // Fallback: strip justification from an existing stamped purpose
+    const sample = existingLots.find((l) => l.purpose)?.purpose || lot.purpose || "";
+    const just = stripPoPurposePrefix(sample);
+    if (just && sample.includes(just)) {
+      return sample.slice(0, sample.lastIndexOf(just)).trim();
+    }
+    return "";
+  }, [lot, existingLots]);
 
   useEffect(() => {
-    if (isOpen) {
-      setItems([emptyRow(poType, classification)]);
-      setCatalogSearch("");
-      setErrorMessage(null);
-    }
-  }, [isOpen, poType, classification]);
+    if (!isOpen) return;
+    setItems([emptyRow(poType, classification)]);
+    setCatalogSearch("");
+    setErrorMessage(null);
+    const first =
+      existingJustifications[0] || stripPoPurposePrefix(lot.purpose) || "";
+    setPurposeChoice(first || "__new__");
+    setNewPurposeText("");
+    // Reset on open only — avoid depending on justification array identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open-gate
+  }, [isOpen, poType, classification, lot.purpose]);
 
   const consumableCategories = useMemo(
     () => allCategories.filter((c) => c.type === "consumable"),
@@ -307,6 +353,14 @@ export function AddPoLinesDialog({
         return false;
       }
     }
+    const justification =
+      purposeChoice === "__new__"
+        ? newPurposeText.trim()
+        : purposeChoice.trim();
+    if (!justification) {
+      setErrorMessage("Select or enter a purpose for the new line items.");
+      return false;
+    }
     setErrorMessage(null);
     return true;
   };
@@ -316,6 +370,12 @@ export function AddPoLinesDialog({
     const filled = items.filter(
       (it) => it.name.trim() || it.consumableId || it.assetId
     );
+    const justification =
+      purposeChoice === "__new__"
+        ? newPurposeText.trim()
+        : purposeChoice.trim();
+    const stampedPurpose = stampPoPurpose(purposePrefix, justification);
+
     const payloadItems: CreatePurchaseOrderItemPayload[] = filled.map((item) => ({
       itemType: poType,
       consumableId: !item.isNew && poType === "consumable" ? item.consumableId : undefined,
@@ -336,7 +396,7 @@ export function AddPoLinesDialog({
       supplierId: item.supplierId || undefined,
       projectId: lot.projectId || undefined,
       projectName: lot.projectName || undefined,
-      purpose: lot.purpose || undefined,
+      purpose: stampedPurpose || undefined,
     }));
 
     try {
@@ -401,6 +461,41 @@ export function AddPoLinesDialog({
               </p>
             </div>
           )}
+
+          <div className="p-3 rounded-xl border border-border bg-card space-y-2">
+            <label className="text-xs font-semibold text-text block">
+              Purpose for new lines
+            </label>
+            <SearchableSelect
+              value={purposeChoice}
+              onValueChange={setPurposeChoice}
+              options={[
+                ...existingJustifications.map((j) => ({
+                  value: j,
+                  label: j,
+                })),
+                { value: "__new__", label: "New purpose…" },
+              ]}
+              placeholder="Select purpose"
+              emptyMessage="No purposes yet"
+              inputClassName="h-9 px-2.5 text-xs"
+            />
+            {purposeChoice === "__new__" && (
+              <textarea
+                value={newPurposeText}
+                onChange={(e) => setNewPurposeText(e.target.value)}
+                placeholder="Enter the new procurement purpose…"
+                rows={2}
+                className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none"
+              />
+            )}
+            {existingJustifications.length > 1 && (
+              <p className="text-[10px] text-text-secondary">
+                This PO already has {existingJustifications.length} purposes —
+                pick one or add a new purpose for these lines.
+              </p>
+            )}
+          </div>
 
           <div className="p-3 rounded-xl border border-border bg-card space-y-2">
             <p className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
