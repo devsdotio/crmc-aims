@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -28,11 +28,14 @@ import { invalidateDomains } from "@/features/shared/cache-invalidation";
  */
 export function useVouchersRealtimeSync(enabled = true, tenantId?: string) {
   const qc = useQueryClient();
-  const supabase = useMemo(() => createClient(), []);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
+
+    // Create the browser client only on the client. Calling createBrowserClient
+    // during SSR (useMemo on first render) can throw and blank the page.
+    const supabase = createClient();
 
     const triggerInvalidation = () => {
       if (debounceTimerRef.current) {
@@ -68,7 +71,7 @@ export function useVouchersRealtimeSync(enabled = true, tenantId?: string) {
       }
       void supabase.removeChannel(channel);
     };
-  }, [enabled, qc, supabase, tenantId]);
+  }, [enabled, qc, tenantId]);
 }
 
 export function useVouchersQuery(filters?: {

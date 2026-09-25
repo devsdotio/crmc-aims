@@ -106,13 +106,15 @@ export function PettyCashDetailSheet({
   const { data: liveVoucher } = usePettyCashQuery(initialVoucher?.id ?? "");
   const voucher = liveVoucher ?? initialVoucher;
 
-  const { data: departments = [] } = useDepartmentsQuery();
+  const { data: departments = [] } = useDepartmentsQuery({
+    enabled: Boolean(isOpen && voucher?.id),
+  });
 
   // Fetch live audit logs for this petty cash record
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: voucher?.id,
     entityType: "petty_cash",
-    enabled: Boolean(voucher?.id),
+    enabled: Boolean(isOpen && voucher?.id),
   });
 
   // Edit Mode state

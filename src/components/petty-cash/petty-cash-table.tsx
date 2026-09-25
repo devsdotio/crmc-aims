@@ -67,8 +67,8 @@ function getStatusBadge(status: PettyCashStatus) {
   }
 }
 
-function getCategoryBadge(category: string) {
-  switch (category.toLowerCase()) {
+function getCategoryBadge(category: string | null | undefined) {
+  switch ((category ?? "").toLowerCase()) {
     case "transportation":
       return {
         label: "Transportation",

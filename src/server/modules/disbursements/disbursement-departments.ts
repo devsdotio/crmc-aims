@@ -14,6 +14,14 @@ function uniqueIds(ids: string[]): string[] {
   return [...new Set(ids.filter(Boolean))];
 }
 
+function isMissingRelationError(error: unknown): boolean {
+  const text =
+    error instanceof Error
+      ? `${error.message} ${error.cause ?? ""}`
+      : String(error);
+  return /does not exist|undefined_table|42P01/i.test(text);
+}
+
 export async function replaceVoucherDepartmentLinks(
   voucherId: string,
   departmentIds: string[],
@@ -72,24 +80,34 @@ export async function listVoucherDepartmentLinks(
   const conditions = [inArray(voucherDepartments.voucherId, voucherIds)];
   if (tenantId) conditions.push(eq(voucherDepartments.tenantId, tenantId));
 
-  const rows = await db
-    .select({
-      voucherId: voucherDepartments.voucherId,
-      departmentId: voucherDepartments.departmentId,
-      departmentName: departments.name,
-    })
-    .from(voucherDepartments)
-    .innerJoin(departments, eq(departments.id, voucherDepartments.departmentId))
-    .where(and(...conditions));
+  try {
+    const rows = await db
+      .select({
+        voucherId: voucherDepartments.voucherId,
+        departmentId: voucherDepartments.departmentId,
+        departmentName: departments.name,
+      })
+      .from(voucherDepartments)
+      .innerJoin(departments, eq(departments.id, voucherDepartments.departmentId))
+      .where(and(...conditions));
 
-  for (const row of rows) {
-    const list = out.get(row.voucherId) ?? [];
-    if (!list.some((d) => d.id === row.departmentId)) {
-      list.push({ id: row.departmentId, name: row.departmentName });
+    for (const row of rows) {
+      const list = out.get(row.voucherId) ?? [];
+      if (!list.some((d) => d.id === row.departmentId)) {
+        list.push({ id: row.departmentId, name: row.departmentName });
+      }
+      out.set(row.voucherId, list);
     }
-    out.set(row.voucherId, list);
+    return out;
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      console.warn(
+        "[disbursement-departments] voucher_departments is missing; falling back to primary department."
+      );
+      return out;
+    }
+    throw error;
   }
-  return out;
 }
 
 export async function listPettyCashDepartmentLinks(
@@ -104,24 +122,34 @@ export async function listPettyCashDepartmentLinks(
   const conditions = [inArray(pettyCashDepartments.pettyCashId, pettyCashIds)];
   if (tenantId) conditions.push(eq(pettyCashDepartments.tenantId, tenantId));
 
-  const rows = await db
-    .select({
-      pettyCashId: pettyCashDepartments.pettyCashId,
-      departmentId: pettyCashDepartments.departmentId,
-      departmentName: departments.name,
-    })
-    .from(pettyCashDepartments)
-    .innerJoin(departments, eq(departments.id, pettyCashDepartments.departmentId))
-    .where(and(...conditions));
+  try {
+    const rows = await db
+      .select({
+        pettyCashId: pettyCashDepartments.pettyCashId,
+        departmentId: pettyCashDepartments.departmentId,
+        departmentName: departments.name,
+      })
+      .from(pettyCashDepartments)
+      .innerJoin(departments, eq(departments.id, pettyCashDepartments.departmentId))
+      .where(and(...conditions));
 
-  for (const row of rows) {
-    const list = out.get(row.pettyCashId) ?? [];
-    if (!list.some((d) => d.id === row.departmentId)) {
-      list.push({ id: row.departmentId, name: row.departmentName });
+    for (const row of rows) {
+      const list = out.get(row.pettyCashId) ?? [];
+      if (!list.some((d) => d.id === row.departmentId)) {
+        list.push({ id: row.departmentId, name: row.departmentName });
+      }
+      out.set(row.pettyCashId, list);
     }
-    out.set(row.pettyCashId, list);
+    return out;
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      console.warn(
+        "[disbursement-departments] petty_cash_departments is missing; falling back to primary department."
+      );
+      return out;
+    }
+    throw error;
   }
-  return out;
 }
 
 export function fallbackDepartments(

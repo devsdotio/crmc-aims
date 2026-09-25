@@ -81,6 +81,11 @@ function getTypeBadge(type: VoucherType) {
         label: "Liquidation",
         className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20",
       };
+    default:
+      return {
+        label: type || "Voucher",
+        className: "bg-bg-subtle text-text-secondary border-border",
+      };
   }
 }
 
