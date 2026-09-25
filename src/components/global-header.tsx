@@ -78,14 +78,94 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     subtitle: "Intake lot batches, supplier invoices, and cost ledger",
     category: "Operations",
   },
+  "/purchase-orders/asset": {
+    title: "Asset Purchase Orders",
+    subtitle: "Capital equipment lots, supplier invoices, and receiving",
+    category: "Operations",
+  },
+  "/purchase-orders/assets": {
+    title: "Asset Purchase Orders",
+    subtitle: "Capital equipment lots, supplier invoices, and receiving",
+    category: "Operations",
+  },
+  "/purchase-orders/supplies": {
+    title: "Supplies Purchase Orders",
+    subtitle: "Consumable supply lots and vendor deliveries",
+    category: "Operations",
+  },
+  "/purchase-orders/materials": {
+    title: "Materials Purchase Orders",
+    subtitle: "Project and warehouse material lots",
+    category: "Operations",
+  },
+  "/purchase-orders/projects": {
+    title: "Project Purchase Orders",
+    subtitle: "Lots charged to custodial work units",
+    category: "Operations",
+  },
+  "/purchase-orders/consumables": {
+    title: "Consumable Purchase Orders",
+    subtitle: "Supply and material intake lots",
+    category: "Operations",
+  },
   "/vouchers": {
     title: "Disbursement Vouchers",
     subtitle: "Custodian disbursement records for purchasing items and settling orders",
     category: "Operations",
   },
+  "/disbursements": {
+    title: "Disbursements",
+    subtitle: "Vouchers and petty cash for settling purchase orders",
+    category: "Operations",
+  },
+  "/disbursements/vouchers": {
+    title: "Disbursement Vouchers",
+    subtitle: "Custodian disbursement records for purchasing items and settling orders",
+    category: "Operations",
+  },
+  "/disbursements/petty-cash": {
+    title: "Petty Cash",
+    subtitle: "Micro-disbursements for immediate small expenses and urgent cash purchases",
+    category: "Operations",
+  },
+  "/petty-cash": {
+    title: "Petty Cash",
+    subtitle: "Micro-disbursements for immediate small expenses and urgent cash purchases",
+    category: "Operations",
+  },
+  "/suppliers": {
+    title: "Suppliers",
+    subtitle: "Vendor registry for purchase lots and disbursements",
+    category: "Operations",
+  },
+  "/projects": {
+    title: "Projects",
+    subtitle: "Work units, material checkout, assigned assets, and expenses",
+    category: "Operations",
+  },
+  "/platform": {
+    title: "Platform Overview",
+    subtitle: "Institution workspaces and platform governance",
+    category: "Platform",
+  },
+  "/platform/tenants": {
+    title: "Institutions & Tenants",
+    subtitle: "Provision and manage institutional workspaces",
+    category: "Platform",
+  },
   "/consumables": {
     title: "Inventory",
     subtitle: "Monitor stock quantities and minimum threshold alerts",
+    category: "Operations",
+  },
+  "/consumables/supplies": {
+    title: "Supplies",
+    subtitle: "Office and operating consumable stock",
+    category: "Operations",
+  },
+  "/consumables/materials": {
+    title: "Materials",
+    subtitle: "Project and warehouse material stock",
     category: "Operations",
   },
   "/users": {
@@ -106,6 +186,46 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   "/reports": {
     title: "Reports & Analytics",
     subtitle: "Institutional reports, inventory audits, and export tools",
+    category: "Administration",
+  },
+  "/reports/assets": {
+    title: "Asset Reports",
+    subtitle: "Capital register, valuation, and custody status",
+    category: "Administration",
+  },
+  "/reports/consumables": {
+    title: "Consumable Reports",
+    subtitle: "Stock valuation, burn rate, and low-stock alerts",
+    category: "Administration",
+  },
+  "/reports/projects": {
+    title: "Project Reports",
+    subtitle: "Assigned assets, consumed stock, and project cost rollup",
+    category: "Administration",
+  },
+  "/reports/departments": {
+    title: "Department Reports",
+    subtitle: "Assets, issued stock, and activity by office",
+    category: "Administration",
+  },
+  "/reports/maintenance": {
+    title: "Maintenance Reports",
+    subtitle: "Work orders, MTTR, and repair spend",
+    category: "Administration",
+  },
+  "/reports/purchase-orders": {
+    title: "Procurement Reports",
+    subtitle: "Open orders, deliveries, and spend window",
+    category: "Administration",
+  },
+  "/reports/requests": {
+    title: "Request Reports",
+    subtitle: "Borrow, assignment, and supply requisition volume",
+    category: "Administration",
+  },
+  "/reports/print": {
+    title: "Print Reports",
+    subtitle: "Printable institutional report layouts",
     category: "Administration",
   },
   "/profile": {
@@ -184,14 +304,32 @@ interface GlobalHeaderProps {
   onMobileMenuOpen: () => void;
 }
 
+function resolveRouteMeta(pathname: string): RouteMeta {
+  const exact = ROUTE_MAP[pathname];
+  if (exact) return exact;
+
+  let best: RouteMeta | null = null;
+  let bestLen = 0;
+  for (const [path, meta] of Object.entries(ROUTE_MAP)) {
+    if (pathname.startsWith(`${path}/`) && path.length > bestLen) {
+      best = meta;
+      bestLen = path.length;
+    }
+  }
+
+  return (
+    best ?? {
+      title: "AIMS",
+      subtitle: "Asset & Inventory Management System",
+      category: "System",
+    }
+  );
+}
+
 export default function GlobalHeader({ onMobileMenuOpen }: GlobalHeaderProps) {
   const pathname = usePathname();
 
-  const currentRoute = ROUTE_MAP[pathname] || {
-    title: "AIMS",
-    subtitle: "Asset & Inventory Management System",
-    category: "System",
-  };
+  const currentRoute = resolveRouteMeta(pathname);
 
   return (
     <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-white border-b border-[#E3E5EC] shrink-0 z-20 select-none">

@@ -107,6 +107,7 @@ export default function Sidebar({
     const initial: Record<string, boolean> = {
       "/purchase-orders": true,
       "/consumables": true,
+      "/disbursements/vouchers": true,
     };
     if (typeof window !== "undefined") {
       const path = window.location.pathname;
@@ -513,7 +514,12 @@ export default function Sidebar({
     const isExactActive = !isDisabled && pathname === item.href;
     const isChildActive =
       !isDisabled &&
-      Boolean(item.children?.some((child) => pathname === child.href));
+      Boolean(
+        item.children?.some(
+          (child) =>
+            pathname === child.href || pathname.startsWith(`${child.href}/`)
+        )
+      );
     const isActive = isExactActive || isChildActive;
     const Icon = item.icon;
     const hasBadge = (item.badge ?? 0) > 0;
@@ -653,7 +659,9 @@ export default function Sidebar({
 
               <div className="space-y-0.5">
                 {item.children.map((subItem) => {
-                  const isSubActive = pathname === subItem.href;
+                  const isSubActive =
+                    pathname === subItem.href ||
+                    pathname.startsWith(`${subItem.href}/`);
                   const subBadge = subItem.badge ?? 0;
                   const subBadgeClass =
                     subItem.badgeTone === "accent"
@@ -783,7 +791,9 @@ export default function Sidebar({
                 className="overflow-hidden ml-5 pl-2.5 pr-0 space-y-0.5 border-l border-white/10 my-1"
               >
                 {item.children.map((subItem) => {
-                  const isSubActive = pathname === subItem.href;
+                  const isSubActive =
+                    pathname === subItem.href ||
+                    pathname.startsWith(`${subItem.href}/`);
                   const subBadge = subItem.badge ?? 0;
                   const subBadgeClass =
                     subItem.badgeTone === "accent"

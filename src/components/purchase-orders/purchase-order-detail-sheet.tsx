@@ -149,7 +149,9 @@ export function PurchaseOrderDetailSheet({
     entityType: "purchase_order",
     enabled: Boolean(entityCode),
   });
-  const { data: users = [] } = useUsersQuery();
+  const { data: users = [] } = useUsersQuery({
+    enabled: Boolean(isOpen && lot),
+  });
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

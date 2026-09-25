@@ -1,8 +1,12 @@
 "use client";
 
-import React from "react";
+import { Suspense } from "react";
 import { VouchersView } from "@/components/vouchers/vouchers-view";
 
 export default function DisbursementsVouchersPage() {
-  return <VouchersView />;
+  return (
+    <Suspense fallback={null}>
+      <VouchersView />
+    </Suspense>
+  );
 }
