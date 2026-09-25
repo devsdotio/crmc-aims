@@ -112,7 +112,7 @@ export function CreatePettyCashDialog({
       })),
     [departments]
   );
-  const { data: users = [] } = useUsersQuery();
+  const { data: users = [] } = useUsersQuery({ enabled: isOpen });
   const {
     data: nextCodeData,
     isLoading: isLoadingNextCode,

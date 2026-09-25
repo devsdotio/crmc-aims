@@ -164,12 +164,16 @@ export function VoucherDetailSheet({
   const updateStatusMutation = useUpdateVoucherStatusMutation();
   const deleteMutation = useDeleteVoucherMutation();
 
-  const { data: users = [] } = useUsersQuery();
-  const { data: purchaseLots = [] } = usePurchaseLotsQuery();
+  const { data: users = [] } = useUsersQuery({
+    enabled: Boolean(isOpen && voucher?.id),
+  });
+  const { data: purchaseLots = [] } = usePurchaseLotsQuery({
+    enabled: Boolean(isOpen && voucher?.id),
+  });
   const { data: auditLogs = [] } = useAuditLogsQuery({
     entityId: voucher?.id,
     entityType: "voucher",
-    enabled: Boolean(voucher?.id),
+    enabled: Boolean(isOpen && voucher?.id),
   });
 
   // Handle escape key listener
