@@ -24,6 +24,7 @@ import {
   Trash2,
   X,
   Edit3,
+  Plus,
   Layers,
   Calendar,
   Boxes,
@@ -46,6 +47,7 @@ import { formatDateTime, formatRelativeTime } from "@/components/audit-logs/audi
 import { useToast } from "@/components/providers/toast-context";
 import { POReceiptUploader } from "./po-receipt-uploader";
 import { PoDisbursementBadge } from "./po-disbursement-badge";
+import { AddPoLinesDialog } from "./add-po-lines-dialog";
 
 interface PurchaseOrderDetailSheetProps {
   lot: PurchaseLot | null;
@@ -124,6 +126,8 @@ export function PurchaseOrderDetailSheet({
     quantity: string;
     unitCost: string;
   }>({ itemName: "", quantity: "1", unitCost: "0" });
+  const [isAddLinesOpen, setIsAddLinesOpen] = useState(false);
+  const [cancelReasonError, setCancelReasonError] = useState<string | null>(null);
 
   const updateStatusMutation = useUpdatePOStatusMutation();
   const updatePOMutation = useUpdatePurchaseOrderMutation();
@@ -199,6 +203,11 @@ export function PurchaseOrderDetailSheet({
       effectiveStatus === "approved" ||
       effectiveStatus === "ordered");
 
+  const canAddLines =
+    canOperate &&
+    effectiveStatus === "pending_approval" &&
+    !lot.disbursement;
+
   const startEditLine = (li: PurchaseLot) => {
     setEditingLineId(li.id);
     setLineDraft({
@@ -267,6 +276,7 @@ export function PurchaseOrderDetailSheet({
   const resetStatusModal = () => {
     setShowStatusModal(null);
     setStatusNote("");
+    setCancelReasonError(null);
     setReceivedQuantities({});
     setDeliveryReceiptUrl(null);
   };
@@ -361,6 +371,16 @@ export function PurchaseOrderDetailSheet({
   })();
 
   const handleTransitionStatus = async (nextStatus: PurchaseOrderStatus) => {
+    if (nextStatus === "cancelled") {
+      const reason = statusNote.trim();
+      if (reason.length < 3) {
+        setCancelReasonError(
+          "Please enter a cancellation reason (at least 3 characters) so you can recall why this PO was closed."
+        );
+        return;
+      }
+    }
+
     setIsUpdatingStatus(true);
     try {
       const targets =
@@ -412,7 +432,12 @@ export function PurchaseOrderDetailSheet({
           id: li.id,
           payload: {
             status: nextStatus,
-            notes: statusNote.trim() || undefined,
+            notes:
+              nextStatus === "cancelled"
+                ? undefined
+                : statusNote.trim() || undefined,
+            cancellationReason:
+              nextStatus === "cancelled" ? statusNote.trim() : undefined,
             receivedQuantity:
               nextStatus === "delivered" ? parsedByLotId.get(li.id) : undefined,
             receiptUrl: deliveryReceiptUrl || undefined,
@@ -773,6 +798,11 @@ export function PurchaseOrderDetailSheet({
                         ? "text-emerald-700/80 dark:text-emerald-300/80"
                         : "text-text-secondary"
                     )}
+                    title={
+                      lot.status === "cancelled"
+                        ? lot.cancellationReason || "This purchase order has been closed"
+                        : undefined
+                    }
                   >
                     {lot.status === "pending_approval" && "Authorize this order for supplier fulfillment"}
                     {lot.status === "approved" && "Confirm order transmission to dealer"}
@@ -788,7 +818,10 @@ export function PurchaseOrderDetailSheet({
                         ? "Issue units to requesting departments"
                         : "All workflow stages completed"
                     )}
-                    {lot.status === "cancelled" && "This purchase order has been closed"}
+                    {lot.status === "cancelled" &&
+                      (lot.cancellationReason
+                        ? `Reason: ${lot.cancellationReason}`
+                        : "This purchase order has been closed")}
                   </p>
                 </div>
               </div>
@@ -929,7 +962,11 @@ export function PurchaseOrderDetailSheet({
                 PO Workflow Progression
               </span>
               <span className="text-[10px] text-text-secondary">
-                {lot.status === "delivered" ? "Completed" : "Active Stage"}
+                {lot.status === "cancelled"
+                  ? "Cancelled"
+                  : lot.status === "delivered"
+                    ? "Completed"
+                    : "Active Stage"}
               </span>
             </div>
 
@@ -1055,17 +1092,48 @@ export function PurchaseOrderDetailSheet({
             )}
           </div>
 
+          {lot.status === "cancelled" && (
+            <div className="p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 space-y-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                <Ban className="h-3.5 w-3.5" />
+                Cancellation Reason
+              </span>
+              <p className="text-sm text-text leading-relaxed">
+                {lot.cancellationReason ||
+                  "No cancellation reason was recorded for this purchase order."}
+              </p>
+            </div>
+          )}
+
           {activeTab === "specs" && (
             <div className="space-y-6">
               {/* Line Item & Cost Specifications */}
               <div className="p-4 rounded-xl border border-border bg-card space-y-4 shadow-2xs">
-                <div className="flex items-center justify-between border-b border-border pb-2.5">
+                <div className="flex items-center justify-between border-b border-border pb-2.5 gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-text flex items-center gap-1.5">
                     <FileText className="h-3.5 w-3.5 text-accent" />
                     {isMultiLotPo
                       ? `Line Items (${lotsToUpdate.length})`
                       : "Item & Cost Specifications"}
                   </span>
+                  {canAddLines && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAddLinesOpen(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 cursor-pointer shadow-2xs"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add items
+                    </button>
+                  )}
+                  {canOperate &&
+                    effectiveStatus === "pending_approval" &&
+                    lot.disbursement && (
+                    <span className="text-[10px] text-text-secondary max-w-48 text-right">
+                      Items cannot be added while this PO is linked to{" "}
+                      {lot.disbursement.code}.
+                    </span>
+                  )}
                 </div>
 
                 {isMultiLotPo ? (
@@ -1314,7 +1382,18 @@ export function PurchaseOrderDetailSheet({
                   <div className="grid grid-cols-2 gap-4 text-xs">
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-bold text-text-secondary">Item Name</span>
-                      <p className="font-bold text-text text-sm leading-snug">{lot.itemName}</p>
+                      {editingLineId === lot.id ? (
+                        <input
+                          type="text"
+                          value={lineDraft.itemName}
+                          onChange={(e) =>
+                            setLineDraft((d) => ({ ...d, itemName: e.target.value }))
+                          }
+                          className="w-full h-8 px-2 rounded-md border border-border bg-bg text-xs font-semibold"
+                        />
+                      ) : (
+                        <p className="font-bold text-text text-sm leading-snug">{lot.itemName}</p>
+                      )}
                       <span className="font-mono text-[10px] text-text-secondary">Code: {lot.itemCode}</span>
                     </div>
 
@@ -1327,6 +1406,18 @@ export function PurchaseOrderDetailSheet({
                       <span className="text-[10px] uppercase font-bold text-text-secondary">
                         {lot.status === "delivered" ? "Quantity in Stock" : "Quantity Ordered"}
                       </span>
+                      {editingLineId === lot.id ? (
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          value={lineDraft.quantity}
+                          onChange={(e) =>
+                            setLineDraft((d) => ({ ...d, quantity: e.target.value }))
+                          }
+                          className="w-24 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono"
+                        />
+                      ) : (
                       <p className="font-mono font-bold text-text text-sm">
                         {lot.quantity}{" "}
                         {lot.itemType === "asset"
@@ -1335,6 +1426,7 @@ export function PurchaseOrderDetailSheet({
                             : "units"
                           : "pcs"}
                       </p>
+                      )}
                       {lot.status === "delivered" &&
                         lot.orderedQuantity != null &&
                         lot.orderedQuantity !== lot.quantity && (
@@ -1346,7 +1438,20 @@ export function PurchaseOrderDetailSheet({
 
                     <div className="space-y-1">
                       <span className="text-[10px] uppercase font-bold text-text-secondary">Unit Acquisition Cost</span>
-                      <p className="font-mono font-bold text-text">{formatPhp(unitCostNum)}</p>
+                      {editingLineId === lot.id ? (
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={lineDraft.unitCost}
+                          onChange={(e) =>
+                            setLineDraft((d) => ({ ...d, unitCost: e.target.value }))
+                          }
+                          className="w-28 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono text-right"
+                        />
+                      ) : (
+                        <p className="font-mono font-bold text-text">{formatPhp(unitCostNum)}</p>
+                      )}
                     </div>
 
                     <div className="space-y-1">
@@ -1360,6 +1465,47 @@ export function PurchaseOrderDetailSheet({
                         {formatPhp(totalCostNum)}
                       </p>
                     </div>
+                  </div>
+                )}
+
+                {canEditLines && !isMultiLotPo && (
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    {editingLineId === lot.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => void handleSaveLine(lot)}
+                          disabled={updatePOMutation.isPending}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-accent text-accent-foreground cursor-pointer"
+                        >
+                          {updatePOMutation.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          Save line
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingLineId(null)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-border text-text-secondary cursor-pointer"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => startEditLine(lot)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-border text-text hover:bg-bg-subtle cursor-pointer"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          Edit item
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -2019,6 +2165,8 @@ export function PurchaseOrderDetailSheet({
                 })()
               : showStatusModal === "approved"
               ? "Approve this purchase order to authorize supplier issuance and procurement."
+              : showStatusModal === "cancelled"
+              ? "This cannot be undone from the workflow. Enter why you are cancelling so the reason stays on this PO."
               : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
           </p>
 
@@ -2139,14 +2287,48 @@ export function PurchaseOrderDetailSheet({
           )}
 
           <div className="space-y-1">
-            <label className="text-[11px] font-semibold text-text">Optional Audit Notes</label>
+            <label className="text-[11px] font-semibold text-text flex items-center justify-between">
+              <span>
+                {showStatusModal === "cancelled"
+                  ? "Cancellation Reason"
+                  : "Optional Audit Notes"}
+                {showStatusModal === "cancelled" && (
+                  <span className="text-rose-600"> *</span>
+                )}
+              </span>
+              {showStatusModal === "cancelled" && (
+                <span className="text-[10px] text-text-secondary font-mono">
+                  {statusNote.length}/500
+                </span>
+              )}
+            </label>
             <textarea
               value={statusNote}
-              onChange={(e) => setStatusNote(e.target.value)}
-              placeholder="Enter remarks or approval references..."
-              rows={2}
-              className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text focus:ring-1 focus:ring-accent focus:outline-hidden resize-none"
+              onChange={(e) => {
+                setStatusNote(e.target.value);
+                if (cancelReasonError) setCancelReasonError(null);
+              }}
+              maxLength={showStatusModal === "cancelled" ? 500 : undefined}
+              placeholder={
+                showStatusModal === "cancelled"
+                  ? "e.g. Duplicate filing, items no longer needed, vendor unavailable, budget withdrawn…"
+                  : "Enter remarks or approval references..."
+              }
+              rows={showStatusModal === "cancelled" ? 3 : 2}
+              className={cn(
+                "w-full p-2 text-xs rounded-lg border bg-bg text-text focus:ring-1 focus:outline-hidden resize-none",
+                showStatusModal === "cancelled" && cancelReasonError
+                  ? "border-rose-500 focus:ring-rose-500/30"
+                  : "border-border focus:ring-accent"
+              )}
             />
+            {showStatusModal === "cancelled" && cancelReasonError ? (
+              <p className="text-[11px] font-semibold text-rose-600">{cancelReasonError}</p>
+            ) : showStatusModal === "cancelled" ? (
+              <p className="text-[10px] text-text-secondary">
+                This reason is saved on the cancelled PO so you can open it later and remember why it was closed.
+              </p>
+            ) : null}
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -2155,13 +2337,18 @@ export function PurchaseOrderDetailSheet({
               onClick={resetStatusModal}
               className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border hover:bg-bg-subtle text-text cursor-pointer"
             >
-              Cancel
+              {showStatusModal === "cancelled" ? "Keep PO" : "Cancel"}
             </button>
             <button
               type="button"
               onClick={() => handleTransitionStatus(showStatusModal)}
               disabled={isUpdatingStatus}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 cursor-pointer disabled:opacity-50"
+              className={cn(
+                "inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg hover:opacity-90 cursor-pointer disabled:opacity-50",
+                showStatusModal === "cancelled"
+                  ? "bg-rose-600 text-white"
+                  : "bg-accent text-accent-foreground"
+              )}
             >
               {isUpdatingStatus ? (
                 <>
@@ -2174,6 +2361,8 @@ export function PurchaseOrderDetailSheet({
                     ? (receivableLots.length > 1 || lotsToUpdate.length > 1)
                       ? `Confirm Receive · ${receivableLots.length || lotsToUpdate.length} Items`
                       : "Confirm Receive & Stock"
+                    : showStatusModal === "cancelled"
+                      ? "Confirm Cancellation"
                     : "Confirm"}
                 </span>
               )}
@@ -2182,6 +2371,13 @@ export function PurchaseOrderDetailSheet({
         </div>
       </div>
     )}
+
+    <AddPoLinesDialog
+      isOpen={isAddLinesOpen}
+      onClose={() => setIsAddLinesOpen(false)}
+      lot={lot}
+      existingLots={lotsToUpdate}
+    />
     </>
   );
 }

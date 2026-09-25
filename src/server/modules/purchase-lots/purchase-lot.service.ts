@@ -28,7 +28,10 @@ import { AssetModelRepository } from "@/server/modules/assets/asset.model.reposi
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
-import { listActivePoDisbursements } from "./po-disbursement";
+import {
+  findActivePoDisbursement,
+  listActivePoDisbursements,
+} from "./po-disbursement";
 import {
   deletePoDepartmentLinks,
   renamePoDepartmentLinks,
@@ -38,6 +41,7 @@ import {
   deletePurchaseOrderWithRevert,
 } from "./purchase-lot-delete-impact";
 import type {
+  AddPurchaseOrderLinesInput,
   CreatePurchaseLotInput,
   CreatePurchaseOrderInput,
   PoDeleteImpact,
@@ -47,6 +51,7 @@ import type {
   UpdatePurchaseOrderStatusInput,
 } from "./purchase-lot.types";
 import {
+  addPurchaseOrderLinesSchema,
   createPurchaseOrderSchema,
   listPurchaseLotsQuerySchema,
   purchaseLotIdSchema,
@@ -162,6 +167,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   deliveredAt: string | null;
   orderedQuantity: number | null;
   receivedQuantity: number | null;
+  cancellationReason: string | null;
   draftItem: DraftItemSpecs | null;
 } {
   // Default must NOT be "delivered" — that silently skips stock intake on receive.
@@ -174,6 +180,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
   let deliveredAt: string | null = null;
   let orderedQuantity: number | null = null;
   let receivedQuantity: number | null = null;
+  let cancellationReason: string | null = null;
   let draftItem: DraftItemSpecs | null = null;
   let cleanNotes = rawNotes ?? null;
 
@@ -194,6 +201,9 @@ export function parseNotesMetadata(rawNotes?: string | null): {
         }
         if (typeof meta.receivedQuantity === "number") {
           receivedQuantity = meta.receivedQuantity;
+        }
+        if (typeof meta.cancellationReason === "string" && meta.cancellationReason.trim()) {
+          cancellationReason = meta.cancellationReason.trim();
         }
         if (meta.draftItem) {
           draftItem = parseDraftItem(meta.draftItem);
@@ -238,6 +248,7 @@ export function parseNotesMetadata(rawNotes?: string | null): {
     deliveredAt,
     orderedQuantity,
     receivedQuantity,
+    cancellationReason,
     draftItem,
   };
 }
@@ -253,6 +264,7 @@ export function serializeNotesMetadata(data: {
   deliveredAt?: string | null;
   orderedQuantity?: number | null;
   receivedQuantity?: number | null;
+  cancellationReason?: string | null;
   draftItem?: DraftItemSpecs | null;
 }): string {
   const payload: Record<string, unknown> = {
@@ -268,6 +280,7 @@ export function serializeNotesMetadata(data: {
       typeof data.orderedQuantity === "number" ? data.orderedQuantity : null,
     receivedQuantity:
       typeof data.receivedQuantity === "number" ? data.receivedQuantity : null,
+    cancellationReason: data.cancellationReason?.trim() || null,
   };
   if (data.draftItem) {
     payload.draftItem = data.draftItem;
@@ -313,6 +326,7 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     approvedAt: meta.approvedAt,
     orderedAt: meta.orderedAt,
     deliveredAt: meta.deliveredAt,
+    cancellationReason: meta.cancellationReason,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     qrPayload: encodeLotQr(lotCode),
@@ -515,7 +529,7 @@ export class PurchaseLotService {
       );
       if (existing) {
         throw new ConflictError(
-          `PO number "${body.poNumber.trim()}" already exists. Open the existing purchase order to edit or delete line items, or choose a different number.`
+          `PO number "${body.poNumber.trim()}" already exists. Open the existing purchase order to add, edit, or delete line items, or choose a different number.`
         );
       }
     }
@@ -1449,8 +1463,17 @@ export class PurchaseLotService {
           ? body.receiptUrl
           : (lot.receiptUrl || currentMeta.receiptUrl || null);
 
+      const cancellationReason =
+        nextStatus === "cancelled"
+          ? (body.cancellationReason || body.notes || currentMeta.cancellationReason || "").trim() ||
+            null
+          : currentMeta.cancellationReason;
+
       const nextNotes = serializeNotesMetadata({
-        notes: body.notes || currentMeta.cleanNotes,
+        notes:
+          nextStatus === "cancelled"
+            ? currentMeta.cleanNotes
+            : body.notes || currentMeta.cleanNotes,
         status: nextStatus,
         purpose: currentMeta.purpose,
         receiptUrl: nextReceiptUrl,
@@ -1460,6 +1483,7 @@ export class PurchaseLotService {
         deliveredAt,
         orderedQuantity: orderedQtyForMeta,
         receivedQuantity: receivedQtyForMeta,
+        cancellationReason,
         draftItem:
           nextStatus === "delivered" && currentMeta.status !== "delivered"
             ? null
@@ -1521,7 +1545,11 @@ export class PurchaseLotService {
           actorName: actor.displayName,
           actorUserId: actor.userId,
           notes: `PO ${poCode} status transitioned from ${currentMeta.status} to ${nextStatus}.${
-            body.notes ? ` Notes: ${body.notes}` : ""
+            nextStatus === "cancelled" && cancellationReason
+              ? ` Reason: ${cancellationReason}`
+              : body.notes
+                ? ` Notes: ${body.notes}`
+                : ""
           }${
             nextStatus === "delivered" && receivedQtyForMeta != null
               ? ` Received qty: ${receivedQtyForMeta}${
@@ -1540,6 +1568,8 @@ export class PurchaseLotService {
             approvedByName,
             orderedQuantity: orderedQtyForMeta,
             receivedQuantity: receivedQtyForMeta,
+            cancellationReason:
+              nextStatus === "cancelled" ? cancellationReason : undefined,
           },
         },
         session
@@ -1613,6 +1643,7 @@ export class PurchaseLotService {
         deliveredAt: currentMeta.deliveredAt,
         orderedQuantity: currentMeta.orderedQuantity,
         receivedQuantity: currentMeta.receivedQuantity,
+        cancellationReason: currentMeta.cancellationReason,
         draftItem: currentMeta.draftItem,
       });
 
@@ -1786,6 +1817,250 @@ export class PurchaseLotService {
           session
         )
       )[0];
+    });
+  }
+
+  /**
+   * Append line items to an existing PO that is still pending approval.
+   * Reuses the same deferred-catalog rules as create (no stock intake).
+   */
+  async addPurchaseOrderLines(
+    id: string,
+    rawBody: unknown,
+    actor: ActorContext
+  ): Promise<PurchaseLotDTO[]> {
+    const body: AddPurchaseOrderLinesInput = addPurchaseOrderLinesSchema.parse(
+      rawBody
+    );
+
+    return withTransaction(async (session) => {
+      const db = session ?? getDb();
+      const anchor = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
+      if (!anchor) {
+        throw new NotFoundError("Purchase Order lot", id);
+      }
+
+      const anchorMeta = parseNotesMetadata(anchor.notes);
+      if (anchorMeta.status !== "pending_approval") {
+        throw new BadRequestError(
+          "Line items can only be added while the purchase order is still pending approval."
+        );
+      }
+
+      const poNumber = derivePONumber(anchor.lotCode, anchor.reference);
+      const siblings = await this.repo.listByPoNumber(
+        poNumber,
+        session,
+        actor.tenantId
+      );
+      const siblingRows = siblings.length > 0 ? siblings : [anchor];
+
+      for (const sibling of siblingRows) {
+        const siblingMeta = parseNotesMetadata(sibling.notes);
+        if (siblingMeta.status !== "pending_approval") {
+          throw new BadRequestError(
+            "This purchase order already has approved or later lines. File a new PO instead of adding items here."
+          );
+        }
+      }
+
+      const claim = await findActivePoDisbursement(poNumber, actor.tenantId);
+      if (claim) {
+        throw new ConflictError(
+          `Purchase Order "${poNumber}" is already linked to ${
+            claim.kind === "voucher" ? "disbursement voucher" : "petty cash voucher"
+          } ${claim.code}. Unlink or cancel that claim before adding items.`
+        );
+      }
+
+      const isProjectPo = Boolean(anchor.projectId);
+      if (isProjectPo) {
+        for (const [index, item] of body.items.entries()) {
+          if (item.itemType !== "consumable") {
+            throw new BadRequestError(
+              `Direct project procurement supports consumable materials only (item ${index + 1}).`
+            );
+          }
+        }
+      }
+
+      const results: PurchaseLotDTO[] = [];
+
+      for (const item of body.items) {
+        let consumableId: string | null = item.consumableId ?? null;
+        let assetId: string | null = item.assetId ?? null;
+        let itemCode = "";
+        let itemName = item.name.trim();
+        let draftItem: DraftItemSpecs | null = null;
+
+        const targetProjectId = item.projectId || anchor.projectId || null;
+        const targetProjectName = item.projectName || anchor.projectName || null;
+
+        let lineSupplierId = item.supplierId ?? null;
+        let lineSupplierName = item.suggestedDealer?.trim() || null;
+        if (lineSupplierId) {
+          const lineSup = await this.suppliers.findById(
+            lineSupplierId,
+            session,
+            actor.tenantId
+          );
+          if (lineSup) lineSupplierName = lineSup.name;
+        }
+        if (!lineSupplierName && anchor.supplierName) {
+          lineSupplierName = isAggregateSupplierLabel(anchor.supplierName)
+            ? null
+            : anchor.supplierName;
+        }
+        if (!lineSupplierId && anchor.supplierId && lineSupplierName) {
+          lineSupplierId = anchor.supplierId;
+        }
+        if (isAggregateSupplierLabel(lineSupplierName)) {
+          lineSupplierName = item.suggestedDealer?.trim() || null;
+        }
+
+        if (item.itemType === "consumable") {
+          if (consumableId) {
+            const [existing] = await db
+              .select()
+              .from(consumables)
+              .where(
+                and(
+                  eq(consumables.id, consumableId),
+                  byTenantId(consumables.tenantId, actor.tenantId)
+                )
+              )
+              .limit(1);
+            if (!existing) {
+              throw new NotFoundError("Consumable", consumableId);
+            }
+            itemCode = existing.itemCode;
+            itemName = existing.name;
+
+            if (targetProjectId && existing.classification !== "material") {
+              await db
+                .update(consumables)
+                .set({ classification: "material", updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(consumables.id, consumableId),
+                    byTenantId(consumables.tenantId, actor.tenantId)
+                  )
+                );
+            }
+          } else {
+            itemCode = generateOperationalCode("ITM");
+            consumableId = null;
+            draftItem = {
+              category: item.category || "General Supply",
+              classification:
+                item.classification || (targetProjectId ? "material" : "supply"),
+              unit: item.unit || "pcs",
+              minThreshold: item.minThreshold ?? 5,
+              location: item.location || "Main Property Storage",
+            };
+          }
+        }
+
+        if (item.itemType === "asset") {
+          if (assetId) {
+            const [existing] = await db
+              .select()
+              .from(assets)
+              .where(
+                and(
+                  eq(assets.id, assetId),
+                  byTenantId(assets.tenantId, actor.tenantId)
+                )
+              )
+              .limit(1);
+            if (!existing) {
+              throw new NotFoundError("Asset", assetId);
+            }
+            itemCode = existing.assetCode;
+            itemName = existing.name;
+          } else {
+            itemCode = generateOperationalCode("ITM");
+            assetId = null;
+            draftItem = {
+              category: item.category || "Equipment",
+              location: item.location || "Property Custodian Depot",
+              assignmentType: item.assignmentType || "borrowable",
+            };
+          }
+        }
+
+        const unitCost = formatMoney(item.unitCost);
+        const totalCost = formatMoney(Number(unitCost) * item.quantity);
+        const lotCode = generateOperationalCode("PO");
+
+        const lotPurposeRaw = (item.purpose || anchorMeta.purpose || "").trim();
+        const lotPurpose =
+          anchor.departmentName && !lotPurposeRaw.startsWith("[")
+            ? `[${anchor.departmentName}] ${lotPurposeRaw}`.trim()
+            : lotPurposeRaw || null;
+
+        const serializedNotes = serializeNotesMetadata({
+          notes: anchorMeta.cleanNotes,
+          status: "pending_approval",
+          purpose: lotPurpose,
+          receiptUrl: anchor.receiptUrl || anchorMeta.receiptUrl,
+          approvedByName: null,
+          approvedAt: null,
+          orderedAt: null,
+          deliveredAt: null,
+          draftItem,
+        });
+
+        const row = await this.repo.create(
+          {
+            tenantId: actor.tenantId,
+            lotCode,
+            itemType: item.itemType,
+            consumableId,
+            assetId,
+            itemCode,
+            itemName,
+            supplierId: lineSupplierId,
+            supplierName: lineSupplierName,
+            departmentId: anchor.departmentId,
+            departmentName: anchor.departmentName,
+            projectId: targetProjectId,
+            projectName: targetProjectName,
+            quantity: item.quantity,
+            quantityRemaining: 0,
+            unitCost,
+            totalCost,
+            purchasedOn: anchor.purchasedOn,
+            reference: poNumber,
+            notes: serializedNotes,
+            receiptUrl: anchor.receiptUrl || null,
+            recordedByUserId: anchor.recordedByUserId,
+            recordedByName: anchor.recordedByName,
+          },
+          session
+        );
+
+        results.push(toPurchaseLotDTO(row));
+      }
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.purchaseOrder,
+          entityId: poNumber,
+          action: "purchase_order_updated",
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: `Added ${results.length} line item(s) to Purchase Order ${poNumber} while pending approval.`,
+          metadata: {
+            poNumber,
+            addedItemCount: results.length,
+            addedItemNames: results.map((r) => r.itemName),
+          },
+        },
+        session
+      );
+
+      return withPoDepartments(results, actor.tenantId, session);
     });
   }
 

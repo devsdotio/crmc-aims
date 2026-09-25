@@ -83,6 +83,11 @@ export type UpdatePOStatusPayload = {
   receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
+  cancellationReason?: string;
+};
+
+export type AddPurchaseOrderLinesPayload = {
+  items: CreatePurchaseOrderItemPayload[];
 };
 
 export const purchaseLotsApi = {
@@ -159,6 +164,20 @@ export const purchaseLotsApi = {
   async updateStatus(id: string, payload: UpdatePOStatusPayload): Promise<PurchaseLot> {
     const res = await fetchJson<ApiResponse<PurchaseLot>>(
       `/api/purchase-lots/${id}/status`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
+    return res.data;
+  },
+
+  async addLines(
+    id: string,
+    payload: AddPurchaseOrderLinesPayload
+  ): Promise<PurchaseLot[]> {
+    const res = await fetchJson<ApiResponse<PurchaseLot[]>>(
+      `/api/purchase-lots/${id}/lines`,
       {
         method: "POST",
         body: JSON.stringify(payload),

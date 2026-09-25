@@ -150,6 +150,14 @@ export function groupLotsByPO(
       }
     }
 
+    const cancelReason = lineItems.find((li) => li.cancellationReason)?.cancellationReason;
+    if (cancelReason) {
+      representative.cancellationReason = cancelReason;
+      for (const li of lineItems) {
+        if (!li.cancellationReason) li.cancellationReason = cancelReason;
+      }
+    }
+
     groups.push({
       representative,
       lineItems,

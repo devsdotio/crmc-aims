@@ -133,6 +133,21 @@ export class PurchaseLotController {
     }
   }
 
+  async addLines(id: string, request: NextRequest | Request) {
+    try {
+      const session = await requireAssetOperator();
+      const body = await request.json();
+      const result = await this.service.addPurchaseOrderLines(
+        id,
+        body,
+        session.actor
+      );
+      return ok(result);
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async delete(id: string) {
     try {
       const session = await requireAssetOperator();

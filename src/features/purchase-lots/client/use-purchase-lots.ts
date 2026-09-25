@@ -19,6 +19,7 @@ import {
   type CreatePurchaseOrderPayload,
   type UpdatePurchaseOrderPayload,
   type UpdatePOStatusPayload,
+  type AddPurchaseOrderLinesPayload,
 } from "./purchase-lots-api";
 import { purchaseLotQueryKeys } from "./query-keys";
 
@@ -216,6 +217,21 @@ export function useUpdatePurchaseOrderMutation(): UseMutationResult<
   });
 }
 
+export function useAddPurchaseOrderLinesMutation(): UseMutationResult<
+  PurchaseLot[],
+  Error,
+  { id: string; payload: AddPurchaseOrderLinesPayload }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }) => purchaseLotsApi.addLines(id, payload),
+    onSettled: (_data, _err, { id }) => {
+      void invalidateDomains(qc, PO_DOMAINS);
+      qc.invalidateQueries({ queryKey: purchaseLotQueryKeys.detail(id) });
+    },
+  });
+}
+
 export function useUpdatePOStatusMutation(): UseMutationResult<
   PurchaseLot,
   Error,
@@ -235,7 +251,16 @@ export function useUpdatePOStatusMutation(): UseMutationResult<
         (old) => {
           if (!old || !Array.isArray(old)) return old;
           return old.map((lot) =>
-            lot.id === id ? { ...lot, status: payload.status } : lot
+            lot.id === id
+              ? {
+                  ...lot,
+                  status: payload.status,
+                  cancellationReason:
+                    payload.status === "cancelled"
+                      ? payload.cancellationReason ?? lot.cancellationReason
+                      : lot.cancellationReason,
+                }
+              : lot
           );
         }
       );

@@ -347,6 +347,14 @@ export function PurchaseOrdersGrid({
                 <div className="truncate text-[10px] text-text-secondary">
                   <span>Req by: <strong className="text-text font-medium">{lot.recordedByName}</strong></span>
                 </div>
+                {lot.status === "cancelled" && lot.cancellationReason && (
+                  <p
+                    className="text-[10px] text-rose-700 dark:text-rose-300 line-clamp-2"
+                    title={lot.cancellationReason}
+                  >
+                    Reason: {lot.cancellationReason}
+                  </p>
+                )}
               </div>
             </div>
 
