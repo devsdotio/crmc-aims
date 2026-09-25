@@ -31,6 +31,7 @@ import {
   groupLotsByPO,
   type GroupedPurchaseOrder,
 } from "@/types/grouped-purchase-order";
+import { stripPoPurposePrefix } from "@/lib/po-purpose";
 
 import {
   PurchaseOrdersFilters,
@@ -311,9 +312,11 @@ export function PurchaseOrdersView({
         const matchRecorder = lot.recordedByName?.toLowerCase().includes(q);
         const matchRef = lot.reference?.toLowerCase().includes(q);
         const matchNotes = lot.notes?.toLowerCase().includes(q);
-        const matchPurpose = group.lineItems.some(
-          (li) => li.purpose?.toLowerCase().includes(q)
-        );
+        const matchPurpose = group.lineItems.some((li) => {
+          const full = li.purpose?.toLowerCase() ?? "";
+          const just = stripPoPurposePrefix(li.purpose).toLowerCase();
+          return full.includes(q) || just.includes(q);
+        });
         if (
           !matchCode &&
           !matchAnyItem &&
