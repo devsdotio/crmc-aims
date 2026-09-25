@@ -461,6 +461,14 @@ export function PurchaseOrdersTable({
                   <div className="flex flex-col items-start gap-1">
                     <StatusBadge status={lot.status} />
                     <PoDisbursementBadge disbursement={lot.disbursement} />
+                    {lot.status === "cancelled" && lot.cancellationReason && (
+                      <span
+                        className="text-[10px] text-rose-700 dark:text-rose-300 line-clamp-2 max-w-36"
+                        title={lot.cancellationReason}
+                      >
+                        {lot.cancellationReason}
+                      </span>
+                    )}
                   </div>
                   {/* On small mobile screens (< sm), show inline quantity badge here */}
                   <div className="sm:hidden mt-1 font-mono text-[11px] text-text-secondary font-medium">

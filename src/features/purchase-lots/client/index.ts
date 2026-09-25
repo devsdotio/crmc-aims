@@ -5,6 +5,7 @@ export type {
   CreatePurchaseOrderPayload,
   UpdatePurchaseOrderPayload,
   UpdatePOStatusPayload,
+  AddPurchaseOrderLinesPayload,
 } from "./purchase-lots-api";
 export { purchaseLotQueryKeys } from "./query-keys";
 export {
@@ -12,6 +13,7 @@ export {
   usePurchaseLotQuery,
   useCreatePurchaseOrderMutation,
   useUpdatePurchaseOrderMutation,
+  useAddPurchaseOrderLinesMutation,
   useUpdatePOStatusMutation,
   useDeletePurchaseOrderMutation,
   useDeletePurchaseOrderByPoMutation,

@@ -103,13 +103,34 @@ export const createPurchaseOrderSchema = z
     }
   });
 
-export const updatePurchaseOrderStatusSchema = z.object({
-  status: purchaseOrderStatusSchema,
-  notes: z.string().trim().max(2000).optional(),
-  receiptUrl: z.string().trim().nullable().optional(),
-  approvedBy: z.string().trim().max(255).optional(),
-  /** Actual qty received on deliver (consumables). Defaults to ordered qty when omitted. */
-  receivedQuantity: z.number().int().positive().optional(),
+export const updatePurchaseOrderStatusSchema = z
+  .object({
+    status: purchaseOrderStatusSchema,
+    notes: z.string().trim().max(2000).optional(),
+    receiptUrl: z.string().trim().nullable().optional(),
+    approvedBy: z.string().trim().max(255).optional(),
+    /** Actual qty received on deliver (consumables). Defaults to ordered qty when omitted. */
+    receivedQuantity: z.number().int().positive().optional(),
+    /** Required when transitioning to cancelled. */
+    cancellationReason: z.string().trim().max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.status !== "cancelled") return;
+    const reason = (data.cancellationReason ?? "").trim();
+    if (reason.length < 3) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "A cancellation reason is required (at least 3 characters) so the order can be reviewed later.",
+        path: ["cancellationReason"],
+      });
+    }
+  });
+
+export const addPurchaseOrderLinesSchema = z.object({
+  items: z
+    .array(createPurchaseOrderItemSchema)
+    .min(1, "Please provide at least one line item to add."),
 });
 
 export const updatePurchaseOrderSchema = z.object({
@@ -157,4 +178,7 @@ export type UpdatePurchaseOrderStatusBody = z.infer<
   typeof updatePurchaseOrderStatusSchema
 >;
 export type UpdatePurchaseOrderBody = z.infer<typeof updatePurchaseOrderSchema>;
+export type AddPurchaseOrderLinesBody = z.infer<
+  typeof addPurchaseOrderLinesSchema
+>;
 export type ScanReleaseLotBody = z.infer<typeof scanReleaseLotSchema>;

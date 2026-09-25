@@ -41,6 +41,8 @@ export type PurchaseLotDTO = {
   approvedAt?: string | null;
   orderedAt?: string | null;
   deliveredAt?: string | null;
+  /** Set when the PO (or line) is cancelled — shown on the cancelled record. */
+  cancellationReason?: string | null;
   createdAt: string;
   updatedAt: string;
   items?: POLineItemDetail[];
@@ -152,6 +154,11 @@ export type UpdatePurchaseOrderStatusInput = {
   receiptUrl?: string | null;
   approvedBy?: string;
   receivedQuantity?: number;
+  cancellationReason?: string;
+};
+
+export type AddPurchaseOrderLinesInput = {
+  items: CreatePurchaseOrderItemInput[];
 };
 
 /** TEMPORARY: PO force-delete with inventory revert */
