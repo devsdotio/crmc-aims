@@ -376,6 +376,11 @@ export function AddPoLinesDialog({
         : purposeChoice.trim();
     const stampedPurpose = stampPoPurpose(purposePrefix, justification);
 
+    if (!stampedPurpose) {
+      setErrorMessage("Select or enter a purpose for the new line items.");
+      return;
+    }
+
     const payloadItems: CreatePurchaseOrderItemPayload[] = filled.map((item) => ({
       itemType: poType,
       consumableId: !item.isNew && poType === "consumable" ? item.consumableId : undefined,
@@ -396,7 +401,7 @@ export function AddPoLinesDialog({
       supplierId: item.supplierId || undefined,
       projectId: lot.projectId || undefined,
       projectName: lot.projectName || undefined,
-      purpose: stampedPurpose || undefined,
+      purpose: stampedPurpose,
     }));
 
     try {
@@ -465,6 +470,7 @@ export function AddPoLinesDialog({
           <div className="p-3 rounded-xl border border-border bg-card space-y-2">
             <label className="text-xs font-semibold text-text block">
               Purpose for new lines
+              <span className="text-rose-600"> *</span>
             </label>
             <SearchableSelect
               value={purposeChoice}
@@ -476,7 +482,7 @@ export function AddPoLinesDialog({
                 })),
                 { value: "__new__", label: "New purpose…" },
               ]}
-              placeholder="Select purpose"
+              placeholder="Select purpose (required)"
               emptyMessage="No purposes yet"
               inputClassName="h-9 px-2.5 text-xs"
             />
@@ -486,6 +492,8 @@ export function AddPoLinesDialog({
                 onChange={(e) => setNewPurposeText(e.target.value)}
                 placeholder="Enter the new procurement purpose…"
                 rows={2}
+                required
+                aria-required="true"
                 className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none"
               />
             )}

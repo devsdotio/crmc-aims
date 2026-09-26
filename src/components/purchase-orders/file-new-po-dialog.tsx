@@ -111,6 +111,18 @@ function newPoPurposeGroup(purpose = ""): PoPurposeGroup {
   return { id: crypto.randomUUID(), purpose, lineIds: [] };
 }
 
+/** Distinct soft chips for multi-purpose review (cycles by group index). */
+const PURPOSE_PILL_COLORS = [
+  "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
+  "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/30",
+  "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30",
+  "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30",
+  "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30",
+  "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30",
+  "bg-orange-500/10 text-orange-800 dark:text-orange-300 border-orange-500/30",
+] as const;
+
 const STEPS: Array<{
   id: WizardStep;
   label: string;
@@ -1201,6 +1213,10 @@ export function FileNewPODialog({
         purposePrefix,
         summarizePurposes(justifications)
       );
+      if (!headerPurpose) {
+        setErrorMessage("Procurement purpose is required.");
+        return;
+      }
 
       const formattedItems = items.map((item) => {
         const isAsset = poType === "asset";
@@ -1208,8 +1224,7 @@ export function FileNewPODialog({
         const unitCostNum = parseMoney(item.unitCost) ?? 0;
         const linePurpose =
           purposeByLineId.get(item.id) ||
-          stampPoPurpose(purposePrefix, primaryPurpose) ||
-          undefined;
+          stampPoPurpose(purposePrefix, primaryPurpose);
 
         return {
           itemType: poType,
@@ -1233,6 +1248,11 @@ export function FileNewPODialog({
           projectName: destinationKind === "project" ? selectedProjectObj?.name : undefined,
         };
       });
+
+      if (formattedItems.some((it) => !it.purpose.trim())) {
+        setErrorMessage("Procurement purpose is required for every line item.");
+        return;
+      }
 
       const uniqueSuppliers = Array.from(
         new Set(items.map((it) => it.suggestedDealer?.trim()).filter(Boolean))
@@ -2602,6 +2622,7 @@ export function FileNewPODialog({
                         <div className="flex items-center justify-between gap-1">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
                             Purpose {groupIdx + 1} ({assignedItems.length})
+                            <span className="text-rose-600 normal-case tracking-normal"> *</span>
                           </p>
                           {purposeGroups.length > 1 && (
                             <button
@@ -2632,6 +2653,8 @@ export function FileNewPODialog({
                               : "Purpose text…"
                           }
                           rows={2}
+                          required
+                          aria-required="true"
                           className="w-full p-1.5 rounded-md border border-border bg-bg text-[11px] focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed"
                         />
                       </div>
@@ -2689,39 +2712,11 @@ export function FileNewPODialog({
             <div className="space-y-4 animate-in fade-in duration-200">
               {/* Review Master PO Details Card */}
               <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
-                <div className="flex items-center justify-between border-b border-border pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <Building2 className="h-4 w-4 text-accent" />
-                    <h3 className="font-bold text-xs text-text uppercase tracking-wider">
-                      Purchase Order Header Details
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep("routing")}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
-                    >
-                      <Edit3 className="h-3 w-3" />
-                      Edit Classification
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep("metadata")}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
-                    >
-                      <Edit3 className="h-3 w-3" />
-                      Edit Order Info
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep("purposes")}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
-                    >
-                      <Edit3 className="h-3 w-3" />
-                      Edit Purposes
-                    </button>
-                  </div>
+                <div className="flex items-center gap-2 border-b border-border pb-2.5">
+                  <Building2 className="h-4 w-4 text-accent" />
+                  <h3 className="font-bold text-xs text-text uppercase tracking-wider">
+                    Purchase Order Header Details
+                  </h3>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
@@ -2818,27 +2813,32 @@ export function FileNewPODialog({
                     )}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    <div>
+                    <div className={isMultiPurpose ? "sm:col-span-2" : undefined}>
                       <span className="text-[10px] text-text-secondary font-medium block">
                         Procurement Purpose
                         {isMultiPurpose ? `s (${purposeGroups.length})` : ""}
                       </span>
                       {isMultiPurpose ? (
-                        <ul className="mt-1 space-y-1.5">
+                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                           {purposeGroups.map((g, idx) => (
-                            <li key={g.id} className="text-text text-xs leading-relaxed">
-                              <span className="font-bold text-indigo-700 dark:text-indigo-400">
-                                {idx + 1}.
-                              </span>{" "}
-                              {g.purpose.trim()}
-                              <span className="text-text-secondary">
-                                {" "}
-                                ({g.lineIds.length} line
-                                {g.lineIds.length === 1 ? "" : "s"})
+                            <div
+                              key={g.id}
+                              className={cn(
+                                "inline-flex items-center gap-1.5 min-w-0 rounded-full border px-2.5 py-1",
+                                PURPOSE_PILL_COLORS[idx % PURPOSE_PILL_COLORS.length]
+                              )}
+                              title={`${g.purpose.trim()} · ${g.lineIds.length} line${g.lineIds.length === 1 ? "" : "s"}`}
+                            >
+                              <span className="text-[10px] font-semibold truncate">
+                                {g.purpose.trim() || "Untitled purpose"}
                               </span>
-                            </li>
+                              <span className="text-[10px] font-mono font-bold shrink-0 opacity-75">
+                                {g.lineIds.length} line
+                                {g.lineIds.length === 1 ? "" : "s"}
+                              </span>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       ) : (
                         <p className="text-text font-medium leading-relaxed mt-0.5">
                           {primaryPurpose}
@@ -2846,7 +2846,7 @@ export function FileNewPODialog({
                       )}
                     </div>
                     {generalNotes && (
-                      <div>
+                      <div className={isMultiPurpose ? "sm:col-span-2" : undefined}>
                         <span className="text-[10px] text-text-secondary font-medium block">Order Notes & Justification</span>
                         <p className="text-text-secondary leading-relaxed mt-0.5">{generalNotes}</p>
                       </div>

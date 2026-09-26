@@ -36,7 +36,8 @@ export type CreatePurchaseOrderItemPayload = {
   model?: string;
   quantity: number;
   unitCost: string | number;
-  purpose?: string;
+  /** Required procurement justification (may include destination tags). */
+  purpose: string;
   suggestedDealer?: string;
   supplierId?: string;
   projectId?: string;
@@ -55,7 +56,8 @@ export type CreatePurchaseOrderPayload = {
   departmentIds?: string[];
   projectId?: string;
   projectName?: string;
-  purpose?: string;
+  /** Required PO header purpose summary. */
+  purpose: string;
   notes?: string;
   receiptUrl?: string | null;
   status?: PurchaseOrderStatus;

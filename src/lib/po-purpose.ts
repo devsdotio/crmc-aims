@@ -24,27 +24,62 @@ export function stampPoPurpose(
   justification: string
 ): string {
   const j = justification.trim();
+  // Justification is required — never persist destination tags alone.
+  if (!j) return "";
   const p = prefix.trim();
   if (!p) return j;
-  if (!j) return p;
   return `${p} ${j}`;
 }
 
+/** True when purpose has a non-empty justification (destination tags alone do not count). */
+export function hasPoJustification(
+  purpose: string | null | undefined
+): boolean {
+  const raw = (purpose ?? "").trim();
+  if (!raw) return false;
+  let rest = raw;
+  const projectMatch = rest.match(/^\[Project:\s*[^\]]*\]\s*/i);
+  if (projectMatch) {
+    rest = rest.slice(projectMatch[0].length).trim();
+  }
+  const tagMatch = rest.match(/^\[[^\]]*\]\s*/);
+  if (tagMatch) {
+    const after = rest.slice(tagMatch[0].length).trim();
+    // Destination tag(s) peeled — only the trailing free text counts.
+    return after.length > 0;
+  }
+  return rest.length > 0;
+}
+
 /**
- * Strip leading `[…]` tags (Project and/or Dept) to leave the justification.
- * Handles both `[Project:…] [Dept…] text` and `[Dept…] text`.
+ * Strip destination tags only — leave the justification intact.
+ *
+ * Destination forms: `[Project: …] [Dept…] justification` or `[Dept…] justification`.
+ * Only removes an optional `[Project:…]` plus at most one following `[…]` dept tag.
+ * Does **not** strip further bracket groups (e.g. `[Urgent] restock`) so those
+ * justifications are not emptied into the "General" slip fallback.
  */
 export function stripPoPurposePrefix(
   purpose: string | null | undefined
 ): string {
   let rest = (purpose ?? "").trim();
   if (!rest) return "";
-  // Strip successive leading bracket tags
-  while (true) {
-    const match = rest.match(/^\[([^\]]*)\]\s*/);
-    if (!match) break;
-    rest = rest.slice(match[0].length).trim();
+
+  const projectMatch = rest.match(/^\[Project:\s*[^\]]*\]\s*/i);
+  if (projectMatch) {
+    rest = rest.slice(projectMatch[0].length).trim();
   }
+
+  const deptMatch = rest.match(/^\[([^\]]*)\]\s*/);
+  if (deptMatch) {
+    const after = rest.slice(deptMatch[0].length).trim();
+    // Consume as destination when justification remains, or when paired with Project.
+    // Sole `[bracketed text]` with no Project tag is treated as the purpose itself.
+    if (after || projectMatch) {
+      rest = after;
+    }
+  }
+
   return rest;
 }
 

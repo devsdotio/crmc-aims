@@ -4,6 +4,8 @@ import type { PurchaseLot, POLineItemDetail } from "@/types/purchase-lots";
 import { stripPoPurposePrefix } from "@/lib/po-purpose";
 import { groupByPurpose } from "@/lib/request-purpose";
 
+const SLIP_PURPOSE_FALLBACK = "Institutional Inventory & Operations";
+
 export interface PoSlipRenderData {
   lot: PurchaseLot;
   requestedBy: string;
@@ -22,7 +24,8 @@ export function buildPoPurposeCardsHtml(lot: PurchaseLot): string {
     const text =
       groups[0]?.purpose ||
       stripPoPurposePrefix(lot.purpose) ||
-      "Institutional Inventory & Operations";
+      (lot.purpose ?? "").trim() ||
+      SLIP_PURPOSE_FALLBACK;
     return `<div class="purpose-card">
         <div class="purpose-label">Purpose:</div>
         <div class="purpose-text">${escapeHtml(text)}</div>
@@ -56,7 +59,10 @@ function resolveLinePurpose(
   return (
     stripPoPurposePrefix(item.purpose) ||
     stripPoPurposePrefix(lot.purpose) ||
-    "General"
+    // Prefer any raw stored purpose (incl. tag-only) over inventing "General"
+    (item.purpose ?? "").trim() ||
+    (lot.purpose ?? "").trim() ||
+    SLIP_PURPOSE_FALLBACK
   );
 }
 
@@ -95,7 +101,9 @@ function getSlipPurposeGroups(lot: PurchaseLot) {
   }));
   return groupByPurpose(
     lines,
-    stripPoPurposePrefix(lot.purpose) || "Institutional Inventory & Operations"
+    stripPoPurposePrefix(lot.purpose) ||
+      (lot.purpose ?? "").trim() ||
+      SLIP_PURPOSE_FALLBACK
   );
 }
 

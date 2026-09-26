@@ -26,6 +26,7 @@ import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service"
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { AssetModelRepository } from "@/server/modules/assets/asset.model.repository";
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
+import { hasPoJustification } from "@/lib/po-purpose";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import {
@@ -971,6 +972,9 @@ export class PurchaseLotService {
           departmentName && lotPurposeRaw && !lotPurposeRaw.startsWith("[")
             ? `[${departmentName}] ${lotPurposeRaw}`.trim()
             : lotPurposeRaw || null;
+        if (!lotPurpose || !hasPoJustification(lotPurpose)) {
+          throw new BadRequestError("Procurement purpose is required for every line item.");
+        }
 
         const serializedNotes = serializeNotesMetadata({
           notes: body.notes,
@@ -2050,11 +2054,14 @@ export class PurchaseLotService {
         const totalCost = formatMoney(Number(unitCost) * item.quantity);
         const lotCode = generateOperationalCode("PO");
 
-        const lotPurposeRaw = (item.purpose || anchorMeta.purpose || "").trim();
+        const lotPurposeRaw = (item.purpose || "").trim();
         const lotPurpose =
-          anchor.departmentName && !lotPurposeRaw.startsWith("[")
+          anchor.departmentName && lotPurposeRaw && !lotPurposeRaw.startsWith("[")
             ? `[${anchor.departmentName}] ${lotPurposeRaw}`.trim()
             : lotPurposeRaw || null;
+        if (!lotPurpose || !hasPoJustification(lotPurpose)) {
+          throw new BadRequestError("Procurement purpose is required for every line item.");
+        }
 
         const serializedNotes = serializeNotesMetadata({
           notes: anchorMeta.cleanNotes,

@@ -348,14 +348,23 @@ export function EditPoLinesDialog({
           purpose: stampPoPurpose(purposePrefix, g.purpose.trim()),
         }))
       );
+      if (linePurposes.some((e) => !e.purpose.trim())) {
+        toast.error("Procurement purpose is required.");
+        return;
+      }
+      const headerPurpose = stampPoPurpose(
+        purposePrefix,
+        groups.map((g) => g.purpose.trim()).join("; ")
+      );
+      if (!headerPurpose) {
+        toast.error("Procurement purpose is required.");
+        return;
+      }
       await updateMutation.mutateAsync({
         id: lot.id,
         payload: {
           linePurposes,
-          purpose: stampPoPurpose(
-            purposePrefix,
-            groups.map((g) => g.purpose.trim()).join("; ")
-          ),
+          purpose: headerPurpose,
         },
       });
 
@@ -623,6 +632,7 @@ export function EditPoLinesDialog({
                         <div className="flex items-center justify-between gap-1">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
                             Purpose {groupIdx + 1} ({assignedItems.length})
+                            <span className="text-rose-600 normal-case tracking-normal"> *</span>
                           </p>
                           {purposeGroups.length > 1 && (
                             <button
@@ -653,6 +663,8 @@ export function EditPoLinesDialog({
                               : "Purpose text…"
                           }
                           rows={2}
+                          required
+                          aria-required="true"
                           className="w-full p-1.5 rounded-md border border-border bg-bg text-[11px] focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed"
                         />
                       </div>

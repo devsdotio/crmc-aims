@@ -136,7 +136,6 @@ export function PurchaseOrderDetailSheet({
   const [editDialogStep, setEditDialogStep] = useState<
     null | "items" | "purposes"
   >(null);
-  const [cancelReasonError, setCancelReasonError] = useState<string | null>(null);
 
   const updateStatusMutation = useUpdatePOStatusMutation();
   const updatePOMutation = useUpdatePurchaseOrderMutation();
@@ -285,7 +284,6 @@ export function PurchaseOrderDetailSheet({
   const resetStatusModal = () => {
     setShowStatusModal(null);
     setStatusNote("");
-    setCancelReasonError(null);
     setReceivedQuantities({});
     setDeliveryReceiptUrl(null);
   };
@@ -373,11 +371,19 @@ export function PurchaseOrderDetailSheet({
   const purposeSections = groupByPurpose(
     lotsToUpdate.map((li) => ({
       ...li,
-      purpose: stripPoPurposePrefix(li.purpose) || "General",
+      purpose:
+        stripPoPurposePrefix(li.purpose) ||
+        (li.purpose ?? "").trim() ||
+        "",
     })),
-    stripPoPurposePrefix(lot.purpose) || "General"
+    stripPoPurposePrefix(lot.purpose) || (lot.purpose ?? "").trim() || ""
   );
-  const isMultiPurpose = purposeSections.length > 1;
+  const isMultiPurpose =
+    purposeSections.filter(
+      (section) =>
+        section.purpose.trim().length > 0 &&
+        section.purpose.trim().toLowerCase() !== "general"
+    ).length > 1;
 
   const purposePrefix = buildPoPurposePrefix({
     departmentLabel:
@@ -395,7 +401,7 @@ export function PurchaseOrderDetailSheet({
     if (nextStatus === "cancelled") {
       const reason = statusNote.trim();
       if (reason.length < 3) {
-        setCancelReasonError(
+        toast.error(
           "Please enter a cancellation reason (at least 3 characters) so you can recall why this PO was closed."
         );
         return;
@@ -1301,35 +1307,11 @@ export function PurchaseOrderDetailSheet({
                       </table>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 text-xs">
-                      <div className="space-y-1">
-                        <span className="text-[10px] uppercase font-bold text-text-secondary">Dealer / Supplier</span>
-                        <p className="font-semibold text-text">{displayDealer}</p>
-                      </div>
-                      <div className="space-y-1 col-span-2 sm:col-span-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] uppercase font-bold text-text-secondary">
-                            Purpose / Usage
-                            {isMultiPurpose ? ` (${purposeSections.length})` : ""}
-                          </span>
-                          {canEditLines && (
-                            <button
-                              type="button"
-                              onClick={() => openEditDialog("purposes")}
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent hover:underline cursor-pointer"
-                            >
-                              <Edit3 className="h-3 w-3" />
-                              Edit
-                            </button>
-                          )}
-                        </div>
-                        {!isMultiPurpose && (
-                          <p className="font-medium text-text mt-0.5">
-                            {purposeSections[0]?.purpose ||
-                              "General Operations Replenishment"}
-                          </p>
-                        )}
-                      </div>
+                    <div className="text-xs space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-text-secondary">
+                        Dealer / Supplier
+                      </span>
+                      <p className="font-semibold text-text">{displayDealer}</p>
                     </div>
                   </div>
                 ) : (
@@ -1407,28 +1389,6 @@ export function PurchaseOrderDetailSheet({
                       ) : (
                         <p className="font-mono font-bold text-text">{formatPhp(unitCostNum)}</p>
                       )}
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] uppercase font-bold text-text-secondary">
-                          Purpose / Usage
-                        </span>
-                        {canEditLines && (
-                          <button
-                            type="button"
-                            onClick={() => openEditDialog("purposes")}
-                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent hover:underline cursor-pointer"
-                          >
-                            <Edit3 className="h-3 w-3" />
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                      <p className="font-medium text-text">
-                        {purposeSections[0]?.purpose ||
-                          "General Operations Replenishment"}
-                      </p>
                     </div>
 
                     <div className="space-y-1">
@@ -2103,7 +2063,7 @@ export function PurchaseOrderDetailSheet({
     {/* Modal for Status Confirmation / Notes */}
     {showStatusModal && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-        <div className="w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+        <div className="w-full max-w-md rounded-xl border border-border bg-bg p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
           <div className="flex items-center justify-between border-b border-border pb-2">
             <h3 className="font-bold text-text text-sm capitalize flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4 text-accent" />
@@ -2137,27 +2097,69 @@ export function PurchaseOrderDetailSheet({
               : `Are you sure you want to transition this purchase order to ${showStatusModal.replace("_", " ")}?`}
           </p>
 
-          {showStatusModal === "delivered" && (
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold text-text flex items-center justify-between">
-                <span>Attach Receipt Picture (Optional)</span>
-                {(deliveryReceiptUrl || lot.receiptUrl) && (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                    Attached ✓
-                  </span>
-                )}
-              </label>
-              <POReceiptUploader
-                receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
-                poNumber={lot.poNumber || lot.lotCode}
-                lotId={lot.id}
-                canOperate={canOperate}
-                compact
-                onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
-                onRemove={() => setDeliveryReceiptUrl(null)}
-              />
-            </div>
-          )}
+          {showStatusModal === "delivered" && (() => {
+            const deliverTargets =
+              receivableLots.length > 0 ? receivableLots : lotsToUpdate;
+            const orderedTotal = deliverTargets.reduce(
+              (sum, li) => sum + (li.orderedQuantity ?? li.quantity),
+              0
+            );
+            return (
+              <>
+                <div className="rounded-lg border border-border bg-bg-subtle/50 p-3 space-y-2.5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold font-mono text-text truncate">
+                      {lot.poNumber || lot.lotCode}
+                    </p>
+                    <p className="text-[10px] text-text-secondary">
+                      {deliverTargets.length} line
+                      {deliverTargets.length === 1 ? "" : "s"} · {orderedTotal}{" "}
+                      unit{orderedTotal === 1 ? "" : "s"} to receive
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {deliverTargets.map((li) => {
+                      const ordered = li.orderedQuantity ?? li.quantity;
+                      return (
+                        <div
+                          key={li.id}
+                          className="inline-flex items-center gap-1.5 min-w-0 rounded-full border border-border bg-bg px-2.5 py-1"
+                          title={`${li.itemName} · qty ${ordered}`}
+                        >
+                          <span className="text-[10px] font-medium text-text truncate">
+                            {li.itemName}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-text-secondary shrink-0">
+                            ×{ordered}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-text flex items-center justify-between">
+                    <span>Attach Receipt Picture (Optional)</span>
+                    {(deliveryReceiptUrl || lot.receiptUrl) && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        Attached ✓
+                      </span>
+                    )}
+                  </label>
+                  <POReceiptUploader
+                    receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
+                    poNumber={lot.poNumber || lot.lotCode}
+                    lotId={lot.id}
+                    canOperate={canOperate}
+                    compact
+                    onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
+                    onRemove={() => setDeliveryReceiptUrl(null)}
+                  />
+                </div>
+              </>
+            );
+          })()}
 
           <div className="space-y-1">
             <label className="text-[11px] font-semibold text-text flex items-center justify-between">
@@ -2177,10 +2179,7 @@ export function PurchaseOrderDetailSheet({
             </label>
             <textarea
               value={statusNote}
-              onChange={(e) => {
-                setStatusNote(e.target.value);
-                if (cancelReasonError) setCancelReasonError(null);
-              }}
+              onChange={(e) => setStatusNote(e.target.value)}
               maxLength={showStatusModal === "cancelled" ? 500 : undefined}
               placeholder={
                 showStatusModal === "cancelled"
@@ -2188,16 +2187,9 @@ export function PurchaseOrderDetailSheet({
                   : "Enter remarks or approval references..."
               }
               rows={showStatusModal === "cancelled" ? 3 : 2}
-              className={cn(
-                "w-full p-2 text-xs rounded-lg border bg-bg text-text focus:ring-1 focus:outline-hidden resize-none",
-                showStatusModal === "cancelled" && cancelReasonError
-                  ? "border-rose-500 focus:ring-rose-500/30"
-                  : "border-border focus:ring-accent"
-              )}
+              className="w-full p-2 text-xs rounded-lg border border-border bg-bg text-text focus:ring-1 focus:ring-accent focus:outline-hidden resize-none"
             />
-            {showStatusModal === "cancelled" && cancelReasonError ? (
-              <p className="text-[11px] font-semibold text-rose-600">{cancelReasonError}</p>
-            ) : showStatusModal === "cancelled" ? (
+            {showStatusModal === "cancelled" ? (
               <p className="text-[10px] text-text-secondary">
                 This reason is saved on the cancelled PO so you can open it later and remember why it was closed.
               </p>
