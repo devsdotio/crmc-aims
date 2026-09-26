@@ -111,7 +111,7 @@ export type CreatePurchaseOrderItemInput = {
   model?: string;
   quantity: number;
   unitCost: string | number;
-  purpose?: string;
+  purpose: string;
   suggestedDealer?: string;
   supplierId?: string;
   projectId?: string;
@@ -130,7 +130,7 @@ export type CreatePurchaseOrderInput = {
   departmentIds?: string[];
   projectId?: string | null;
   projectName?: string | null;
-  purpose?: string;
+  purpose: string;
   notes?: string;
   receiptUrl?: string | null;
   status?: PurchaseOrderStatus;

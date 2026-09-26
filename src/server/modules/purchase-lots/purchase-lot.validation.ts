@@ -1,6 +1,16 @@
 import { z } from "zod";
+import { hasPoJustification } from "@/lib/po-purpose";
 
 export const purchaseLotItemTypeSchema = z.enum(["consumable", "asset"]);
+
+const poPurposeRequiredSchema = z
+  .string()
+  .trim()
+  .min(1, "Procurement purpose is required.")
+  .max(1000)
+  .refine(hasPoJustification, {
+    message: "Procurement purpose is required.",
+  });
 
 export const purchaseOrderStatusSchema = z.enum([
   "pending_approval",
@@ -71,7 +81,7 @@ export const createPurchaseOrderItemSchema = z.object({
   model: z.string().trim().optional(),
   quantity: z.number().int().positive("Quantity must be at least 1."),
   unitCost: z.union([z.string(), z.number()]),
-  purpose: z.string().trim().optional(),
+  purpose: poPurposeRequiredSchema,
   suggestedDealer: z.string().trim().optional(),
   supplierId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional(),
@@ -91,7 +101,7 @@ export const createPurchaseOrderSchema = z
     departmentIds: z.array(z.string().uuid()).optional(),
     projectId: z.string().uuid().optional(),
     projectName: z.string().trim().max(255).optional(),
-    purpose: z.string().trim().optional(),
+    purpose: poPurposeRequiredSchema,
     notes: z.string().trim().optional(),
     receiptUrl: z.string().trim().nullable().optional(),
     status: purchaseOrderStatusSchema.default("pending_approval"),
@@ -165,7 +175,7 @@ export const updatePurchaseOrderSchema = z.object({
   supplierName: z.string().trim().nullable().optional(),
   reference: z.string().trim().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
-  purpose: z.string().trim().nullable().optional(),
+  purpose: z.union([poPurposeRequiredSchema, z.null()]).optional(),
   /**
    * Batch-update purpose on sibling lots (multi-purpose PO edit).
    * Each entry updates that lot's notes JSON purpose only.
@@ -174,7 +184,7 @@ export const updatePurchaseOrderSchema = z.object({
     .array(
       z.object({
         lotId: z.string().uuid(),
-        purpose: z.string().trim().min(1).max(1000),
+        purpose: poPurposeRequiredSchema,
       })
     )
     .max(200)

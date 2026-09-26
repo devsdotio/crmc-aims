@@ -31,6 +31,7 @@ import {
   Receipt,
   Wallet,
   ChevronDown,
+  Bug,
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
@@ -442,7 +443,6 @@ export default function Sidebar({
           name: "Audit Trails",
           href: "/audit-trails",
           icon: History,
-          badgeText: "Beta",
           roles: ["admin", "staff"],
         },
         {
@@ -460,7 +460,6 @@ export default function Sidebar({
           name: "Reports",
           href: "/reports",
           icon: FileText,
-          badgeText: "Beta",
           roles: ["admin", "staff"],
         },
         {
@@ -1135,6 +1134,17 @@ export default function Sidebar({
                 >
                   <Settings className="w-4 h-4 text-white/50 group-hover:text-white transition-colors" />
                   <span className="font-medium">Profile & Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  title="Report Issue is temporarily unavailable"
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-white/40 transition-colors cursor-not-allowed opacity-60"
+                >
+                  <Bug className="w-4 h-4 text-white/30" />
+                  <span className="font-medium">Report Issue</span>
                 </button>
 
                 <button
