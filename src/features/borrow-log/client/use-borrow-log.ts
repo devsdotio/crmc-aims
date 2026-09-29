@@ -2,7 +2,6 @@
 
 /**
  * React Query hooks for borrow/return custody log.
- * Ready for page integration — UI still uses mocks until wired.
  */
 
 import {
@@ -17,6 +16,7 @@ import {
   CUSTODY_DOMAINS,
   invalidateDomains,
 } from "@/features/shared/cache-invalidation";
+import type { PaginatedResponse } from "@/types/filters";
 
 import {
   borrowLogApi,
@@ -28,7 +28,7 @@ import {
 import { borrowLogQueryKeys } from "./query-keys";
 
 export function useBorrowLogQuery(filters?: {
-  status?: BorrowLogRecord["status"];
+  status?: BorrowLogRecord["status"] | "closed";
   department?: string;
   search?: string;
   custodyKind?: "borrow" | "assignment" | "all";
@@ -40,6 +40,27 @@ export function useBorrowLogQuery(filters?: {
   return useQuery({
     queryKey: borrowLogQueryKeys.list(listFilters),
     queryFn: () => borrowLogApi.list(listFilters),
+    enabled,
+    refetchInterval,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useBorrowLogPageQuery(filters?: {
+  status?: BorrowLogRecord["status"] | "closed";
+  department?: string;
+  search?: string;
+  custodyKind?: "borrow" | "assignment" | "all";
+  scope?: "department";
+  page?: number;
+  limit?: number;
+  enabled?: boolean;
+  refetchInterval?: number | false;
+}): UseQueryResult<PaginatedResponse<BorrowLogRecord>, Error> {
+  const { enabled = true, refetchInterval, ...listFilters } = filters ?? {};
+  return useQuery({
+    queryKey: borrowLogQueryKeys.list(listFilters),
+    queryFn: () => borrowLogApi.listPage(listFilters),
     enabled,
     refetchInterval,
     refetchOnWindowFocus: true,

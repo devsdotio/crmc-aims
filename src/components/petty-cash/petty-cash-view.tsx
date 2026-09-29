@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Wallet,
   FilePlus2,
@@ -29,6 +29,7 @@ export function PettyCashView() {
   usePettyCashRealtimeSync();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<PettyCashStatus | "all">("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -36,13 +37,18 @@ export function PettyCashView() {
   const [selectedVoucher, setSelectedVoucher] = useState<PettyCashVoucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  // Fetch petty cash vouchers query
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Fetch petty cash vouchers (realtime sync handles live updates)
   const {
     data,
     isLoading,
     refetch,
   } = usePettyCashListQuery({
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     status: selectedStatus === "all" ? undefined : selectedStatus,
     category: selectedCategory === "all" ? undefined : selectedCategory,
     limit: 100,

@@ -9,6 +9,12 @@ export function useAuditLogsQuery(filters?: {
   entityId?: string;
   actorUserId?: string;
   action?: string;
+  search?: string;
+  from?: string;
+  to?: string;
+  criticalOnly?: boolean;
+  limit?: number;
+  offset?: number;
   enabled?: boolean;
 }): UseQueryResult<AuditLogRecord[], Error> {
   const { enabled = true, ...listFilters } = filters ?? {};

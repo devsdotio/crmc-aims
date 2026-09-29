@@ -37,6 +37,7 @@ import {
   invalidateDomains,
   type CacheDomain,
 } from "@/features/shared/cache-invalidation";
+import { LOOKUP_QUERY_OPTIONS } from "@/features/shared/lookup-query-options";
 import type { ProjectAssetDamageReport } from "./projects-api";
 
 /** Plain project/expense bookkeeping that touches no other domain. */
@@ -65,6 +66,7 @@ export function useProjectsQuery(options?: {
   return useQuery({
     queryKey: projectQueryKeys.list(),
     queryFn: () => projectsApi.list(),
+    ...LOOKUP_QUERY_OPTIONS,
     enabled: options?.enabled ?? true,
   });
 }
@@ -300,6 +302,27 @@ export function useProjectProgressQuery(
   });
 }
 
+export type ProjectProgressCounts = {
+  projectId: string;
+  totalIndicators: number;
+  completedIndicators: number;
+  pendingIndicators: number;
+  progressPercentage: number;
+};
+
+/** One request for the whole projects table instead of N per-row progress calls. */
+export function useProjectsProgressSummariesQuery(options?: {
+  enabled?: boolean;
+}): UseQueryResult<ProjectProgressCounts[], Error> {
+  return useQuery({
+    queryKey: projectQueryKeys.progressSummaries(),
+    queryFn: () => projectsApi.getProgressSummaries(),
+    ...LOOKUP_QUERY_OPTIONS,
+    staleTime: 60_000,
+    enabled: options?.enabled ?? true,
+  });
+}
+
 export function useCreateIndicatorMutation(): UseMutationResult<
   ProjectProgressIndicator,
   Error,
@@ -313,6 +336,9 @@ export function useCreateIndicatorMutation(): UseMutationResult<
     onSettled: (_data, _err, { projectId }) => {
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.progress(projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progressSummaries(),
       });
       void invalidateDomains(queryClient, PROJECT_DOMAINS);
     },
@@ -337,6 +363,9 @@ export function useUpdateIndicatorMutation(): UseMutationResult<
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.progress(projectId),
       });
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progressSummaries(),
+      });
       void invalidateDomains(queryClient, PROJECT_DOMAINS);
     },
   });
@@ -360,6 +389,9 @@ export function useToggleIndicatorMutation(): UseMutationResult<
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.progress(projectId),
       });
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progressSummaries(),
+      });
       void invalidateDomains(queryClient, PROJECT_DOMAINS);
     },
   });
@@ -381,6 +413,9 @@ export function useDeleteIndicatorMutation(): UseMutationResult<
     onSettled: (_data, _err, { projectId }) => {
       void queryClient.invalidateQueries({
         queryKey: projectQueryKeys.progress(projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: projectQueryKeys.progressSummaries(),
       });
       void invalidateDomains(queryClient, PROJECT_DOMAINS);
     },

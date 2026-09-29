@@ -14,17 +14,24 @@ interface UseBorrowerRealtimeSyncOptions {
   tenantId?: string;
 }
 
+type SyncDomain = "requests" | "supplies" | "custody";
+
 /**
  * Subscribes to database changes for borrow requests, supply requisitions,
  * and borrow transactions, ensuring the borrower's dashboard and request queues
  * stay in real-time sync with database events.
+ *
+ * Invalidates only the affected query domains (plus dashboard snapshot), not
+ * all four on every change.
  */
 export function useBorrowerRealtimeSync(
   options: UseBorrowerRealtimeSyncOptions = {}
 ) {
   const { enabled = true, tenantId } = options;
   const qc = useQueryClient();
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimersRef = useRef<
+    Partial<Record<SyncDomain, ReturnType<typeof setTimeout>>>
+  >({});
 
   useEffect(() => {
     if (!enabled) return;
@@ -32,18 +39,33 @@ export function useBorrowerRealtimeSync(
     const supabase = createClient();
     let hasSubscribedOnce = false;
 
-    const triggerInvalidation = () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-      debounceTimerRef.current = setTimeout(() => {
-        void Promise.all([
+    const invalidateDomain = (domain: SyncDomain) => {
+      const existing = debounceTimersRef.current[domain];
+      if (existing) clearTimeout(existing);
+
+      debounceTimersRef.current[domain] = setTimeout(() => {
+        const jobs: Array<Promise<unknown>> = [
           qc.invalidateQueries({ queryKey: dashboardQueryKeys.all }),
-          qc.invalidateQueries({ queryKey: borrowRequestQueryKeys.all }),
-          qc.invalidateQueries({ queryKey: consumableRequestQueryKeys.all }),
-          qc.invalidateQueries({ queryKey: borrowLogQueryKeys.all }),
-        ]);
+        ];
+        if (domain === "requests") {
+          jobs.push(
+            qc.invalidateQueries({ queryKey: borrowRequestQueryKeys.all })
+          );
+        } else if (domain === "supplies") {
+          jobs.push(
+            qc.invalidateQueries({ queryKey: consumableRequestQueryKeys.all })
+          );
+        } else {
+          jobs.push(qc.invalidateQueries({ queryKey: borrowLogQueryKeys.all }));
+        }
+        void Promise.all(jobs);
       }, 250);
+    };
+
+    const invalidateAll = () => {
+      invalidateDomain("requests");
+      invalidateDomain("supplies");
+      invalidateDomain("custody");
     };
 
     const filter = tenantId ? `tenant_id=eq.${tenantId}` : undefined;
@@ -59,9 +81,9 @@ export function useBorrowerRealtimeSync(
       : { event: "*" as const, schema: "public", table: "borrow_transactions" };
     const channel = supabase
       .channel(channelName)
-      .on("postgres_changes", requestConfig, () => triggerInvalidation())
-      .on("postgres_changes", supplyConfig, () => triggerInvalidation())
-      .on("postgres_changes", custodyConfig, () => triggerInvalidation())
+      .on("postgres_changes", requestConfig, () => invalidateDomain("requests"))
+      .on("postgres_changes", supplyConfig, () => invalidateDomain("supplies"))
+      .on("postgres_changes", custodyConfig, () => invalidateDomain("custody"))
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return;
         // First subscribe races the page's own queries. Resync only after a
@@ -70,13 +92,14 @@ export function useBorrowerRealtimeSync(
           hasSubscribedOnce = true;
           return;
         }
-        triggerInvalidation();
+        invalidateAll();
       });
 
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
+      for (const timer of Object.values(debounceTimersRef.current)) {
+        if (timer) clearTimeout(timer);
       }
+      debounceTimersRef.current = {};
       void supabase.removeChannel(channel);
     };
   }, [enabled, qc, tenantId]);

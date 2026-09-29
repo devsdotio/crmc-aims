@@ -33,6 +33,7 @@ import { formatPhp } from "@/components/projects/format-money";
 import {
   useUpdateVoucherStatusMutation,
   useDeleteVoucherMutation,
+  useVoucherQuery,
 } from "@/features/vouchers/client";
 import { useUsersQuery } from "@/features/users/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
@@ -147,7 +148,7 @@ function getRoleBadgeStyle(role?: string) {
 }
 
 export function VoucherDetailSheet({
-  voucher,
+  voucher: initialVoucher,
   isOpen,
   onClose,
   onRefresh,
@@ -163,6 +164,13 @@ export function VoucherDetailSheet({
 
   const updateStatusMutation = useUpdateVoucherStatusMutation();
   const deleteMutation = useDeleteVoucherMutation();
+
+  // Seed from list row; refresh in background (realtime owns live updates)
+  const { data: liveVoucher } = useVoucherQuery(initialVoucher?.id ?? "", {
+    initialData: initialVoucher ?? undefined,
+    enabled: Boolean(isOpen && initialVoucher?.id),
+  });
+  const voucher = liveVoucher ?? initialVoucher;
 
   const { data: users = [] } = useUsersQuery({
     enabled: Boolean(isOpen && voucher?.id),

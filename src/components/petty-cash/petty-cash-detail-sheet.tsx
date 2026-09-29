@@ -102,8 +102,11 @@ export function PettyCashDetailSheet({
   const { confirm } = useConfirm();
   const [activeTab, setActiveTab] = useState<TabType>("details");
 
-  // Fetch live voucher
-  const { data: liveVoucher } = usePettyCashQuery(initialVoucher?.id ?? "");
+  // Seed from list row; refresh in background (realtime owns live updates)
+  const { data: liveVoucher } = usePettyCashQuery(initialVoucher?.id ?? "", {
+    initialData: initialVoucher ?? undefined,
+    enabled: Boolean(isOpen && initialVoucher?.id),
+  });
   const voucher = liveVoucher ?? initialVoucher;
 
   const { data: departments = [] } = useDepartmentsQuery({

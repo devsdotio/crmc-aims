@@ -1,6 +1,16 @@
 import { z } from "zod";
+import { hasPoJustification } from "@/lib/po-purpose";
 
 export const purchaseLotItemTypeSchema = z.enum(["consumable", "asset"]);
+
+const poPurposeRequiredSchema = z
+  .string()
+  .trim()
+  .min(1, "Procurement purpose is required.")
+  .max(1000)
+  .refine(hasPoJustification, {
+    message: "Procurement purpose is required.",
+  });
 
 export const purchaseOrderStatusSchema = z.enum([
   "pending_approval",
@@ -12,10 +22,36 @@ export const purchaseOrderStatusSchema = z.enum([
 
 export const listPurchaseLotsQuerySchema = z.object({
   consumableId: z.string().uuid().optional(),
+  consumableIds: z
+    .union([z.array(z.string().uuid()), z.string().uuid()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      return Array.isArray(v) ? v : [v];
+    }),
   assetId: z.string().uuid().optional(),
   supplierId: z.string().uuid().optional(),
   itemType: purchaseLotItemTypeSchema.optional(),
   status: purchaseOrderStatusSchema.optional(),
+  /** Comma-separated or array — preferred over single `status` for widgets. */
+  statuses: z
+    .union([
+      z.array(purchaseOrderStatusSchema).max(5),
+      z.string().transform((value) =>
+        value
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      ),
+    ])
+    .optional()
+    .transform((value) => {
+      if (value === undefined) return undefined;
+      const parsed = z.array(purchaseOrderStatusSchema).max(5).safeParse(value);
+      return parsed.success ? parsed.data : undefined;
+    }),
+  /** Max distinct PO numbers after status filter (keeps multi-line POs intact). */
+  limit: z.coerce.number().int().positive().max(200).optional(),
   search: z.string().trim().max(200).optional(),
   includeSandbox: z
     .union([z.boolean(), z.enum(["true", "false", "1", "0"])])
@@ -45,7 +81,7 @@ export const createPurchaseOrderItemSchema = z.object({
   model: z.string().trim().optional(),
   quantity: z.number().int().positive("Quantity must be at least 1."),
   unitCost: z.union([z.string(), z.number()]),
-  purpose: z.string().trim().optional(),
+  purpose: poPurposeRequiredSchema,
   suggestedDealer: z.string().trim().optional(),
   supplierId: z.string().uuid().optional(),
   projectId: z.string().uuid().optional(),
@@ -65,7 +101,7 @@ export const createPurchaseOrderSchema = z
     departmentIds: z.array(z.string().uuid()).optional(),
     projectId: z.string().uuid().optional(),
     projectName: z.string().trim().max(255).optional(),
-    purpose: z.string().trim().optional(),
+    purpose: poPurposeRequiredSchema,
     notes: z.string().trim().optional(),
     receiptUrl: z.string().trim().nullable().optional(),
     status: purchaseOrderStatusSchema.default("pending_approval"),
@@ -139,7 +175,20 @@ export const updatePurchaseOrderSchema = z.object({
   supplierName: z.string().trim().nullable().optional(),
   reference: z.string().trim().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
-  purpose: z.string().trim().nullable().optional(),
+  purpose: z.union([poPurposeRequiredSchema, z.null()]).optional(),
+  /**
+   * Batch-update purpose on sibling lots (multi-purpose PO edit).
+   * Each entry updates that lot's notes JSON purpose only.
+   */
+  linePurposes: z
+    .array(
+      z.object({
+        lotId: z.string().uuid(),
+        purpose: poPurposeRequiredSchema,
+      })
+    )
+    .max(200)
+    .optional(),
   receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
   recordedByName: z.string().trim().nullable().optional(),

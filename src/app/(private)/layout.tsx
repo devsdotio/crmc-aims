@@ -99,9 +99,18 @@ export default async function PrivateLayout({
   return (
     <DashboardLayout
       initialProfile={{
+        id: profile.userId,
         name: profile.fullName,
         email: profile.email,
         role: profile.role as AppRole,
+        status: profile.status,
+        department: profile.department,
+        departmentId: profile.departmentId,
+        departmentCode: null,
+        tenantId: profile.tenantId,
+        dateAdded: profile.createdAt.toISOString(),
+        lastActiveAt: profile.lastActiveAt?.toISOString() ?? null,
+        createdByUserId: profile.createdByUserId,
       }}
     >
       {children}

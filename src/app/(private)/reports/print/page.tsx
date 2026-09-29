@@ -301,7 +301,8 @@ function PrintableReportView() {
   const filters: BaseReportFilters = useMemo(
     () => ({
       page: 1,
-      pageSize: 100,
+      // Print route should dump a large slice; list pages keep pageSize 20 for cache.
+      pageSize: 2000,
       search: searchParams.get("search") || undefined,
       departmentId: searchParams.get("departmentId") || searchParams.get("department") || undefined,
       category: searchParams.get("category") || undefined,

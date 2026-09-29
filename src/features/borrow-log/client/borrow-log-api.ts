@@ -1,4 +1,5 @@
 import type { BorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.types";
+import type { PaginatedResponse } from "@/types/filters";
 import { fetchJson, type ApiResponse } from "@/features/shared/fetch-json";
 
 export type BorrowLogRecord = BorrowLogDTO;
@@ -26,14 +27,19 @@ export type VoidBorrowPayload = {
   reason?: string;
 };
 
+export type BorrowLogListParams = {
+  status?: BorrowLogRecord["status"] | "closed";
+  department?: string;
+  search?: string;
+  custodyKind?: "borrow" | "assignment" | "all";
+  scope?: "department";
+  page?: number;
+  limit?: number;
+};
+
 export const borrowLogApi = {
-  async list(params?: {
-    status?: BorrowLogRecord["status"];
-    department?: string;
-    search?: string;
-    custodyKind?: "borrow" | "assignment" | "all";
-    scope?: "department";
-  }): Promise<BorrowLogRecord[]> {
+  /** Unpaginated list (department inventory, dashboard). */
+  async list(params?: Omit<BorrowLogListParams, "page" | "limit">): Promise<BorrowLogRecord[]> {
     const sp = new URLSearchParams();
     if (params?.status) sp.set("status", params.status);
     if (params?.department) sp.set("department", params.department);
@@ -43,6 +49,24 @@ export const borrowLogApi = {
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<BorrowLogRecord[]>>(
       qs ? `/api/borrow-log?${qs}` : "/api/borrow-log"
+    );
+    return res.data;
+  },
+
+  /** Paginated list for admin custody log / history tabs. */
+  async listPage(
+    params?: BorrowLogListParams
+  ): Promise<PaginatedResponse<BorrowLogRecord>> {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.set("status", params.status);
+    if (params?.department) sp.set("department", params.department);
+    if (params?.search) sp.set("search", params.search);
+    if (params?.custodyKind) sp.set("custodyKind", params.custodyKind);
+    if (params?.scope) sp.set("scope", params.scope);
+    sp.set("page", String(params?.page ?? 1));
+    sp.set("limit", String(params?.limit ?? 25));
+    const res = await fetchJson<ApiResponse<PaginatedResponse<BorrowLogRecord>>>(
+      `/api/borrow-log?${sp.toString()}`
     );
     return res.data;
   },

@@ -20,12 +20,24 @@ export const auditLogsApi = {
     entityId?: string;
     actorUserId?: string;
     action?: string;
+    search?: string;
+    from?: string;
+    to?: string;
+    criticalOnly?: boolean;
+    limit?: number;
+    offset?: number;
   }): Promise<AuditLogRecord[]> {
     const sp = new URLSearchParams();
     if (params?.entityType) sp.set("entityType", params.entityType);
     if (params?.entityId) sp.set("entityId", params.entityId);
     if (params?.actorUserId) sp.set("actorUserId", params.actorUserId);
     if (params?.action) sp.set("action", params.action);
+    if (params?.search) sp.set("search", params.search);
+    if (params?.from) sp.set("from", params.from);
+    if (params?.to) sp.set("to", params.to);
+    if (params?.criticalOnly) sp.set("criticalOnly", "true");
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    if (params?.offset != null) sp.set("offset", String(params.offset));
     
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<AuditLogRecord[]>>(

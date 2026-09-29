@@ -95,6 +95,21 @@ function IssueHistoryContent() {
   const { canOperate } = useAssetOperator();
   const voidMutation = useVoidStockMovementMutation();
 
+  const fromDate = useMemo(() => {
+    if (dateFilter === "all") return undefined;
+    const now = new Date();
+    if (dateFilter === "today") {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+    }
+    if (dateFilter === "7days") {
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    if (dateFilter === "30days") {
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    return undefined;
+  }, [dateFilter]);
+
   const {
     data: movements = [],
     isLoading: loading,
@@ -102,7 +117,12 @@ function IssueHistoryContent() {
     error: moveErr,
     refetch: refetchMoves,
     isRefetching: isRefreshing,
-  } = useStockMovementsQuery({ reason: "issue", limit: 500 });
+  } = useStockMovementsQuery({
+    reason: "issue",
+    limit: 100,
+    fromDate,
+    excludeVoided: hideVoided || undefined,
+  });
 
   const departments = useMemo(() => {
     const set = new Set<string>();
@@ -126,31 +146,14 @@ function IssueHistoryContent() {
   const filteredRecords = useMemo(() => {
     let result = allRecords;
 
-    if (hideVoided) {
-      result = result.filter((r) => !r.voided);
-    }
-
+    // Voided + date already applied server-side when possible; keep client
+    // filters for destination label and free-text search.
     if (departmentFilter !== "all") {
       result = result.filter(
         (r) =>
           r.destination.toLowerCase() === departmentFilter.toLowerCase() ||
           r.department?.toLowerCase() === departmentFilter.toLowerCase()
       );
-    }
-
-    if (dateFilter !== "all") {
-      const now = new Date();
-      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-      if (dateFilter === "today") {
-        result = result.filter((r) => new Date(r.when) >= startOfDay);
-      } else if (dateFilter === "7days") {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        result = result.filter((r) => new Date(r.when) >= weekAgo);
-      } else if (dateFilter === "30days") {
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        result = result.filter((r) => new Date(r.when) >= monthAgo);
-      }
     }
 
     const q = search.trim().toLowerCase();
@@ -168,7 +171,7 @@ function IssueHistoryContent() {
     }
 
     return result;
-  }, [allRecords, hideVoided, departmentFilter, dateFilter, search]);
+  }, [allRecords, departmentFilter, search]);
 
   const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1;
   const paginatedRecords = useMemo(() => {

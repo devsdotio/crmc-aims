@@ -25,3 +25,12 @@ export interface ProjectProgressSummaryDTO {
   progressPercentage: number;
   indicators: ProjectProgressIndicatorDTO[];
 }
+
+/** Lean counts for table rows — no indicator payloads. */
+export interface ProjectProgressCountsDTO {
+  projectId: string;
+  totalIndicators: number;
+  completedIndicators: number;
+  pendingIndicators: number;
+  progressPercentage: number;
+}

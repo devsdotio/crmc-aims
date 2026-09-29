@@ -31,6 +31,7 @@ import {
   groupLotsByPO,
   type GroupedPurchaseOrder,
 } from "@/types/grouped-purchase-order";
+import { stripPoPurposePrefix } from "@/lib/po-purpose";
 
 import {
   PurchaseOrdersFilters,
@@ -72,14 +73,52 @@ export function PurchaseOrdersView({
   const searchParams = useSearchParams();
   const searchParamQuery = searchParams?.get("search") || searchParams?.get("po") || "";
 
+  const scopedItemType =
+    categoryScope === "asset"
+      ? ("asset" as const)
+      : categoryScope === "consumable" ||
+          categoryScope === "consumables" ||
+          categoryScope === "supplies" ||
+          categoryScope === "materials" ||
+          categoryScope === "projects"
+        ? ("consumable" as const)
+        : undefined;
+
+  const [filters, setFilters] = useState<PurchaseOrderFilterState>({
+    search: searchParamQuery,
+    itemType: scopedItemType ?? "all",
+    status: "all",
+    stockStatus: "all",
+    supplierId: "",
+    datePreset: "all",
+    startDate: "",
+    endDate: "",
+    viewMode: "table",
+  });
+
+  const queryItemType =
+    scopedItemType ??
+    (filters.itemType !== "all" ? filters.itemType : undefined);
+  const queryStatus =
+    filters.status !== "all" ? filters.status : undefined;
+
   const {
     data: lots = [],
     isLoading,
     error,
     isFetching,
     refetch,
-  } = usePurchaseLotsQuery();
-  const { data: consumablePage } = useConsumablesQuery({ limit: 100 });
+  } = usePurchaseLotsQuery({
+    itemType: queryItemType,
+    status: queryStatus,
+  });
+  const needsClassificationMap =
+    categoryScope === "supplies" || categoryScope === "materials";
+  const { data: consumablePage } = useConsumablesQuery({
+    limit: 200,
+    catalog: true,
+    enabled: needsClassificationMap,
+  });
   const classificationByConsumableId = useMemo(() => {
     const map = new Map<string, ConsumableClassification>();
     for (const item of consumablePage?.data ?? []) {
@@ -114,27 +153,6 @@ export function PurchaseOrdersView({
   const [deleteTarget, setDeleteTarget] = useState<GroupedPurchaseOrder | null>(
     null
   );
-
-  const [filters, setFilters] = useState<PurchaseOrderFilterState>({
-    search: searchParamQuery,
-    itemType:
-      categoryScope === "asset"
-        ? "asset"
-        : categoryScope === "consumable" ||
-          categoryScope === "consumables" ||
-          categoryScope === "supplies" ||
-          categoryScope === "materials" ||
-          categoryScope === "projects"
-        ? "consumable"
-        : "all",
-    status: "all",
-    stockStatus: "all",
-    supplierId: "",
-    datePreset: "all",
-    startDate: "",
-    endDate: "",
-    viewMode: "table",
-  });
 
   const [selectedLot, setSelectedLot] = useState<PurchaseLot | null>(null);
   const [printSlipLot, setPrintSlipLot] = useState<PurchaseLot | null>(null);
@@ -294,9 +312,11 @@ export function PurchaseOrdersView({
         const matchRecorder = lot.recordedByName?.toLowerCase().includes(q);
         const matchRef = lot.reference?.toLowerCase().includes(q);
         const matchNotes = lot.notes?.toLowerCase().includes(q);
-        const matchPurpose = group.lineItems.some(
-          (li) => li.purpose?.toLowerCase().includes(q)
-        );
+        const matchPurpose = group.lineItems.some((li) => {
+          const full = li.purpose?.toLowerCase() ?? "";
+          const just = stripPoPurposePrefix(li.purpose).toLowerCase();
+          return full.includes(q) || just.includes(q);
+        });
         if (
           !matchCode &&
           !matchAnyItem &&

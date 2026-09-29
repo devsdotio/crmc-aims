@@ -1,20 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import Sidebar from "@/components/sidebar";
 import GlobalHeader from "@/components/global-header";
 import { cn } from "@/lib/utils";
 import { useMeQuery } from "@/features/users/client";
+import { userQueryKeys } from "@/features/users/client/query-keys";
+import type { MeProfile } from "@/features/users/client/users-api";
 import { useDashboardSidebarSummaryQuery } from "@/features/dashboard/client/use-dashboard";
 
-import type { UserRole } from "@/types/users";
+import type { UserRole, UserStatus } from "@/types/users";
+
+export type InitialShellProfile = {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  department: string | null;
+  departmentId: string | null;
+  departmentCode: string | null;
+  tenantId: string | null;
+  dateAdded: string;
+  lastActiveAt: string | null;
+  createdByUserId: string | null;
+};
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
-  initialProfile?: {
-    name: string;
-    email: string;
-    role: UserRole;
+  initialProfile?: InitialShellProfile;
+}
+
+function toSeededMe(profile: InitialShellProfile): MeProfile {
+  return {
+    id: profile.id,
+    email: profile.email,
+    name: profile.name,
+    role: profile.role,
+    status: profile.status,
+    department: profile.department,
+    departmentId: profile.departmentId,
+    departmentCode: profile.departmentCode,
+    tenantId: profile.tenantId,
+    dateAdded: profile.dateAdded,
+    lastActive: null,
+    lastActiveAt: profile.lastActiveAt,
+    createdByUserId: profile.createdByUserId,
   };
 }
 
@@ -22,6 +55,8 @@ export default function DashboardLayout({
   children,
   initialProfile,
 }: DashboardLayoutProps) {
+  const pathname = usePathname();
+  const queryClient = useQueryClient();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   // Defer shell metrics until after page data starts — frees the DB pool for
   // /api/assets, /api/consumables, etc. (sidebar badges are non-critical).
@@ -31,12 +66,25 @@ export default function DashboardLayout({
     return () => window.clearTimeout(t);
   }, []);
 
-  // Prefer SSR profile labels; soft-refresh /api/me after first paint.
+  // Seed /api/me cache from SSR so the shell never waits on a cold identity fetch.
+  useEffect(() => {
+    if (!initialProfile) return;
+    const existing = queryClient.getQueryData<MeProfile>(userQueryKeys.me());
+    if (existing) return;
+    queryClient.setQueryData(userQueryKeys.me(), toSeededMe(initialProfile));
+  }, [initialProfile, queryClient]);
+
+  const onPlatform = pathname === "/platform" || pathname.startsWith("/platform/");
+  // Staff /dashboard already loads the full snapshot and seeds sidebar cache —
+  // skip the duplicate ?scope=sidebar fetch on that page only.
+  const onAdminDashboard = pathname === "/dashboard";
+
+  // Soft-refresh /api/me after first paint (cache already seeded when SSR profile exists).
   const { data: me, isLoading: meLoading } = useMeQuery({
     enabled: shellReady,
   });
   const { data: summary } = useDashboardSidebarSummaryQuery({
-    enabled: shellReady,
+    enabled: shellReady && !onPlatform && !onAdminDashboard,
   });
 
   const userName =

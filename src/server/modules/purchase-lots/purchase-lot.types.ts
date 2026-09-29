@@ -58,10 +58,14 @@ export type PurchaseLotDTO = {
 
 export type ListPurchaseLotFilters = {
   consumableId?: string;
+  consumableIds?: string[];
   assetId?: string;
   supplierId?: string;
   itemType?: PurchaseLotItemType;
   status?: PurchaseOrderStatus;
+  statuses?: PurchaseOrderStatus[];
+  /** Max distinct PO numbers after status filter. */
+  limit?: number;
   search?: string;
   includeSandbox?: boolean;
 };
@@ -107,7 +111,7 @@ export type CreatePurchaseOrderItemInput = {
   model?: string;
   quantity: number;
   unitCost: string | number;
-  purpose?: string;
+  purpose: string;
   suggestedDealer?: string;
   supplierId?: string;
   projectId?: string;
@@ -126,7 +130,7 @@ export type CreatePurchaseOrderInput = {
   departmentIds?: string[];
   projectId?: string | null;
   projectName?: string | null;
-  purpose?: string;
+  purpose: string;
   notes?: string;
   receiptUrl?: string | null;
   status?: PurchaseOrderStatus;
@@ -140,6 +144,8 @@ export type UpdatePurchaseOrderInput = {
   reference?: string | null;
   notes?: string | null;
   purpose?: string | null;
+  /** Batch-update purpose on sibling lots (multi-purpose PO edit). */
+  linePurposes?: Array<{ lotId: string; purpose: string }>;
   receiptUrl?: string | null;
   purchasedOn?: string;
   recordedByName?: string | null;

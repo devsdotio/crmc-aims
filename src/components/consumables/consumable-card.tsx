@@ -3,6 +3,7 @@
 import { SlidersHorizontal, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConsumableItem } from "@/types/inventory";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import { StockLevelBar } from "./stock-level-bar";
 import { CategoryPill } from "./category-pill";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
@@ -12,6 +13,7 @@ export interface ConsumableCardProps {
   onSelect: (item: ConsumableItem) => void;
   onAdjust?: (item: ConsumableItem) => void;
   onDelete?: (item: ConsumableItem) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 export function ConsumableCard({
@@ -19,6 +21,7 @@ export function ConsumableCard({
   onSelect,
   onAdjust,
   onDelete,
+  getCategoryStyle,
 }: ConsumableCardProps) {
   return (
     <div
@@ -50,7 +53,11 @@ export function ConsumableCard({
           >
             {consumableClassificationLabel(item.classification)}
           </span>
-          <CategoryPill category={item.category} className="max-w-full" />
+          <CategoryPill
+            category={item.category}
+            className="max-w-full"
+            getCategoryStyle={getCategoryStyle}
+          />
         </div>
       </div>
 

@@ -7,6 +7,8 @@ export const projectQueryKeys = {
     [...projectQueryKeys.all, "expenses", projectId] as const,
   progress: (projectId: string) =>
     [...projectQueryKeys.all, "progress", projectId] as const,
+  progressSummaries: () =>
+    [...projectQueryKeys.all, "progress-summaries"] as const,
   assets: (projectId: string, status?: string) =>
     [...projectQueryKeys.all, "assets", projectId, status ?? "all"] as const,
 };

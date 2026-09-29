@@ -1,5 +1,4 @@
 "use client";
-import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { useQueryClient } from "@tanstack/react-query";
 import { assetQueryKeys } from "@/features/assets/client/query-keys";
 import { assetsApi } from "@/features/assets/client/assets-api";
@@ -9,12 +8,14 @@ import {
   custodyBadgeLabel,
   custodyDetailLabel,
 } from "@/lib/assets-custody";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import type { Asset,  AssetStatus } from "@/types/assets";
 import { AssignmentTypeBadge } from "./assignment-type-badge";
 
 export interface AssetTableRowProps {
   asset: Asset;
   onSelect: (asset: Asset) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 const STATUS_STYLES: Record<
@@ -48,8 +49,7 @@ const STATUS_STYLES: Record<
   },
 };
 
-export function AssetTableRow({ asset, onSelect }: AssetTableRowProps) {
-  const { getCategoryStyle } = useCategoryStyleMap();
+export function AssetTableRow({ asset, onSelect, getCategoryStyle }: AssetTableRowProps) {
   const categoryMeta = getCategoryStyle(asset.category);
   const statusMeta = STATUS_STYLES[asset.status];
 

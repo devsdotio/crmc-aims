@@ -1,17 +1,18 @@
 "use client";
-import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { User, MapPin, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   custodyBadgeLabel,
   custodyDetailLabel,
 } from "@/lib/assets-custody";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import type { Asset, AssetStatus } from "@/types/assets";
 import { AssignmentTypeBadge } from "./assignment-type-badge";
 
 export interface AssetCardProps {
   asset: Asset;
   onSelect: (asset: Asset) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 const STATUS_STYLES: Record<
@@ -45,8 +46,7 @@ const STATUS_STYLES: Record<
   },
 };
 
-export function AssetCard({ asset, onSelect }: AssetCardProps) {
-  const { getCategoryStyle } = useCategoryStyleMap();
+export function AssetCard({ asset, onSelect, getCategoryStyle }: AssetCardProps) {
   const categoryMeta = getCategoryStyle(asset.category);
   const statusMeta = STATUS_STYLES[asset.status];
 

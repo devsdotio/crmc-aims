@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -8,6 +8,12 @@ import {
   type NewProjectProgressIndicatorRow,
   type ProjectProgressIndicatorRow,
 } from "@/server/db/schema";
+
+export type ProjectProgressCountRow = {
+  projectId: string;
+  totalIndicators: number;
+  completedIndicators: number;
+};
 
 export class ProjectProgressRepository {
   private db(session?: DbSession) {
@@ -54,6 +60,39 @@ export class ProjectProgressRepository {
         asc(projectProgressIndicators.orderIndex),
         asc(projectProgressIndicators.createdAt)
       );
+  }
+
+  /** Aggregate indicator counts for many projects in one query (table list). */
+  async countByProjectIds(
+    projectIds: string[],
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<ProjectProgressCountRow[]> {
+    if (projectIds.length === 0) return [];
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [
+      inArray(projectProgressIndicators.projectId, projectIds),
+    ];
+    if (resolvedTenantId) {
+      conditions.push(eq(projectProgressIndicators.tenantId, resolvedTenantId));
+    }
+
+    const rows = await db
+      .select({
+        projectId: projectProgressIndicators.projectId,
+        totalIndicators: count(),
+        completedIndicators: sql<number>`cast(sum(case when ${projectProgressIndicators.isCompleted} then 1 else 0 end) as int)`,
+      })
+      .from(projectProgressIndicators)
+      .where(and(...conditions))
+      .groupBy(projectProgressIndicators.projectId);
+
+    return rows.map((r) => ({
+      projectId: r.projectId,
+      totalIndicators: Number(r.totalIndicators),
+      completedIndicators: Number(r.completedIndicators),
+    }));
   }
 
   async create(

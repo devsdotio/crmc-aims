@@ -115,6 +115,49 @@ export class BorrowLogRepository implements IBorrowLogRepository {
     tenantId?: string
   ): Promise<BorrowTransactionRow[]> {
     const db = this.db(session);
+    const conditions = this.buildListConditions(filters, tenantId);
+    const page = filters.page;
+    const limit = filters.limit;
+
+    const base = db
+      .select()
+      .from(borrowTransactions)
+      .orderBy(desc(borrowTransactions.releasedAt));
+
+    const filtered =
+      conditions.length === 0 ? base : base.where(and(...conditions));
+
+    if (page != null && limit != null) {
+      const offset = (page - 1) * limit;
+      return filtered.limit(limit).offset(offset);
+    }
+    if (limit != null) {
+      return filtered.limit(limit);
+    }
+    return filtered;
+  }
+
+  async count(
+    filters: ListBorrowLogFilters = {},
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<number> {
+    const db = this.db(session);
+    const conditions = this.buildListConditions(filters, tenantId);
+    const base = db
+      .select({ value: count() })
+      .from(borrowTransactions);
+    const [row] =
+      conditions.length === 0
+        ? await base
+        : await base.where(and(...conditions));
+    return Number(row?.value ?? 0);
+  }
+
+  private buildListConditions(
+    filters: ListBorrowLogFilters,
+    tenantId?: string
+  ) {
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
     if (resolvedTenantId) conditions.push(eq(borrowTransactions.tenantId, resolvedTenantId));
@@ -126,6 +169,10 @@ export class BorrowLogRepository implements IBorrowLogRepository {
       conditions.push(eq(borrowTransactions.status, "returned"));
     } else if (filters.status === "voided") {
       conditions.push(eq(borrowTransactions.status, "voided"));
+    } else if (filters.status === "closed") {
+      conditions.push(
+        inArray(borrowTransactions.status, ["returned", "voided"])
+      );
     } else if (filters.status === "active") {
       conditions.push(eq(borrowTransactions.status, "active"));
       conditions.push(
@@ -180,13 +227,7 @@ export class BorrowLogRepository implements IBorrowLogRepository {
         )!
       );
     }
-    const base = db
-      .select()
-      .from(borrowTransactions)
-      .orderBy(desc(borrowTransactions.releasedAt));
-
-    if (conditions.length === 0) return base;
-    return base.where(and(...conditions));
+    return conditions;
   }
 
   async countActive(

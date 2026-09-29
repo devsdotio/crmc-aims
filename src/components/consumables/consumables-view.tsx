@@ -11,6 +11,7 @@ import {
   useDeleteConsumableMutation,
   type StockAdjustPayload,
 } from "@/features/consumables/client/use-consumables";
+import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import type { ConsumableItem, ConsumableFilterState } from "@/types/inventory";
 import { getStockSeverity } from "@/components/consumables/utils";
 import { ConsumableFilters } from "@/components/consumables/consumable-filters";
@@ -33,23 +34,22 @@ export interface ConsumablesViewProps {
 
 export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) {
   const router = useRouter();
+  const { getCategoryStyle } = useCategoryStyleMap();
   const {
     data: paginatedData,
     isLoading: isConsumablesLoading,
     isError,
     error,
     refetch,
-  } = useConsumablesQuery({ limit: 100 });
+  } = useConsumablesQuery({
+    limit: 200,
+    classification: lockedClassification,
+  });
 
-  const rawItems = useMemo(
+  const items = useMemo(
     () => paginatedData?.data ?? [],
     [paginatedData?.data]
   );
-
-  const items = useMemo(() => {
-    if (!lockedClassification) return rawItems;
-    return rawItems.filter((i) => (i.classification ?? "supply") === lockedClassification);
-  }, [rawItems, lockedClassification]);
 
   const createMutation = useCreateConsumableMutation();
   const updateMutation = useUpdateConsumableMutation();
@@ -370,6 +370,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
               items={filteredItems}
               loading={isLoading && !isError}
               onSelect={(item) => setSelectedId(item.id)}
+              getCategoryStyle={getCategoryStyle}
               onAdjust={
                 canOperate
                   ? (item) => setAdjustState({ isOpen: true, item })
@@ -386,6 +387,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
               items={filteredItems}
               loading={isLoading && !isError}
               onSelect={(item) => setSelectedId(item.id)}
+              getCategoryStyle={getCategoryStyle}
               onAdjust={
                 canOperate
                   ? (item) => setAdjustState({ isOpen: true, item })

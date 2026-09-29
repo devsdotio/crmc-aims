@@ -2,6 +2,7 @@
 
 import { PackageSearch } from "lucide-react";
 import type { ConsumableItem } from "@/types/inventory";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import { ConsumableCard } from "./consumable-card";
 
 export interface ConsumableGridProps {
@@ -10,6 +11,7 @@ export interface ConsumableGridProps {
   onSelect: (item: ConsumableItem) => void;
   onAdjust?: (item: ConsumableItem) => void;
   onDelete?: (item: ConsumableItem) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 // ─── Matched Skeleton Card for Consumables Grid ──────────────────────────────
@@ -44,6 +46,7 @@ export function ConsumableGrid({
   onSelect,
   onAdjust,
   onDelete,
+  getCategoryStyle,
 }: ConsumableGridProps) {
   if (loading) {
     return (
@@ -80,6 +83,7 @@ export function ConsumableGrid({
           onSelect={onSelect}
           onAdjust={onAdjust}
           onDelete={onDelete}
+          getCategoryStyle={getCategoryStyle}
         />
       ))}
     </div>

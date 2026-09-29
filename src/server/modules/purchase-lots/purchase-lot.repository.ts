@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, ilike, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, or } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -151,7 +151,9 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
       conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
     }
 
-    if (filters.consumableId) {
+    if (filters.consumableIds && filters.consumableIds.length > 0) {
+      conditions.push(inArray(purchaseLots.consumableId, filters.consumableIds));
+    } else if (filters.consumableId) {
       conditions.push(eq(purchaseLots.consumableId, filters.consumableId));
     }
     if (filters.assetId) {

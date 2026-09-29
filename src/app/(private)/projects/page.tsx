@@ -15,6 +15,7 @@ import { useMeQuery } from "@/features/users/client";
 import {
   useCreateProjectMutation,
   useDeleteProjectMutation,
+  useProjectsProgressSummariesQuery,
   useProjectsQuery,
   useUpdateProjectMutation,
 } from "@/features/projects/client";
@@ -28,6 +29,19 @@ export default function ProjectsPage() {
     error: projectsError,
     isFetching,
   } = useProjectsQuery();
+  const { data: progressRows = [] } = useProjectsProgressSummariesQuery({
+    enabled: !projectsLoading,
+  });
+  const progressByProjectId = useMemo(() => {
+    const map: Record<
+      string,
+      (typeof progressRows)[number]
+    > = {};
+    for (const row of progressRows) {
+      map[row.projectId] = row;
+    }
+    return map;
+  }, [progressRows]);
 
   const createProject = useCreateProjectMutation();
   const updateProject = useUpdateProjectMutation();
@@ -195,6 +209,7 @@ export default function ProjectsPage() {
       <main className="flex-1 overflow-y-auto min-h-0 bg-bg">
         <ProjectTable
           projects={filtered}
+          progressByProjectId={progressByProjectId}
           loading={isLoading && !projectsError}
           deletingProjectId={
             deleteProject.isPending ? deleteProject.variables : null

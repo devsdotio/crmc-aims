@@ -2,6 +2,7 @@
 
 import { PackageSearch } from "lucide-react";
 import type { ConsumableItem } from "@/types/inventory";
+import type { CategoryStyleMeta } from "@/constants/categories";
 import { ConsumableTableRow } from "./consumable-table-row";
 
 export interface ConsumableTableProps {
@@ -10,6 +11,7 @@ export interface ConsumableTableProps {
   onSelect: (item: ConsumableItem) => void;
   onAdjust?: (item: ConsumableItem) => void;
   onDelete?: (item: ConsumableItem) => void;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 // ─── Matched Skeleton Row for Consumables Table ─────────────────────────────
@@ -48,6 +50,7 @@ export function ConsumableTable({
   onSelect,
   onAdjust,
   onDelete,
+  getCategoryStyle,
 }: ConsumableTableProps) {
   if (loading) {
     return (
@@ -108,6 +111,7 @@ export function ConsumableTable({
               onSelect={onSelect}
               onAdjust={onAdjust}
               onDelete={onDelete}
+              getCategoryStyle={getCategoryStyle}
             />
           ))}
         </tbody>

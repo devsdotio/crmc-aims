@@ -184,10 +184,11 @@ export class BorrowRequestService {
   }
 
   /** Shared gate: unit must be free of holder and open project custody. */
-  private async assertAssetFreeForRequest(
+  private assertAssetFreeForRequest(
     asset: AssetRow,
-    tenantId?: string
-  ): Promise<void> {
+    openProjectByAssetId: Map<string, string>,
+    openBorrowByAssetId: Map<string, string>
+  ): void {
     if (asset.status !== "active") {
       throw new ConflictError(
         `Asset ${asset.assetCode} is not available (${asset.status.replace(/_/g, " ")}).`
@@ -198,22 +199,12 @@ export class BorrowRequestService {
         `Asset ${asset.assetCode} is currently in custody (${asset.currentHolder}).`
       );
     }
-    const openProject = await this.projectAssignments.findOpenByAssetId(
-      asset.id,
-      undefined,
-      tenantId
-    );
-    if (openProject) {
+    if (openProjectByAssetId.has(asset.id)) {
       throw new ConflictError(
         `Asset ${asset.assetCode} is assigned to a project. Return it from the project panel first.`
       );
     }
-    const openBorrow = await this.borrowLogRepo.findActiveByAssetId(
-      asset.id,
-      undefined,
-      tenantId
-    );
-    if (openBorrow) {
+    if (openBorrowByAssetId.has(asset.id)) {
       throw new ConflictError(
         `Asset ${asset.assetCode} already has an active custody log. Return it first.`
       );
@@ -501,10 +492,40 @@ export class BorrowRequestService {
           throw new ConflictError("Each asset can only be issued once per release.");
         }
         seenAssetIds.add(assetId);
+      }
+    }
 
-        const asset = await this.assetRepo.findById(assetId, undefined, actor.tenantId);
+    const assetIds = [...seenAssetIds];
+    const [loadedAssets, openProjectByAssetId, openBorrowByAssetId] =
+      await Promise.all([
+        this.assetRepo.findByIds(assetIds, undefined, actor.tenantId),
+        this.projectAssignments.findOpenHolderLabelsByAssetIds(
+          assetIds,
+          undefined,
+          actor.tenantId
+        ),
+        this.borrowLogRepo.findActiveHolderLabelsByAssetIds(
+          assetIds,
+          undefined,
+          actor.tenantId
+        ),
+      ]);
+
+    for (const asset of loadedAssets) {
+      assetsById.set(asset.id, asset);
+    }
+
+    for (const allocation of input.lineAllocations) {
+      const line = existing.items[allocation.lineIndex]!;
+
+      for (const assetId of allocation.assetIds) {
+        const asset = assetsById.get(assetId);
         if (!asset) throw new NotFoundError("Asset", assetId);
-        await this.assertAssetFreeForRequest(asset, actor.tenantId);
+        this.assertAssetFreeForRequest(
+          asset,
+          openProjectByAssetId,
+          openBorrowByAssetId
+        );
         if (asset.assignmentType !== expectedAssignmentType) {
           throw new ConflictError(
             `Asset ${asset.assetCode} is not ${expectedAssignmentType}.`
@@ -515,8 +536,6 @@ export class BorrowRequestService {
             `Asset ${asset.assetCode} is in category "${asset.category}", expected "${line.category}".`
           );
         }
-
-        assetsById.set(assetId, asset);
       }
     }
 

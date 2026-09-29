@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShoppingCart, ArrowRight, FileText, Clock, PackageCheck } from "lucide-react";
+import { ShoppingCart, ArrowRight, FileText, Clock } from "lucide-react";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
 import { groupLotsByPO } from "@/types/grouped-purchase-order";
 import { formatPhp } from "@/components/projects/format-money";
@@ -29,7 +29,10 @@ export function PendingPurchaseOrdersCard({
   loading = false,
 }: PendingPurchaseOrdersCardProps) {
   const router = useRouter();
-  const { data: lots, isLoading: poLoading } = usePurchaseLotsQuery();
+  const { data: lots, isLoading: poLoading } = usePurchaseLotsQuery({
+    statuses: ["pending_approval", "ordered"],
+    limit: 4,
+  });
 
   const isActuallyLoading = loading || poLoading;
 
@@ -60,42 +63,7 @@ export function PendingPurchaseOrdersCard({
       }
     }
 
-    // Realistic fallback items when no active pending POs are in database
-    return [
-      {
-        id: "po-1",
-        poNumber: "PO-2026-0042",
-        itemName: "Dell OptiPlex 7090 Micro Units",
-        itemCount: 8,
-        totalCost: 384000,
-        status: "pending_approval",
-        statusLabel: "Pending Approval",
-        department: "Internal Medicine",
-        href: "/purchase-orders",
-      },
-      {
-        id: "po-2",
-        poNumber: "PO-2026-0039",
-        itemName: "High-Volume Laser Toner Cartridges",
-        itemCount: 25,
-        totalCost: 92500,
-        status: "ordered",
-        statusLabel: "In Transit",
-        department: "Records & Admin",
-        href: "/purchase-orders",
-      },
-      {
-        id: "po-3",
-        poNumber: "PO-2026-0035",
-        itemName: "Ergonomic Task Chairs (Batch C)",
-        itemCount: 14,
-        totalCost: 168000,
-        status: "pending_approval",
-        statusLabel: "Pending Approval",
-        department: "Nursing Services",
-        href: "/purchase-orders",
-      },
-    ];
+    return [];
   }, [lots]);
 
   return (
@@ -132,6 +100,15 @@ export function PendingPurchaseOrdersCard({
               <div className="h-5 w-16 rounded-full bg-border/40 shrink-0" />
             </div>
           ))}
+        </div>
+      ) : items.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-4 text-center">
+          <p className="text-xs font-semibold text-text-secondary">
+            No pending purchase orders
+          </p>
+          <p className="text-[10px] text-text-secondary/80 mt-0.5">
+            New POs awaiting approval or delivery will show here.
+          </p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-border/50 my-0.5 pr-1">

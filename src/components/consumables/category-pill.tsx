@@ -2,19 +2,19 @@
 
 import { Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
+import type { CategoryStyleMeta } from "@/constants/categories";
 
 interface CategoryPillProps {
   category: string;
   className?: string;
+  getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
 }
 
 /**
  * Keeps long or multi-line category names from changing row/card dimensions.
  * The full normalized label remains available through the native tooltip.
  */
-export function CategoryPill({ category, className }: CategoryPillProps) {
-  const { getCategoryStyle } = useCategoryStyleMap();
+export function CategoryPill({ category, className, getCategoryStyle }: CategoryPillProps) {
   const categoryMeta = getCategoryStyle(category);
   const label = categoryMeta.label.replace(/\s+/g, " ").trim();
 

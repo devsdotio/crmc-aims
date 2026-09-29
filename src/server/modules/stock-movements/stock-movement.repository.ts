@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, not, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -216,6 +216,8 @@ export class StockMovementRepository {
     /** Forced from session for borrowers — never trust client alone. */
     departmentId?: string;
     classification?: ConsumableClassification;
+    fromDate?: string;
+    excludeVoided?: boolean;
   }): Promise<StockMovementListRow[]> {
     const db = this.db();
     const resolvedTenantId = filters.tenantId ?? getTenantContext()?.tenantId;
@@ -255,6 +257,21 @@ export class StockMovementRepository {
     }
     if (filters.classification) {
       conditions.push(eq(consumables.classification, filters.classification));
+    }
+    if (filters.fromDate?.trim()) {
+      const raw = filters.fromDate.trim();
+      const from = new Date(raw.length <= 10 ? `${raw}T00:00:00.000Z` : raw);
+      if (!Number.isNaN(from.getTime())) {
+        conditions.push(gte(stockMovements.createdAt, from));
+      }
+    }
+    if (filters.excludeVoided) {
+      conditions.push(
+        or(
+          sql`${stockMovements.notes} is null`,
+          not(ilike(stockMovements.notes, "%[VOIDED]%"))
+        )!
+      );
     }
 
     const base = db

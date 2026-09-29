@@ -60,26 +60,24 @@ export class MaintenanceLogService {
 
   async list(rawQuery: unknown, actor?: ActorContext): Promise<MaintenanceLogDTO[]> {
     const filters = listMaintenanceQuerySchema.parse(rawQuery ?? {});
-    if (actor) {
-      await this.syncOrphanNeedsRepairFlags(actor, filters.includeSandbox === true);
-    }
     const rows = await this.repo.list(filters, undefined, actor?.tenantId);
     return rows.map(toDTO);
   }
 
   /**
    * Backfill open maintenance logs for assets already marked needs_repair
-   * without a corresponding open log (status-only edits, legacy data).
+   * without a corresponding open log. Call explicitly (mutation), never from GET list.
    */
-  private async syncOrphanNeedsRepairFlags(
+  async syncOrphanNeedsRepairFlags(
     actor: ActorContext,
-    includeSandbox: boolean
-  ): Promise<void> {
+    includeSandbox = false
+  ): Promise<{ created: number }> {
     const orphans = await this.repo.findNeedsRepairWithoutOpenLog({
       includeSandbox,
     }, undefined, actor.tenantId);
-    if (orphans.length === 0) return;
+    if (orphans.length === 0) return { created: 0 };
 
+    let created = 0;
     for (const asset of orphans) {
       // Skip in-custody orphans — they must go through return / project damage.
       if (asset.currentHolder) continue;
@@ -144,8 +142,10 @@ export class MaintenanceLogService {
           },
           tx
         );
+        created += 1;
       });
     }
+    return { created };
   }
 
   async getById(rawId: string, actor?: ActorContext): Promise<MaintenanceLogDTO> {

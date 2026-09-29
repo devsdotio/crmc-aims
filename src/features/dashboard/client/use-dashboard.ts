@@ -47,16 +47,18 @@ export function useDashboardSnapshotQuery(options?: {
 /** Nav badge counts — safe to run from the shell; defer with `enabled` so page lists go first. */
 export function useDashboardSidebarSummaryQuery(options?: {
   enabled?: boolean;
+  refetchInterval?: number | false;
+  staleTime?: number;
 }): UseQueryResult<DashboardSummary, Error> {
   return useQuery({
     queryKey: dashboardQueryKeys.sidebarSummary(),
     queryFn: () => dashboardApi.getSidebarSummary(),
-    staleTime: 60_000,
+    staleTime: options?.staleTime ?? 2 * 60_000,
     gcTime: 5 * 60_000,
     placeholderData: (prev) => prev,
     refetchOnWindowFocus: true,
-    // Keep sidebar badge counts (pending, overdue, low-stock) live.
-    refetchInterval: 60_000,
+    // Badge counts — longer interval than page lists to free the DB pool.
+    refetchInterval: options?.refetchInterval ?? 2 * 60_000,
     enabled: options?.enabled ?? true,
   });
 }

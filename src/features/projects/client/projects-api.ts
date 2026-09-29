@@ -288,6 +288,29 @@ export const projectsApi = {
     return response.data;
   },
 
+  async getProgressSummaries(): Promise<
+    Array<{
+      projectId: string;
+      totalIndicators: number;
+      completedIndicators: number;
+      pendingIndicators: number;
+      progressPercentage: number;
+    }>
+  > {
+    const response = await fetchJson<
+      ApiResponse<
+        Array<{
+          projectId: string;
+          totalIndicators: number;
+          completedIndicators: number;
+          pendingIndicators: number;
+          progressPercentage: number;
+        }>
+      >
+    >("/api/projects/progress-summaries", { method: "GET" });
+    return response.data;
+  },
+
   async createIndicator(
     projectId: string,
     payload: CreateIndicatorPayload

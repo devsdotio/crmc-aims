@@ -27,7 +27,8 @@ import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useToast } from "@/components/providers/toast-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import {
-  useBorrowLogQuery,
+  borrowLogApi,
+  useBorrowLogPageQuery,
   useHardDeleteBorrowMutation,
   useReturnBorrowMutation,
   useVoidBorrowMutation,
@@ -106,86 +107,87 @@ function BorrowLogContent() {
   const { canOperate, role } = useAssetOperator();
   const canHardDelete = role === "superadmin";
 
+  const listStatus =
+    tab === "all"
+      ? undefined
+      : tab === "returned"
+        ? ("closed" as const)
+        : tab;
+
+  const sharedListFilters = {
+    custodyKind: (isAssignmentMode ? "assignment" : "borrow") as
+      | "borrow"
+      | "assignment",
+    department: departmentFilter !== "all" ? departmentFilter : undefined,
+    search: search.trim() || undefined,
+  };
+
   const {
-    data: allRecords = [],
+    data: pageData,
     isLoading,
     isError,
     error,
     refetch,
     isRefetching,
-  } = useBorrowLogQuery({
-    custodyKind: isAssignmentMode ? "assignment" : "borrow",
+  } = useBorrowLogPageQuery({
+    ...sharedListFilters,
+    status: listStatus,
+    page,
+    limit: pageSize,
   });
+
+  // Lightweight totals for tab badges (page=1, limit=1 → count only via total).
+  const { data: countAll } = useBorrowLogPageQuery({
+    ...sharedListFilters,
+    page: 1,
+    limit: 1,
+  });
+  const { data: countActive } = useBorrowLogPageQuery({
+    ...sharedListFilters,
+    status: "active",
+    page: 1,
+    limit: 1,
+  });
+  const { data: countOverdue } = useBorrowLogPageQuery({
+    ...sharedListFilters,
+    status: "overdue",
+    page: 1,
+    limit: 1,
+    enabled: !isAssignmentMode,
+  });
+  const { data: countReturned } = useBorrowLogPageQuery({
+    ...sharedListFilters,
+    status: "closed",
+    page: 1,
+    limit: 1,
+  });
+
+  const paginatedRecords = pageData?.data ?? [];
+  const filteredTotal = pageData?.total ?? 0;
+  const totalPages = pageData?.totalPages ?? 1;
 
   const returnMutation = useReturnBorrowMutation();
   const voidMutation = useVoidBorrowMutation();
   const hardDeleteMutation = useHardDeleteBorrowMutation();
 
-  // Extract unique departments for dropdown
+  const counts = useMemo(
+    () => ({
+      all: countAll?.total ?? 0,
+      active: countActive?.total ?? 0,
+      overdue: countOverdue?.total ?? 0,
+      returned: countReturned?.total ?? 0,
+    }),
+    [countAll?.total, countActive?.total, countOverdue?.total, countReturned?.total]
+  );
+
+  // Departments from current page (filter dropdown still useful for labels seen)
   const departments = useMemo(() => {
     const set = new Set<string>();
-    allRecords.forEach((r) => r.department && set.add(r.department));
+    paginatedRecords.forEach((r) => r.department && set.add(r.department));
     return Array.from(set).sort();
-  }, [allRecords]);
+  }, [paginatedRecords]);
 
-  // Base filtered records (excluding status tab) for accurate badge counts
-  const baseFilteredRecords = useMemo(() => {
-    let result = allRecords;
-
-    // Department filter
-    if (departmentFilter !== "all") {
-      result = result.filter(
-        (r) => r.department?.toLowerCase() === departmentFilter.toLowerCase()
-      );
-    }
-
-    // Search filter
-    const q = search.trim().toLowerCase();
-    if (q) {
-      result = result.filter(
-        (r) =>
-          r.logCode.toLowerCase().includes(q) ||
-          r.assetCode.toLowerCase().includes(q) ||
-          r.assetName.toLowerCase().includes(q) ||
-          r.borrowerName.toLowerCase().includes(q) ||
-          r.department.toLowerCase().includes(q) ||
-          (r.requestCode ?? "").toLowerCase().includes(q) ||
-          (r.borrowerEmail ?? "").toLowerCase().includes(q)
-      );
-    }
-
-    return result;
-  }, [allRecords, departmentFilter, search]);
-
-  // Tab counts based on active search and department filters
-  const counts = useMemo(() => {
-    return {
-      all: baseFilteredRecords.length,
-      active: baseFilteredRecords.filter((r) => r.status === "active").length,
-      overdue: baseFilteredRecords.filter((r) => r.status === "overdue").length,
-      returned: baseFilteredRecords.filter(
-        (r) => r.status === "returned" || r.status === "voided"
-      ).length,
-    };
-  }, [baseFilteredRecords]);
-
-  // Final filtered records for current status tab
-  const filteredRecords = useMemo(() => {
-    if (tab === "all") return baseFilteredRecords;
-    if (tab === "returned") {
-      return baseFilteredRecords.filter(
-        (r) => r.status === "returned" || r.status === "voided"
-      );
-    }
-    return baseFilteredRecords.filter((r) => r.status === tab);
-  }, [baseFilteredRecords, tab]);
-
-  // Pagination logic
-  const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1;
-  const paginatedRecords = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredRecords.slice(start, start + pageSize);
-  }, [filteredRecords, page, pageSize]);
+  const filteredRecords = paginatedRecords;
 
   const handleReturn = async (payload: {
     condition: "good" | "damaged" | "needs_repair";
@@ -243,8 +245,21 @@ function BorrowLogContent() {
     toast.success("Custody log updated.");
   };
 
-  const handleExportCSV = () => {
-    if (filteredRecords.length === 0) {
+  const handleExportCSV = async () => {
+    let exportRows: BorrowLogRecord[] = [];
+    try {
+      exportRows = await borrowLogApi.list({
+        ...sharedListFilters,
+        status: listStatus,
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load records for export."
+      );
+      return;
+    }
+
+    if (exportRows.length === 0) {
       toast.info("No records available to export.");
       return;
     }
@@ -264,7 +279,7 @@ function BorrowLogContent() {
       "Released By",
     ];
 
-    const rowsData = filteredRecords.map((r) => [
+    const rowsData = exportRows.map((r) => [
       r.logCode,
       r.assetCode,
       `"${(r.assetName || "").replace(/"/g, '""')}"`,
@@ -291,7 +306,7 @@ function BorrowLogContent() {
     link.click();
     document.body.removeChild(link);
     toast.success(
-      `Exported ${filteredRecords.length} ${isAssignmentMode ? "assignment" : "borrow"} records to CSV.`
+      `Exported ${exportRows.length} ${isAssignmentMode ? "assignment" : "borrow"} records to CSV.`
     );
   };
 
@@ -740,19 +755,19 @@ function BorrowLogContent() {
             </table>
 
             {/* Pagination Controls */}
-            {filteredRecords.length > 0 && (
+            {filteredTotal > 0 && (
               <div className="flex items-center justify-between px-6 py-3.5 border-t border-border bg-bg shrink-0 mt-auto">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-text-secondary">
                     Showing{" "}
                     <span className="font-bold text-text">
-                      {Math.min((page - 1) * pageSize + 1, filteredRecords.length)}
+                      {Math.min((page - 1) * pageSize + 1, filteredTotal)}
                     </span>{" "}
                     to{" "}
                     <span className="font-bold text-text">
-                      {Math.min(page * pageSize, filteredRecords.length)}
+                      {Math.min(page * pageSize, filteredTotal)}
                     </span>{" "}
-                    of <span className="font-bold text-text">{filteredRecords.length}</span> results
+                    of <span className="font-bold text-text">{filteredTotal}</span> results
                   </span>
 
                   <select

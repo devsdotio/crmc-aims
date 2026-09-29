@@ -16,6 +16,12 @@ export class AuditLogController {
         entityId: url.searchParams.get("entityId")?.trim() || undefined,
         actorUserId: url.searchParams.get("actorUserId")?.trim() || undefined,
         action: url.searchParams.get("action")?.trim() || undefined,
+        search: url.searchParams.get("search")?.trim() || undefined,
+        from: url.searchParams.get("from")?.trim() || undefined,
+        to: url.searchParams.get("to")?.trim() || undefined,
+        criticalOnly: url.searchParams.get("criticalOnly") ?? undefined,
+        limit: url.searchParams.get("limit") ?? undefined,
+        offset: url.searchParams.get("offset") ?? undefined,
       };
 
       return ok(await this.service.list(queryParams, session));

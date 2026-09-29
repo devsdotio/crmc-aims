@@ -122,18 +122,6 @@ export function ProjectDetailPanel({
   } = useProjectExpensesQuery(isOpen && project ? project.id : null);
 
   const {
-    data: consumablesPage,
-    isLoading: consumablesLoading,
-  } = useConsumablesQuery({ limit: 100 });
-  const consumables = consumablesPage?.data ?? [];
-  const {
-    data: assets = [],
-    isLoading: assetsLoading,
-  } = useAssetsQuery("active");
-  const {
-    data: allAssets = [],
-  } = useAssetsQuery();
-  const {
     data: assignments = [],
     isLoading: assignmentsLoading,
   } = useProjectAssetsQuery(isOpen && project ? project.id : null, "all");
@@ -170,6 +158,19 @@ export function ProjectDetailPanel({
   const [deleteExpenseTarget, setDeleteExpenseTarget] =
     useState<ProjectExpenseLine | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const {
+    data: consumablesPage,
+    isLoading: consumablesLoading,
+  } = useConsumablesQuery({ limit: 100, enabled: materialOpen });
+  const consumables = consumablesPage?.data ?? [];
+  const {
+    data: assets = [],
+    isLoading: assetsLoading,
+  } = useAssetsQuery("active", { enabled: assignOpen });
+  const {
+    data: allAssets = [],
+  } = useAssetsQuery(undefined, { enabled: Boolean(damageTarget) });
 
   // Progress indicator state
   const [addIndicatorOpen, setAddIndicatorOpen] = useState(false);

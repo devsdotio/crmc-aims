@@ -6,6 +6,7 @@ import { ProjectTableRow } from "./project-table-row";
 
 export interface ProjectTableProps {
   projects: Project[];
+  progressByProjectId?: Record<string, import("@/features/projects/client/use-projects").ProjectProgressCounts>;
   loading?: boolean;
   deletingProjectId?: string | null;
   onSelect: (project: Project) => void;
@@ -73,6 +74,7 @@ const COLUMN_HEADERS = (
 
 export function ProjectTable({
   projects,
+  progressByProjectId = {},
   loading = false,
   deletingProjectId = null,
   onSelect,
@@ -118,6 +120,7 @@ export function ProjectTable({
             <ProjectTableRow
               key={project.id}
               project={project}
+              progress={progressByProjectId[project.id] ?? null}
               deleting={deletingProjectId === project.id}
               onSelect={onSelect}
               onEdit={onEdit}

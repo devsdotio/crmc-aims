@@ -35,6 +35,26 @@ export class MaintenanceController {
     }
   }
 
+  async syncOrphans(request: NextRequest | Request) {
+    try {
+      const session = await requireAssetOperator();
+      const url = new URL(request.url);
+      const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
+      const includeSandbox = parseIncludeSandbox(
+        url.searchParams.get("includeSandbox"),
+        session.actor.role
+      );
+      return ok(
+        await this.service.syncOrphanNeedsRepairFlags(
+          session.actor,
+          includeSandbox === true
+        )
+      );
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async get(id: string) {
     try {
       const actor = await requireActor();

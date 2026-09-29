@@ -26,6 +26,7 @@ import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service"
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { AssetModelRepository } from "@/server/modules/assets/asset.model.repository";
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
+import { hasPoJustification } from "@/lib/po-purpose";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import {
@@ -452,9 +453,34 @@ export class PurchaseLotService {
     const rows = await this.repo.list(filters, undefined, actorTenantId);
     let dtos = rows.map(toPurchaseLotDTO);
 
-    if (filters.status) {
-      dtos = dtos.filter((d) => d.status === filters.status);
+    const statusSet =
+      filters.statuses && filters.statuses.length > 0
+        ? new Set(filters.statuses)
+        : filters.status
+          ? new Set([filters.status])
+          : null;
+    if (statusSet) {
+      dtos = dtos.filter((d) => statusSet.has(d.status));
     }
+
+    // Cap by distinct PO so multi-line orders stay complete for lean widgets.
+    if (filters.limit && filters.limit > 0) {
+      const order: string[] = [];
+      const byPo = new Map<string, typeof dtos>();
+      for (const dto of dtos) {
+        const key = dto.poNumber || dto.lotCode;
+        const existing = byPo.get(key);
+        if (existing) {
+          existing.push(dto);
+          continue;
+        }
+        if (order.length >= filters.limit) continue;
+        order.push(key);
+        byPo.set(key, [dto]);
+      }
+      dtos = order.flatMap((key) => byPo.get(key) ?? []);
+    }
+
     dtos = await withPoDepartments(dtos, actorTenantId);
     return withDisbursementClaims(dtos, actorTenantId);
   }
@@ -940,13 +966,15 @@ export class PurchaseLotService {
         const totalCost = formatMoney(Number(unitCost) * item.quantity);
         const lotCode = generateOperationalCode("PO");
 
+        // Prefer per-line purpose (multi-purpose POs); fall back to body header.
         const lotPurposeRaw = (item.purpose || body.purpose || "").trim();
-        // Prefer body-level purpose with department prefix so [Dept] is preserved
-        // even when line items also send a purpose string. Primary dept only.
         const lotPurpose =
-          departmentName && !lotPurposeRaw.startsWith("[")
+          departmentName && lotPurposeRaw && !lotPurposeRaw.startsWith("[")
             ? `[${departmentName}] ${lotPurposeRaw}`.trim()
-            : body.purpose?.trim() || lotPurposeRaw || null;
+            : lotPurposeRaw || null;
+        if (!lotPurpose || !hasPoJustification(lotPurpose)) {
+          throw new BadRequestError("Procurement purpose is required for every line item.");
+        }
 
         const serializedNotes = serializeNotesMetadata({
           notes: body.notes,
@@ -1703,6 +1731,57 @@ export class PurchaseLotService {
         session
       );
 
+      // Multi-purpose: batch-update purpose on sibling lots by id
+      if (body.linePurposes && body.linePurposes.length > 0) {
+        const poNumber = derivePONumber(
+          lot.lotCode,
+          resolvedReference ?? lot.reference
+        );
+        const siblings = await this.repo.listByPoNumber(
+          poNumber,
+          session,
+          actor.tenantId
+        );
+        const siblingById = new Map(
+          (siblings.length > 0 ? siblings : [lot]).map((s) => [s.id, s])
+        );
+
+        for (const entry of body.linePurposes) {
+          const target = siblingById.get(entry.lotId);
+          if (!target) {
+            throw new BadRequestError(
+              `Lot ${entry.lotId} is not part of purchase order ${poNumber}.`
+            );
+          }
+          const targetMeta = parseNotesMetadata(target.notes);
+          const nextPurposeNotes = serializeNotesMetadata({
+            notes: targetMeta.cleanNotes,
+            status: targetMeta.status,
+            purpose: entry.purpose,
+            receiptUrl: target.receiptUrl || targetMeta.receiptUrl,
+            approvedByName: targetMeta.approvedByName,
+            approvedAt: targetMeta.approvedAt,
+            orderedAt: targetMeta.orderedAt,
+            deliveredAt: targetMeta.deliveredAt,
+            orderedQuantity: targetMeta.orderedQuantity,
+            receivedQuantity: targetMeta.receivedQuantity,
+            cancellationReason: targetMeta.cancellationReason,
+            draftItem: targetMeta.draftItem,
+          });
+          await this.repo.update(
+            target.id,
+            { notes: nextPurposeNotes },
+            session
+          );
+        }
+      }
+
+      // Re-read primary lot when purposes were batch-updated
+      const refreshed =
+        body.linePurposes && body.linePurposes.length > 0
+          ? await this.repo.findById(lot.id, session, actor.tenantId)
+          : updated;
+
       // If this PO has a reference (shared across multi-item lots), sync shared fields to siblings
       if (lot.reference) {
         const syncUpdates: Partial<PurchaseLotRow> = {};
@@ -1763,6 +1842,13 @@ export class PurchaseLotService {
       if (body.supplierId !== undefined && body.supplierId !== lot.supplierId) {
         updates.push("Supplier changed");
       }
+      if (body.linePurposes && body.linePurposes.length > 0) {
+        updates.push(
+          `Purpose updated on ${body.linePurposes.length} line(s)`
+        );
+      } else if (body.purpose !== undefined) {
+        updates.push("Purpose updated");
+      }
 
       const updateText = updates.length > 0 
         ? `Updated details for Purchase Order ${poCode}: ${updates.join("; ")}.` 
@@ -1787,7 +1873,7 @@ export class PurchaseLotService {
 
       return (
         await withPoDepartments(
-          [toPurchaseLotDTO(updated ?? lot)],
+          [toPurchaseLotDTO(refreshed ?? updated ?? lot)],
           actor.tenantId,
           session
         )
@@ -1968,11 +2054,14 @@ export class PurchaseLotService {
         const totalCost = formatMoney(Number(unitCost) * item.quantity);
         const lotCode = generateOperationalCode("PO");
 
-        const lotPurposeRaw = (item.purpose || anchorMeta.purpose || "").trim();
+        const lotPurposeRaw = (item.purpose || "").trim();
         const lotPurpose =
-          anchor.departmentName && !lotPurposeRaw.startsWith("[")
+          anchor.departmentName && lotPurposeRaw && !lotPurposeRaw.startsWith("[")
             ? `[${anchor.departmentName}] ${lotPurposeRaw}`.trim()
             : lotPurposeRaw || null;
+        if (!lotPurpose || !hasPoJustification(lotPurpose)) {
+          throw new BadRequestError("Procurement purpose is required for every line item.");
+        }
 
         const serializedNotes = serializeNotesMetadata({
           notes: anchorMeta.cleanNotes,

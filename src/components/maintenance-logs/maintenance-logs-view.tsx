@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { Wrench } from "lucide-react";
 import type { MaintenanceLogRecord, MaintenanceLogFilterState, ConditionState } from "@/types/maintenance-logs";
@@ -9,6 +9,7 @@ import {
   useMaintenanceLogsQuery,
   useCreateMaintenanceLogMutation,
   useResolveMaintenanceLogMutation,
+  useSyncMaintenanceOrphansMutation,
 } from "@/features/maintenance-logs/client/use-maintenance-logs";
 import { useAssetsQuery } from "@/features/assets/client";
 import { MaintenanceLogFilters } from "@/components/maintenance-logs/maintenance-log-filters";
@@ -24,19 +25,6 @@ import { useAssetOperator } from "@/hooks/use-asset-operator";
 export function MaintenanceLogsView() {
   const searchParams = useSearchParams();
   const assetCodeParam = searchParams.get("assetCode")?.trim() ?? "";
-  const {
-    data: records = [],
-    isLoading,
-    isError,
-    error,
-    refetch,
-  } = useMaintenanceLogsQuery();
-  const { data: assets = [], isLoading: assetsLoading } = useAssetsQuery();
-  const flagMutation = useCreateMaintenanceLogMutation();
-  const resolveMutation = useResolveMaintenanceLogMutation();
-  const toast = useToast();
-  const { canOperate } = useAssetOperator();
-
   // Filter & Sort State — default open queue; asset deep-link shows full history
   const [filters, setFilters] = useState<MaintenanceLogFilterState>({
     searchQuery: assetCodeParam,
@@ -47,12 +35,44 @@ export function MaintenanceLogsView() {
     openItemsOnly: !assetCodeParam,
     sortBy: "open_first",
   });
+  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
+
+  const {
+    data: records = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useMaintenanceLogsQuery({
+    openOnly: filters.openItemsOnly || undefined,
+    search: filters.searchQuery?.trim() || undefined,
+  });
+  const { data: assets = [], isLoading: assetsLoading } = useAssetsQuery(
+    undefined,
+    { enabled: flagDialogOpen }
+  );
+  const flagMutation = useCreateMaintenanceLogMutation();
+  const resolveMutation = useResolveMaintenanceLogMutation();
+  const syncOrphans = useSyncMaintenanceOrphansMutation();
+  const toast = useToast();
+  const { canOperate } = useAssetOperator();
 
   // Modal / Drawer States
   const [selectedRecord, setSelectedRecord] = useState<MaintenanceLogRecord | null>(null);
-  const [flagDialogOpen, setFlagDialogOpen] = useState(false);
   const [resolveDialogRecord, setResolveDialogRecord] = useState<MaintenanceLogRecord | null>(null);
   const [autoSelectedFor, setAutoSelectedFor] = useState("");
+
+  // One-shot orphan backfill (was previously a write on every GET list).
+  const orphanSyncStarted = useRef(false);
+  useEffect(() => {
+    if (!canOperate || orphanSyncStarted.current) return;
+    orphanSyncStarted.current = true;
+    void syncOrphans.mutateAsync().then((result) => {
+      if (result.created > 0) void refetch();
+    }).catch(() => {
+      /* non-blocking */
+    });
+  }, [canOperate, syncOrphans, refetch]);
 
   useEffect(() => {
     if (!assetCodeParam) return;

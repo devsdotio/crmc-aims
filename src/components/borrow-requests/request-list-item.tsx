@@ -7,9 +7,6 @@ import { formatItemDescription } from "@/lib/sanitize-display";
 import { purposePreviewLabel } from "@/lib/request-purpose";
 import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
-import { useQueryClient } from "@tanstack/react-query";
-import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-keys";
-import { borrowRequestsApi } from "@/features/borrow-requests/client/borrow-requests-api";
 import type { BorrowRequest,  RequestStatus } from "@/types/borrow-requests";
 
 export interface RequestListItemProps {
@@ -74,20 +71,10 @@ export function RequestListItem({
     }
   };
 
-  const qc = useQueryClient();
-  const handleMouseEnter = () => {
-    void qc.prefetchQuery({
-      queryKey: borrowRequestQueryKeys.detail(request.id),
-      queryFn: () => borrowRequestsApi.getById(request.id),
-      staleTime: 45_000,
-    });
-  };
-
   return (
     <div
       ref={rowRef}
       onClick={() => onSelect(request)}
-      onMouseEnter={handleMouseEnter}
       tabIndex={0}
       role="button"
       onKeyDown={(e) => {
