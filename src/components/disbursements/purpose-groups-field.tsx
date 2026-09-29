@@ -14,6 +14,7 @@ type PurposeLine = {
   id: string;
   description: string;
   quantity: string;
+  unitOfMeasure?: string;
 };
 
 interface PurposeGroupsFieldProps {

@@ -8,7 +8,7 @@ import {
   particularLineAmount,
 } from "@/lib/voucher-particulars";
 
-/** Ruled item rows on the official form, including filled lines. */
+/** Ruled item rows on the official form, including filled lines (tuned for 50% paper half-sheet). */
 const RULED_ROWS = 6;
 
 export interface DisbursementSlipLine {
@@ -29,6 +29,7 @@ export interface DisbursementSlipData {
   amount: number;
   requestedBy: string;
   verifiedBy: string;
+  preparedBy: string;
   logoUrl: string;
 }
 
@@ -125,6 +126,7 @@ export function voucherToSlip(voucher: Voucher, logoUrl: string): DisbursementSl
     amount,
     requestedBy: voucher.payeeName?.trim() || "",
     verifiedBy: voucher.approvedByName?.trim() || "",
+    preparedBy: voucher.createdByName?.trim() || "",
     logoUrl,
   };
 }
@@ -146,6 +148,7 @@ export function pettyCashToSlip(
     amount,
     requestedBy: voucher.payeeName?.trim() || "",
     verifiedBy: voucher.approvedByName?.trim() || "",
+    preparedBy: voucher.createdByName?.trim() || "",
     logoUrl,
   };
 }
@@ -215,17 +218,25 @@ function buildLineRows(data: DisbursementSlipData): string {
       <td class="col-amount">${formatMoney(data.amount)}</td>
     </tr>
     <tr class="sign-row">
-      <td colspan="3" class="sign-cell">
-        <div class="sign-line">
-          <span class="sign-label">Requested by:</span>
-          <input class="sign-space" data-slip-field="requestedBy" value="${escapeHtml(data.requestedBy)}" aria-label="Requested by" autocomplete="off" />
+      <td colspan="5" class="sign-cell">
+        <div class="signatories-row">
+          <div class="sign-block">
+            <span class="sign-label">Requested by:</span>
+            <input class="sign-space" data-slip-field="requestedBy" value="${escapeHtml(data.requestedBy)}" aria-label="Requested by" autocomplete="off" />
+          </div>
+          <div class="sign-block">
+            <span class="sign-label">Verified by:</span>
+            <input class="sign-space" data-slip-field="verifiedBy" value="${escapeHtml(data.verifiedBy)}" aria-label="Verified by" autocomplete="off" />
+          </div>
+          <div class="sign-block">
+            <span class="sign-label">Prepared by:</span>
+            <input class="sign-space" data-slip-field="preparedBy" value="${escapeHtml(data.preparedBy)}" aria-label="Prepared by" autocomplete="off" />
+          </div>
         </div>
-        <div class="sign-line">
-          <span class="sign-label">Verified by:</span>
-          <input class="sign-space" data-slip-field="verifiedBy" value="${escapeHtml(data.verifiedBy)}" aria-label="Verified by" autocomplete="off" />
+        <div class="forwarded-bar">
+          Date Forwarded for Voucher: <strong>${forwarded}</strong>
         </div>
       </td>
-      <td colspan="2" class="forwarded">Date Forwarded for Voucher: <strong>${forwarded}</strong></td>
     </tr>`;
 
   return body + nothingFollows + pad + footer;
@@ -233,9 +244,9 @@ function buildLineRows(data: DisbursementSlipData): string {
 
 export function buildDisbursementSlipStyles(): string {
   return `
-    @page { size: portrait; margin: 6mm; }
+    @page { size: portrait; margin: 4mm 5mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body, table, th, td, h1, h2, p, div, span, strong {
+    body, table, th, td, h1, h2, p, div, span, strong, input {
       font-family: Arial, Helvetica, sans-serif;
     }
     html, body {
@@ -247,45 +258,47 @@ export function buildDisbursementSlipStyles(): string {
     }
     .dv-document {
       width: 100%;
+      max-width: 100%;
       margin: 0;
       background: #fff;
       padding: 0;
+      box-sizing: border-box;
     }
-    .letterhead { margin-bottom: 8px; }
+    .letterhead { margin-bottom: 6px; }
     .letterhead-top {
       display: grid;
-      grid-template-columns: 96px 1fr 96px;
+      grid-template-columns: 64px 1fr 64px;
       align-items: center;
     }
-    .logo-block { width: 96px; }
-    .college-logo-img { width: 80px; height: 80px; object-fit: contain; display: block; }
+    .logo-block { width: 64px; }
+    .college-logo-img { width: 56px; height: 56px; object-fit: contain; display: block; }
     .college-titles {
       text-align: center;
     }
     .college-titles h1 {
-      font-size: 16px;
+      font-size: 14.5px;
       font-weight: 800;
       margin: 0;
-      letter-spacing: 0.2px;
+      letter-spacing: 0.25px;
       text-transform: uppercase;
       line-height: 1.25;
     }
     .college-titles .city {
-      margin: 4px 0 0;
-      font-size: 13px;
+      margin: 2px 0 0;
+      font-size: 11.5px;
       font-weight: 600;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.3px;
       text-transform: uppercase;
       color: #6b7280;
     }
     .title-banner {
       text-align: center;
-      margin-top: 14px;
-      margin-bottom: 14px;
+      margin-top: 8px;
+      margin-bottom: 8px;
     }
     .doc-title {
       display: inline-block;
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 900;
       letter-spacing: 0.6px;
       text-transform: uppercase;
@@ -295,30 +308,30 @@ export function buildDisbursementSlipStyles(): string {
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      margin-top: 8px;
-      font-size: 13px;
-      line-height: 1.35;
+      margin-top: 4px;
+      font-size: 11.5px;
+      line-height: 1.3;
       color: #6b7280;
     }
     .doc-no {
       font-weight: 800;
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 0.2px;
       color: #1f2937;
     }
     .request-line {
-      margin: 0 0 8px;
-      font-size: 13px;
-      line-height: 1.35;
+      margin: 0 0 6px;
+      font-size: 11.5px;
+      line-height: 1.3;
       color: #6b7280;
     }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+    table { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: fixed; }
     th, td {
       border: 1px solid #222;
-      padding: 6px 8px;
+      padding: 4px 6px;
       text-align: left;
       vertical-align: middle;
-      line-height: 1.35;
+      line-height: 1.25;
       word-wrap: break-word;
       overflow-wrap: break-word;
     }
@@ -330,12 +343,12 @@ export function buildDisbursementSlipStyles(): string {
     th.col-amount {
       font-weight: 800;
       text-align: center;
-      font-size: 12px;
-      letter-spacing: 0.3px;
+      font-size: 11px;
+      letter-spacing: 0.25px;
       text-transform: uppercase;
       color: #374151;
-      padding: 8px 6px;
-      line-height: 1.25;
+      padding: 6px 5px;
+      line-height: 1.2;
       white-space: normal;
       overflow-wrap: normal;
     }
@@ -344,40 +357,54 @@ export function buildDisbursementSlipStyles(): string {
     .col-dealer { width: 18%; vertical-align: middle; }
     .col-purpose { width: 24%; vertical-align: middle; }
     .col-amount { width: 15%; text-align: right; font-weight: 700; white-space: nowrap; overflow-wrap: normal; }
-    .item-row td { height: 38px; }
-    .empty-row td { height: 26px; }
+    .item-row td { height: 28px; }
+    .empty-row td { height: 24px; }
     .nothing-follows {
       text-align: center;
       font-weight: 700;
       font-style: italic;
-      letter-spacing: 1.2px;
+      letter-spacing: 1.1px;
       color: #9ca3af;
-      font-size: 12px;
-      padding: 8px 8px;
+      font-size: 10.5px;
+      padding: 4px 6px;
     }
-    .sign-row td { height: 108px; }
+    .total-row td { height: 28px; }
+    .total-label {
+      text-align: right;
+      font-weight: 800;
+      font-size: 12.5px;
+    }
+    .total-row .col-amount { font-size: 13px; }
+    .sign-row td {
+      height: 90px;
+      padding: 10px 14px 8px;
+    }
     .sign-cell {
-      padding: 14px 12px 12px;
-      vertical-align: middle;
-      border-right: none;
+      vertical-align: top;
     }
-    .sign-line {
+    .signatories-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      align-items: flex-start;
+    }
+    .sign-block {
       display: flex;
-      align-items: flex-end;
-      gap: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      line-height: 1.2;
-      text-transform: uppercase;
-      white-space: nowrap;
-      color: #6b7280;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 56px;
     }
-    .sign-line + .sign-line { margin-top: 16px; }
-    .sign-label { flex: 0 0 auto; }
+    .sign-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #4b5563;
+      letter-spacing: 0.2px;
+      margin-bottom: 26px;
+    }
     .sign-space {
-      flex: 0 0 210px;
-      min-height: 22px;
-      width: 210px;
+      width: 100%;
+      min-height: 20px;
       border: none;
       border-bottom: 1px solid #222;
       border-radius: 0;
@@ -387,37 +414,35 @@ export function buildDisbursementSlipStyles(): string {
       font-weight: 700;
       text-transform: uppercase;
       text-align: center;
-      padding: 0 8px 1px;
+      padding: 0 4px 2px;
+      font-size: 11.5px;
     }
     .sign-space:focus {
       outline: none;
       border-bottom-color: #2563eb;
     }
-    .total-row td { height: 36px; }
-    .total-label {
-      text-align: right;
-      font-weight: 800;
-      font-size: 14px;
-    }
-    .total-row .col-amount { font-size: 15px; }
-    .sign-row .forwarded {
-      text-align: right;
-      vertical-align: bottom;
-      font-size: 13px;
+    .forwarded-bar {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+      font-size: 10.5px;
       font-weight: 600;
-      line-height: 1.35;
-      padding: 10px 8px 8px;
-      white-space: normal;
-      border-left: none;
       color: #6b7280;
     }
-    .sign-row .forwarded strong {
+    .forwarded-bar strong {
       color: #1f2937;
       font-weight: 700;
+      margin-left: 4px;
     }
     @media print {
-      html, body { background: #fff !important; }
-      .dv-document { page-break-inside: avoid; }
+      html, body {
+        background: #fff !important;
+        height: auto !important;
+      }
+      .dv-document {
+        page-break-inside: avoid;
+        max-height: 140mm;
+      }
     }
   `;
 }
@@ -546,7 +571,7 @@ export async function downloadDisbursementSlipPdf(
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 5;
+    const margin = 3;
     const usableWidth = pageWidth - margin * 2;
     const usableHeight = pageHeight - margin * 3;
     const imgWidth = usableWidth;
