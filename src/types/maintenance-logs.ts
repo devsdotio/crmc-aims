@@ -39,6 +39,8 @@ export interface MaintenanceLogRecord {
   /** Itemized parts recorded at resolve time. */
   repairParts?: MaintenanceRepairPart[];
   relatedBorrowLogCode?: string;
+  /** Holder/assignee snapshot at flag time (person and/or custody label). */
+  assignedToName?: string | null;
   scheduledDate?: string;
 }
 

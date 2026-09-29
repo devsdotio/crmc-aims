@@ -36,7 +36,7 @@ import { IndividualAssetPrintableReport } from "@/components/reports/print/indiv
 import { AssetOpenRepairPanel } from "@/components/assets/asset-open-repair-panel";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
-import { custodyBadgeLabel, isProjectCustody } from "@/lib/assets-custody";
+import { custodyBadgeLabel } from "@/lib/assets-custody";
 import Link from "next/link";
 
 function formatDisplayDate(dateStr?: string | null): string {
@@ -1197,14 +1197,9 @@ export function AssetDetailPanel({
     asset.status !== "missing" &&
     (asset.status === "needs_repair" || Boolean(onFlagMaintenance));
   const canFlagMaintenance =
-    Boolean(onFlagMaintenance) &&
-    !asset.currentHolder &&
-    asset.status === "active";
-  const maintenanceDisabledReason = asset.currentHolder
-    ? isProjectCustody(asset.currentHolder)
-      ? "On a project — use Report damage on the project panel"
-      : `In custody (${asset.currentHolder}) — return it first`
-    : asset.status !== "active" && asset.status !== "needs_repair"
+    Boolean(onFlagMaintenance) && asset.status === "active";
+  const maintenanceDisabledReason =
+    asset.status !== "active" && asset.status !== "needs_repair"
       ? "Only active assets can be flagged for maintenance"
       : null;
 

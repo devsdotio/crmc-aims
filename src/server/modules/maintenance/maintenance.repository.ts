@@ -63,7 +63,8 @@ export class MaintenanceRepository implements IMaintenanceRepository {
           ilike(maintenanceLogs.assetCode, q),
           ilike(maintenanceLogs.assetName, q),
           ilike(maintenanceLogs.logCode, q),
-          ilike(maintenanceLogs.notes, q)
+          ilike(maintenanceLogs.notes, q),
+          ilike(maintenanceLogs.assignedToName, q)
         )!
       );
     }

@@ -112,6 +112,14 @@ export function FlagMaintenanceDialog({
             Marks this asset as needs repair and opens a Maintenance Logs entry.
             You can document parts, costs, and work notes on the asset while the
             flag is open.
+            {asset.currentHolder ? (
+              <>
+                {" "}
+                Currently assigned to{" "}
+                <strong className="text-text">{asset.currentHolder}</strong> —
+                custody stays; the assignee is recorded on the maintenance log.
+              </>
+            ) : null}
           </p>
 
           <div className="space-y-1">

@@ -59,6 +59,11 @@ export function MaintenanceLogTableRow({
         <div className="font-mono text-[11px] text-text-secondary mt-0.5">
           {record.assetCode}
         </div>
+        {record.assignedToName?.trim() ? (
+          <div className="text-[11px] text-text-secondary mt-0.5 truncate max-w-56">
+            Assigned to {record.assignedToName}
+          </div>
+        ) : null}
       </td>
 
       <td className="px-3 py-3.5 hidden md:table-cell">

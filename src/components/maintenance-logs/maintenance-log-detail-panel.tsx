@@ -207,6 +207,14 @@ export function MaintenanceLogDetailPanel({
                   {record.loggedBy}
                 </span>
               </Field>
+              {record.assignedToName?.trim() && (
+                <Field label="Assigned to">
+                  <span className="inline-flex items-center gap-1.5 font-semibold">
+                    <User className="h-3.5 w-3.5 text-status-repair-text" />
+                    {record.assignedToName}
+                  </span>
+                </Field>
+              )}
               {record.relatedBorrowLogCode && (
                 <Field label="Related checkout">
                   <Link

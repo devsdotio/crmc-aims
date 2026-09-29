@@ -12,9 +12,9 @@ import { withTransaction } from "@/server/db/transaction";
 import { AssetRepository } from "@/server/modules/assets/asset.repository";
 import { AssetLifecycleService } from "@/server/modules/assets/asset.lifecycle.service";
 import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repository";
-import { ProjectAssetAssignmentRepository } from "@/server/modules/projects/project-asset.repository";
 
 import { MaintenanceRepository } from "./maintenance.repository";
+import { maintenanceAssigneeSnapshot } from "./maintenance-assignee";
 import type { MaintenanceLogDTO } from "./maintenance.types";
 import {
   createMaintenanceSchema,
@@ -45,6 +45,7 @@ function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
     repairCost: row.repairCost ?? null,
     repairParts: row.repairParts ?? [],
     relatedBorrowLogCode: row.relatedBorrowLogCode ?? undefined,
+    assignedToName: row.assignedToName ?? null,
     scheduledDate: row.scheduledDate ?? undefined,
   };
 }
@@ -54,8 +55,7 @@ export class MaintenanceLogService {
     private readonly repo = new MaintenanceRepository(),
     private readonly assets = new AssetRepository(),
     private readonly lifecycle = new AssetLifecycleService(),
-    private readonly borrowLogs = new BorrowLogRepository(),
-    private readonly projectAssignments = new ProjectAssetAssignmentRepository()
+    private readonly borrowLogs = new BorrowLogRepository()
   ) {}
 
   async list(rawQuery: unknown, actor?: ActorContext): Promise<MaintenanceLogDTO[]> {
@@ -79,20 +79,15 @@ export class MaintenanceLogService {
 
     let created = 0;
     for (const asset of orphans) {
-      // Skip in-custody orphans — they must go through return / project damage.
-      if (asset.currentHolder) continue;
-
       await withTransaction(async (tx) => {
         const stillOpen = await this.repo.countOpenByAssetId(asset.id, tx, actor.tenantId);
         if (stillOpen > 0) return;
 
         const openBorrow = await this.borrowLogs.findActiveByAssetId(asset.id, tx, actor.tenantId);
-        const openProject = await this.projectAssignments.findOpenByAssetId(
-          asset.id,
-          tx,
-          actor.tenantId
-        );
-        if (openBorrow || openProject) return;
+        const assignedToName = maintenanceAssigneeSnapshot({
+          borrowerName: openBorrow?.borrowerName,
+          currentHolder: asset.currentHolder,
+        });
 
         const logCode = generateOperationalCode("MNT");
         await this.repo.create(
@@ -118,7 +113,8 @@ export class MaintenanceLogService {
             resolvedByName: null,
             repairCost: null,
             repairParts: [],
-            relatedBorrowLogCode: null,
+            relatedBorrowLogCode: openBorrow?.logCode ?? null,
+            assignedToName,
             scheduledDate: null,
           },
           tx
@@ -138,6 +134,7 @@ export class MaintenanceLogService {
               via: "orphan_sync",
               maintenanceLogCode: logCode,
               notes: "Opened maintenance log for existing needs_repair status.",
+              assignedToName,
             },
           },
           tx
@@ -157,8 +154,8 @@ export class MaintenanceLogService {
 
   /**
    * Manual flag path (Maintenance Logs hub).
-   * In-custody assets must be returned / project-damage reported instead.
-   * Always appends asset lifecycle events when an asset is linked.
+   * Assets may be flagged while still borrowed/assigned — custody is snapshotted
+   * onto the log. Always appends asset lifecycle events when an asset is linked.
    */
   async create(rawInput: unknown, actor: ActorContext): Promise<MaintenanceLogDTO> {
     const input = createMaintenanceSchema.parse(rawInput);
@@ -191,6 +188,11 @@ export class MaintenanceLogService {
       const isRepairFlag =
         input.condition !== "good" && input.condition !== "resolved";
 
+      let openBorrow: Awaited<
+        ReturnType<BorrowLogRepository["findActiveByAssetId"]>
+      > = null;
+      let assignedToName: string | null = null;
+
       if (isRepairFlag) {
         if (!asset || !assetId) {
           throw new NotFoundError("Asset", input.assetId ?? input.assetCode);
@@ -202,35 +204,15 @@ export class MaintenanceLogService {
           );
         }
 
-        const openBorrow = await this.borrowLogs.findActiveByAssetId(
+        openBorrow = await this.borrowLogs.findActiveByAssetId(
           asset.id,
           tx,
           actor.tenantId
         );
-        const openProject = await this.projectAssignments.findOpenByAssetId(
-          asset.id,
-          tx,
-          actor.tenantId
-        );
-
-        if (openProject || asset.currentHolder) {
-          if (openProject) {
-            throw new ConflictError(
-              "Asset is on a project. Use Report damage on the project panel to flag repair while in project custody."
-            );
-          }
-          throw new ConflictError(
-            `Asset is currently in custody${
-              asset.currentHolder ? ` (${asset.currentHolder})` : ""
-            }. Return it with a repair condition instead of flagging in isolation.`
-          );
-        }
-
-        if (openBorrow) {
-          throw new ConflictError(
-            `Asset has an open borrow/release log (${openBorrow.borrowerName}). Return it before flagging for maintenance.`
-          );
-        }
+        assignedToName = maintenanceAssigneeSnapshot({
+          borrowerName: openBorrow?.borrowerName,
+          currentHolder: asset.currentHolder,
+        });
       }
 
       const row = await this.repo.create(
@@ -254,7 +236,9 @@ export class MaintenanceLogService {
           resolvedByName: null,
           repairCost: null,
           repairParts: [],
-          relatedBorrowLogCode: input.relatedBorrowLogCode ?? null,
+          relatedBorrowLogCode:
+            input.relatedBorrowLogCode ?? openBorrow?.logCode ?? null,
+          assignedToName,
           scheduledDate: input.scheduledDate ?? null,
         },
         tx
@@ -290,6 +274,7 @@ export class MaintenanceLogService {
               notes: input.notes ?? null,
               condition: input.condition,
               source: input.source,
+              assignedToName,
             },
           },
           tx

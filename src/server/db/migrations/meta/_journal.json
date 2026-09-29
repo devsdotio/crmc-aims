@@ -316,6 +316,13 @@
       "when": 1786379000000,
       "tag": "0044_assigned_to_name",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1786380000000,
+      "tag": "0045_maintenance_log_assigned_to",
+      "breakpoints": true
     }
   ]
 }

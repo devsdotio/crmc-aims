@@ -74,10 +74,8 @@ function AddEditAssetDialogForm({
     () =>
       STATUS_OPTIONS.map((o) => ({
         ...o,
-        disabled:
-          o.value === "needs_repair" && Boolean(initialAsset?.currentHolder),
       })),
-    [initialAsset?.currentHolder]
+    []
   );
 
   const supplierOptions = useMemo(
@@ -346,7 +344,7 @@ function AddEditAssetDialogForm({
                   {status === "needs_repair" && (
                     <p className="text-[11px] text-text-secondary leading-relaxed">
                       {initialAsset?.currentHolder
-                        ? "This asset is in custody — return it with a repair condition instead of editing status here."
+                        ? `Opens a Maintenance Logs entry and keeps custody with ${initialAsset.currentHolder}.`
                         : "This opens a Maintenance Logs entry so the asset can be marked serviceable again after repair."}
                     </p>
                   )}

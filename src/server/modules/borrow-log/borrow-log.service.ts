@@ -29,6 +29,7 @@ import { AssetRepository } from "@/server/modules/assets/asset.repository";
 import { AssetLifecycleService } from "@/server/modules/assets/asset.lifecycle.service";
 import { BorrowRequestRepository } from "@/server/modules/borrow-requests/borrow-request.repository";
 import { MaintenanceRepository } from "@/server/modules/maintenance/maintenance.repository";
+import { maintenanceAssigneeSnapshot } from "@/server/modules/maintenance/maintenance-assignee";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
@@ -764,6 +765,14 @@ export class BorrowLogService {
                 {
                   notes: appendedNotes || returnNote,
                   relatedBorrowLogCode: linkedCodes.join(", ") || existing.logCode,
+                  ...(openMaint.assignedToName
+                    ? {}
+                    : {
+                        assignedToName: maintenanceAssigneeSnapshot({
+                          borrowerName: existing.borrowerName,
+                          currentHolder: existing.department,
+                        }),
+                      }),
                   condition:
                     conditionOnReturn === "damaged"
                       ? "damaged"
@@ -820,6 +829,10 @@ export class BorrowLogService {
                   repairCost: null,
                   repairParts: [],
                   relatedBorrowLogCode: existing.logCode,
+                  assignedToName: maintenanceAssigneeSnapshot({
+                    borrowerName: existing.borrowerName,
+                    currentHolder: existing.department,
+                  }),
                   scheduledDate: null,
                 },
                 tx
