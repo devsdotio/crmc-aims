@@ -433,4 +433,35 @@ nextjs-portal {
 
 .print-only {
   display: none;
+}
+
+/*
+ * Opt-in heavier text. Component classes keep their designed weights.
+ * This only applies while html[data-weighted-text="on"], and only on screen,
+ * so printed slips stay at the original weights.
+ * Quicksand's variable axis tops out at 700, so bold text stays at that ceiling
+ * and lighter text steps up toward it.
+ */
+@media screen {
+  html[data-weighted-text="on"] {
+    font-weight: 600;
+  }
+
+  html[data-weighted-text="on"] .font-thin,
+  html[data-weighted-text="on"] .font-extralight {
+    font-weight: 500;
+  }
+
+  html[data-weighted-text="on"] .font-light,
+  html[data-weighted-text="on"] .font-normal {
+    font-weight: 600;
+  }
+
+  html[data-weighted-text="on"] .font-medium,
+  html[data-weighted-text="on"] .font-semibold,
+  html[data-weighted-text="on"] .font-bold,
+  html[data-weighted-text="on"] .font-extrabold,
+  html[data-weighted-text="on"] .font-black {
+    font-weight: 700;
+  }
 }

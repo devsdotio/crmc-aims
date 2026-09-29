@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface VerseData {
@@ -107,24 +106,18 @@ export function HeaderBibleVerse() {
       title={`"${verse.text}"\n— ${verse.reference}`}
       aria-label={`Bible verse: ${verse.reference}`}
     >
-      <div
+      <p
         className={cn(
-          "flex flex-col items-end text-right justify-center min-w-0",
+          "min-w-0 text-right text-xs italic leading-snug text-text-secondary line-clamp-2",
           "max-w-64 lg:max-w-md xl:max-w-140",
-          loading && "opacity-60"
+          loading && "opacity-60",
         )}
       >
-        <p className="text-xs italic text-text-secondary leading-snug line-clamp-2 w-full">
-          &ldquo;{verse.text}&rdquo;
-        </p>
-        <p className="mt-0.5 text-[10px] font-semibold text-[#2A3260]/80 font-mono tracking-tight leading-tight">
-          — {verse.reference}
-        </p>
-      </div>
-
-      <div className="flex h-7 w-7 shrink-0 items-center justify-center self-center rounded-lg bg-[#2A3260]/8 text-[#2A3260]">
-        <BookOpen className="h-3.5 w-3.5" />
-      </div>
+        &ldquo;{verse.text}&rdquo;
+      </p>
+      <span className="inline-flex shrink-0 items-center rounded-full bg-[#2a3260] px-2.5 py-1.5 text-[10px] font-bold font-mono tracking-tight text-white">
+        {verse.reference}
+      </span>
     </div>
   );
 }

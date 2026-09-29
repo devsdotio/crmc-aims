@@ -23,7 +23,7 @@ export function AccountSection({
   onChangePassword,
 }: AccountSectionProps) {
   return (
-    <div className="w-full space-y-6">
+    <div className="grid w-full grid-cols-1 gap-4 lg:grid-cols-2">
       <ProfileForm
         profile={profile}
         saving={savingProfile}
