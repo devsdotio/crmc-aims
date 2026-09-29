@@ -57,8 +57,8 @@ export function ProfileForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 rounded-2xl border border-border bg-bg space-y-6">
-      <div className="flex items-center justify-between border-b border-border pb-4">
+    <form onSubmit={handleSubmit} className="flex flex-col p-4 rounded-xl border border-border bg-bg space-y-4">
+      <div className="flex items-center justify-between border-b border-border pb-3">
         <div>
           <h3 className="text-base font-bold text-text">Account Profile</h3>
           <p className="text-xs text-text-secondary mt-0.5">
@@ -71,7 +71,7 @@ export function ProfileForm({
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="space-y-1.5">
           <label htmlFor="profile-name" className="block text-xs font-bold text-text">
             Full Name <span className="text-accent">*</span>
@@ -118,7 +118,7 @@ export function ProfileForm({
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-3 border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border mt-auto">
         {error ? (
           <span className="text-xs font-semibold text-status-outofservice-text">{error}</span>
         ) : savedSuccess ? (

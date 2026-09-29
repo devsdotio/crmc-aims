@@ -34,6 +34,7 @@ import {
   Bug,
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
+import { TextWeightToggle } from "@/components/text-weight-toggle";
 import { cn } from "@/lib/utils";
 
 const kronaOne = localFont({
@@ -1125,6 +1126,8 @@ export default function Sidebar({
               </div>
 
               <div className="h-px bg-white/10 my-1" />
+
+              <TextWeightToggle />
 
               {/* Action buttons */}
               <div className="space-y-0.5">
