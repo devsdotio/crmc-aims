@@ -124,11 +124,15 @@ export function DisbursementPrintSlipDialog({
     const verified = doc?.querySelector<HTMLInputElement>(
       '[data-slip-field="verifiedBy"]'
     );
-    if (!requested && !verified) return slip;
+    const prepared = doc?.querySelector<HTMLInputElement>(
+      '[data-slip-field="preparedBy"]'
+    );
+    if (!requested && !verified && !prepared) return slip;
     return {
       ...slip,
       requestedBy: requested ? requested.value.trim() : slip.requestedBy,
       verifiedBy: verified ? verified.value.trim() : slip.verifiedBy,
+      preparedBy: prepared ? prepared.value.trim() : slip.preparedBy,
     };
   };
 
@@ -217,12 +221,12 @@ export function DisbursementPrintSlipDialog({
           </button>
         </div>
 
-        <div className="min-h-0 bg-white p-3">
+        <div className="min-h-0 bg-white p-1.5 sm:p-2">
           <iframe
             ref={iframeRef}
             title={`${slip.documentTitle} preview`}
             srcDoc={previewHtml}
-            className="block h-160 max-h-[calc(92vh-7.5rem)] w-full border-0 bg-white"
+            className="block h-135 sm:h-145 max-h-[calc(92vh-7.5rem)] w-full border-0 bg-white"
           />
         </div>
 
@@ -230,7 +234,7 @@ export function DisbursementPrintSlipDialog({
           <span className="text-xs text-text-secondary font-medium">
             {updateVoucher.isPending || updatePettyCash.isPending
               ? "Saving signature names…"
-              : "Edit Requested by and Verified by on the slip. Changes save automatically."}
+              : "Edit Requested by, Verified by, or Prepared by on the slip."}
           </span>
           <div className="flex items-center gap-2">
             <button
