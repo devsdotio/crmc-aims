@@ -25,6 +25,8 @@ export const listBorrowLogQuerySchema = z.object({
   borrowerUserId: z.string().uuid().optional(),
   borrowerEmail: z.string().trim().max(320).optional(),
   custodyKind: z.enum(["borrow", "assignment", "all"]).optional(),
+  /** Filter to a single asset's custody rows. */
+  assetId: z.string().uuid().optional(),
   /** Borrower department inventory: open holds for their department (excludes projects). */
   scope: z.enum(["department"]).optional(),
   page: z.coerce.number().int().min(1).optional(),
@@ -116,10 +118,20 @@ export const voidBorrowSchema = z.object({
     .transform((v) => (v && v.length > 0 ? v : "Mistaken or incorrect issue")),
 });
 
+/** Update person name on an active/overdue custody log. */
+export const updateAssigneeSchema = z.object({
+  assignedToName: z
+    .string()
+    .trim()
+    .min(1, "Assigned person name is required.")
+    .max(255),
+});
+
 export const borrowLogIdSchema = z.string().uuid("Invalid log id.");
 export const assetCategorySchemaExport = assetCategorySchema;
 
 export type ReleaseBorrowBody = z.infer<typeof releaseBorrowSchema>;
 export type ReturnBorrowBody = z.infer<typeof returnBorrowSchema>;
 export type VoidBorrowBody = z.infer<typeof voidBorrowSchema>;
+export type UpdateAssigneeBody = z.infer<typeof updateAssigneeSchema>;
 export type ListBorrowLogQuery = z.infer<typeof listBorrowLogQuerySchema>;

@@ -16,6 +16,7 @@ import { withTransaction } from "@/server/db/transaction";
 import { AssetRepository } from "@/server/modules/assets/asset.repository";
 import { AssetLifecycleService } from "@/server/modules/assets/asset.lifecycle.service";
 import { MaintenanceRepository } from "@/server/modules/maintenance/maintenance.repository";
+import { maintenanceAssigneeSnapshot } from "@/server/modules/maintenance/maintenance-assignee";
 
 import { ProjectRepository } from "./project.repository";
 import { ProjectAssetAssignmentRepository } from "./project-asset.repository";
@@ -292,6 +293,9 @@ export class ProjectAssetService {
                 repairCost: null,
                 repairParts: [],
                 relatedBorrowLogCode: null,
+                assignedToName: maintenanceAssigneeSnapshot({
+                  currentHolder: asset.currentHolder,
+                }),
                 scheduledDate: null,
               },
               tx
@@ -439,6 +443,11 @@ export class ProjectAssetService {
             repairCost: null,
             repairParts: [],
             relatedBorrowLogCode: project.projectCode,
+            assignedToName: maintenanceAssigneeSnapshot({
+              currentHolder:
+                asset.currentHolder ??
+                holderLabel(project.projectCode, project.name),
+            }),
             scheduledDate: null,
           },
           tx
@@ -567,6 +576,11 @@ export class ProjectAssetService {
           repairCost: null,
           repairParts: [],
           relatedBorrowLogCode: project.projectCode,
+          assignedToName: maintenanceAssigneeSnapshot({
+            currentHolder:
+              asset.currentHolder ??
+              holderLabel(project.projectCode, project.name),
+          }),
           scheduledDate: null,
         },
         tx

@@ -66,6 +66,8 @@ export type ReleaseAssetInput = {
   notes?: string;
   expectedReturnDate?: string | null;
   requestedByName?: string;
+  /** Person who will hold the asset (assignment / issue). */
+  assignedToName?: string;
   requestId?: string;
 };
 

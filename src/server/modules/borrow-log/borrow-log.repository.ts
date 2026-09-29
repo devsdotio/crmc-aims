@@ -193,6 +193,10 @@ export class BorrowLogRepository implements IBorrowLogRepository {
       conditions.push(eq(borrowTransactions.custodyKind, "borrow"));
     }
 
+    if (filters.assetId) {
+      conditions.push(eq(borrowTransactions.assetId, filters.assetId));
+    }
+
     if (filters.departmentId) {
       conditions.push(eq(borrowTransactions.departmentId, filters.departmentId));
     } else if (filters.department?.trim()) {
@@ -220,6 +224,7 @@ export class BorrowLogRepository implements IBorrowLogRepository {
       conditions.push(
         or(
           ilike(borrowTransactions.borrowerName, q),
+          ilike(borrowTransactions.requestedByName, q),
           ilike(borrowTransactions.logCode, q),
           ilike(borrowTransactions.assetCode, q),
           ilike(borrowTransactions.assetName, q),

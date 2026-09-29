@@ -594,7 +594,7 @@ function BorrowLogContent() {
                     Asset Details
                   </th>
                   <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
-                    {isAssignmentMode ? "Holder / Department" : "Borrower / Department"}
+                    People / Department
                   </th>
                   <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-text-secondary hidden md:table-cell">
                     {isAssignmentMode ? "Custody" : "Due Date"}
@@ -667,15 +667,32 @@ function BorrowLogContent() {
                         </div>
                       </td>
 
-                      {/* Borrower & Department */}
+                      {/* People & Department */}
                       <td className="px-4 py-3.5 align-middle">
-                        <div className="flex items-center gap-1.5 font-semibold text-text">
-                          <User className="h-3 w-3 text-text-secondary shrink-0" />
-                          <span className="truncate max-w-[170px]">{row.borrowerName}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[11px] text-text-secondary mt-0.5">
-                          <Building2 className="h-3 w-3 text-text-secondary/70 shrink-0" />
-                          <span className="truncate max-w-[150px]">{row.department}</span>
+                        <div className="space-y-1 min-w-0">
+                          {row.requestedByName?.trim() ? (
+                            <div className="min-w-0">
+                              <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+                                Requested by
+                              </p>
+                              <p className="font-semibold text-text truncate max-w-[180px]">
+                                {row.requestedByName}
+                              </p>
+                            </div>
+                          ) : null}
+                          <div className="min-w-0">
+                            <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+                              {isAssignmentMode ? "Assign to" : "Received by"}
+                            </p>
+                            <p className="font-semibold text-text truncate max-w-[180px] flex items-center gap-1">
+                              <User className="h-3 w-3 text-text-secondary shrink-0" />
+                              <span className="truncate">{row.borrowerName || "—"}</span>
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1 text-[11px] text-text-secondary">
+                            <Building2 className="h-3 w-3 text-text-secondary/70 shrink-0" />
+                            <span className="truncate max-w-[150px]">{row.department}</span>
+                          </div>
                         </div>
                       </td>
 

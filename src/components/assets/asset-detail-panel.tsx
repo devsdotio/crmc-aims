@@ -31,12 +31,14 @@ import {
   Layers,
   StickyNote,
   Printer,
+  Check,
+  Loader2,
 } from "lucide-react";
 import { IndividualAssetPrintableReport } from "@/components/reports/print/individual/IndividualAssetPrintableReport";
 import { AssetOpenRepairPanel } from "@/components/assets/asset-open-repair-panel";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
-import { custodyBadgeLabel, isProjectCustody } from "@/lib/assets-custody";
+import { custodyBadgeLabel } from "@/lib/assets-custody";
 import Link from "next/link";
 
 function formatDisplayDate(dateStr?: string | null): string {
@@ -59,6 +61,7 @@ import {
 } from "@/features/assets/client";
 import { QRCodeDisplay } from "./qr-code-display";
 import { useBorrowRequests } from "@/features/borrow-requests/client";
+import { useBorrowLogQuery, useUpdateAssigneeMutation } from "@/features/borrow-log/client";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
@@ -511,6 +514,24 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
               {String(event.payload.requestCode)}
             </p>
           )}
+          {event.payload.requestedByName != null &&
+            String(event.payload.requestedByName).trim() !== "" && (
+              <p className="text-text leading-relaxed text-[11px]">
+                <strong className="text-text-secondary font-sans">Requested by:</strong>{" "}
+                {String(event.payload.requestedByName)}
+              </p>
+            )}
+          {event.payload.borrowerName != null &&
+            String(event.payload.borrowerName).trim() !== "" && (
+              <p className="text-text leading-relaxed text-[11px]">
+                <strong className="text-text-secondary font-sans">
+                  {String(event.payload.custodyKind) === "assignment"
+                    ? "Assign to:"
+                    : "Received by:"}
+                </strong>{" "}
+                {String(event.payload.borrowerName)}
+              </p>
+            )}
           {event.payload.technician != null && (
             <p className="text-text leading-relaxed text-[11px]">
               <strong className="text-text-secondary font-sans">Technician:</strong>{" "}
@@ -712,7 +733,10 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
       kind: "request",
       date: new Date(req.requestedAt),
       title: req.requestCode,
-      subtitle: `By ${req.requesterName}`,
+      subtitle:
+        req.requestType === "assignable" && req.assignedToName?.trim()
+          ? `Requested by ${req.requestedByName || req.requesterName} · Assign to ${req.assignedToName}`
+          : `Requested by ${req.requestedByName || req.requesterName}`,
       department: req.department,
       status: req.status,
       iconType: req.status,
@@ -892,6 +916,8 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
                       item.event.payload.logCode ||
                       item.event.payload.maintenanceLogCode ||
                       item.event.payload.requestCode ||
+                      item.event.payload.borrowerName ||
+                      item.event.payload.requestedByName ||
                       item.event.payload.source ||
                       item.event.payload.repairCost != null ||
                       item.event.payload.technician ||
@@ -1079,6 +1105,154 @@ const STATUS_STYLES: Record<
   },
 };
 
+function CustodyAssigneeEditor({
+  logId,
+  custodyKind,
+  borrowerName,
+  canEdit,
+}: {
+  logId: string;
+  custodyKind?: string | null;
+  borrowerName?: string | null;
+  canEdit: boolean;
+}) {
+  const updateAssignee = useUpdateAssigneeMutation();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(borrowerName?.trim() || "");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!editing) {
+      setValue(borrowerName?.trim() || "");
+      setError("");
+    }
+  }, [borrowerName, editing]);
+
+  const label =
+    custodyKind === "assignment" ? "Assign to" : "Received by";
+
+  const save = async () => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setError("Enter the person this asset is assigned to.");
+      return;
+    }
+    try {
+      await updateAssignee.mutateAsync({
+        id: logId,
+        payload: { assignedToName: trimmed },
+      });
+      setEditing(false);
+      setError("");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update assignee."
+      );
+    }
+  };
+
+  if (!canEdit) {
+    return (
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+          {label}
+        </p>
+        <p className="text-xs font-semibold text-text truncate">
+          {borrowerName?.trim() || "—"}
+        </p>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <div className="space-y-1.5">
+        <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+          {label}
+        </p>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            if (error) setError("");
+          }}
+          disabled={updateAssignee.isPending}
+          placeholder="Person name"
+          className="w-full h-8 px-2 text-xs bg-bg border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-accent"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void save();
+            }
+            if (e.key === "Escape") {
+              setEditing(false);
+              setError("");
+            }
+          }}
+        />
+        {error && (
+          <p className="text-[10px] font-semibold text-status-outofservice-text">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={updateAssignee.isPending}
+            className="inline-flex items-center gap-1 h-7 px-2 text-[11px] font-bold rounded-md bg-primary text-primary-foreground hover:opacity-90 cursor-pointer disabled:opacity-50"
+          >
+            {updateAssignee.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Check className="h-3 w-3" />
+            )}
+            Save
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setEditing(false);
+              setError("");
+            }}
+            disabled={updateAssignee.isPending}
+            className="inline-flex items-center h-7 px-2 text-[11px] font-semibold rounded-md border border-border text-text-secondary hover:text-text cursor-pointer disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+          {label}
+        </p>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="inline-flex items-center gap-1 text-[10px] font-bold text-accent hover:underline cursor-pointer"
+        >
+          <Edit3 className="h-3 w-3" />
+          {borrowerName?.trim() ? "Edit" : "Set person"}
+        </button>
+      </div>
+      <p className="text-xs font-semibold text-text truncate">
+        {borrowerName?.trim() || (
+          <span className="text-text-secondary font-medium italic">
+            No person recorded
+          </span>
+        )}
+      </p>
+    </div>
+  );
+}
+
 export function AssetDetailPanel({
   asset,
   isOpen,
@@ -1098,6 +1272,14 @@ export function AssetDetailPanel({
   const { data: suppliers = [] } = useSuppliersQuery({
     enabled: Boolean(isOpen && asset?.supplierId),
   });
+  const { data: openCustodyLogs = [] } = useBorrowLogQuery({
+    assetId: asset?.id,
+    custodyKind: "all",
+    enabled: Boolean(isOpen && asset?.id && asset.currentHolder),
+  });
+  const openCustody = openCustodyLogs.find(
+    (row) => row.status === "active" || row.status === "overdue"
+  );
   const drilldownAssetId =
     isOpen && !isBorrower && asset?.id ? asset.id : "";
   const { data: drilldown } = useAssetDrilldownReportQuery(drilldownAssetId);
@@ -1165,14 +1347,9 @@ export function AssetDetailPanel({
     asset.status !== "missing" &&
     (asset.status === "needs_repair" || Boolean(onFlagMaintenance));
   const canFlagMaintenance =
-    Boolean(onFlagMaintenance) &&
-    !asset.currentHolder &&
-    asset.status === "active";
-  const maintenanceDisabledReason = asset.currentHolder
-    ? isProjectCustody(asset.currentHolder)
-      ? "On a project — use Report damage on the project panel"
-      : `In custody (${asset.currentHolder}) — return it first`
-    : asset.status !== "active" && asset.status !== "needs_repair"
+    Boolean(onFlagMaintenance) && asset.status === "active";
+  const maintenanceDisabledReason =
+    asset.status !== "active" && asset.status !== "needs_repair"
       ? "Only active assets can be flagged for maintenance"
       : null;
 
@@ -1532,6 +1709,28 @@ export function AssetDetailPanel({
                           </span>
                         )}
                       </p>
+                      {openCustody && (
+                        <div className="mt-2 space-y-1.5 border-t border-border/50 pt-2">
+                          {openCustody.requestedByName?.trim() && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+                                Requested by
+                              </p>
+                              <p className="text-xs font-semibold text-text truncate">
+                                {openCustody.requestedByName}
+                              </p>
+                            </div>
+                          )}
+                          <div>
+                            <CustodyAssigneeEditor
+                              logId={openCustody.id}
+                              custodyKind={openCustody.custodyKind}
+                              borrowerName={openCustody.borrowerName}
+                              canEdit={canOperate}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">

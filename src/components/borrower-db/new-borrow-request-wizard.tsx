@@ -50,7 +50,7 @@ import { useCreateBorrowRequestMutation } from "@/features/borrow-requests/clien
 import { useCreateConsumableRequestMutation } from "@/features/consumable-requests/client";
 import { useConsumablesQuery } from "@/features/consumables/client/use-consumables";
 import { availableQty } from "@/components/consumables/utils";
-import { useMeQuery } from "@/features/users/client/use-users";
+import { useMeQuery, useUsersQuery } from "@/features/users/client/use-users";
 import type { MeProfile } from "@/features/users/client/users-api";
 import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
 import {
@@ -99,6 +99,7 @@ function emptyWizardValues(
     department: "",
     notes: "",
     requestedByName: "",
+    assignedToName: "",
     requesterMode: "account",
   };
 }
@@ -1057,7 +1058,27 @@ function StepDetails({
     // Borrowers resolve department from their profile; staff catalog is staff-shell only.
     enabled: Boolean(me && me.role !== "borrower"),
   });
+  const { data: users = [] } = useUsersQuery({
+    enabled: Boolean(me && me.role !== "borrower"),
+  });
   const isManual = values.requesterMode === "manual";
+  const hasAssignable = values.typeBundles.some(
+    (b) => b.requestType === "assignable"
+  );
+
+  const assigneeSuggestions = useMemo(() => {
+    const deptId = values.departmentId;
+    const deptName = values.department.trim().toLowerCase();
+    return users
+      .filter((u) => {
+        if (u.status !== "active") return false;
+        if (!deptId && !deptName) return true;
+        if (deptId && u.departmentId === deptId) return true;
+        if (deptName && u.department?.toLowerCase() === deptName) return true;
+        return false;
+      })
+      .map((u) => u.name);
+  }, [users, values.departmentId, values.department]);
 
   const updateBundle = useCallback(
     (requestType: WizardRequestType, patch: Partial<WizardTypeBundle>) => {
@@ -1289,33 +1310,77 @@ function StepDetails({
           </div>
         ) : (
           <div className="space-y-2.5">
-            <div className="space-y-1.5">
-              <label htmlFor="requestedByName-account" className="text-xs font-bold text-text">
-                Requested by <span className="text-status-outofservice-bg">*</span>
-              </label>
-              <input
-                id="requestedByName-account"
-                type="text"
-                value={values.requestedByName}
-                onChange={(e) => onChange({ requestedByName: e.target.value })}
-                placeholder="Name of the person this request is for…"
-                className={cn(
-                  "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
-                  "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
-                  errors.requestedByName
-                    ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
-                    : "border-border"
+            <div
+              className={cn(
+                "grid gap-3",
+                hasAssignable ? "sm:grid-cols-2" : "grid-cols-1"
+              )}
+            >
+              <div className="space-y-1.5">
+                <label htmlFor="requestedByName-account" className="text-xs font-bold text-text">
+                  Requested by <span className="text-status-outofservice-bg">*</span>
+                </label>
+                <input
+                  id="requestedByName-account"
+                  type="text"
+                  value={values.requestedByName}
+                  onChange={(e) => onChange({ requestedByName: e.target.value })}
+                  placeholder="Name of the person this request is for…"
+                  className={cn(
+                    "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                    "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
+                    errors.requestedByName
+                      ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                      : "border-border"
+                  )}
+                />
+                {errors.requestedByName ? (
+                  <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    {errors.requestedByName}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-secondary">
+                    Who is filing / on whose behalf.
+                  </p>
                 )}
-              />
-              {errors.requestedByName ? (
-                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3 shrink-0" />
-                  {errors.requestedByName}
-                </p>
-              ) : (
-                <p className="text-[11px] text-text-secondary">
-                  Defaults to your account name. Change it if requesting on behalf of someone else.
-                </p>
+              </div>
+              {hasAssignable && (
+                <div className="space-y-1.5">
+                  <label htmlFor="assignedToName" className="text-xs font-bold text-text">
+                    Assign to <span className="text-status-outofservice-bg">*</span>
+                  </label>
+                  <input
+                    id="assignedToName"
+                    type="text"
+                    list="wizard-assign-to-options"
+                    value={values.assignedToName}
+                    onChange={(e) => onChange({ assignedToName: e.target.value })}
+                    placeholder="Person who will hold the asset…"
+                    className={cn(
+                      "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                      "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
+                      errors.assignedToName
+                        ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                        : "border-border"
+                    )}
+                  />
+                  <datalist id="wizard-assign-to-options">
+                    {assigneeSuggestions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  {errors.assignedToName ? (
+                    <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      {errors.assignedToName}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-text-secondary">
+                      Separate from Requested by — who will hold the asset.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 rounded-lg border border-border bg-bg-subtle/40 p-2.5">
@@ -1343,6 +1408,44 @@ function StepDetails({
                 </p>
               )}
             </div>
+          </div>
+        )}
+
+        {hasAssignable && isManual && (
+          <div className="space-y-1.5 pt-1 border-t border-border/60">
+            <label htmlFor="assignedToName-manual" className="text-xs font-bold text-text">
+              Assign to <span className="text-status-outofservice-bg">*</span>
+            </label>
+            <input
+              id="assignedToName-manual"
+              type="text"
+              list="wizard-assign-to-options"
+              value={values.assignedToName}
+              onChange={(e) => onChange({ assignedToName: e.target.value })}
+              placeholder="Person in this department who will hold the asset…"
+              className={cn(
+                "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
+                errors.assignedToName
+                  ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                  : "border-border"
+              )}
+            />
+            <datalist id="wizard-assign-to-options">
+              {assigneeSuggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+            {errors.assignedToName ? (
+              <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                {errors.assignedToName}
+              </p>
+            ) : (
+              <p className="text-[11px] text-text-secondary">
+                Separate from Requested by — who will hold the asset.
+              </p>
+            )}
           </div>
         )}
 
@@ -1756,6 +1859,16 @@ function StepReview({
               {values.requestedByName.trim() || requester.name}
             </p>
           </div>
+          {values.typeBundles.some((b) => b.requestType === "assignable") && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
+                Assign To
+              </p>
+              <p className="font-medium text-text mt-0.5">
+                {values.assignedToName.trim() || "—"}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
               Department account
@@ -2008,6 +2121,7 @@ export function NewBorrowRequestWizard({
         department: me.department || prev.department,
         // Prefill once; do not overwrite if the requester already edited the name.
         requestedByName: prev.requestedByName.trim() || me.name || "",
+        assignedToName: prev.assignedToName.trim() || me.name || "",
       };
     });
   }, [open, me]);
@@ -2085,6 +2199,13 @@ export function NewBorrowRequestWizard({
     }
     if (!values.requestedByName.trim())
       errs.requestedByName = "Requested by is required.";
+    const hasAssignable = values.typeBundles.some(
+      (b) => b.requestType === "assignable"
+    );
+    if (hasAssignable && !values.assignedToName.trim()) {
+      errs.assignedToName =
+        "Assign to is required — name the person who will hold the asset.";
+    }
 
     values.typeBundles.forEach((bundle) => {
       if (bundle.purposeGroups.length < 1) {
@@ -2280,6 +2401,10 @@ export function NewBorrowRequestWizard({
             bundle.requestType === "borrowable" ? values.dateTo : undefined,
           notes: values.notes || undefined,
           requestedByName: values.requestedByName.trim() || me.name,
+          assignedToName:
+            bundle.requestType === "assignable"
+              ? values.assignedToName.trim()
+              : undefined,
           submissionGroupId,
         });
         codes.push(createdRequest.requestCode);

@@ -408,13 +408,33 @@ export function RequestDetailSheet({
                 </div>
               </div>
 
-              {request.requestedByName && (
-                <div className="col-span-2 flex items-center gap-2 pt-1 border-t border-border/50">
-                  <User className="h-4 w-4 text-accent shrink-0" />
-                  <div>
-                    <p className="text-[10px] text-text-secondary uppercase tracking-wide">Requested By</p>
-                    <p className="font-bold text-text mt-0.5">{request.requestedByName}</p>
+              {(request.requestedByName ||
+                (request.requestType === "assignable" && request.assignedToName)) && (
+                <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-border/50">
+                  <div className="flex items-center gap-2 rounded-md border border-border/60 bg-bg-subtle/40 px-2.5 py-2">
+                    <User className="h-4 w-4 text-accent shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-text-secondary uppercase tracking-wide">
+                        Requested By
+                      </p>
+                      <p className="font-bold text-text mt-0.5">
+                        {request.requestedByName?.trim() || request.requesterName}
+                      </p>
+                    </div>
                   </div>
+                  {request.requestType === "assignable" && (
+                    <div className="flex items-center gap-2 rounded-md border border-amber-500/25 bg-amber-500/5 px-2.5 py-2">
+                      <User className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-[10px] text-text-secondary uppercase tracking-wide">
+                          Assign To
+                        </p>
+                        <p className="font-bold text-text mt-0.5">
+                          {request.assignedToName?.trim() || "—"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

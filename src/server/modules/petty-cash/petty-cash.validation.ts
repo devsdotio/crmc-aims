@@ -74,6 +74,7 @@ export const updatePettyCashSchema = z
     departmentName: z.string().trim().max(255).optional().nullable(),
     departmentIds: z.array(z.string().uuid()).optional(),
     isLegacy: z.boolean().optional(),
+    approvedByName: z.string().trim().max(255).nullable().optional(),
   })
   .strict();
 

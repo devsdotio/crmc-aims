@@ -81,6 +81,11 @@ export const maintenanceLogs = pgTable(
       .default(sql`'[]'::jsonb`),
 
     relatedBorrowLogCode: text("related_borrow_log_code"),
+    /**
+     * Who held the asset when flagged (person and/or dept/project label).
+     * Snapshot — kept after custody ends so logs stay attributable.
+     */
+    assignedToName: text("assigned_to_name"),
     scheduledDate: date("scheduled_date", { mode: "string" }),
 
     createdAt: timestamp("created_at", { withTimezone: true })

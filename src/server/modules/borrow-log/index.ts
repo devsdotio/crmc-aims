@@ -24,6 +24,7 @@ export class BorrowLogController {
               url.searchParams.get("custody") ||
               url.searchParams.get("type") ||
               undefined,
+            assetId: url.searchParams.get("assetId") ?? undefined,
             scope:
               url.searchParams.get("scope") === "department"
                 ? "department"
@@ -47,6 +48,16 @@ export class BorrowLogController {
     try {
       const actor = await requireActor();
       return ok(await this.service.getById(id, actor));
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async updateAssignee(request: NextRequest | Request, id: string) {
+    try {
+      const session = await requireAssetOperator();
+      const body = await request.json();
+      return ok(await this.service.updateAssignee(id, body, session.actor));
     } catch (error) {
       return handleError(error);
     }

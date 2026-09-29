@@ -42,12 +42,10 @@ import { useAuditLogsQuery } from "@/features/audit-logs/client";
 import { useToast } from "@/components/providers/toast-context";
 import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
-import {
-  parseParticulars,
-  particularLineAmount,
-  sumParticularAmounts,
-} from "@/lib/voucher-particulars";
+import { parseParticulars } from "@/lib/voucher-particulars";
+import { PurposeParticularsView } from "@/components/disbursements/purpose-particulars-view";
 import { EditVoucherDialog } from "@/components/vouchers/edit-voucher-dialog";
+import { DisbursementReceiptSlot } from "@/components/disbursements/disbursement-receipt-slot";
 import {
   auditActionRail,
   DisbursementAuditChanges,
@@ -737,6 +735,11 @@ export function VoucherDetailSheet({
           {/* TAB 1: DETAILS */}
           {activeTab === "details" && (
             <div className="space-y-6">
+                <DisbursementReceiptSlot
+                  purchaseOrderNumber={voucher.purchaseOrderNumber}
+                  claimStatus={voucher.status}
+                  enabled={isOpen}
+                />
                 {/* Payee & Disbursement Beneficiary Card */}
                 <div className="rounded-2xl border border-border bg-bg-subtle/30 p-4 space-y-3">
                   <div className="flex items-center justify-between border-b border-border/60 pb-2">
@@ -857,59 +860,11 @@ export function VoucherDetailSheet({
                     )}
                   </div>
 
-                  {cleanPurpose ? (
-                    <div className="space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
-                        Purpose
-                      </span>
-                      <div className="rounded-xl border border-border/70 bg-bg p-3.5 text-xs text-text leading-relaxed font-medium whitespace-pre-wrap">
-                        {cleanPurpose}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {particularItems.length > 0 ? (
-                    <div className="space-y-2">
-                      <span className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
-                        Particulars
-                      </span>
-                      {particularItems.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-start gap-3 rounded-xl border border-border/70 bg-bg p-2.5 text-xs text-text transition-colors hover:border-primary/40 hover:bg-bg-subtle/40"
-                        >
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-primary/10 font-mono text-[10px] font-bold text-primary">
-                            {idx + 1}
-                          </span>
-                          <span className="flex-1 font-medium leading-relaxed pt-0.5">
-                            {item.description}
-                          </span>
-                          {item.quantity && item.unitCost ? (
-                            <span className="shrink-0 font-mono text-[11px] text-text-secondary pt-0.5">
-                              {item.quantity} × {formatPhp(item.unitCost)}
-                            </span>
-                          ) : null}
-                          {particularLineAmount(item) > 0 ? (
-                            <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400 pt-0.5">
-                              {formatPhp(particularLineAmount(item))}
-                            </span>
-                          ) : null}
-                        </div>
-                      ))}
-                      <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
-                        <span>Overall total</span>
-                        <span className="font-mono font-bold text-text">
-                          {formatPhp(sumParticularAmounts(particularItems))}
-                        </span>
-                      </div>
-                    </div>
-                  ) : !cleanPurpose ? (
-                    <div className="rounded-xl border border-dashed border-border bg-bg/50 p-4 text-center">
-                      <p className="text-xs italic text-text-secondary">
-                        No purpose or particulars recorded for this voucher.
-                      </p>
-                    </div>
-                  ) : null}
+                  <PurposeParticularsView
+                    purpose={voucher.purpose}
+                    items={particularItems}
+                    displayPurpose={cleanPurpose}
+                  />
                 </div>
               </div>
             )}

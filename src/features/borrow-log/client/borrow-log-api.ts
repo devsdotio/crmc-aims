@@ -27,11 +27,16 @@ export type VoidBorrowPayload = {
   reason?: string;
 };
 
+export type UpdateAssigneePayload = {
+  assignedToName: string;
+};
+
 export type BorrowLogListParams = {
   status?: BorrowLogRecord["status"] | "closed";
   department?: string;
   search?: string;
   custodyKind?: "borrow" | "assignment" | "all";
+  assetId?: string;
   scope?: "department";
   page?: number;
   limit?: number;
@@ -45,6 +50,7 @@ export const borrowLogApi = {
     if (params?.department) sp.set("department", params.department);
     if (params?.search) sp.set("search", params.search);
     if (params?.custodyKind) sp.set("custodyKind", params.custodyKind);
+    if (params?.assetId) sp.set("assetId", params.assetId);
     if (params?.scope) sp.set("scope", params.scope);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<BorrowLogRecord[]>>(
@@ -62,6 +68,7 @@ export const borrowLogApi = {
     if (params?.department) sp.set("department", params.department);
     if (params?.search) sp.set("search", params.search);
     if (params?.custodyKind) sp.set("custodyKind", params.custodyKind);
+    if (params?.assetId) sp.set("assetId", params.assetId);
     if (params?.scope) sp.set("scope", params.scope);
     sp.set("page", String(params?.page ?? 1));
     sp.set("limit", String(params?.limit ?? 25));
@@ -104,6 +111,17 @@ export const borrowLogApi = {
     const res = await fetchJson<ApiResponse<BorrowLogRecord>>(
       `/api/borrow-log/${id}/void`,
       { method: "POST", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+
+  async updateAssignee(
+    id: string,
+    payload: UpdateAssigneePayload
+  ): Promise<BorrowLogRecord> {
+    const res = await fetchJson<ApiResponse<BorrowLogRecord>>(
+      `/api/borrow-log/${id}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
     );
     return res.data;
   },

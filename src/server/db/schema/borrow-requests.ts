@@ -76,6 +76,11 @@ export const borrowRequests = pgTable(
     requestType: assetRequestTypeEnum("request_type"),
     requestedByName: text("requested_by_name"),
     /**
+     * Person in the requesting department who will hold the asset (assignment).
+     * Distinct from requestedByName (who filed the request).
+     */
+    assignedToName: text("assigned_to_name"),
+    /**
      * Shared id when the portal wizard submits more than one request type
      * together. Each type stays on its own row (and supplies stay on
      * consumable_requests) because release workflows cannot mix.

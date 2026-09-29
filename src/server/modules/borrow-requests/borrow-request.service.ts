@@ -72,6 +72,7 @@ function toDTO(
     departmentId: row.departmentId,
     requestType: row.requestType ?? undefined,
     requestedByName: row.requestedByName ?? undefined,
+    assignedToName: row.assignedToName ?? undefined,
     submissionGroupId: row.submissionGroupId ?? undefined,
     relatedRequests,
     items,
@@ -290,6 +291,7 @@ export class BorrowRequestService {
         departmentId: dest.departmentId,
         requestType,
         requestedByName: input.requestedByName ?? null,
+        assignedToName: input.assignedToName?.trim() || null,
         submissionGroupId: input.submissionGroupId ?? null,
         items,
         purpose: headerPurpose,
@@ -343,6 +345,19 @@ export class BorrowRequestService {
       input.items ?? existing.items
     );
 
+    const nextAssignedTo =
+      input.assignedToName !== undefined
+        ? input.assignedToName.trim() || null
+        : existing.assignedToName;
+    if (
+      (existing.requestType ?? "borrowable") === "assignable" &&
+      !nextAssignedTo
+    ) {
+      throw new BadRequestError(
+        "Assign to is required for assignment requests — name the person who will hold the asset."
+      );
+    }
+
     const quantityChanged =
       Boolean(input.items) &&
       nextItems.some((item, idx) => {
@@ -350,12 +365,22 @@ export class BorrowRequestService {
         return !prior || prior.quantity !== item.quantity;
       });
 
+    const assigneeChanged =
+      Boolean(input.assignedToName?.trim()) &&
+      input.assignedToName!.trim() !== (existing.assignedToName ?? "").trim();
+
     const approveNote = input.note?.trim();
-    const historyNote = quantityChanged
-      ? approveNote
-        ? `${approveNote} (quantities adjusted at approval)`
-        : "Quantities adjusted at approval"
-      : approveNote;
+    const adjustmentBits: string[] = [];
+    if (quantityChanged) adjustmentBits.push("quantities adjusted");
+    if (assigneeChanged) {
+      adjustmentBits.push(`assignee set to ${input.assignedToName!.trim()}`);
+    }
+    const historyNote =
+      adjustmentBits.length > 0
+        ? approveNote
+          ? `${approveNote} (${adjustmentBits.join("; ")})`
+          : adjustmentBits.join("; ").replace(/^./, (c) => c.toUpperCase())
+        : approveNote;
 
     const history = [
       ...(Array.isArray(existing.history) ? existing.history : []),
@@ -368,6 +393,9 @@ export class BorrowRequestService {
         {
           status: "approved",
           items: nextItems,
+          ...(input.assignedToName !== undefined
+            ? { assignedToName: input.assignedToName.trim() || null }
+            : {}),
           history,
         },
         tx,
@@ -586,7 +614,10 @@ export class BorrowRequestService {
               custodyKind,
               source: "portal",
               departmentId,
-              borrowerName: input.pickedUpBy,
+              borrowerName:
+                input.pickedUpBy.trim() ||
+                existing.assignedToName?.trim() ||
+                existing.requesterName,
               borrowerEmail: existing.requesterEmail,
               borrowerPhone: existing.requesterPhone || "",
               dueDate:
@@ -920,6 +951,18 @@ export class BorrowRequestService {
     }
 
     const nextRequestType = input.requestType ?? existing.requestType ?? "borrowable";
+    const nextAssignedTo =
+      input.assignedToName !== undefined
+        ? input.assignedToName === null
+          ? null
+          : input.assignedToName.trim() || null
+        : existing.assignedToName;
+    if (nextRequestType === "assignable" && !nextAssignedTo) {
+      throw new BadRequestError(
+        "Assign to is required for assignment requests — name the person who will hold the asset."
+      );
+    }
+
     const nextItems = input.items
       ? normalizeCategoryOnlyItems(input.items)
       : existing.items;
@@ -941,6 +984,14 @@ export class BorrowRequestService {
           ...(input.requesterEmail !== undefined ? { requesterEmail: input.requesterEmail.toLowerCase() } : {}),
           ...(input.requesterPhone !== undefined ? { requesterPhone: input.requesterPhone } : {}),
           ...(input.requestedByName !== undefined ? { requestedByName: input.requestedByName } : {}),
+          ...(input.assignedToName !== undefined
+            ? {
+                assignedToName:
+                  input.assignedToName === null
+                    ? null
+                    : input.assignedToName.trim() || null,
+              }
+            : {}),
           department: departmentName,
           departmentId,
           requestType: nextRequestType,

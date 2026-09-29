@@ -29,6 +29,7 @@ import { AssetRepository } from "@/server/modules/assets/asset.repository";
 import { AssetLifecycleService } from "@/server/modules/assets/asset.lifecycle.service";
 import { BorrowRequestRepository } from "@/server/modules/borrow-requests/borrow-request.repository";
 import { MaintenanceRepository } from "@/server/modules/maintenance/maintenance.repository";
+import { maintenanceAssigneeSnapshot } from "@/server/modules/maintenance/maintenance-assignee";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
@@ -40,6 +41,7 @@ import {
   listBorrowLogQuerySchema,
   releaseBorrowSchema,
   returnBorrowSchema,
+  updateAssigneeSchema,
   voidBorrowSchema,
 } from "./borrow-log.validation";
 
@@ -169,6 +171,7 @@ export class BorrowLogService {
       borrowerUserId: parsed.borrowerUserId,
       borrowerEmail: parsed.borrowerEmail,
       custodyKind: parsed.custodyKind,
+      assetId: parsed.assetId,
       includeSandbox: parsed.includeSandbox,
       page: parsed.page,
       limit: parsed.limit,
@@ -240,6 +243,116 @@ export class BorrowLogService {
       }
     }
     return toBorrowLogDTO(row);
+  }
+
+  /**
+   * Set / correct the person holding an active custody log.
+   * Syncs open maintenance logs for the same asset so assignee display stays current.
+   */
+  async updateAssignee(
+    rawId: string,
+    rawInput: unknown,
+    actor: ActorContext
+  ): Promise<BorrowLogDTO> {
+    const id = borrowLogIdSchema.parse(rawId);
+    const input = updateAssigneeSchema.parse(rawInput);
+    const nextName = input.assignedToName.trim();
+
+    return withTransaction(async (tx) => {
+      const existing = await this.repo.findById(id, tx, actor.tenantId);
+      if (!existing) throw new NotFoundError("Borrow log", id);
+      if (existing.status !== "active") {
+        throw new ConflictError(
+          "Only active custody logs can have the assignee updated."
+        );
+      }
+
+      const previousName = existing.borrowerName?.trim() || "";
+      if (previousName === nextName) {
+        return toBorrowLogDTO(existing);
+      }
+
+      const updated = await this.repo.update(
+        id,
+        { borrowerName: nextName },
+        tx,
+        actor.tenantId
+      );
+      if (!updated) throw new NotFoundError("Borrow log", id);
+
+      const asset = await this.assets.findById(
+        existing.assetId,
+        tx,
+        actor.tenantId
+      );
+      const assignedSnapshot = maintenanceAssigneeSnapshot({
+        borrowerName: nextName,
+        currentHolder: asset?.currentHolder ?? existing.department,
+      });
+
+      if (existing.assetId) {
+        const maintRows = await this.maintenance.listByAssetId(
+          existing.assetId,
+          tx,
+          actor.tenantId
+        );
+        for (const mnt of maintRows) {
+          if (mnt.isResolved) continue;
+          await this.maintenance.update(
+            mnt.id,
+            { assignedToName: assignedSnapshot },
+            tx,
+            actor.tenantId
+          );
+        }
+      }
+
+      if (asset) {
+        await this.lifecycle.record(
+          {
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            eventType: "updated",
+            actor,
+            fromStatus: asset.status,
+            toStatus: asset.status,
+            fromHolder: asset.currentHolder,
+            toHolder: asset.currentHolder,
+            payload: {
+              via: "assignee_updated",
+              logCode: existing.logCode,
+              logId: existing.id,
+              fromAssignee: previousName || null,
+              toAssignee: nextName,
+              assignedToName: assignedSnapshot,
+            },
+          },
+          tx
+        );
+      }
+
+      await this.auditLogs.log(
+        {
+          entityType: AUDIT_ENTITY.borrowTransaction,
+          entityId: updated.id,
+          action: AUDIT_ACTION.updated,
+          actorName: actor.displayName,
+          actorUserId: actor.userId,
+          notes: previousName
+            ? `Updated assignee on ${existing.assetCode}: ${previousName} → ${nextName}.`
+            : `Set assignee on ${existing.assetCode} to ${nextName}.`,
+          metadata: {
+            assetCode: existing.assetCode,
+            logCode: existing.logCode,
+            fromAssignee: previousName || null,
+            toAssignee: nextName,
+          },
+        },
+        tx
+      );
+
+      return toBorrowLogDTO(updated);
+    });
   }
 
   /**
@@ -549,6 +662,8 @@ export class BorrowLogService {
           projectId: destination.projectId,
           source: input.source ?? "portal",
           notes: input.notes ?? null,
+          borrowerName: displayName,
+          requestedByName: input.requestedByName ?? null,
           borrowerEmail: input.borrowerEmail ?? null,
         },
       },
@@ -761,6 +876,14 @@ export class BorrowLogService {
                 {
                   notes: appendedNotes || returnNote,
                   relatedBorrowLogCode: linkedCodes.join(", ") || existing.logCode,
+                  ...(openMaint.assignedToName
+                    ? {}
+                    : {
+                        assignedToName: maintenanceAssigneeSnapshot({
+                          borrowerName: existing.borrowerName,
+                          currentHolder: existing.department,
+                        }),
+                      }),
                   condition:
                     conditionOnReturn === "damaged"
                       ? "damaged"
@@ -817,6 +940,10 @@ export class BorrowLogService {
                   repairCost: null,
                   repairParts: [],
                   relatedBorrowLogCode: existing.logCode,
+                  assignedToName: maintenanceAssigneeSnapshot({
+                    borrowerName: existing.borrowerName,
+                    currentHolder: existing.department,
+                  }),
                   scheduledDate: null,
                 },
                 tx

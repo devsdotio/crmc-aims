@@ -227,6 +227,9 @@ export function VouchersView() {
         target={printVoucher ? { kind: "voucher", record: printVoucher } : null}
         isOpen={Boolean(printVoucher)}
         onClose={() => setPrintVoucher(null)}
+        onUpdated={(record) => {
+          if ("voucherCode" in record) setPrintVoucher(record);
+        }}
       />
 
       {/* Create Voucher Dialog */}

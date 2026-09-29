@@ -59,12 +59,11 @@ function FlagForMaintenanceDialogForm({
   loadingAssets,
   onConfirmFlag,
 }: FlagForMaintenanceDialogFormProps) {
-  /** Available free assets only — in-custody must use return / project damage. */
+  /** Active / repairable assets — including those still borrowed or assigned. */
   const selectable = useMemo(
     () =>
       assets.filter(
         (a) =>
-          !a.currentHolder &&
           a.status !== "retired" &&
           a.status !== "out_of_service" &&
           a.status !== "missing"
@@ -125,8 +124,8 @@ function FlagForMaintenanceDialogForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetAsset) {
-      setError("Search and select an available asset from the registry.");
+                if (!targetAsset) {
+      setError("Search and select an asset from the registry.");
       return;
     }
     if (!notes.trim()) {
@@ -207,10 +206,8 @@ function FlagForMaintenanceDialogForm({
               <div className="h-9 rounded-lg bg-border animate-pulse" />
             ) : selectable.length === 0 ? (
               <p className="text-[11px] text-text-secondary border border-dashed border-border rounded-lg p-3">
-                No free assets available. Return borrowed items or resolve
-                project custody first. Assets currently with a requester must be
-                returned (with repair condition) — project-held assets should use{" "}
-                <strong>Report damage</strong> on the project.
+                No flaggable assets in the registry. Retired, missing, and
+                out-of-service units are excluded.
               </p>
             ) : (
               <div className="space-y-2">
@@ -245,6 +242,9 @@ function FlagForMaintenanceDialogForm({
                       </p>
                       <p className="font-mono text-[11px] text-text-secondary">
                         {targetAsset.assetCode}
+                        {targetAsset.currentHolder
+                          ? ` · Assigned to ${targetAsset.currentHolder}`
+                          : ""}
                       </p>
                     </div>
                     <button
@@ -278,9 +278,12 @@ function FlagForMaintenanceDialogForm({
                           <p className="text-xs font-bold text-text truncate">
                             {a.name}
                           </p>
-                          <p className="text-[11px] font-mono text-text-secondary">
+                          <p className="text-[11px] font-mono text-text-secondary truncate">
                             {a.assetCode}
                             {a.location ? ` · ${a.location}` : ""}
+                            {a.currentHolder
+                              ? ` · Assigned to ${a.currentHolder}`
+                              : ""}
                           </p>
                         </button>
                       ))
@@ -361,7 +364,10 @@ function FlagForMaintenanceDialogForm({
                 <strong className="font-mono text-text">
                   {targetAsset.assetCode}
                 </strong>{" "}
-                to <strong>needs repair</strong> until the log is resolved.
+                to <strong>needs repair</strong> until the log is resolved
+                {targetAsset.currentHolder
+                  ? `. Custody stays with ${targetAsset.currentHolder} and is recorded on the log.`
+                  : "."}
               </span>
             </div>
           )}

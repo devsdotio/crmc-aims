@@ -15,6 +15,7 @@ import { withTransaction, type DbSession } from "@/server/db/transaction";
 import { BorrowLogService } from "@/server/modules/borrow-log/borrow-log.service";
 import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repository";
 import { MaintenanceRepository } from "@/server/modules/maintenance/maintenance.repository";
+import { maintenanceAssigneeSnapshot } from "@/server/modules/maintenance/maintenance-assignee";
 import { PurchaseLotService } from "@/server/modules/purchase-lots/purchase-lot.service";
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
 import { ProjectAssetAssignmentRepository } from "@/server/modules/projects/project-asset.repository";
@@ -889,22 +890,6 @@ export class AssetService {
           );
         }
       }
-      if (input.status === "needs_repair") {
-        const open = await this.borrowLogRepo.findActiveByAssetId(id);
-        const openProject = await this.projectAssignments.findOpenByAssetId(id);
-        if (openProject) {
-          throw new ConflictError(
-            "Asset is on a project. Use Report damage on the project panel to flag repair while in project custody."
-          );
-        }
-        if (existing.currentHolder || open) {
-          throw new ConflictError(
-            existing.currentHolder
-              ? `Asset is currently in custody (${existing.currentHolder}). Return it with a repair condition instead of editing status.`
-              : `Asset has an open borrow/release log (${open!.borrowerName}). Return it before marking needs repair.`
-          );
-        }
-      }
       if (input.status === "active" && existing.status === "needs_repair") {
         const openMaint = await this.maintenanceRepo.countOpenByAssetId(id);
         if (openMaint > 0) {
@@ -1122,7 +1107,10 @@ export class AssetService {
         source: "admin_manual",
         departmentId: input.departmentId,
         projectId: input.projectId,
-        borrowerName: input.borrowerName,
+        borrowerName:
+          input.assignedToName?.trim() ||
+          input.borrowerName?.trim() ||
+          undefined,
         borrowerEmail: input.borrowerEmail || undefined,
         borrowerPhone: input.borrowerPhone || undefined,
         dueDate:
@@ -1260,6 +1248,16 @@ export class AssetService {
       );
       if (openCount > 0) return;
 
+      const openBorrow = await this.borrowLogRepo.findActiveByAssetId(
+        asset.id,
+        tx,
+        actor.tenantId
+      );
+      const assignedToName = maintenanceAssigneeSnapshot({
+        borrowerName: openBorrow?.borrowerName,
+        currentHolder: asset.currentHolder,
+      });
+
       const mntCode = generateOperationalCode("MNT");
       await this.maintenanceRepo.create(
         {
@@ -1282,7 +1280,8 @@ export class AssetService {
           resolvedByName: null,
           repairCost: null,
           repairParts: [],
-          relatedBorrowLogCode: null,
+          relatedBorrowLogCode: openBorrow?.logCode ?? null,
+          assignedToName,
           scheduledDate: null,
         },
         tx
@@ -1302,6 +1301,7 @@ export class AssetService {
             via: opts.via,
             maintenanceLogCode: mntCode,
             notes: opts.notes,
+            assignedToName,
           },
         },
         tx
@@ -1341,22 +1341,15 @@ export class AssetService {
         throw new ConflictError("Missing assets cannot be flagged for maintenance.");
       }
 
-      const openBorrow = await this.borrowLogRepo.findActiveByAssetId(id, tx);
-      const projectOpen = await this.projectAssignments.findOpenByAssetId(id, tx);
-
-      if (projectOpen) {
-        throw new ConflictError(
-          "Asset is on a project. Use Report damage on the project panel to flag repair or write off while in project custody."
-        );
-      }
-
-      if (existing.currentHolder || openBorrow) {
-        throw new ConflictError(
-          existing.currentHolder
-            ? `Asset is currently in custody (${existing.currentHolder}). Return it (with repair condition) instead of flagging in isolation.`
-            : `Asset has an open borrow/release log (${openBorrow!.borrowerName}). Return it before flagging for maintenance.`
-        );
-      }
+      const openBorrow = await this.borrowLogRepo.findActiveByAssetId(
+        id,
+        tx,
+        actor.tenantId
+      );
+      const assignedToName = maintenanceAssigneeSnapshot({
+        borrowerName: openBorrow?.borrowerName,
+        currentHolder: existing.currentHolder,
+      });
 
       const notes =
         input.notes?.trim() ||
@@ -1398,7 +1391,8 @@ export class AssetService {
           resolvedByName: null,
           repairCost: null,
           repairParts: [],
-          relatedBorrowLogCode: null,
+          relatedBorrowLogCode: openBorrow?.logCode ?? null,
+          assignedToName,
           scheduledDate: input.scheduledDate ?? null,
         },
         tx
@@ -1418,6 +1412,7 @@ export class AssetService {
             via: "manual_flag",
             notes,
             maintenanceLogCode: mntCode,
+            assignedToName,
           },
         },
         tx

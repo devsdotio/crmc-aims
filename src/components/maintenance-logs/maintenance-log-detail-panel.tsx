@@ -11,11 +11,15 @@ import {
   User,
   FileText,
   FilePenLine,
+  Edit3,
+  Check,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
 import { ConditionTag } from "./condition-tag";
 import { DocumentMaintenanceDialog } from "./document-maintenance-dialog";
+import { useUpdateMaintenanceLogMutation } from "@/features/maintenance-logs/client";
 
 export interface MaintenanceLogDetailPanelProps {
   record: MaintenanceLogRecord | null;
@@ -70,14 +74,25 @@ export function MaintenanceLogDetailPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const { getCategoryStyle } = useCategoryStyleMap();
   const [documentOpen, setDocumentOpen] = useState(false);
+  const [editingAssignee, setEditingAssignee] = useState(false);
+  const [assigneeValue, setAssigneeValue] = useState("");
+  const [assigneeError, setAssigneeError] = useState("");
+  const updateLog = useUpdateMaintenanceLogMutation();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isOpen && !documentOpen) onClose();
+      if (e.key === "Escape" && isOpen && !documentOpen && !editingAssignee) onClose();
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose, documentOpen]);
+  }, [isOpen, onClose, documentOpen, editingAssignee]);
+
+  useEffect(() => {
+    if (!isOpen || !record) return;
+    setEditingAssignee(false);
+    setAssigneeValue(record.assignedToName?.trim() || "");
+    setAssigneeError("");
+  }, [isOpen, record?.id, record?.assignedToName]);
 
   if (!isOpen || !record) return null;
 
@@ -90,6 +105,27 @@ export function MaintenanceLogDetailPanel({
     parts.length > 0 ||
     (record.repairCost != null && record.repairCost !== "") ||
     Boolean(record.scheduledDate);
+
+  const saveAssignee = async () => {
+    const trimmed = assigneeValue.trim();
+    try {
+      await updateLog.mutateAsync({
+        id: record.id,
+        assignedToName: trimmed || null,
+      });
+      setEditingAssignee(false);
+      setAssigneeError("");
+      onDocumentSaved?.(
+        trimmed
+          ? `Assignee set to ${trimmed}.`
+          : "Assignee cleared on this maintenance log."
+      );
+    } catch (err) {
+      setAssigneeError(
+        err instanceof Error ? err.message : "Failed to update assignee."
+      );
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
@@ -207,6 +243,95 @@ export function MaintenanceLogDetailPanel({
                   {record.loggedBy}
                 </span>
               </Field>
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <dt className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    Assigned to
+                  </dt>
+                  {!record.isResolved && canDocument && !editingAssignee && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssigneeValue(record.assignedToName?.trim() || "");
+                        setEditingAssignee(true);
+                        setAssigneeError("");
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] font-bold text-accent hover:underline cursor-pointer"
+                    >
+                      <Edit3 className="h-3 w-3" />
+                      {record.assignedToName?.trim() ? "Edit" : "Set person"}
+                    </button>
+                  )}
+                </div>
+                <dd className="text-sm text-text">
+                  {editingAssignee ? (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={assigneeValue}
+                        onChange={(e) => {
+                          setAssigneeValue(e.target.value);
+                          if (assigneeError) setAssigneeError("");
+                        }}
+                        disabled={updateLog.isPending}
+                        placeholder="Person who held the asset"
+                        className="w-full h-8 px-2 text-xs bg-bg border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void saveAssignee();
+                          }
+                          if (e.key === "Escape") {
+                            setEditingAssignee(false);
+                            setAssigneeError("");
+                          }
+                        }}
+                      />
+                      {assigneeError && (
+                        <p className="text-[10px] font-semibold text-status-outofservice-text">
+                          {assigneeError}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => void saveAssignee()}
+                          disabled={updateLog.isPending}
+                          className="inline-flex items-center gap-1 h-7 px-2 text-[11px] font-bold rounded-md bg-primary text-primary-foreground hover:opacity-90 cursor-pointer disabled:opacity-50"
+                        >
+                          {updateLog.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Check className="h-3 w-3" />
+                          )}
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAssignee(false);
+                            setAssigneeError("");
+                          }}
+                          disabled={updateLog.isPending}
+                          className="inline-flex items-center h-7 px-2 text-[11px] font-semibold rounded-md border border-border text-text-secondary hover:text-text cursor-pointer disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : record.assignedToName?.trim() ? (
+                    <span className="inline-flex items-center gap-1.5 font-semibold">
+                      <User className="h-3.5 w-3.5 text-status-repair-text" />
+                      {record.assignedToName}
+                    </span>
+                  ) : (
+                    <span className="text-text-secondary italic text-xs">
+                      No person recorded
+                    </span>
+                  )}
+                </dd>
+              </div>
               {record.relatedBorrowLogCode && (
                 <Field label="Related checkout">
                   <Link

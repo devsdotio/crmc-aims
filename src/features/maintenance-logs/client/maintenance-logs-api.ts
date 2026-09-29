@@ -20,6 +20,7 @@ export type UpdateOpenMaintenancePayload = {
   repairCost?: string | number | null;
   repairParts?: Array<{ name: string; cost?: string | number | null }>;
   scheduledDate?: string | null;
+  assignedToName?: string | null;
 };
 
 export type ResolveMaintenancePayload = {

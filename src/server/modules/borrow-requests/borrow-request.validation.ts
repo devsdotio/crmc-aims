@@ -45,6 +45,8 @@ export const createBorrowRequestSchema = z.object({
   department: z.string().trim().max(120).optional(),
   requestType: z.enum(["borrowable", "assignable"]).optional(),
   requestedByName: z.string().trim().max(255).optional(),
+  /** Required for assignable requests — person who will hold the asset. */
+  assignedToName: z.string().trim().max(255).optional(),
   items: z.array(
     z.object({
       itemDescription: z.string().trim().min(1).max(500),
@@ -74,6 +76,14 @@ export const createBorrowRequestSchema = z.object({
       path: ["expectedReturnDate"],
     });
   }
+  if (requestType === "assignable" && !(data.assignedToName ?? "").trim()) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "Assign to is required for assignment requests — name the person in the department who will hold the asset.",
+      path: ["assignedToName"],
+    });
+  }
 });
 
 const borrowRequestAssetItemSchema = z.object({
@@ -88,6 +98,8 @@ export const approveBorrowRequestSchema = z.object({
   note: z.string().trim().max(1000).optional(),
   /** Optional quantity adjustments applied at approval (category lines only). */
   items: z.array(borrowRequestAssetItemSchema).min(1).optional(),
+  /** Optional assignee update at approval (assignable requests). */
+  assignedToName: z.string().trim().min(1).max(255).optional(),
 });
 
 export const rejectBorrowRequestSchema = z.object({
@@ -138,6 +150,7 @@ export const updateBorrowRequestSchema = z.object({
   departmentId: z.string().uuid().optional(),
   requestType: z.enum(["borrowable", "assignable"]).optional(),
   requestedByName: z.string().trim().max(255).optional(),
+  assignedToName: z.string().trim().max(255).optional().nullable(),
   items: z
     .array(
       z.object({
@@ -165,6 +178,20 @@ export const updateBorrowRequestSchema = z.object({
     .trim()
     .min(5, "Edit reason is required (min 5 characters) for accountability.")
     .max(1000),
+}).superRefine((data, ctx) => {
+  const requestType = data.requestType;
+  if (
+    requestType === "assignable" &&
+    data.assignedToName !== undefined &&
+    data.assignedToName !== null &&
+    !data.assignedToName.trim()
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Assign to cannot be empty for assignment requests.",
+      path: ["assignedToName"],
+    });
+  }
 });
 
 export const borrowRequestIdSchema = z.string().uuid("Invalid request id.");
