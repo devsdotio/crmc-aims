@@ -125,21 +125,22 @@ export function RequestListItem({
           )}
         </h3>
 
-        {/* Row 3: Requester Name & Department */}
+        {/* Row 3: People & Department */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
-          <span className="flex items-center gap-1 font-medium text-text">
+          <span className="flex items-center gap-1">
             <User className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
-            {request.requestedByName || request.requesterName}
+            <span className="text-text-secondary/80">Requested by</span>
+            <span className="font-medium text-text">
+              {request.requestedByName || request.requesterName}
+            </span>
           </span>
-          {request.requestedByName &&
-            request.requestedByName !== request.requesterName && (
-              <span className="text-text-secondary/80">
-                via {request.requesterName}
+          {request.requestType === "assignable" && (
+            <span className="flex items-center gap-1">
+              <User className="h-3.5 w-3.5 text-primary/70 shrink-0" />
+              <span className="text-text-secondary/80">Assign to</span>
+              <span className="font-medium text-text">
+                {request.assignedToName?.trim() || "—"}
               </span>
-            )}
-          {request.requestType === "assignable" && request.assignedToName && (
-            <span className="flex items-center gap-1 font-medium text-primary">
-              → {request.assignedToName}
             </span>
           )}
           <span className="flex items-center gap-1">

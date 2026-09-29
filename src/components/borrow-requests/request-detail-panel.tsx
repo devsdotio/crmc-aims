@@ -250,10 +250,24 @@ export function RequestDetailPanel({
               <span className="text-text-secondary/40">•</span>
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20 shadow-2xs">
                 <User className="h-2.5 w-2.5 shrink-0" />
-                <span className="truncate max-w-45">
+                <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
+                  Req by
+                </span>
+                <span className="truncate max-w-28">
                   {request.requestedByName || request.requesterName}
                 </span>
               </span>
+              {isAssignRequest && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-2xs">
+                  <User className="h-2.5 w-2.5 shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wide opacity-70">
+                    Assign to
+                  </span>
+                  <span className="truncate max-w-28">
+                    {request.assignedToName?.trim() || "—"}
+                  </span>
+                </span>
+              )}
             </div>
             {request.relatedRequests && request.relatedRequests.length > 0 && (
               <div className="mt-1">
@@ -458,24 +472,35 @@ export function RequestDetailPanel({
                   <span className="font-bold text-text">{request.requesterName}</span>
                 </div>
               </div>
-              {request.requestedByName && (
-                <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "grid gap-2.5",
+                  request.requestType === "assignable"
+                    ? "grid-cols-1 sm:grid-cols-2"
+                    : "grid-cols-1"
+                )}
+              >
+                <div className="flex items-center gap-2 rounded-md border border-border/60 bg-bg-subtle/40 px-2.5 py-2">
                   <User className="h-4 w-4 text-accent shrink-0" />
                   <div className="min-w-0">
                     <p className="text-[10px] uppercase tracking-wide text-text-secondary">Requested by</p>
-                    <span className="font-bold text-text">{request.requestedByName}</span>
+                    <span className="font-bold text-text">
+                      {request.requestedByName?.trim() || request.requesterName}
+                    </span>
                   </div>
                 </div>
-              )}
-              {request.requestType === "assignable" && request.assignedToName && (
-                <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-primary shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-wide text-text-secondary">Assign to</p>
-                    <span className="font-bold text-text">{request.assignedToName}</span>
+                {request.requestType === "assignable" && (
+                  <div className="flex items-center gap-2 rounded-md border border-amber-500/25 bg-amber-500/5 px-2.5 py-2">
+                    <User className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wide text-text-secondary">Assign to</p>
+                      <span className="font-bold text-text">
+                        {request.assignedToName?.trim() || "—"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
               <div className="flex items-center gap-2 text-text-secondary">
                 <Building2 className="h-4 w-4 shrink-0" />
                 <span>{request.department} Department</span>

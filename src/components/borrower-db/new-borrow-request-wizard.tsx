@@ -1310,33 +1310,77 @@ function StepDetails({
           </div>
         ) : (
           <div className="space-y-2.5">
-            <div className="space-y-1.5">
-              <label htmlFor="requestedByName-account" className="text-xs font-bold text-text">
-                Requested by <span className="text-status-outofservice-bg">*</span>
-              </label>
-              <input
-                id="requestedByName-account"
-                type="text"
-                value={values.requestedByName}
-                onChange={(e) => onChange({ requestedByName: e.target.value })}
-                placeholder="Name of the person this request is for…"
-                className={cn(
-                  "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
-                  "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
-                  errors.requestedByName
-                    ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
-                    : "border-border"
+            <div
+              className={cn(
+                "grid gap-3",
+                hasAssignable ? "sm:grid-cols-2" : "grid-cols-1"
+              )}
+            >
+              <div className="space-y-1.5">
+                <label htmlFor="requestedByName-account" className="text-xs font-bold text-text">
+                  Requested by <span className="text-status-outofservice-bg">*</span>
+                </label>
+                <input
+                  id="requestedByName-account"
+                  type="text"
+                  value={values.requestedByName}
+                  onChange={(e) => onChange({ requestedByName: e.target.value })}
+                  placeholder="Name of the person this request is for…"
+                  className={cn(
+                    "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                    "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
+                    errors.requestedByName
+                      ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                      : "border-border"
+                  )}
+                />
+                {errors.requestedByName ? (
+                  <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                    <AlertCircle className="h-3 w-3 shrink-0" />
+                    {errors.requestedByName}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-secondary">
+                    Who is filing / on whose behalf.
+                  </p>
                 )}
-              />
-              {errors.requestedByName ? (
-                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3 shrink-0" />
-                  {errors.requestedByName}
-                </p>
-              ) : (
-                <p className="text-[11px] text-text-secondary">
-                  Defaults to your account name. Change it if requesting on behalf of someone else.
-                </p>
+              </div>
+              {hasAssignable && (
+                <div className="space-y-1.5">
+                  <label htmlFor="assignedToName" className="text-xs font-bold text-text">
+                    Assign to <span className="text-status-outofservice-bg">*</span>
+                  </label>
+                  <input
+                    id="assignedToName"
+                    type="text"
+                    list="wizard-assign-to-options"
+                    value={values.assignedToName}
+                    onChange={(e) => onChange({ assignedToName: e.target.value })}
+                    placeholder="Person who will hold the asset…"
+                    className={cn(
+                      "w-full h-8 rounded-md border bg-bg px-2.5 text-xs text-text placeholder:text-text-secondary/70",
+                      "focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30",
+                      errors.assignedToName
+                        ? "border-status-outofservice-bg bg-status-outofservice-bg/5"
+                        : "border-border"
+                    )}
+                  />
+                  <datalist id="wizard-assign-to-options">
+                    {assigneeSuggestions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  {errors.assignedToName ? (
+                    <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3 shrink-0" />
+                      {errors.assignedToName}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-text-secondary">
+                      Separate from Requested by — who will hold the asset.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
             <div className="grid gap-2 sm:grid-cols-2 rounded-lg border border-border bg-bg-subtle/40 p-2.5">
@@ -1367,13 +1411,13 @@ function StepDetails({
           </div>
         )}
 
-        {hasAssignable && (
+        {hasAssignable && isManual && (
           <div className="space-y-1.5 pt-1 border-t border-border/60">
-            <label htmlFor="assignedToName" className="text-xs font-bold text-text">
+            <label htmlFor="assignedToName-manual" className="text-xs font-bold text-text">
               Assign to <span className="text-status-outofservice-bg">*</span>
             </label>
             <input
-              id="assignedToName"
+              id="assignedToName-manual"
               type="text"
               list="wizard-assign-to-options"
               value={values.assignedToName}
@@ -1399,7 +1443,7 @@ function StepDetails({
               </p>
             ) : (
               <p className="text-[11px] text-text-secondary">
-                Required for assignment. Name who will actually hold the asset — this can differ from Requested by.
+                Separate from Requested by — who will hold the asset.
               </p>
             )}
           </div>

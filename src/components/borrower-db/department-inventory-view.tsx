@@ -64,8 +64,29 @@ function dueHint(dueDate?: string | null): string | null {
   return null;
 }
 
-function holderLabel(record: BorrowLogRecord) {
-  return record.requestedByName || record.borrowerName || "—";
+function holderLines(record: BorrowLogRecord) {
+  const assignee = record.borrowerName?.trim() || "";
+  const requestedBy = record.requestedByName?.trim() || "";
+  if (record.custodyKind === "assignment") {
+    return {
+      primaryLabel: "Assign to",
+      primary: assignee || requestedBy || "—",
+      secondaryLabel:
+        requestedBy && requestedBy !== assignee ? "Requested by" : null,
+      secondary:
+        requestedBy && requestedBy !== assignee ? requestedBy : null,
+    };
+  }
+  return {
+    primaryLabel: "Requested by",
+    primary: requestedBy || assignee || "—",
+    secondaryLabel:
+      assignee && requestedBy && assignee !== requestedBy
+        ? "Received by"
+        : null,
+    secondary:
+      assignee && requestedBy && assignee !== requestedBy ? assignee : null,
+  };
 }
 
 function InventoryCardSkeleton() {
@@ -180,10 +201,24 @@ function InventoryAssetCard({
             {hint && !isOverdue ? ` · ${hint}` : null}
           </p>
         )}
-        <p className="inline-flex items-center gap-1 truncate">
-          <User className="h-3 w-3 shrink-0" />
-          {holderLabel(record)}
-        </p>
+        {(() => {
+          const lines = holderLines(record);
+          return (
+            <>
+              <p className="inline-flex items-center gap-1 truncate">
+                <User className="h-3 w-3 shrink-0" />
+                <span className="text-text-secondary/80">{lines.primaryLabel}</span>
+                <span className="font-medium text-text truncate">{lines.primary}</span>
+              </p>
+              {lines.secondary && (
+                <p className="inline-flex items-center gap-1 truncate pl-4">
+                  <span className="text-text-secondary/80">{lines.secondaryLabel}</span>
+                  <span className="font-medium text-text truncate">{lines.secondary}</span>
+                </p>
+              )}
+            </>
+          );
+        })()}
       </div>
     </article>
   );
@@ -258,7 +293,27 @@ function InventoryTableRow({
         {formatDisplayDate(record.releasedAt)}
       </td>
       <td className="px-5 py-3.5 hidden sm:table-cell">
-        <p className="text-xs text-text truncate max-w-40">{holderLabel(record)}</p>
+        {(() => {
+          const lines = holderLines(record);
+          return (
+            <div className="min-w-0 max-w-44">
+              <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+                {lines.primaryLabel}
+              </p>
+              <p className="text-xs font-medium text-text truncate">
+                {lines.primary}
+              </p>
+              {lines.secondary && (
+                <>
+                  <p className="text-[10px] uppercase tracking-wide text-text-secondary mt-1">
+                    {lines.secondaryLabel}
+                  </p>
+                  <p className="text-xs text-text truncate">{lines.secondary}</p>
+                </>
+              )}
+            </div>
+          );
+        })()}
       </td>
     </tr>
   );

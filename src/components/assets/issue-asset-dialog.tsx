@@ -261,52 +261,54 @@ export function IssueAssetDialog({
             </label>
           )}
 
-          <label className="block space-y-1">
-            <span className="text-[11px] font-bold uppercase text-text-secondary">
-              Requested by{" "}
-              <span className="font-normal normal-case">(optional)</span>
-            </span>
-            <input
-              value={requestedByName}
-              onChange={(e) => setRequestedByName(e.target.value)}
-              placeholder="Person on the paper request slip"
-              className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-            />
-          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1">
+              <span className="text-[11px] font-bold uppercase text-text-secondary">
+                Requested by{" "}
+                <span className="font-normal normal-case">(optional)</span>
+              </span>
+              <input
+                value={requestedByName}
+                onChange={(e) => setRequestedByName(e.target.value)}
+                placeholder="Person on the paper request slip"
+                className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
+              />
+            </label>
 
-          <label className="block space-y-1">
-            <span className="text-[11px] font-bold uppercase text-text-secondary">
-              Assign to
-              {custodyKind === "assignment" && (
-                <span className="text-destructive"> *</span>
-              )}
-            </span>
-            <input
-              id="issue-assign-to"
-              list="issue-assign-to-options"
-              value={assignedToName}
-              onChange={(e) => setAssignedToName(e.target.value)}
-              placeholder={
-                destinationKind === "department"
-                  ? "Person in this department who will hold the asset"
-                  : "Person who will hold this asset"
-              }
-              required={custodyKind === "assignment"}
-              className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
-            />
-            <datalist id="issue-assign-to-options">
-              {assigneeOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </datalist>
-            <p className="text-[10px] text-text-secondary">
-              {custodyKind === "assignment"
-                ? "Required. Pick a staff account from this destination or type a name."
-                : "Optional. Who will actually receive / use this asset (may differ from Requested by)."}
-            </p>
-          </label>
+            <label className="block space-y-1">
+              <span className="text-[11px] font-bold uppercase text-text-secondary">
+                Assign to
+                {custodyKind === "assignment" && (
+                  <span className="text-destructive"> *</span>
+                )}
+              </span>
+              <input
+                id="issue-assign-to"
+                list="issue-assign-to-options"
+                value={assignedToName}
+                onChange={(e) => setAssignedToName(e.target.value)}
+                placeholder={
+                  destinationKind === "department"
+                    ? "Person who will hold the asset"
+                    : "Person who will hold this asset"
+                }
+                required={custodyKind === "assignment"}
+                className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
+              />
+              <datalist id="issue-assign-to-options">
+                {assigneeOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </datalist>
+              <p className="text-[10px] text-text-secondary">
+                {custodyKind === "assignment"
+                  ? "Required. Separate from Requested by — who will hold the asset."
+                  : "Optional. Who will receive / use this asset (may differ from Requested by)."}
+              </p>
+            </label>
+          </div>
 
           <label className="block space-y-1">
             <span className="text-[11px] font-bold uppercase text-text-secondary">

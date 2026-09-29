@@ -550,7 +550,7 @@ export function EditRequestDialog({
                     Request details
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <label className="space-y-1 sm:col-span-2">
+                    <label className={cn("space-y-1", !isAssignable && "sm:col-span-2")}>
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
                         Requested by <span className="text-destructive">*</span>
                       </span>
@@ -565,7 +565,7 @@ export function EditRequestDialog({
                       />
                     </label>
                     {isAssignable && (
-                      <label className="space-y-1 sm:col-span-2">
+                      <label className="space-y-1">
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
                           Assign to <span className="text-destructive">*</span>
                         </span>
@@ -574,12 +574,12 @@ export function EditRequestDialog({
                           type="text"
                           value={assignedToName}
                           onChange={(e) => setAssignedToName(e.target.value)}
-                          placeholder="Person in the department who will hold the asset…"
+                          placeholder="Person who will hold the asset…"
                           disabled={isSubmitting}
                           className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
                         />
                         <p className="text-[10px] text-text-secondary">
-                          Required for assignment. May differ from Requested by.
+                          Separate from Requested by — who will hold the asset.
                         </p>
                       </label>
                     )}

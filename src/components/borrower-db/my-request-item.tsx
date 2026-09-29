@@ -160,6 +160,22 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
 
         {/* Row 3: Metadata with icons */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+          {request.requestedByName?.trim() && (
+            <span className="flex items-center gap-1">
+              <span className="text-text-secondary/80">Requested by</span>
+              <span className="font-medium text-text">
+                {request.requestedByName}
+              </span>
+            </span>
+          )}
+          {request.requestType === "assignable" && (
+            <span className="flex items-center gap-1">
+              <span className="text-text-secondary/80">Assign to</span>
+              <span className="font-medium text-text">
+                {request.assignedToName?.trim() || "—"}
+              </span>
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <Calendar className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
             <span>

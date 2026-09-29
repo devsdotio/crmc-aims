@@ -242,7 +242,7 @@ function ApproveRejectDialogForm({
                 <div className="flex items-center gap-1.5 min-w-0">
                   <User className="h-3.5 w-3.5 text-text-secondary shrink-0" />
                   <span className="text-[10px] font-semibold uppercase text-text-secondary">
-                    Requester:
+                    Dept account:
                   </span>
                   <span className="font-bold text-text truncate">
                     {request.requesterName}
@@ -255,37 +255,61 @@ function ApproveRejectDialogForm({
                 </div>
               </div>
 
-              {isApprove && isAssignable && (
-                <div className="px-3.5 py-2.5 border-b border-border space-y-1.5">
-                  <label
-                    htmlFor="approve-assigned-to"
-                    className="text-[10px] font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1"
-                  >
-                    <User className="h-3 w-3" />
-                    Assign to <span className="text-destructive">*</span>
-                  </label>
-                  <input
-                    id="approve-assigned-to"
-                    type="text"
-                    value={assignedToName}
-                    onChange={(e) => {
-                      setAssignedToName(e.target.value);
-                      if (error) setError("");
-                    }}
-                    disabled={isSubmitting}
-                    placeholder="Person in this department who will hold the asset…"
-                    className={cn(
-                      "w-full h-8 px-2.5 text-xs rounded-md border bg-bg text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60",
-                      error && !assignedToName.trim()
-                        ? "border-status-outofservice-bg"
-                        : "border-border"
-                    )}
-                  />
-                  <p className="text-[10px] text-text-secondary">
-                    Editable while pending. You can also change quantities below before approving.
+              <div
+                className={cn(
+                  "grid gap-0 border-b border-border",
+                  isAssignable ? "sm:grid-cols-2" : "grid-cols-1"
+                )}
+              >
+                <div className="px-3.5 py-2.5 space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                    Requested by
+                  </p>
+                  <p className="text-xs font-semibold text-text">
+                    {request.requestedByName?.trim() || request.requesterName}
                   </p>
                 </div>
-              )}
+                {isApprove && isAssignable ? (
+                  <div className="px-3.5 py-2.5 border-t sm:border-t-0 sm:border-l border-border space-y-1.5">
+                    <label
+                      htmlFor="approve-assigned-to"
+                      className="text-[10px] font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1"
+                    >
+                      <User className="h-3 w-3" />
+                      Assign to <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      id="approve-assigned-to"
+                      type="text"
+                      value={assignedToName}
+                      onChange={(e) => {
+                        setAssignedToName(e.target.value);
+                        if (error) setError("");
+                      }}
+                      disabled={isSubmitting}
+                      placeholder="Person in this department who will hold the asset…"
+                      className={cn(
+                        "w-full h-8 px-2.5 text-xs rounded-md border bg-bg text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60",
+                        error && !assignedToName.trim()
+                          ? "border-status-outofservice-bg"
+                          : "border-border"
+                      )}
+                    />
+                    <p className="text-[10px] text-text-secondary">
+                      Separate from Requested by. Editable with quantities below.
+                    </p>
+                  </div>
+                ) : isAssignable ? (
+                  <div className="px-3.5 py-2.5 border-t sm:border-t-0 sm:border-l border-border space-y-0.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                      Assign to
+                    </p>
+                    <p className="text-xs font-semibold text-text">
+                      {request.assignedToName?.trim() || "—"}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
 
               {/* Items Section Header with Adjust Quantities Toggle */}
               <div className="flex items-center justify-between px-3.5 py-2 border-b border-border bg-bg-subtle/30">
