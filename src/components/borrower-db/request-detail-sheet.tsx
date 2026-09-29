@@ -418,6 +418,16 @@ export function RequestDetailSheet({
                 </div>
               )}
 
+              {request.requestType === "assignable" && request.assignedToName && (
+                <div className="col-span-2 flex items-center gap-2 pt-1 border-t border-border/50">
+                  <User className="h-4 w-4 text-primary shrink-0" />
+                  <div>
+                    <p className="text-[10px] text-text-secondary uppercase tracking-wide">Assign To</p>
+                    <p className="font-bold text-text mt-0.5">{request.assignedToName}</p>
+                  </div>
+                </div>
+              )}
+
               <div className="col-span-2 flex items-center gap-2 pt-1 border-t border-border/50">
                 <Mail className="h-4 w-4 text-text-secondary shrink-0" />
                 <div className="truncate">

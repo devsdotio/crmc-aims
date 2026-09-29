@@ -12,6 +12,8 @@ export type CreateBorrowRequestPayload = {
   department?: string;
   requestType?: "borrowable" | "assignable";
   requestedByName?: string;
+  /** Person who will hold the asset (required for assignable). */
+  assignedToName?: string;
   items: {
     itemDescription: string;
     assetId?: string;
@@ -38,6 +40,7 @@ export type ApproveBorrowRequestPayload = {
     quantity: number;
     itemType: "asset";
   }[];
+  assignedToName?: string;
 };
 
 export type ReleaseBorrowRequestPayload = {
@@ -57,6 +60,7 @@ export type UpdateBorrowRequestPayload = {
   department?: string;
   requestType?: "borrowable" | "assignable";
   requestedByName?: string;
+  assignedToName?: string | null;
   items?: {
     itemDescription: string;
     assetId?: string;

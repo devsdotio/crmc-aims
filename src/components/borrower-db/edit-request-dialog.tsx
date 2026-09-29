@@ -52,6 +52,7 @@ export function EditRequestDialog({
 
   const [editReason, setEditReason] = useState("");
   const [requestedByName, setRequestedByName] = useState("");
+  const [assignedToName, setAssignedToName] = useState("");
   const [notes, setNotes] = useState("");
   const [purpose, setPurpose] = useState("");
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
@@ -114,6 +115,8 @@ export function EditRequestDialog({
       ("requestedByName" in request && request.requestedByName?.trim()) ||
       request.requesterName ||
       "";
+    const initialAssignedTo =
+      ("assignedToName" in request && request.assignedToName?.trim()) || "";
     const initialNotes = request.notes?.trim() || "";
     const initialPurpose = request.purpose?.trim() || "";
     const initialReturn =
@@ -124,6 +127,7 @@ export function EditRequestDialog({
         ? String(request.requestedDateTo).slice(0, 10)
         : "");
     setRequestedByName(initialRequestedBy);
+    setAssignedToName(initialAssignedTo);
     setNotes(initialNotes);
     setPurpose(initialPurpose);
     setExpectedReturnDate(initialReturn);
@@ -167,6 +171,7 @@ export function EditRequestDialog({
         items,
         reason: "",
         requestedByName: initialRequestedBy,
+        assignedToName: initialAssignedTo,
         notes: initialNotes,
         purpose: initialPurpose,
         expectedReturnDate: initialReturn,
@@ -191,6 +196,7 @@ export function EditRequestDialog({
           items: assetItems,
           reason: editReason,
           requestedByName,
+          assignedToName,
           notes,
           purpose,
           expectedReturnDate,
@@ -204,6 +210,7 @@ export function EditRequestDialog({
     assetItems,
     editReason,
     requestedByName,
+    assignedToName,
     notes,
     purpose,
     expectedReturnDate,
@@ -231,6 +238,7 @@ export function EditRequestDialog({
   const requestType =
     !isSupply && "requestType" in request ? request.requestType : undefined;
   const isBorrowable = !isSupply && requestType !== "assignable";
+  const isAssignable = !isSupply && requestType === "assignable";
 
   const validateStep = (step: EditStep): boolean => {
     setErrorMsg(null);
@@ -238,6 +246,12 @@ export function EditRequestDialog({
     if (step === "items") {
       if (!requestedByName.trim()) {
         setErrorMsg("Requested by is required.");
+        return false;
+      }
+      if (isAssignable && !assignedToName.trim()) {
+        setErrorMsg(
+          "Assign to is required — name the person who will hold the asset."
+        );
         return false;
       }
       if (!purpose.trim()) {
@@ -345,6 +359,9 @@ export function EditRequestDialog({
               : null,
             notes: notes.trim() || null,
             requestedByName: requestedByName.trim(),
+            assignedToName: isAssignable
+              ? assignedToName.trim()
+              : assignedToName.trim() || null,
             items: assetItems.map((it) => ({
               itemDescription: it.itemDescription.trim(),
               assetId: it.assetId || undefined,
@@ -547,6 +564,25 @@ export function EditRequestDialog({
                         className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
                       />
                     </label>
+                    {isAssignable && (
+                      <label className="space-y-1 sm:col-span-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                          Assign to <span className="text-destructive">*</span>
+                        </span>
+                        <input
+                          id="edit-assigned-to"
+                          type="text"
+                          value={assignedToName}
+                          onChange={(e) => setAssignedToName(e.target.value)}
+                          placeholder="Person in the department who will hold the asset…"
+                          disabled={isSubmitting}
+                          className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                        />
+                        <p className="text-[10px] text-text-secondary">
+                          Required for assignment. May differ from Requested by.
+                        </p>
+                      </label>
+                    )}
                     <label className="space-y-1 sm:col-span-2">
                       <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
                         Purpose <span className="text-destructive">*</span>
@@ -865,14 +901,24 @@ export function EditRequestDialog({
                     <span className="text-[10px] text-text-secondary truncate">{request.department || "—"}</span>
                   </div>
 
-                  {/* Type chip */}
+                  {/* Type / Assign-to chip */}
                   <div className="flex flex-col gap-0.5 p-3 rounded-xl border border-border bg-bg-subtle">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">Type</span>
-                    <span className="text-xs font-semibold text-text capitalize">
-                      {isSupply ? "Supplies" : ("requestType" in request ? request.requestType : null) ?? "Borrow"}
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                      {isAssignable ? "Assign to" : "Type"}
+                    </span>
+                    <span className="text-xs font-semibold text-text capitalize truncate">
+                      {isAssignable
+                        ? assignedToName.trim() || "—"
+                        : isSupply
+                          ? "Supplies"
+                          : ("requestType" in request ? request.requestType : null) ?? "Borrow"}
                     </span>
                     <span className="text-[10px] text-text-secondary">
-                      {isSupply ? "Consumable Requisition" : "Asset Request"}
+                      {isAssignable
+                        ? "Asset holder"
+                        : isSupply
+                          ? "Consumable Requisition"
+                          : "Asset Request"}
                     </span>
                   </div>
 

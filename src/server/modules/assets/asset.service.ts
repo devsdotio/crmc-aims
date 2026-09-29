@@ -1122,7 +1122,10 @@ export class AssetService {
         source: "admin_manual",
         departmentId: input.departmentId,
         projectId: input.projectId,
-        borrowerName: input.borrowerName,
+        borrowerName:
+          input.assignedToName?.trim() ||
+          input.borrowerName?.trim() ||
+          undefined,
         borrowerEmail: input.borrowerEmail || undefined,
         borrowerPhone: input.borrowerPhone || undefined,
         dueDate:

@@ -467,6 +467,15 @@ export function RequestDetailPanel({
                   </div>
                 </div>
               )}
+              {request.requestType === "assignable" && request.assignedToName && (
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-primary shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-wide text-text-secondary">Assign to</p>
+                    <span className="font-bold text-text">{request.assignedToName}</span>
+                  </div>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-text-secondary">
                 <Building2 className="h-4 w-4 shrink-0" />
                 <span>{request.department} Department</span>

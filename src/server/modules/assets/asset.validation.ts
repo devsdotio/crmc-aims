@@ -50,6 +50,7 @@ export const releaseAssetSchema = z
     custodyKind: z.enum(["borrow", "assignment"]).optional(),
     departmentId: z.string().uuid().optional(),
     projectId: z.string().uuid().optional(),
+    /** Display name for person who will hold / picked up the asset. */
     borrowerName: z.string().trim().max(255).optional(),
     borrowerDepartment: z.string().trim().min(1).max(120).optional(),
     borrowerEmail: z
@@ -69,6 +70,8 @@ export const releaseAssetSchema = z
       .optional()
       .nullable(),
     requestedByName: z.string().trim().max(255).optional(),
+    /** Alias for borrowerName — person the asset is assigned to. */
+    assignedToName: z.string().trim().max(255).optional(),
     requestId: z.string().uuid().optional(),
   })
   .superRefine((data, ctx) => {
@@ -97,6 +100,17 @@ export const releaseAssetSchema = z
         message: "expectedReturnDate is required for borrowable release.",
         path: ["expectedReturnDate"],
       });
+    }
+    if (kind === "assignment") {
+      const assignee = (data.assignedToName || data.borrowerName || "").trim();
+      if (!assignee) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Assign to is required — name the person who will hold this asset.",
+          path: ["assignedToName"],
+        });
+      }
     }
   });
 

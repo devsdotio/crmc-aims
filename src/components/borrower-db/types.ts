@@ -89,6 +89,11 @@ export interface WizardFormValues {
   notes: string;
   /** Person the request is for; defaults to department account name, overridable. */
   requestedByName: string;
+  /**
+   * Person who will hold the asset (assignment requests).
+   * May differ from requestedByName when a clerk files on someone's behalf.
+   */
+  assignedToName: string;
   /** Account = fill from signed-in profile; Manual = type name and department. */
   requesterMode: "account" | "manual";
 }

@@ -35,6 +35,8 @@ export interface BorrowRequest {
   departmentId?: string | null;
   requestType?: "borrowable" | "assignable" | null;
   requestedByName?: string | null;
+  /** Person who will hold the asset (assignment); may differ from requestedByName. */
+  assignedToName?: string | null;
   submissionGroupId?: string | null;
   relatedRequests?: Array<{
     id: string;

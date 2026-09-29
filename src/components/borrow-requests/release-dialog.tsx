@@ -376,7 +376,12 @@ export function ReleaseDialog({
 
   useEffect(() => {
     if (isOpen && request) {
-      setPickedUpBy(request.requesterName || "");
+      setPickedUpBy(
+        request.assignedToName?.trim() ||
+          request.requestedByName?.trim() ||
+          request.requesterName ||
+          ""
+      );
       setNote("");
       setError("");
       setSelections({});
@@ -608,29 +613,51 @@ export function ReleaseDialog({
             {/* Recipient Details & Notes */}
             <div className="space-y-3 pt-2 border-t border-border">
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <label
                     htmlFor="pickedUpBy"
                     className="text-xs font-semibold text-text"
                   >
-                    Physically Received / Picked Up By <span className="text-accent">*</span>
+                    {isAssignable
+                      ? "Assign To / Received By"
+                      : "Physically Received / Picked Up By"}{" "}
+                    <span className="text-accent">*</span>
                   </label>
-                  {pickedUpBy !== request.requesterName && (
-                    <button
-                      type="button"
-                      onClick={() => setPickedUpBy(request.requesterName)}
-                      className="text-[11px] text-accent hover:underline cursor-pointer"
-                    >
-                      Use Requester ({request.requesterName})
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {request.assignedToName?.trim() &&
+                      pickedUpBy.trim() !== request.assignedToName.trim() && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPickedUpBy(request.assignedToName!.trim())
+                          }
+                          className="text-[11px] text-accent hover:underline cursor-pointer"
+                        >
+                          Use Assign To
+                        </button>
+                      )}
+                    {pickedUpBy.trim() !==
+                      (request.requesterName || "").trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setPickedUpBy(request.requesterName)}
+                        className="text-[11px] text-accent hover:underline cursor-pointer"
+                      >
+                        Use Requester
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary/60 pointer-events-none" />
                   <input
                     id="pickedUpBy"
                     type="text"
-                    placeholder="Enter full name of recipient"
+                    placeholder={
+                      isAssignable
+                        ? "Person receiving the assignment"
+                        : "Enter full name of recipient"
+                    }
                     disabled={isSubmitting}
                     className={cn(
                       "w-full pl-9 pr-3.5 py-2 bg-bg border rounded-lg text-xs text-text placeholder:text-text-secondary/50",
@@ -638,7 +665,10 @@ export function ReleaseDialog({
                       error && !pickedUpBy.trim() ? "border-status-outofservice-bg" : "border-border"
                     )}
                     value={pickedUpBy}
-                    onChange={(e) => setPickedUpBy(e.target.value)}
+                    onChange={(e) => {
+                      setPickedUpBy(e.target.value);
+                      if (error) setError("");
+                    }}
                   />
                 </div>
               </div>

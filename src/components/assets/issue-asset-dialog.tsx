@@ -6,6 +6,7 @@ import type { Asset } from "@/types/assets";
 import { useReleaseAssetMutation } from "@/features/assets/client/use-assets";
 import { useDepartmentsQuery } from "@/features/departments/client";
 import { useProjectsQuery } from "@/features/projects/client";
+import { useUsersQuery } from "@/features/users/client";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface IssueAssetDialogProps {
@@ -26,6 +27,7 @@ export function IssueAssetDialog({
   const releaseMutation = useReleaseAssetMutation();
   const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
   const { data: projects = [] } = useProjectsQuery({ enabled: isOpen });
+  const { data: users = [] } = useUsersQuery({ enabled: isOpen });
 
   const [destinationKind, setDestinationKind] =
     useState<DestinationKind>("department");
@@ -33,6 +35,7 @@ export function IssueAssetDialog({
   const [projectId, setProjectId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [requestedByName, setRequestedByName] = useState("");
+  const [assignedToName, setAssignedToName] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
 
@@ -61,18 +64,48 @@ export function IssueAssetDialog({
     [projects]
   );
 
+  const assigneeOptions = useMemo(() => {
+    const selectedDept = departments.find((d) => d.id === departmentId);
+    const pool =
+      destinationKind === "department" && departmentId
+        ? users.filter(
+            (u) =>
+              u.status === "active" &&
+              (u.departmentId === departmentId ||
+                (selectedDept &&
+                  u.department?.toLowerCase() ===
+                    selectedDept.name.toLowerCase()))
+          )
+        : users.filter((u) => u.status === "active");
+
+    return pool.map((u) => ({
+      value: u.name,
+      label: `${u.name}${u.department ? ` · ${u.department}` : ""}`,
+      keywords: `${u.email} ${u.departmentCode ?? ""}`,
+    }));
+  }, [users, departmentId, destinationKind, departments]);
+
   useEffect(() => {
     if (!isOpen) return;
     setError("");
     setRequestedByName("");
+    setAssignedToName("");
     setNotes("");
     setDueDate("");
     setDepartmentId(departments[0]?.id ?? "");
     setProjectId(
       projects.find((p) => p.status !== "completed")?.id ?? projects[0]?.id ?? ""
     );
-    setDestinationKind(asset?.assignmentType === "assignable" ? "project" : "department");
+    setDestinationKind(
+      asset?.assignmentType === "assignable" ? "project" : "department"
+    );
   }, [isOpen, asset, departments, projects]);
+
+  // Clear assignee when department changes so the person matches the destination.
+  useEffect(() => {
+    if (!isOpen) return;
+    setAssignedToName("");
+  }, [departmentId, destinationKind, isOpen]);
 
   if (!isOpen || !asset) return null;
 
@@ -92,6 +125,12 @@ export function IssueAssetDialog({
       setError("Due date is required for borrowable assets.");
       return;
     }
+    if (custodyKind === "assignment" && !assignedToName.trim()) {
+      setError(
+        "Assign to is required — name the person who will hold this asset."
+      );
+      return;
+    }
 
     try {
       await releaseMutation.mutateAsync({
@@ -103,6 +142,8 @@ export function IssueAssetDialog({
           projectId: destinationKind === "project" ? projectId : undefined,
           expectedReturnDate: custodyKind === "borrow" ? dueDate : null,
           requestedByName: requestedByName.trim() || undefined,
+          assignedToName: assignedToName.trim() || undefined,
+          borrowerName: assignedToName.trim() || undefined,
           notes: notes.trim() || undefined,
         },
       });
@@ -141,7 +182,11 @@ export function IssueAssetDialog({
 
         <div className="p-5 space-y-4">
           <p className="text-xs text-text-secondary">
-            Manual issue from on-hand stock. Destination is exactly one department or project.
+            Manual issue from on-hand stock. Destination is exactly one department or
+            project
+            {custodyKind === "assignment"
+              ? ", and you must name who will hold the asset."
+              : "."}
           </p>
 
           <div className="flex gap-2">
@@ -218,14 +263,49 @@ export function IssueAssetDialog({
 
           <label className="block space-y-1">
             <span className="text-[11px] font-bold uppercase text-text-secondary">
-              Requested by (optional)
+              Requested by{" "}
+              <span className="font-normal normal-case">(optional)</span>
             </span>
             <input
               value={requestedByName}
               onChange={(e) => setRequestedByName(e.target.value)}
-              placeholder="Person on paper slip"
+              placeholder="Person on the paper request slip"
               className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
             />
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-[11px] font-bold uppercase text-text-secondary">
+              Assign to
+              {custodyKind === "assignment" && (
+                <span className="text-destructive"> *</span>
+              )}
+            </span>
+            <input
+              id="issue-assign-to"
+              list="issue-assign-to-options"
+              value={assignedToName}
+              onChange={(e) => setAssignedToName(e.target.value)}
+              placeholder={
+                destinationKind === "department"
+                  ? "Person in this department who will hold the asset"
+                  : "Person who will hold this asset"
+              }
+              required={custodyKind === "assignment"}
+              className="w-full h-9 px-3 text-sm border border-border rounded-lg bg-bg"
+            />
+            <datalist id="issue-assign-to-options">
+              {assigneeOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </datalist>
+            <p className="text-[10px] text-text-secondary">
+              {custodyKind === "assignment"
+                ? "Required. Pick a staff account from this destination or type a name."
+                : "Optional. Who will actually receive / use this asset (may differ from Requested by)."}
+            </p>
           </label>
 
           <label className="block space-y-1">
@@ -240,9 +320,7 @@ export function IssueAssetDialog({
             />
           </label>
 
-          {error && (
-            <p className="text-xs text-destructive">{error}</p>
-          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-2">

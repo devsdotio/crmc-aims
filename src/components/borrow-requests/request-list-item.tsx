@@ -137,6 +137,11 @@ export function RequestListItem({
                 via {request.requesterName}
               </span>
             )}
+          {request.requestType === "assignable" && request.assignedToName && (
+            <span className="flex items-center gap-1 font-medium text-primary">
+              → {request.assignedToName}
+            </span>
+          )}
           <span className="flex items-center gap-1">
             <Building2 className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
             {request.department}

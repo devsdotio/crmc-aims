@@ -14,6 +14,8 @@ export type BorrowRequestDTO = {
   departmentId?: string | null;
   requestType?: "borrowable" | "assignable" | null;
   requestedByName?: string;
+  /** Person who will hold the asset (assignment); may differ from requestedByName. */
+  assignedToName?: string;
   /** Present when this row was submitted with other request types. */
   submissionGroupId?: string | null;
   relatedRequests?: LinkedRequestSummary[];
