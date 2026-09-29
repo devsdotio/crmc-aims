@@ -60,11 +60,16 @@ import {
 } from "./asset.validation";
 
 function isPgUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    String((error as { code: unknown }).code) === "23505"
+  const candidates: unknown[] = [error];
+  if (typeof error === "object" && error !== null && "cause" in error) {
+    candidates.push((error as { cause: unknown }).cause);
+  }
+  return candidates.some(
+    (e) =>
+      typeof e === "object" &&
+      e !== null &&
+      "code" in e &&
+      String((e as { code: unknown }).code) === "23505"
   );
 }
 
