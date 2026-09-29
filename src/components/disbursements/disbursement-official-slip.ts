@@ -87,13 +87,17 @@ function slipLines(
     ];
   }
 
-  return items.map((item) => ({
-    quantity: item.quantity.trim() || "—",
-    description: descriptionWithRate(item),
-    dealer: suggestedDealer,
-    purpose: item.purpose?.trim() || headerPurpose,
-    amount: particularLineAmount(item),
-  }));
+  return items.map((item) => {
+    const qty = item.quantity.trim() || "—";
+    const uom = item.unitOfMeasure?.trim() ?? "";
+    return {
+      quantity: uom && qty !== "—" ? `${qty} ${uom}` : qty,
+      description: descriptionWithRate(item),
+      dealer: suggestedDealer,
+      purpose: item.purpose?.trim() || headerPurpose,
+      amount: particularLineAmount(item),
+    };
+  });
 }
 
 function voucherTitle(type: Voucher["type"]): string {

@@ -153,33 +153,25 @@ export function VouchersTable({
 
   if (loading) {
     return (
-      <div className="flex-1 h-full min-h-60 rounded-xl border border-border bg-bg shadow-2xs overflow-hidden flex flex-col">
-        <div className="p-3 border-b border-border bg-bg-subtle/40">
-          <div className="h-4 w-32 bg-border/60 rounded-md animate-pulse" />
-        </div>
-        <div className="divide-y divide-border flex-1">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="flex items-center justify-between p-3.5 animate-pulse">
-              <div className="space-y-1.5">
-                <div className="h-3.5 w-28 bg-border/60 rounded-md" />
-                <div className="h-3 w-40 bg-border/40 rounded-md" />
-              </div>
-              <div className="h-4 w-20 bg-border/60 rounded-md" />
-            </div>
-          ))}
-        </div>
+      <div className="rounded-lg border border-border bg-bg p-4 flex-1 flex flex-col gap-3 min-h-0 shadow-2xs">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-12 w-full bg-bg-subtle/60 rounded-lg animate-pulse border border-border/40"
+          />
+        ))}
       </div>
     );
   }
 
   if (vouchers.length === 0) {
     return (
-      <div className="flex-1 h-full min-h-60 flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-bg-subtle/40 p-6 sm:p-10 text-center shadow-2xs">
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary shadow-2xs">
-          <Receipt className="h-6 w-6" />
+      <div className="rounded-lg border border-border bg-bg flex flex-1 flex-col items-center justify-center p-12 text-center shadow-2xs">
+        <div className="rounded-full bg-bg-subtle p-4 border border-border">
+          <Receipt className="h-8 w-8 text-text-secondary" />
         </div>
-        <h3 className="text-sm font-bold text-text">No Vouchers Found</h3>
-        <p className="mt-1 max-w-sm text-xs text-text-secondary leading-relaxed">
+        <h3 className="mt-3 text-sm font-bold text-text">No vouchers found</h3>
+        <p className="mt-1 text-xs text-text-secondary max-w-sm">
           No vouchers matching your active filters were found. Create a new voucher or adjust your search filters to get started.
         </p>
       </div>
@@ -187,14 +179,14 @@ export function VouchersTable({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-bg shadow-2xs overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs text-text">
-          <thead className="border-b border-border bg-bg-subtle/60 text-text-secondary uppercase tracking-wider font-semibold">
+    <div className="rounded-lg border border-border bg-bg overflow-hidden flex flex-col flex-1 min-h-0 shadow-2xs">
+      <div className="flex-1 overflow-auto min-h-0">
+        <table className="w-full text-left border-collapse text-xs text-text">
+          <thead className="sticky top-0 z-10 bg-bg-subtle/80 backdrop-blur-xs border-b border-border text-text-secondary text-[11px] font-bold uppercase tracking-wider">
             <tr>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors"
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
                 onClick={() => handleSort("voucherCode")}
               >
                 <div className="flex items-center gap-1.5">
@@ -207,7 +199,7 @@ export function VouchersTable({
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors"
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
                 onClick={() => handleSort("voucherDate")}
               >
                 <div className="flex items-center gap-1.5">
@@ -217,7 +209,7 @@ export function VouchersTable({
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors"
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
                 onClick={() => handleSort("payeeName")}
               >
                 <div className="flex items-center gap-1.5">

@@ -29,10 +29,23 @@ function LineRow({
       </span>
       <span className="flex-1 font-medium leading-relaxed pt-0.5">
         {item.description}
+        {item.unitOfMeasure?.trim() ? (
+          <span className="ml-1.5 font-normal text-text-secondary">
+            ({item.unitOfMeasure.trim()})
+          </span>
+        ) : null}
       </span>
-      {item.quantity && item.unitCost ? (
+      {item.quantity ? (
         <span className="shrink-0 font-mono text-[11px] text-text-secondary pt-0.5">
-          {item.quantity} × {formatPhp(item.unitCost)}
+          {item.quantity}
+          {item.unitOfMeasure?.trim()
+            ? ` ${item.unitOfMeasure.trim()}`
+            : ""}
+          {item.unitCost ? ` × ${formatPhp(item.unitCost)}` : ""}
+        </span>
+      ) : item.unitCost ? (
+        <span className="shrink-0 font-mono text-[11px] text-text-secondary pt-0.5">
+          {formatPhp(item.unitCost)}
         </span>
       ) : null}
       {particularLineAmount(item) > 0 ? (

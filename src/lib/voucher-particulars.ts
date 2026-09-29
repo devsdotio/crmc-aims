@@ -15,6 +15,8 @@ export type ParticularLineItem = {
   description: string;
   /** Whole units. Empty when the line has no quantity yet. */
   quantity: string;
+  /** Unit of measure (e.g., pcs, box, kg, ream). Optional. */
+  unitOfMeasure?: string;
   /** Unit cost. Empty when the line total was stored without a unit price. */
   unitCost: string;
   /** Line total. Computed from quantity × unit cost when both are set. */
@@ -33,7 +35,7 @@ export type PurposeGroupDraft = {
 };
 
 export function blankParticular(): ParticularLineItem {
-  return { description: "", quantity: "1", unitCost: "", amount: "" };
+  return { description: "", quantity: "1", unitOfMeasure: "", unitCost: "", amount: "" };
 }
 
 const MONEY_TRAILING =
@@ -44,9 +46,11 @@ export function serializeParticulars(items: ParticularLineItem[]): string {
     .map((item) => {
       const next = recomputeParticularLine(item);
       const purpose = next.purpose?.trim() ?? "";
+      const unitOfMeasure = next.unitOfMeasure?.trim() ?? "";
       return {
         description: next.description.trim(),
         quantity: normalizeQuantity(next.quantity),
+        ...(unitOfMeasure ? { unitOfMeasure } : {}),
         unitCost: normalizeAmount(next.unitCost),
         amount: normalizeAmount(next.amount),
         ...(purpose ? { purpose } : {}),
@@ -82,6 +86,7 @@ export function parseParticulars(
               if (!description) return null;
               const amount = normalizeAmount(String(obj.amount ?? obj.cost ?? ""));
               const quantity = normalizeQuantity(String(obj.quantity ?? ""));
+              const unitOfMeasure = String(obj.unitOfMeasure ?? obj.unit_of_measure ?? "").trim();
               const unitCost = normalizeAmount(String(obj.unitCost ?? obj.unit_cost ?? ""));
               const purpose = String(obj.purpose ?? "").trim();
               const base =
@@ -89,11 +94,13 @@ export function parseParticulars(
                   ? recomputeParticularLine({
                       description,
                       quantity,
+                      unitOfMeasure: unitOfMeasure || undefined,
                       unitCost,
                       amount,
                     })
                   : splitLegacyParticular(description, amount);
-              return purpose ? { ...base, purpose } : base;
+              const withUom = unitOfMeasure ? { ...base, unitOfMeasure } : base;
+              return purpose ? { ...withUom, purpose } : withUom;
             }
             return null;
           })
@@ -155,7 +162,7 @@ export function patchParticularLine(
   field: keyof ParticularLineItem,
   raw: string
 ): ParticularLineItem | null {
-  if (field === "description" || field === "purpose") {
+  if (field === "description" || field === "purpose" || field === "unitOfMeasure") {
     return { ...item, [field]: raw };
   }
   if (field === "quantity") {
@@ -375,6 +382,7 @@ export function particularsFromPurchaseOrderLines(
   lineItems: Array<{
     itemName?: string | null;
     quantity?: number | null;
+    unitOfMeasure?: string | null;
     unitCost?: string | number | null;
     totalCost?: string | number | null;
     purpose?: string | null;
@@ -395,9 +403,11 @@ export function particularsFromPurchaseOrderLines(
             ? tCost.toFixed(2)
             : "";
       const purpose = stripPoPurposePrefix(li.purpose);
+      const unitOfMeasure = li.unitOfMeasure?.trim() ?? "";
       return {
         description: (li.itemName || "").trim(),
         quantity: qtyNum > 0 ? String(Math.trunc(qtyNum)) : "",
+        ...(unitOfMeasure ? { unitOfMeasure } : {}),
         unitCost: unit > 0 ? unit.toFixed(2) : "",
         amount: lineAmount,
         ...(purpose ? { purpose } : {}),
@@ -441,10 +451,12 @@ export function draftFromStoredParticulars(
   const source = items.length > 0 ? items : [blankParticular()];
   const lines: DraftParticularLine[] = source.map((item) => {
     const purpose = item.purpose?.trim() ?? "";
+    const unitOfMeasure = item.unitOfMeasure?.trim() ?? "";
     return {
       id: newDraftId(),
       description: item.description,
       quantity: item.quantity,
+      unitOfMeasure: unitOfMeasure || "",
       unitCost: item.unitCost,
       amount: item.amount,
       ...(purpose ? { purpose } : {}),
@@ -481,6 +493,7 @@ export function draftFromPurchaseOrderLines(
   lineItems: Array<{
     itemName?: string | null;
     quantity?: number | null;
+    unitOfMeasure?: string | null;
     unitCost?: string | number | null;
     totalCost?: string | number | null;
     purpose?: string | null;
@@ -579,9 +592,11 @@ export function applyPurposeGroups(
   }
   return lines.map((line) => {
     const purpose = purposeById.get(line.id) ?? "";
+    const unitOfMeasure = line.unitOfMeasure?.trim() ?? "";
     return {
       description: line.description,
       quantity: line.quantity,
+      ...(unitOfMeasure ? { unitOfMeasure } : {}),
       unitCost: line.unitCost,
       amount: line.amount,
       ...(purpose ? { purpose } : {}),

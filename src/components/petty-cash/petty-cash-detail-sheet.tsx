@@ -220,7 +220,7 @@ export function PettyCashDetailSheet({
 
   const handleEditItemChange = (
     index: number,
-    field: "description" | "quantity" | "unitCost" | "amount",
+    field: "description" | "quantity" | "unitOfMeasure" | "unitCost" | "amount",
     val: string
   ) => {
     if (isCatalogLinked) return;
@@ -229,7 +229,7 @@ export function PettyCashDetailSheet({
       if (!nextRow) return prev;
       const updated = [...prev];
       updated[index] = { ...prev[index], ...nextRow, id: prev[index].id };
-      if (field !== "description") {
+      if (field !== "description" && field !== "unitOfMeasure") {
         const total = sumParticularAmounts(updated);
         if (total > 0) setEditAmount(total.toFixed(2));
       }
@@ -779,10 +779,11 @@ export function PettyCashDetailSheet({
                             Particulars
                           </label>
                           <div className="rounded-md border border-border bg-bg-subtle/30 p-2 space-y-2">
-                            <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_4.5rem_4.5rem_1.5rem] gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                            <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_3.5rem_4.5rem_4.5rem_1.5rem] gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                               <span className="text-center">#</span>
                               <span>Description</span>
                               <span className="text-right">Qty</span>
+                              <span className="text-center">UoM</span>
                               <span className="text-right">Unit</span>
                               <span className="text-right">Total</span>
                               <span />
@@ -790,7 +791,7 @@ export function PettyCashDetailSheet({
                             {editListItems.map((item, idx) => (
                               <div
                                 key={item.id}
-                                className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_4.5rem_4.5rem_1.5rem] gap-1.5 items-center"
+                                className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_3.5rem_4.5rem_4.5rem_1.5rem] gap-1.5 items-center"
                               >
                                 <span className="flex h-6 w-6 items-center justify-center rounded bg-bg border border-border text-[10px] font-mono text-text-muted">
                                   {idx + 1}
@@ -823,6 +824,20 @@ export function PettyCashDetailSheet({
                                   placeholder="1"
                                   disabled={isCatalogLinked}
                                   className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text disabled:opacity-70"
+                                />
+                                <input
+                                  type="text"
+                                  value={item.unitOfMeasure ?? ""}
+                                  onChange={(e) =>
+                                    handleEditItemChange(
+                                      idx,
+                                      "unitOfMeasure",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="pcs"
+                                  disabled={isCatalogLinked}
+                                  className="w-full text-xs text-center rounded-md border border-border bg-bg px-1.5 py-1.5 text-text disabled:opacity-70"
                                 />
                                 <input
                                   type="text"
