@@ -1,6 +1,7 @@
 # Test coverage map
 
 Append new `*.test.ts` files under the matching domain folder. Keep prior suites green.
+Refine assertions later for field-level accuracy; this pass is broad checklist coverage.
 
 ## Unit (`tests/unit`)
 
@@ -18,17 +19,18 @@ Append new `*.test.ts` files under the matching domain folder. Keep prior suites
 | Domain | Status | Files / notes |
 |--------|--------|---------------|
 | Auth | partial | `auth/role-home.test.ts` (helper only; Supabase login e2e todo) |
-| Assets | done | `assets/asset-codes.test.ts` |
-| Inventory | done | `inventory/opening-lot.test.ts` |
-| Purchase orders | done | `purchase-orders/po-delivery-intake.test.ts` |
-| Requests | done | `requests/approve-reject.test.ts` |
-| Custody | done | `custody/release-return-void.test.ts` |
-| Audit | done | `audit/audit-injection.test.ts` |
-| Categories / departments / suppliers | todo | CRUD + cascade |
-| Users | todo | Admin CRUD department accounts |
-| Vouchers / petty cash | todo | Legacy + PO-linked flows |
-| Projects | todo | Milestones, materials refund/restock, asset assign/remove |
-| Maintenance | todo | Flag in/out of custody, resolve |
+| Categories / departments / suppliers | done | `categories-departments-suppliers/crud.test.ts` |
+| Users | partial | `users/accounts.test.ts` (profile seed; no Supabase Auth createUser) |
+| Assets | done | `assets/asset-codes.test.ts`, `assets/lifecycle-maintenance.test.ts` |
+| Inventory | done | `inventory/opening-lot.test.ts`, adjust/issue in lifecycle-maintenance |
+| Requests (admin) | done | `requests/approve-reject.test.ts` |
+| Requests (requester) | done | `requests/requester-and-po-flows.test.ts` |
+| Purchase orders | done | `purchase-orders/po-delivery-intake.test.ts`, status/multi-dept in requester-and-po-flows |
+| Custody / issue history | done | `custody/release-return-void.test.ts` |
+| Vouchers / petty cash | done | `projects/project-flows.test.ts` (voucher/PCV block) |
+| Projects | done | `projects/project-flows.test.ts` (milestones, material refund, asset assign) |
+| Maintenance | done | flag/resolve + in-custody in `assets/lifecycle-maintenance.test.ts` |
+| Audit | done | `audit/audit-injection.test.ts` (+ PO cancel audit in requester-and-po-flows) |
 
 ## Quality gate
 

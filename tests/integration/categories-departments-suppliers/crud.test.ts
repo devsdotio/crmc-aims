@@ -1,0 +1,108 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { and, eq, sql } from "drizzle-orm";
+
+import { getDb } from "@/server/db";
+import { categories } from "@/server/db/schema";
+import { CategoryRepository } from "@/server/modules/categories/category.repository";
+import { DepartmentService } from "@/server/modules/departments/department.service";
+import { SupplierService } from "@/server/modules/suppliers/supplier.service";
+import { hasTestDatabase } from "../../setup/env";
+import { resetTestDatabase } from "../../setup/db";
+import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
+
+const describeIntegration = hasTestDatabase ? describe : describe.skip;
+
+describeIntegration("categories / departments / suppliers CRUD", () => {
+  const categoryRepo = new CategoryRepository();
+  const departments = new DepartmentService();
+  const suppliers = new SupplierService();
+  let fx: TestFixtures;
+
+  beforeEach(async () => {
+    await resetTestDatabase();
+    fx = await seedCoreFixtures();
+  });
+
+  it("lists, creates, renames (cascade), and deletes a category", async () => {
+    const db = getDb();
+    const [created] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Lab Gear",
+        type: "asset",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    const listed = await categoryRepo.listWithCounts(
+      "asset",
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(listed.some((c) => c.id === created.id)).toBe(true);
+
+    const renamed = await categoryRepo.updateAndCascade(
+      created.id,
+      { name: "Laboratory Gear", type: "asset" },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(renamed?.name).toBe("Laboratory Gear");
+
+    await db.delete(categories).where(eq(categories.id, created.id));
+    const after = await categoryRepo.findById(
+      created.id,
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(after).toBeNull();
+  });
+
+  it("creates, updates, lists, and deletes a department", async () => {
+    const created = await departments.create(
+      { code: "REG", name: "Registrar" },
+      fx.actor.tenantId
+    );
+    expect(created.code).toBe("REG");
+
+    const updated = await departments.update(
+      created.id,
+      { name: "Office of the Registrar" },
+      fx.actor.tenantId
+    );
+    expect(updated.name).toBe("Office of the Registrar");
+
+    const listed = await departments.list({}, fx.actor.tenantId);
+    expect(listed.some((d) => d.id === created.id)).toBe(true);
+
+    await departments.delete(created.id, fx.actor.tenantId);
+    const after = await departments.list({}, fx.actor.tenantId);
+    expect(after.some((d) => d.id === created.id)).toBe(false);
+  });
+
+  it("creates, updates, lists, and deactivates a supplier", async () => {
+    const created = await suppliers.create(
+      { name: "Beta Office Depot", contactPhone: "09170001111" },
+      fx.actor
+    );
+    expect(created.name).toBe("Beta Office Depot");
+    expect(created.status).toBe("active");
+
+    const updated = await suppliers.update(
+      created.id,
+      { contactName: "Alex Vendor" },
+      fx.actor.tenantId
+    );
+    expect(updated.contactName).toBe("Alex Vendor");
+
+    const listed = await suppliers.list({}, fx.actor.tenantId);
+    expect(listed.some((s) => s.id === created.id)).toBe(true);
+
+    const deactivated = await suppliers.deactivate(
+      created.id,
+      fx.actor.tenantId
+    );
+    expect(deactivated.status).toBe("inactive");
+  });
+});
