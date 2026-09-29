@@ -1,4 +1,13 @@
 -- Asset models (product catalog) + per-unit model link for multi-copy equipment
+-- 0006_round_black_tom.sql exists on disk but is not in the drizzle journal; ensure enum/column on fresh DBs.
+DO $$ BEGIN
+  CREATE TYPE "public"."asset_assignment_type" AS ENUM('borrowable', 'assignable');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+ALTER TABLE "assets" ADD COLUMN IF NOT EXISTS "assignment_type" "asset_assignment_type" DEFAULT 'borrowable' NOT NULL;
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "asset_models" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "model_code" text NOT NULL,

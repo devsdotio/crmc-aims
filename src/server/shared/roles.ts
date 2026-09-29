@@ -73,3 +73,10 @@ export function isUserManagerRole(role: AppRole): boolean {
 export function isAssetOperatorRole(role: AppRole): boolean {
   return (ASSET_OPERATOR_ROLES as readonly string[]).includes(role);
 }
+
+/** Default post-login / guard fallback home for a role. */
+export function homeForRole(role: AppRole): string {
+  if (role === "borrower") return "/borrower-db/dashboard";
+  if (isStaffShellRole(role)) return "/dashboard";
+  return "/sign-in";
+}

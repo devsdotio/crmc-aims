@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getCachedProfile } from "@/server/shared/auth";
-import { isStaffShellRole, type AppRole } from "@/server/shared/roles";
+import { homeForRole, type AppRole } from "@/server/shared/roles";
 
 interface RouteGuardProps {
   children: ReactNode;
@@ -11,12 +11,6 @@ interface RouteGuardProps {
     /** Override role-mismatch target (default is role home). */
     fallbackRoute?: string;
   };
-}
-
-function homeForRole(role: AppRole): string {
-  if (role === "borrower") return "/borrower-db/dashboard";
-  if (isStaffShellRole(role)) return "/dashboard";
-  return "/sign-in";
 }
 
 function isConnectivityFailure(error: unknown): boolean {
