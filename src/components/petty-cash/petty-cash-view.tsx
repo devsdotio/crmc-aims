@@ -243,6 +243,9 @@ export function PettyCashView() {
         target={printVoucher ? { kind: "petty_cash", record: printVoucher } : null}
         isOpen={Boolean(printVoucher)}
         onClose={() => setPrintVoucher(null)}
+        onUpdated={(record) => {
+          if ("pcvNumber" in record) setPrintVoucher(record);
+        }}
       />
 
       {/* Create Dialog */}

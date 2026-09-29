@@ -275,6 +275,9 @@ export class PettyCashService {
       ...(input.departmentId !== undefined && { departmentId: input.departmentId }),
       ...(input.departmentName !== undefined && { departmentName: emptyToNull(input.departmentName) }),
       ...(input.isLegacy !== undefined && { isLegacy: input.isLegacy }),
+      ...(input.approvedByName !== undefined && {
+        approvedByName: emptyToNull(input.approvedByName),
+      }),
     }, undefined, actor?.tenantId);
 
     if (!updated) {
@@ -315,6 +318,11 @@ export class PettyCashService {
       },
       { label: "Supplier", before: existing.supplierName, after: updated.supplierName },
       { label: "Department", before: existing.departmentName, after: updated.departmentName },
+      {
+        label: "Verified by",
+        before: existing.approvedByName,
+        after: updated.approvedByName,
+      },
     ]);
 
     if (diff.labels.length > 0) {

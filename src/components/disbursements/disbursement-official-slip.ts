@@ -2,19 +2,20 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import type { Voucher } from "@/types/vouchers";
 import type { PettyCashVoucher } from "@/types/petty-cash";
-import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
+import type { ParticularLineItem } from "@/lib/voucher-particulars";
 import {
   parseParticulars,
   particularLineAmount,
 } from "@/lib/voucher-particulars";
 
-const CUSTODIAN_NAME = "JACINTO ANTONIO R. LEPITEN JR.";
-const CUSTODIAN_TITLE = "Head Property Custodian";
+/** Ruled item rows on the official form, including filled lines. */
+const RULED_ROWS = 6;
 
 export interface DisbursementSlipLine {
   quantity: string;
   description: string;
-  unitCost: string;
+  dealer: string;
+  purpose: string;
   amount: number;
 }
 
@@ -22,25 +23,13 @@ export interface DisbursementSlipData {
   kind: "voucher" | "petty_cash";
   documentTitle: string;
   code: string;
-  statusLabel: string;
   dateLabel: string;
-  payeeName: string;
-  departmentLabel: string;
-  supplierName: string;
-  purchaseOrderNumber: string | null;
-  extraLabel: string | null;
-  extraValue: string | null;
-  categoryLabel: string | null;
-  purpose: string;
+  forwardedDateLabel: string;
   lines: DisbursementSlipLine[];
   amount: number;
-  amountWords: string;
-  preparedBy: string;
-  receivedBy: string;
-  approvedBy: string;
-  approvedByTitle: string;
+  requestedBy: string;
+  verifiedBy: string;
   logoUrl: string;
-  printedAt: string;
 }
 
 function escapeHtml(value: string): string {
@@ -58,140 +47,41 @@ function formatMoney(value: number): string {
   });
 }
 
-const BELOW_TWENTY = [
-  "Zero",
-  "One",
-  "Two",
-  "Three",
-  "Four",
-  "Five",
-  "Six",
-  "Seven",
-  "Eight",
-  "Nine",
-  "Ten",
-  "Eleven",
-  "Twelve",
-  "Thirteen",
-  "Fourteen",
-  "Fifteen",
-  "Sixteen",
-  "Seventeen",
-  "Eighteen",
-  "Nineteen",
-];
-
-const TENS = [
-  "",
-  "",
-  "Twenty",
-  "Thirty",
-  "Forty",
-  "Fifty",
-  "Sixty",
-  "Seventy",
-  "Eighty",
-  "Ninety",
-];
-
-function chunkToWords(n: number): string {
-  if (n < 20) return BELOW_TWENTY[n];
-  if (n < 100) {
-    const tens = Math.floor(n / 10);
-    const rest = n % 10;
-    return rest ? `${TENS[tens]}-${BELOW_TWENTY[rest]}` : TENS[tens];
-  }
-  const hundreds = Math.floor(n / 100);
-  const rest = n % 100;
-  const head = `${BELOW_TWENTY[hundreds]} Hundred`;
-  return rest ? `${head} ${chunkToWords(rest)}` : head;
-}
-
-function integerToWords(n: number): string {
-  if (n === 0) return "Zero";
-  const millions = Math.floor(n / 1_000_000);
-  const thousands = Math.floor((n % 1_000_000) / 1000);
-  const rest = n % 1000;
-  const parts: string[] = [];
-  if (millions) parts.push(`${chunkToWords(millions)} Million`);
-  if (thousands) parts.push(`${chunkToWords(thousands)} Thousand`);
-  if (rest) parts.push(chunkToWords(rest));
-  return parts.join(" ");
-}
-
-export function pesosInWords(amount: number): string {
-  const centsTotal = Number.isFinite(amount) ? Math.round(Math.max(0, amount) * 100) : 0;
-  const pesos = Math.floor(centsTotal / 100);
-  const centavos = centsTotal % 100;
-  return `${integerToWords(pesos)} Pesos and ${String(centavos).padStart(2, "0")}/100`;
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case "pending_approval":
-      return "Pending Approval";
-    case "approved":
-      return "Approved";
-    case "disbursed":
-      return "Disbursed";
-    case "completed":
-      return "Closed";
-    case "cancelled":
-      return "Cancelled";
-    case "draft":
-      return "Draft";
-    default:
-      return status;
-  }
-}
-
-function formatSlipDate(dateStr: string): string {
+function formatSlipDate(dateStr: string | null | undefined): string {
+  if (!dateStr?.trim()) return "";
   const normalized = dateStr.includes("T") ? dateStr : `${dateStr}T00:00:00`;
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) return dateStr;
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${month}/${day}/${date.getFullYear()}`;
 }
 
-function departmentLabel(record: {
-  departments?: Array<{ name: string }>;
-  departmentName: string | null;
-}): string {
-  const names = (record.departments ?? [])
-    .map((department) => department.name.trim())
-    .filter(Boolean);
-  if (names.length > 0) return names.join(", ");
-  return record.departmentName?.trim() || "—";
-}
-
-function approvedBlock(
-  status: string,
-  approvedByName: string | null
-): { name: string; title: string } {
-  if (approvedByName?.trim()) {
-    return { name: approvedByName.trim(), title: "Approving Officer" };
-  }
-  if (status === "approved" || status === "disbursed" || status === "completed") {
-    return { name: CUSTODIAN_NAME, title: CUSTODIAN_TITLE };
-  }
-  return { name: "", title: "Approving Officer" };
+function descriptionWithRate(item: ParticularLineItem): string {
+  const description = item.description.trim();
+  const unitRaw = item.unitCost.trim().replace(/,/g, "");
+  if (!unitRaw || /@/.test(description)) return description;
+  const unit = Number(unitRaw);
+  if (!Number.isFinite(unit)) return description;
+  return `${description} @ ${formatMoney(unit)}`;
 }
 
 function slipLines(
   particulars: string,
   purpose: string,
+  dealer: string,
   amount: number
 ): DisbursementSlipLine[] {
+  const suggestedDealer = dealer.trim();
+  const headerPurpose = purpose.trim();
   const items = parseParticulars(particulars);
   if (items.length === 0) {
     return [
       {
         quantity: "1",
-        description: purpose.trim() || "Disbursement",
-        unitCost: amount ? amount.toFixed(2) : "",
+        description: headerPurpose || "Disbursement",
+        dealer: suggestedDealer,
+        purpose: headerPurpose,
         amount,
       },
     ];
@@ -199,8 +89,9 @@ function slipLines(
 
   return items.map((item) => ({
     quantity: item.quantity.trim() || "—",
-    description: item.description,
-    unitCost: item.unitCost.trim(),
+    description: descriptionWithRate(item),
+    dealer: suggestedDealer,
+    purpose: item.purpose?.trim() || headerPurpose,
     amount: particularLineAmount(item),
   }));
 }
@@ -212,53 +103,25 @@ function voucherTitle(type: Voucher["type"]): string {
     case "liquidation":
       return "Liquidation Receipt";
     default:
-      return "Disbursement Voucher";
+      return "Disbursement Voucher Records";
   }
-}
-
-function categoryLabel(category: string): string {
-  return (
-    PETTY_CASH_CATEGORIES.find((entry) => entry.id === category)?.label ??
-    category
-  );
-}
-
-function printedStamp(): string {
-  return new Date().toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 export function voucherToSlip(voucher: Voucher, logoUrl: string): DisbursementSlipData {
   const amount = Number(voucher.amount) || 0;
-  const approved = approvedBlock(voucher.status, voucher.approvedByName);
+  const purpose = voucher.purpose?.trim() || "";
+  const dealer = voucher.supplierName?.trim() || "";
   return {
     kind: "voucher",
     documentTitle: voucherTitle(voucher.type),
     code: voucher.voucherCode,
-    statusLabel: statusLabel(voucher.status),
     dateLabel: formatSlipDate(voucher.voucherDate),
-    payeeName: voucher.payeeName,
-    departmentLabel: departmentLabel(voucher),
-    supplierName: voucher.supplierName?.trim() || "Direct Payee",
-    purchaseOrderNumber: voucher.purchaseOrderNumber,
-    extraLabel: voucher.checkNumber ? "Check No." : null,
-    extraValue: voucher.checkNumber,
-    categoryLabel: null,
-    purpose: voucher.purpose?.trim() || "—",
-    lines: slipLines(voucher.particulars, voucher.purpose, amount),
+    forwardedDateLabel: formatSlipDate(voucher.approvedAt),
+    lines: slipLines(voucher.particulars, purpose, dealer, amount),
     amount,
-    amountWords: pesosInWords(amount),
-    preparedBy: voucher.createdByName?.trim() || "Authorized Staff",
-    receivedBy: voucher.payeeName,
-    approvedBy: approved.name,
-    approvedByTitle: approved.title,
+    requestedBy: voucher.payeeName?.trim() || "",
+    verifiedBy: voucher.approvedByName?.trim() || "",
     logoUrl,
-    printedAt: printedStamp(),
   };
 }
 
@@ -267,70 +130,106 @@ export function pettyCashToSlip(
   logoUrl: string
 ): DisbursementSlipData {
   const amount = Number(voucher.amount) || 0;
-  const approved = approvedBlock(voucher.status, voucher.approvedByName);
+  const purpose = voucher.purpose?.trim() || "";
+  const dealer = voucher.supplierName?.trim() || "";
   return {
     kind: "petty_cash",
-    documentTitle: "Petty Cash Voucher",
+    documentTitle: "Disbursement Voucher Records",
     code: voucher.pcvNumber,
-    statusLabel: statusLabel(voucher.status),
     dateLabel: formatSlipDate(voucher.voucherDate),
-    payeeName: voucher.payeeName,
-    departmentLabel: departmentLabel(voucher),
-    supplierName: voucher.supplierName?.trim() || "Direct Payee",
-    purchaseOrderNumber: voucher.purchaseOrderNumber,
-    extraLabel: voucher.receiptNumber ? "Receipt No." : null,
-    extraValue: voucher.receiptNumber,
-    categoryLabel: categoryLabel(voucher.category),
-    purpose: voucher.purpose?.trim() || "—",
-    lines: slipLines(voucher.particulars, voucher.purpose, amount),
+    forwardedDateLabel: formatSlipDate(voucher.approvedAt),
+    lines: slipLines(voucher.particulars, purpose, dealer, amount),
     amount,
-    amountWords: pesosInWords(amount),
-    preparedBy: voucher.createdByName?.trim() || "Authorized Staff",
-    receivedBy: voucher.payeeName,
-    approvedBy: approved.name,
-    approvedByTitle: approved.title,
+    requestedBy: voucher.payeeName?.trim() || "",
+    verifiedBy: voucher.approvedByName?.trim() || "",
     logoUrl,
-    printedAt: printedStamp(),
   };
 }
 
+function runSpanStarts(
+  lines: DisbursementSlipLine[],
+  valueOf: (line: DisbursementSlipLine) => string
+): number[] {
+  const spans = new Array<number>(lines.length).fill(0);
+  let index = 0;
+  while (index < lines.length) {
+    const key = valueOf(lines[index]).trim().toLowerCase();
+    let end = index + 1;
+    while (end < lines.length && valueOf(lines[end]).trim().toLowerCase() === key) {
+      end += 1;
+    }
+    spans[index] = end - index;
+    index = end;
+  }
+  return spans;
+}
+
 function buildLineRows(data: DisbursementSlipData): string {
+  const dealerSpans = runSpanStarts(data.lines, (line) => line.dealer);
+  const purposeSpans = runSpanStarts(data.lines, (line) => line.purpose);
   const body = data.lines
-    .map((line) => {
-      const unit = line.unitCost
-        ? `₱${formatMoney(Number(line.unitCost) || 0)}`
-        : "—";
-      return `<tr>
+    .map((line, index) => {
+      const dealerSpan = dealerSpans[index];
+      const purposeSpan = purposeSpans[index];
+      const dealerCell =
+        dealerSpan > 0
+          ? `<td class="col-dealer" rowspan="${dealerSpan}">${escapeHtml(line.dealer) || "&nbsp;"}</td>`
+          : "";
+      const purposeCell =
+        purposeSpan > 0
+          ? `<td class="col-purpose" rowspan="${purposeSpan}">${escapeHtml(line.purpose) || "&nbsp;"}</td>`
+          : "";
+      return `<tr class="item-row">
         <td class="col-qty">${escapeHtml(line.quantity)}</td>
         <td class="col-desc">${escapeHtml(line.description)}</td>
-        <td class="col-unit">${unit}</td>
-        <td class="col-amount">₱${formatMoney(line.amount)}</td>
+        ${dealerCell}
+        ${purposeCell}
+        <td class="col-amount">${formatMoney(line.amount)}</td>
       </tr>`;
     })
     .join("");
 
-  const padCount = Math.max(0, 4 - data.lines.length);
+  const nothingFollows = `<tr class="nothing-row">
+      <td colspan="5" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
+    </tr>`;
+
+  const padCount = Math.max(0, RULED_ROWS - data.lines.length);
   const pad = Array.from({ length: padCount })
     .map(
       () =>
-        `<tr class="empty-row"><td></td><td></td><td></td><td></td></tr>`
+        `<tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>`
     )
     .join("");
 
-  const footer = `<tr>
-      <td colspan="4" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
+  const forwarded = data.forwardedDateLabel
+    ? escapeHtml(data.forwardedDateLabel)
+    : "&nbsp;";
+
+  const footer = `<tr class="total-row">
+      <td colspan="3"></td>
+      <td class="total-label">Total:</td>
+      <td class="col-amount">${formatMoney(data.amount)}</td>
     </tr>
-    <tr class="total-row">
-      <td colspan="3" class="total-label">Amount Disbursed</td>
-      <td class="col-amount">₱${formatMoney(data.amount)}</td>
+    <tr class="sign-row">
+      <td colspan="3" class="sign-cell">
+        <div class="sign-line">
+          <span class="sign-label">Requested by:</span>
+          <input class="sign-space" data-slip-field="requestedBy" value="${escapeHtml(data.requestedBy)}" aria-label="Requested by" autocomplete="off" />
+        </div>
+        <div class="sign-line">
+          <span class="sign-label">Verified by:</span>
+          <input class="sign-space" data-slip-field="verifiedBy" value="${escapeHtml(data.verifiedBy)}" aria-label="Verified by" autocomplete="off" />
+        </div>
+      </td>
+      <td colspan="2" class="forwarded">Date Forwarded for Voucher: <strong>${forwarded}</strong></td>
     </tr>`;
 
-  return body + pad + footer;
+  return body + nothingFollows + pad + footer;
 }
 
 export function buildDisbursementSlipStyles(): string {
   return `
-    @page { size: portrait; margin: 8mm 10mm; }
+    @page { size: portrait; margin: 6mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body, table, th, td, h1, h2, p, div, span, strong {
       font-family: Arial, Helvetica, sans-serif;
@@ -339,122 +238,178 @@ export function buildDisbursementSlipStyles(): string {
       margin: 0 !important;
       padding: 0 !important;
       width: 100% !important;
-      color: #111;
+      color: #1f2937;
       background: #fff !important;
     }
     .dv-document {
       width: 100%;
-      border: 1.5px solid #222;
-      padding: 16px 20px 18px;
+      margin: 0;
       background: #fff;
+      padding: 0;
     }
-    .letterhead {
-      display: flex;
+    .letterhead { margin-bottom: 8px; }
+    .letterhead-top {
+      display: grid;
+      grid-template-columns: 96px 1fr 96px;
       align-items: center;
-      gap: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1.5px solid #222;
     }
-    .college-logo-img { width: 64px; height: 64px; object-fit: contain; }
+    .logo-block { width: 96px; }
+    .college-logo-img { width: 80px; height: 80px; object-fit: contain; display: block; }
+    .college-titles {
+      text-align: center;
+    }
     .college-titles h1 {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 800;
       margin: 0;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.2px;
       text-transform: uppercase;
       line-height: 1.25;
     }
-    .college-titles p { margin: 2px 0 0; font-size: 11px; color: #444; }
-    .title-banner { text-align: center; margin: 10px 0 12px; }
+    .college-titles .city {
+      margin: 4px 0 0;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: #6b7280;
+    }
+    .title-banner {
+      text-align: center;
+      margin-top: 14px;
+      margin-bottom: 14px;
+    }
     .doc-title {
       display: inline-block;
-      font-size: 15px;
+      font-size: 18px;
       font-weight: 900;
-      letter-spacing: 1.6px;
+      letter-spacing: 0.6px;
       text-transform: uppercase;
-      border-bottom: 2px solid #111;
-      padding-bottom: 2px;
+      line-height: 1.2;
     }
-    .meta-grid {
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 8px 18px;
-      font-size: 11.5px;
-      margin-bottom: 12px;
-    }
-    .meta-item { line-height: 1.45; }
-    .meta-label { color: #444; }
-    .code-highlight {
-      display: inline-block;
-      font-weight: 900;
+    .doc-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-top: 8px;
       font-size: 13px;
-      background: #f0f0f0;
-      border: 1.5px solid #222;
-      padding: 2px 8px;
-      letter-spacing: 0.4px;
+      line-height: 1.35;
+      color: #6b7280;
     }
-    .purpose-card, .words-card {
-      border: 1.5px solid #222;
-      padding: 8px 12px;
-      margin-bottom: 10px;
-      font-size: 12px;
-    }
-    .purpose-card .label, .words-card .label {
-      font-size: 10px;
+    .doc-no {
       font-weight: 800;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      color: #333;
-      margin-bottom: 3px;
+      font-size: 14px;
+      letter-spacing: 0.2px;
+      color: #1f2937;
     }
-    table { width: 100%; border-collapse: collapse; margin: 4px 0 12px; font-size: 12px; }
-    th, td { border: 1.5px solid #222; padding: 8px; text-align: left; vertical-align: top; }
-    th {
+    .request-line {
+      margin: 0 0 8px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: #6b7280;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+    th, td {
+      border: 1px solid #222;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: middle;
+      line-height: 1.35;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+    th,
+    th.col-qty,
+    th.col-desc,
+    th.col-dealer,
+    th.col-purpose,
+    th.col-amount {
       font-weight: 800;
       text-align: center;
-      background: #fafafa;
-      font-size: 11px;
-      text-transform: uppercase;
+      font-size: 12px;
       letter-spacing: 0.3px;
+      text-transform: uppercase;
+      color: #374151;
+      padding: 8px 6px;
+      line-height: 1.25;
+      white-space: normal;
+      overflow-wrap: normal;
     }
-    .col-qty { width: 10%; text-align: center; font-weight: 700; }
-    .col-desc { width: 50%; }
-    .col-unit { width: 18%; text-align: right; white-space: nowrap; }
-    .col-amount { width: 22%; text-align: right; font-weight: 700; white-space: nowrap; }
+    .col-qty { width: 11%; text-align: center; font-weight: 700; }
+    .col-desc { width: 32%; }
+    .col-dealer { width: 18%; vertical-align: middle; }
+    .col-purpose { width: 24%; vertical-align: middle; }
+    .col-amount { width: 15%; text-align: right; font-weight: 700; white-space: nowrap; overflow-wrap: normal; }
+    .item-row td { height: 38px; }
+    .empty-row td { height: 26px; }
     .nothing-follows {
       text-align: center;
       font-weight: 700;
       font-style: italic;
-      letter-spacing: 1.5px;
-      color: #444;
-      background: #fafafa;
-      font-size: 11px;
+      letter-spacing: 1.2px;
+      color: #9ca3af;
+      font-size: 12px;
+      padding: 8px 8px;
     }
-    .empty-row td { height: 26px; }
-    .total-row td { border-top: 2px solid #111; font-weight: 800; }
-    .total-label { text-align: right; text-transform: uppercase; letter-spacing: 0.4px; font-size: 11px; }
-    .signatures {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 16px;
-      margin-top: 22px;
-      font-size: 11.5px;
+    .sign-row td { height: 108px; }
+    .sign-cell {
+      padding: 14px 12px 12px;
+      vertical-align: middle;
+      border-right: none;
     }
-    .sig-label { font-weight: 700; margin-bottom: 28px; }
-    .sig-line {
-      border-bottom: 1.5px solid #222;
-      min-height: 22px;
-      text-align: center;
-      font-weight: 700;
-      padding-bottom: 2px;
-    }
-    .sig-title { text-align: center; color: #444; font-size: 10.5px; margin-top: 4px; }
-    .slip-footer {
-      margin-top: 14px;
-      font-size: 9.5px;
-      color: #666;
+    .sign-line {
       display: flex;
-      justify-content: space-between;
+      align-items: flex-end;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.2;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: #6b7280;
+    }
+    .sign-line + .sign-line { margin-top: 16px; }
+    .sign-label { flex: 0 0 auto; }
+    .sign-space {
+      flex: 0 0 210px;
+      min-height: 22px;
+      width: 210px;
+      border: none;
+      border-bottom: 1px solid #222;
+      border-radius: 0;
+      background: transparent;
+      color: #1f2937;
+      font: inherit;
+      font-weight: 700;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 0 8px 1px;
+    }
+    .sign-space:focus {
+      outline: none;
+      border-bottom-color: #2563eb;
+    }
+    .total-row td { height: 36px; }
+    .total-label {
+      text-align: right;
+      font-weight: 800;
+      font-size: 14px;
+    }
+    .total-row .col-amount { font-size: 15px; }
+    .sign-row .forwarded {
+      text-align: right;
+      vertical-align: bottom;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.35;
+      padding: 10px 8px 8px;
+      white-space: normal;
+      border-left: none;
+      color: #6b7280;
+    }
+    .sign-row .forwarded strong {
+      color: #1f2937;
+      font-weight: 700;
     }
     @media print {
       html, body { background: #fff !important; }
@@ -464,57 +419,34 @@ export function buildDisbursementSlipStyles(): string {
 }
 
 export function buildDisbursementSlipBodyHtml(data: DisbursementSlipData): string {
-  const poLine = data.purchaseOrderNumber
-    ? `<div class="meta-item"><span class="meta-label">Purchase Order:</span> <strong>${escapeHtml(data.purchaseOrderNumber)}</strong></div>`
-    : "";
-  const extraLine =
-    data.extraLabel && data.extraValue
-      ? `<div class="meta-item"><span class="meta-label">${escapeHtml(data.extraLabel)}</span> <strong>${escapeHtml(data.extraValue)}</strong></div>`
-      : "";
-  const categoryLine = data.categoryLabel
-    ? `<div class="meta-item"><span class="meta-label">Category:</span> <strong>${escapeHtml(data.categoryLabel)}</strong></div>`
-    : "";
-
   return `
     <div class="dv-document">
       <div class="letterhead">
-        <img src="${escapeHtml(data.logoUrl)}" alt="CRMC Logo" class="college-logo-img" />
-        <div class="college-titles">
-          <h1>Cebu Roosevelt Memorial Colleges, Inc.</h1>
-          <p>Upper Pandan, Bogo City, Cebu, Philippines</p>
-        </div>
-      </div>
-      <div class="title-banner">
-        <span class="doc-title">${escapeHtml(data.documentTitle)}</span>
-      </div>
-      <div class="meta-grid">
-        <div>
-          <div class="meta-item">
-            <span class="meta-label">${data.kind === "petty_cash" ? "PCV No." : "DV No."}</span>
-            <span class="code-highlight">${escapeHtml(data.code)}</span>
+        <div class="letterhead-top">
+          <div class="logo-block">
+            <img src="${escapeHtml(data.logoUrl)}" alt="CRMC Logo" class="college-logo-img" />
           </div>
-          <div class="meta-item"><span class="meta-label">Payee:</span> <strong>${escapeHtml(data.payeeName)}</strong></div>
-          <div class="meta-item"><span class="meta-label">Charge to:</span> <strong>${escapeHtml(data.departmentLabel)}</strong></div>
-          <div class="meta-item"><span class="meta-label">Supplier:</span> <strong>${escapeHtml(data.supplierName)}</strong></div>
-          ${categoryLine}
+          <div class="college-titles">
+            <h1>Cebu Roosevelt Memorial Colleges, Inc.</h1>
+            <p class="city">Bogo City, Cebu</p>
+          </div>
         </div>
-        <div>
-          <div class="meta-item"><span class="meta-label">Date:</span> <strong>${escapeHtml(data.dateLabel)}</strong></div>
-          <div class="meta-item"><span class="meta-label">Status:</span> <strong>${escapeHtml(data.statusLabel)}</strong></div>
-          ${poLine}
-          ${extraLine}
+        <div class="title-banner">
+          <div class="doc-title">${escapeHtml(data.documentTitle)}</div>
+        </div>
+        <div class="doc-meta">
+          <div class="doc-no">${escapeHtml(data.code)}</div>
+          <div class="doc-date">Date <strong>${escapeHtml(data.dateLabel)}</strong></div>
         </div>
       </div>
-      <div class="purpose-card">
-        <div class="label">Purpose</div>
-        <div>${escapeHtml(data.purpose)}</div>
-      </div>
+      <p class="request-line">May we request for the purchase/order placement of the following:</p>
       <table>
         <thead>
           <tr>
-            <th class="col-qty">Qty</th>
-            <th class="col-desc">Particulars</th>
-            <th class="col-unit">Unit Cost</th>
+            <th class="col-qty">Quantity</th>
+            <th class="col-desc">Description</th>
+            <th class="col-dealer">Suggested Dealer</th>
+            <th class="col-purpose">Purpose</th>
             <th class="col-amount">Amount</th>
           </tr>
         </thead>
@@ -522,32 +454,29 @@ export function buildDisbursementSlipBodyHtml(data: DisbursementSlipData): strin
           ${buildLineRows(data)}
         </tbody>
       </table>
-      <div class="words-card">
-        <div class="label">Amount in words</div>
-        <div><strong>${escapeHtml(data.amountWords)}</strong></div>
-      </div>
-      <div class="signatures">
-        <div>
-          <div class="sig-label">Prepared by:</div>
-          <div class="sig-line">${escapeHtml(data.preparedBy)}</div>
-          <div class="sig-title">Requesting Staff</div>
-        </div>
-        <div>
-          <div class="sig-label">Received by:</div>
-          <div class="sig-line">${escapeHtml(data.receivedBy)}</div>
-          <div class="sig-title">Payee</div>
-        </div>
-        <div>
-          <div class="sig-label">Approved by:</div>
-          <div class="sig-line">${escapeHtml(data.approvedBy) || "&nbsp;"}</div>
-          <div class="sig-title">${escapeHtml(data.approvedByTitle)}</div>
-        </div>
-      </div>
-      <div class="slip-footer">
-        <span>CRMC Property Custodian · Cash disbursement slip</span>
-        <span>Printed ${escapeHtml(data.printedAt)}</span>
-      </div>
     </div>
+    <script>
+      (function () {
+        var timer = null;
+        function send(input) {
+          parent.postMessage({
+            source: "crmc-disbursement-slip",
+            field: input.getAttribute("data-slip-field"),
+            value: input.value
+          }, "*");
+        }
+        document.querySelectorAll("[data-slip-field]").forEach(function (input) {
+          input.addEventListener("input", function () {
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(function () { send(input); }, 600);
+          });
+          input.addEventListener("blur", function () {
+            if (timer) clearTimeout(timer);
+            send(input);
+          });
+        });
+      })();
+    </script>
   `;
 }
 
@@ -556,6 +485,7 @@ export function buildDisbursementSlipFullHtml(data: DisbursementSlipData): strin
   return `<!DOCTYPE html>
 <html>
   <head>
+    <meta charset="utf-8" />
     <title>${escapeHtml(title)}</title>
     <style>${buildDisbursementSlipStyles()}</style>
   </head>
@@ -612,9 +542,9 @@ export async function downloadDisbursementSlipPdf(
     const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 8;
+    const margin = 5;
     const usableWidth = pageWidth - margin * 2;
-    const usableHeight = pageHeight - margin * 2;
+    const usableHeight = pageHeight - margin * 3;
     const imgWidth = usableWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     const imgData = canvas.toDataURL("image/png");

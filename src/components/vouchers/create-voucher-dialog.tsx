@@ -17,6 +17,8 @@ import {
   Trash2,
   Sparkles,
   RefreshCw,
+  Layers,
+  CheckCircle2,
 } from "lucide-react";
 import { useToast } from "@/components/providers/toast-context";
 import { useConfirm } from "@/components/providers/confirm-context";
@@ -33,16 +35,55 @@ import { formatPhp } from "@/components/projects/format-money";
 import type { VoucherType } from "@/types/vouchers";
 import { cn } from "@/lib/utils";
 import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
+import { PurposeGroupsField } from "@/components/disbursements/purpose-groups-field";
 import {
-  blankParticular,
+  attachLineToGroups,
+  blankDraftParticular,
+  commitPurposeDraft,
+  detachLineFromGroups,
+  draftFromPurchaseOrderLines,
+  draftFromStoredParticulars,
+  emptyPurposeDraft,
   patchParticularLine,
+  seedPurposeGroupLines,
   particularLineAmount,
-  serializeParticulars,
   sumParticularAmounts,
   resolveDepartmentsFromPo,
-  particularsFromPurchaseOrderLines,
-  type ParticularLineItem,
+  type DraftParticularLine,
+  type PurposeGroupDraft,
 } from "@/lib/voucher-particulars";
+
+type VoucherWizardStep = "details" | "lines" | "review";
+
+const VOUCHER_STEPS: Array<{
+  id: VoucherWizardStep;
+  label: string;
+  shortLabel: string;
+  description: string;
+  icon: React.ElementType;
+}> = [
+  {
+    id: "details",
+    label: "Voucher details",
+    shortLabel: "Details",
+    description: "Payee, amount & PO",
+    icon: Receipt,
+  },
+  {
+    id: "lines",
+    label: "Purposes & lines",
+    shortLabel: "Purpose",
+    description: "Justification & items",
+    icon: Layers,
+  },
+  {
+    id: "review",
+    label: "Review",
+    shortLabel: "Review",
+    description: "Confirm & save",
+    icon: CheckCircle2,
+  },
+];
 
 interface CreateVoucherDialogProps {
   isOpen: boolean;
@@ -77,12 +118,11 @@ export function CreateVoucherDialog({
   const [poFromCatalog, setPoFromCatalog] = useState(false);
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
-  const [purpose, setPurpose] = useState("");
-  const [listItems, setListItems] = useState<ParticularLineItem[]>([
-    blankParticular(),
-  ]);
+  const [purposeGroups, setPurposeGroups] = useState<PurposeGroupDraft[]>([]);
+  const [listItems, setListItems] = useState<DraftParticularLine[]>([]);
   const [checkNumber, setCheckNumber] = useState("");
   const [isLegacy, setIsLegacy] = useState(false);
+  const [step, setStep] = useState<VoucherWizardStep>("details");
 
   // PO Search state for the second column
   const [poSearch, setPoSearch] = useState("");
@@ -141,10 +181,12 @@ export function CreateVoucherDialog({
       setPoFromCatalog(false);
       setDepartmentId(null);
       setDepartmentIds([]);
-      setPurpose("");
-      setListItems([blankParticular()]);
+      const fresh = emptyPurposeDraft();
+      setPurposeGroups(fresh.groups);
+      setListItems(fresh.lines);
       setCheckNumber("");
       setIsLegacy(false);
+      setStep("details");
       setPoSearch("");
     }
   }, [isOpen]);
@@ -191,23 +233,25 @@ export function CreateVoucherDialog({
           ? [po.representative]
           : [];
 
-    const formattedList = particularsFromPurchaseOrderLines(rawItems);
     const fallbackAmount = po.totalCost ? Number(po.totalCost).toFixed(2) : "0.00";
-    const lineTotal = sumParticularAmounts(formattedList);
-    setListItems(
-      formattedList.some((i) => i.description)
-        ? formattedList
-        : [
-            {
-              description: `Items from Purchase Order #${po.poNumber}`,
-              quantity: "1",
-              unitCost: fallbackAmount,
-              amount: fallbackAmount,
-            },
-          ]
-    );
+    let draft = draftFromPurchaseOrderLines(rawItems);
+    if (!draft.lines.some((item) => item.description.trim())) {
+      draft = draftFromStoredParticulars(
+        [
+          {
+            description: `Items from Purchase Order #${po.poNumber}`,
+            quantity: "1",
+            unitCost: fallbackAmount,
+            amount: fallbackAmount,
+          },
+        ],
+        ""
+      );
+    }
+    const lineTotal = sumParticularAmounts(draft.lines);
+    setListItems(draft.lines);
+    setPurposeGroups(draft.groups);
     setAmount(lineTotal > 0 ? lineTotal.toFixed(2) : fallbackAmount);
-    setPurpose(`Disbursement / settlement for Purchase Order #${po.poNumber}`);
 
     const resolvedDepts = resolveDepartmentsFromPo(
       [
@@ -261,8 +305,9 @@ export function CreateVoucherDialog({
     setPoFromCatalog(false);
     setPayeeName("");
     setAmount("");
-    setPurpose("");
-    setListItems([blankParticular()]);
+    const fresh = emptyPurposeDraft();
+    setPurposeGroups(fresh.groups);
+    setListItems(fresh.lines);
     setSupplierId(null);
     setSupplierName("");
     setDepartmentId(null);
@@ -272,7 +317,7 @@ export function CreateVoucherDialog({
   /** Catalog pick locks amount / particulars; manual PO # stays fully editable. */
   const isPoLinked = poFromCatalog && Boolean(purchaseOrderNumber) && !isLegacy;
 
-  const syncAmountFromLines = (items: ParticularLineItem[]) => {
+  const syncAmountFromLines = (items: DraftParticularLine[]) => {
     if (isPoLinked) return;
     const total = sumParticularAmounts(items);
     if (total > 0) {
@@ -282,7 +327,7 @@ export function CreateVoucherDialog({
 
   const handleItemChange = (
     index: number,
-    field: keyof ParticularLineItem,
+    field: "description" | "quantity" | "unitCost" | "amount",
     val: string
   ) => {
     if (isPoLinked) return;
@@ -290,7 +335,7 @@ export function CreateVoucherDialog({
       const nextRow = patchParticularLine(prev[index], field, val);
       if (!nextRow) return prev;
       const updated = [...prev];
-      updated[index] = nextRow;
+      updated[index] = { ...prev[index], ...nextRow, id: prev[index].id };
       if (field !== "description") {
         syncAmountFromLines(updated);
       }
@@ -300,17 +345,27 @@ export function CreateVoucherDialog({
 
   const handleAddItem = () => {
     if (isPoLinked) return;
-    setListItems((prev) => [...prev, blankParticular()]);
+    const line = blankDraftParticular();
+    setListItems((prev) => [...prev, line]);
+    setPurposeGroups((prev) => attachLineToGroups(prev, line.id));
   };
 
   const handleRemoveItem = (index: number) => {
     if (isPoLinked) return;
-    setListItems((prev) => {
-      if (prev.length <= 1) return [blankParticular()];
-      const next = prev.filter((_, i) => i !== index);
-      syncAmountFromLines(next);
-      return next;
-    });
+    const removed = listItems[index];
+    if (!removed) return;
+    if (listItems.length <= 1) {
+      const fresh = emptyPurposeDraft();
+      const keptPurpose = purposeGroups[0]?.purpose ?? "";
+      setPurposeGroups([{ ...fresh.groups[0], purpose: keptPurpose }]);
+      setListItems(fresh.lines);
+      setAmount("");
+      return;
+    }
+    const next = listItems.filter((_, i) => i !== index);
+    setPurposeGroups((groups) => detachLineFromGroups(groups, removed.id));
+    setListItems(next);
+    syncAmountFromLines(next);
   };
 
   const handleItemKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -326,7 +381,8 @@ export function CreateVoucherDialog({
     Boolean(amount.trim()) ||
     Boolean(supplierName.trim()) ||
     Boolean(purchaseOrderNumber.trim()) ||
-    Boolean(purpose.trim()) ||
+    purposeGroups.some((group) => group.purpose.trim()) ||
+    purposeGroups.length > 1 ||
     Boolean(checkNumber.trim()) ||
     Boolean(departmentId) ||
     departmentIds.length > 0 ||
@@ -365,30 +421,98 @@ export function CreateVoucherDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- close handler reads latest dirty/pending state
   }, [isOpen, createMutation.isPending, isDirty]);
 
+  const detailsError = (): string | null => {
+    const trimmedSuffix = codeSuffix.trim();
+    const effectiveVoucherCode = trimmedSuffix
+      ? `${prefix}${trimmedSuffix}`
+      : nextCodeData?.voucherCode || undefined;
+    if (!effectiveVoucherCode && !trimmedSuffix) {
+      return "Voucher number is required. Click Regenerate to assign one automatically.";
+    }
+    if (!voucherDate) return "Voucher date is required.";
+    if (!payeeName.trim()) {
+      return "Payee is required. Enter who the funds are given to.";
+    }
+    const amountNum = parseFloat(amount);
+    if (!amount || Number.isNaN(amountNum) || amountNum < 0) {
+      return "Amount is required and must be 0.00 or greater.";
+    }
+    return null;
+  };
+
+  const linesError = (): string | null => {
+    for (const item of listItems) {
+      if (!item.description.trim()) continue;
+      const qty = Number(item.quantity);
+      if (!item.quantity.trim() || !Number.isFinite(qty) || qty < 1) {
+        return `Quantity must be at least 1 for “${item.description.trim()}”.`;
+      }
+      if (item.unitCost.trim()) {
+        const cost = Number(item.unitCost.replace(/,/g, ""));
+        if (!Number.isFinite(cost) || cost < 0) {
+          return `Enter a valid unit cost for “${item.description.trim()}”.`;
+        }
+      }
+    }
+    return commitPurposeDraft(listItems, purposeGroups).error;
+  };
+
+  const goToStep = (target: VoucherWizardStep) => {
+    const targetIdx = VOUCHER_STEPS.findIndex((entry) => entry.id === target);
+    const currentIdx = VOUCHER_STEPS.findIndex((entry) => entry.id === step);
+    if (targetIdx <= currentIdx) {
+      setStep(target);
+      return;
+    }
+    if (targetIdx >= 1) {
+      const err = detailsError();
+      if (err) {
+        toast.error(err);
+        setStep("details");
+        return;
+      }
+    }
+    if (targetIdx >= 2) {
+      const err = linesError();
+      if (err) {
+        toast.error(err);
+        setStep("lines");
+        return;
+      }
+    }
+    setStep(target);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+  };
+
+  const saveDraft = async () => {
+    const detailProblem = detailsError();
+    if (detailProblem) {
+      toast.error(detailProblem);
+      setStep("details");
+      return;
+    }
+    const lineProblem = linesError();
+    if (lineProblem) {
+      toast.error(lineProblem);
+      setStep("lines");
+      return;
+    }
 
     const trimmedSuffix = codeSuffix.trim();
     const effectiveVoucherCode = trimmedSuffix
       ? `${prefix}${trimmedSuffix}`
       : nextCodeData?.voucherCode || undefined;
-
-    if (!effectiveVoucherCode && !trimmedSuffix) {
+    if (!effectiveVoucherCode) {
       toast.error("Voucher number is required. Click Regenerate to assign one automatically.");
+      setStep("details");
       return;
     }
 
-    if (!payeeName.trim()) {
-      toast.error("Payee is required. Enter who the funds are given to.");
-      return;
-    }
-
-    if (!amount || parseFloat(amount) < 0) {
-      toast.error("Amount is required and must be 0.00 or greater.");
-      return;
-    }
-
-    const finalParticulars = serializeParticulars(listItems);
+    const committed = commitPurposeDraft(listItems, purposeGroups);
+    const finalParticulars = committed.particulars;
     const selectedDepts = departmentIds
       .map((id) => departments.find((d) => d.id === id))
       .filter((d): d is NonNullable<typeof d> => Boolean(d));
@@ -411,7 +535,7 @@ export function CreateVoucherDialog({
           selectedDept?.name ||
           null,
         departmentIds: selectedDepts.map((d) => d.id),
-        purpose: purpose.trim(),
+        purpose: committed.purpose,
         particulars: finalParticulars,
         checkNumber: checkNumber.trim() || null,
         isLegacy,
@@ -493,15 +617,72 @@ export function CreateVoucherDialog({
               </button>
             </div>
 
-            {/* Content Container (Permanent 2-column layout: Form + PO Search) */}
+            <div className="px-6 py-3 border-b border-border bg-bg shrink-0">
+              <div className="flex items-center gap-2">
+                {VOUCHER_STEPS.map((entry, index) => {
+                  const currentIdx = VOUCHER_STEPS.findIndex((item) => item.id === step);
+                  const active = currentIdx === index;
+                  const done = currentIdx > index;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => goToStep(entry.id)}
+                      disabled={createMutation.isPending}
+                      aria-current={active ? "step" : undefined}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-3 py-1.5 text-left cursor-pointer disabled:opacity-50",
+                        active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-border bg-bg-subtle/40 hover:bg-bg-subtle"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
+                          active || done
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-bg border border-border text-text-secondary"
+                        )}
+                      >
+                        {done ? <Check className="h-3 w-3" /> : index + 1}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-xs font-semibold text-text">
+                          {entry.label}
+                        </span>
+                        <span className="block text-[10px] text-text-secondary">
+                          {entry.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Content Container (Form + PO explorer on step 1) */}
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6">
                 {/* Left Column: Form */}
                 <form
                   id="voucher-form"
                   onSubmit={handleSubmit}
-                  className="space-y-4.5 lg:col-span-7"
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      (e.target as HTMLElement).tagName !== "TEXTAREA"
+                    ) {
+                      e.preventDefault();
+                    }
+                  }}
+                  className={cn(
+                    "space-y-4.5",
+                    step === "details" && !isLegacy ? "lg:col-span-7" : "lg:col-span-12"
+                  )}
                 >
+                  {step === "details" && (
+                  <>
                   {/* Voucher Code: Automated generation with manual override capability */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -907,35 +1088,21 @@ export function CreateVoucherDialog({
                         : "Department(s) this disbursement is charged to. First selected is primary."}
                     </p>
                   </div>
+                  </>
+                  )}
 
-                  {/* Purpose (paragraph) + Particulars (itemized with costs) */}
+                  {step === "lines" && (
+                  <>
+                  {/* Purpose groups + Particulars (itemized with costs) */}
                   <div className="space-y-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <label
-                          htmlFor="voucher-purpose"
-                          className="text-xs font-semibold text-text"
-                        >
-                          Purpose
-                        </label>
-                        <span className="text-[11px] text-text-secondary">
-                          Optional
-                        </span>
-                      </div>
-                      <textarea
-                        id="voucher-purpose"
-                        rows={3}
-                        value={purpose}
-                        onChange={(e) => setPurpose(e.target.value)}
-                        placeholder="e.g. Office replenishment, PO settlement, emergency purchase"
-                        aria-describedby="voucher-purpose-hint"
-                        disabled={createMutation.isPending}
-                        className="w-full rounded-lg border border-border bg-bg p-3 text-sm text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none disabled:opacity-70"
-                      />
-                      <p id="voucher-purpose-hint" className="text-[11px] text-text-secondary">
-                        Briefly state why funds are being disbursed.
-                      </p>
-                    </div>
+                    <PurposeGroupsField
+                      groups={purposeGroups}
+                      lines={listItems}
+                      onGroupsChange={setPurposeGroups}
+                      locked={isPoLinked}
+                      disabled={createMutation.isPending}
+                      purposeInputId="voucher-purpose"
+                    />
 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between mb-0.5 gap-2">
@@ -972,7 +1139,7 @@ export function CreateVoucherDialog({
                         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                           {listItems.map((item, idx) => (
                             <div
-                              key={idx}
+                              key={item.id}
                               className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                             >
                               <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
@@ -1074,9 +1241,128 @@ export function CreateVoucherDialog({
                       </div>
                     </div>
                   </div>
+                  </>
+                  )}
+
+                  {step === "review" && (
+                    <div className="space-y-4 animate-in fade-in duration-200">
+                      <div>
+                        <h3 className="text-sm font-bold text-text">Review disbursement</h3>
+                        <p className="text-[11px] text-text-secondary mt-0.5">
+                          Confirm the voucher, then save it as a draft.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-xl border border-border bg-bg-subtle/40 p-3">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                            Voucher number
+                          </span>
+                          <p className="mt-1 font-mono font-bold text-text">
+                            {codeSuffix.trim()
+                              ? `${prefix}${codeSuffix.trim()}`
+                              : nextCodeData?.voucherCode || "—"}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-bg-subtle/40 p-3">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                            Date
+                          </span>
+                          <p className="mt-1 font-semibold text-text">{voucherDate || "—"}</p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-bg-subtle/40 p-3">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                            Payee
+                          </span>
+                          <p className="mt-1 font-semibold text-text">{payeeName.trim() || "—"}</p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-bg-subtle/40 p-3">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                            Amount
+                          </span>
+                          <p className="mt-1 font-mono font-bold text-text">
+                            {formatPhp(amount || 0)}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-bg-subtle/40 p-3">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                            Purchase order
+                          </span>
+                          <p className="mt-1 font-mono font-semibold text-text">
+                            {isLegacy
+                              ? "Legacy / unlinked"
+                              : purchaseOrderNumber.trim()
+                                ? `#${purchaseOrderNumber.trim()}`
+                                : "None"}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-border bg-bg-subtle/40 p-3">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-text-secondary">
+                            Department
+                          </span>
+                          <p className="mt-1 font-semibold text-text">
+                            {departmentIds
+                              .map((id) => departments.find((d) => d.id === id)?.name)
+                              .filter(Boolean)
+                              .join(", ") || "—"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {seedPurposeGroupLines(
+                          purposeGroups,
+                          listItems.map((line) => line.id)
+                        ).map((group, groupIdx) => {
+                          const assigned = listItems.filter((line) =>
+                            group.lineIds.includes(line.id)
+                          );
+                          return (
+                            <div
+                              key={group.id}
+                              className="rounded-xl border border-border overflow-hidden"
+                            >
+                              <div className="px-3 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                  Purpose {purposeGroups.length > 1 ? groupIdx + 1 : ""}
+                                </p>
+                                <p className="text-xs font-medium text-text whitespace-pre-wrap mt-0.5">
+                                  {group.purpose.trim() || "No purpose recorded"}
+                                </p>
+                              </div>
+                              <div className="divide-y divide-border">
+                                {assigned.filter((line) => line.description.trim()).length === 0 ? (
+                                  <p className="px-3 py-3 text-[11px] text-text-secondary italic">
+                                    No line items.
+                                  </p>
+                                ) : (
+                                  assigned
+                                    .filter((line) => line.description.trim())
+                                    .map((line) => (
+                                      <div
+                                        key={line.id}
+                                        className="flex items-center justify-between gap-3 px-3 py-2 text-xs"
+                                      >
+                                        <span className="font-medium text-text min-w-0 truncate">
+                                          {line.description}
+                                        </span>
+                                        <span className="shrink-0 font-mono text-text-secondary">
+                                          {line.quantity || "—"} × {formatPhp(line.unitCost || 0)}
+                                        </span>
+                                        <span className="shrink-0 font-mono font-bold text-text">
+                                          {formatPhp(particularLineAmount(line))}
+                                        </span>
+                                      </div>
+                                    ))
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </form>
 
-                {/* Right Column: PO Explorer (Disabled when legacy mode is selected) */}
+                {step === "details" && !isLegacy && (
                 <div
                   className={cn(
                     "lg:col-span-5 flex flex-col rounded-lg border border-border bg-bg-subtle/40 p-4 space-y-3 transition-opacity",
@@ -1206,16 +1492,24 @@ export function CreateVoucherDialog({
                     )}
                   </div>
                 </div>
+                )}
               </div>
             </div>
 
             {/* Footer Actions */}
             <div className="px-6 py-4 border-t border-border bg-bg-subtle/50 flex items-center justify-between shrink-0">
               <div className="text-xs text-text-secondary">
-                {isLegacy ? (
+                {step === "review" ? (
+                  <span>Check the summary, then save this voucher as a draft.</span>
+                ) : step === "lines" ? (
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" />
+                    <span>Assign purposes, then continue to review.</span>
+                  </span>
+                ) : isLegacy ? (
                   <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1.5">
                     <Lock className="h-3.5 w-3.5" />
-                    <span>Historical / Legacy mode: Purchase Order selection is disabled.</span>
+                    <span>Historical / Legacy mode: Purchase Order selection is hidden.</span>
                   </span>
                 ) : (
                   <span>
@@ -1224,17 +1518,31 @@ export function CreateVoucherDialog({
                 )}
               </div>
               <div className="flex items-center gap-3">
+                {step !== "details" ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setStep(step === "review" ? "lines" : "details")
+                    }
+                    disabled={createMutation.isPending}
+                    className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-text hover:bg-bg-subtle transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Back
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void requestClose()}
+                    disabled={createMutation.isPending}
+                    className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-text hover:bg-bg-subtle transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                )}
+                {step === "review" ? (
                 <button
                   type="button"
-                  onClick={() => void requestClose()}
-                  disabled={createMutation.isPending}
-                  className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-text hover:bg-bg-subtle transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  form="voucher-form"
+                  onClick={() => void saveDraft()}
                   disabled={createMutation.isPending}
                   className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
                 >
@@ -1250,6 +1558,16 @@ export function CreateVoucherDialog({
                     </>
                   )}
                 </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => goToStep(step === "details" ? "lines" : "review")}
+                    disabled={createMutation.isPending}
+                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2 text-xs font-bold text-primary-foreground shadow-xs hover:bg-primary/90 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    {step === "details" ? "Next: Purpose" : "Next: Review"}
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>

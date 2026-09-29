@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileText, Loader2, Printer, X } from "lucide-react";
 import type { Voucher } from "@/types/vouchers";
 import type { PettyCashVoucher } from "@/types/petty-cash";
 import { useToast } from "@/components/providers/toast-context";
+import { useUpdateVoucherMutation } from "@/features/vouchers/client/use-vouchers";
+import { useUpdatePettyCashMutation } from "@/features/petty-cash/client/use-petty-cash";
 import {
   buildDisbursementSlipFullHtml,
   disbursementSlipFilename,
@@ -22,18 +24,31 @@ interface DisbursementPrintSlipDialogProps {
   target: SlipTarget | null;
   isOpen: boolean;
   onClose: () => void;
+  onUpdated?: (record: Voucher | PettyCashVoucher) => void;
 }
 
 export function DisbursementPrintSlipDialog({
   target,
   isOpen,
   onClose,
+  onUpdated,
 }: DisbursementPrintSlipDialogProps) {
   const toast = useToast();
+  const updateVoucher = useUpdateVoucherMutation();
+  const updatePettyCash = useUpdatePettyCashMutation();
   const [isSavingPdf, setIsSavingPdf] = useState(false);
-  const slipIdentity = target
-    ? `${target.kind}:${target.record.id}:${target.record.updatedAt}`
-    : "";
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const targetRef = useRef(target);
+  const onUpdatedRef = useRef(onUpdated);
+  const recordId = target?.record.id ?? "";
+
+  useEffect(() => {
+    targetRef.current = target;
+  }, [target]);
+
+  useEffect(() => {
+    onUpdatedRef.current = onUpdated;
+  }, [onUpdated]);
 
   const slip = useMemo<DisbursementSlipData | null>(() => {
     if (!isOpen || !target || typeof window === "undefined") return null;
@@ -41,9 +56,9 @@ export function DisbursementPrintSlipDialog({
     return target.kind === "voucher"
       ? voucherToSlip(target.record, logoUrl)
       : pettyCashToSlip(target.record, logoUrl);
-    // Rebuild only when the open record changes, so the preview stays still.
+    // Keep the preview still while a name is typed and saved.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, slipIdentity]);
+  }, [isOpen, recordId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -56,11 +71,70 @@ export function DisbursementPrintSlipDialog({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleMessage(event: MessageEvent) {
+      const data = event.data as { source?: string; field?: string; value?: string } | null;
+      if (!data || data.source !== "crmc-disbursement-slip") return;
+      const current = targetRef.current;
+      if (!current) return;
+      if (data.field !== "requestedBy" && data.field !== "verifiedBy") return;
+
+      const value = String(data.value ?? "").replace(/\s+/g, " ").trim();
+      const saved =
+        data.field === "requestedBy"
+          ? current.record.payeeName.trim()
+          : (current.record.approvedByName ?? "").trim();
+      if (value === saved) return;
+      if (data.field === "requestedBy" && !value) {
+        toast.error("Requested by needs a name.");
+        return;
+      }
+
+      const payload =
+        data.field === "requestedBy"
+          ? { payeeName: value }
+          : { approvedByName: value || null };
+      const onSuccess = (record: Voucher | PettyCashVoucher) => {
+        onUpdatedRef.current?.(record);
+      };
+      const onError = (err: Error) => {
+        toast.error(err.message || "Failed to save the signature name.");
+      };
+
+      if (current.kind === "voucher") {
+        updateVoucher.mutate({ id: current.record.id, payload }, { onSuccess, onError });
+      } else {
+        updatePettyCash.mutate({ id: current.record.id, payload }, { onSuccess, onError });
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [isOpen, toast, updateVoucher, updatePettyCash]);
+
   if (!isOpen || !slip) return null;
 
   const previewHtml = buildDisbursementSlipFullHtml(slip);
 
+  const slipForOutput = (): DisbursementSlipData => {
+    const doc = iframeRef.current?.contentDocument;
+    const requested = doc?.querySelector<HTMLInputElement>(
+      '[data-slip-field="requestedBy"]'
+    );
+    const verified = doc?.querySelector<HTMLInputElement>(
+      '[data-slip-field="verifiedBy"]'
+    );
+    if (!requested && !verified) return slip;
+    return {
+      ...slip,
+      requestedBy: requested ? requested.value.trim() : slip.requestedBy,
+      verifiedBy: verified ? verified.value.trim() : slip.verifiedBy,
+    };
+  };
+
   const handlePrint = () => {
+    const output = slipForOutput();
+    const outputHtml = buildDisbursementSlipFullHtml(output);
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";
     iframe.style.right = "0";
@@ -76,7 +150,7 @@ export function DisbursementPrintSlipDialog({
     if (!doc) return;
 
     doc.open();
-    doc.write(previewHtml);
+    doc.write(outputHtml);
     doc.close();
 
     const triggerPrint = () => {
@@ -105,7 +179,8 @@ export function DisbursementPrintSlipDialog({
     if (isSavingPdf) return;
     setIsSavingPdf(true);
     try {
-      await downloadDisbursementSlipPdf(slip, disbursementSlipFilename(slip));
+      const output = slipForOutput();
+      await downloadDisbursementSlipPdf(output, disbursementSlipFilename(output));
       toast.success("Disbursement slip saved as PDF.");
     } catch (err) {
       toast.error(
@@ -123,7 +198,7 @@ export function DisbursementPrintSlipDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="disbursement-slip-title"
-        className="relative w-full max-w-4xl max-h-[85vh] h-[80vh] rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
+        className="relative w-full max-w-4xl max-h-[92vh] rounded-2xl border border-border bg-bg shadow-2xl z-10 overflow-hidden flex flex-col animate-in zoom-in-95 duration-200"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-bg-subtle/50 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -142,17 +217,20 @@ export function DisbursementPrintSlipDialog({
           </button>
         </div>
 
-        <div className="flex-1 min-h-0 bg-bg-subtle/40 p-4">
+        <div className="min-h-0 bg-white p-3">
           <iframe
+            ref={iframeRef}
             title={`${slip.documentTitle} preview`}
             srcDoc={previewHtml}
-            className="h-full w-full rounded-xl border border-border bg-white shadow-md"
+            className="block h-160 max-h-[calc(92vh-7.5rem)] w-full border-0 bg-white"
           />
         </div>
 
         <div className="p-4 border-t border-border bg-bg-subtle flex items-center justify-between gap-3 shrink-0">
           <span className="text-xs text-text-secondary font-medium">
-            Print this slip or save it as a PDF
+            {updateVoucher.isPending || updatePettyCash.isPending
+              ? "Saving signature names…"
+              : "Edit Requested by and Verified by on the slip. Changes save automatically."}
           </span>
           <div className="flex items-center gap-2">
             <button
