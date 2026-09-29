@@ -1,24 +1,41 @@
+import { filterMoneyInput, filterUnsignedIntInput } from "@/lib/numeric-input";
+
 /**
  * Shared helpers for voucher / petty-cash purpose + itemized particulars.
- * Particulars are stored as JSON: [{ "description": "...", "amount": "123.45" }, ...]
+ * Particulars are stored as JSON:
+ * [{ "description": "...", "quantity": "2", "unitCost": "50.00", "amount": "100.00" }, ...]
+ * `amount` is the line total (quantity × unit cost). Older rows may only have description and amount.
  * Legacy plain-text / numbered-list values are still parsed for display.
  */
 
 export type ParticularLineItem = {
   description: string;
-  /** Empty string when no line cost; otherwise a numeric string (e.g. "150.00") */
+  /** Whole units. Empty when the line has no quantity yet. */
+  quantity: string;
+  /** Unit cost. Empty when the line total was stored without a unit price. */
+  unitCost: string;
+  /** Line total. Computed from quantity × unit cost when both are set. */
   amount: string;
 };
+
+export function blankParticular(): ParticularLineItem {
+  return { description: "", quantity: "1", unitCost: "", amount: "" };
+}
 
 const MONEY_TRAILING =
   /\s*(?:@|\(|\||-)?\s*(?:₱|PHP\s*)?([\d,]+(?:\.\d{1,2})?)\s*\)?\s*$/i;
 
 export function serializeParticulars(items: ParticularLineItem[]): string {
   const cleaned = items
-    .map((item) => ({
-      description: item.description.trim(),
-      amount: normalizeAmount(item.amount),
-    }))
+    .map((item) => {
+      const next = recomputeParticularLine(item);
+      return {
+        description: next.description.trim(),
+        quantity: normalizeQuantity(next.quantity),
+        unitCost: normalizeAmount(next.unitCost),
+        amount: normalizeAmount(next.amount),
+      };
+    })
     .filter((item) => item.description.length > 0);
 
   if (cleaned.length === 0) return "";
@@ -39,7 +56,7 @@ export function parseParticulars(
         const items = parsed
           .map((entry): ParticularLineItem | null => {
             if (typeof entry === "string") {
-              return { description: entry.trim(), amount: "" };
+              return splitLegacyParticular(entry.trim(), "");
             }
             if (entry && typeof entry === "object") {
               const obj = entry as Record<string, unknown>;
@@ -47,10 +64,18 @@ export function parseParticulars(
                 obj.description ?? obj.name ?? obj.item ?? ""
               ).trim();
               if (!description) return null;
-              return {
-                description,
-                amount: normalizeAmount(String(obj.amount ?? obj.cost ?? "")),
-              };
+              const amount = normalizeAmount(String(obj.amount ?? obj.cost ?? ""));
+              const quantity = normalizeQuantity(String(obj.quantity ?? ""));
+              const unitCost = normalizeAmount(String(obj.unitCost ?? obj.unit_cost ?? ""));
+              if (quantity || unitCost) {
+                return recomputeParticularLine({
+                  description,
+                  quantity,
+                  unitCost,
+                  amount,
+                });
+              }
+              return splitLegacyParticular(description, amount);
             }
             return null;
           })
@@ -79,20 +104,55 @@ export function parseParticulars(
           .trim()
           .replace(/[\s@(|-]+$/, "")
           .trim();
-        return {
-          description: description || withoutBullet,
-          amount,
-        };
+        return splitLegacyParticular(description || withoutBullet, amount);
       }
-      return { description: withoutBullet, amount: "" };
+      return splitLegacyParticular(withoutBullet, "");
     });
 }
 
+/** Line total. Uses quantity × unit cost when a unit cost is entered. */
+export function particularLineAmount(item: ParticularLineItem): number {
+  const unitRaw = item.unitCost.trim().replace(/,/g, "");
+  if (unitRaw) {
+    const qty = Number(item.quantity.trim().replace(/,/g, ""));
+    const unit = Number(unitRaw);
+    if (Number.isFinite(qty) && qty >= 0 && Number.isFinite(unit) && unit >= 0) {
+      return qty * unit;
+    }
+  }
+  const amount = Number(item.amount.trim().replace(/,/g, ""));
+  return Number.isFinite(amount) && amount >= 0 ? amount : 0;
+}
+
 export function sumParticularAmounts(items: ParticularLineItem[]): number {
-  return items.reduce((sum, item) => {
-    const n = Number(item.amount);
-    return sum + (Number.isFinite(n) ? n : 0);
-  }, 0);
+  return items.reduce((sum, item) => sum + particularLineAmount(item), 0);
+}
+
+/**
+ * Apply a particulars field edit. Returns null when the keystroke is not a
+ * valid quantity or money value, so the caller can keep the previous row.
+ */
+export function patchParticularLine(
+  item: ParticularLineItem,
+  field: keyof ParticularLineItem,
+  raw: string
+): ParticularLineItem | null {
+  if (field === "description") {
+    return { ...item, description: raw };
+  }
+  if (field === "quantity") {
+    const quantity = filterUnsignedIntInput(raw);
+    if (quantity === null) return null;
+    return recomputeParticularLine({ ...item, quantity });
+  }
+  if (field === "unitCost") {
+    const unitCost = filterMoneyInput(raw);
+    if (unitCost === null) return null;
+    return recomputeParticularLine({ ...item, unitCost });
+  }
+  const amount = filterMoneyInput(raw);
+  if (amount === null) return null;
+  return { ...item, amount };
 }
 
 /** Short preview for tables / lists. Prefers purpose, then first line descriptions. */
@@ -113,6 +173,47 @@ export function formatPurposeParticularsPreview(
 
   const joined = items.map((i) => i.description).join("; ");
   return joined.length > maxLen ? `${joined.slice(0, maxLen - 1)}…` : joined;
+}
+
+function normalizeQuantity(value: string): string {
+  const trimmed = value.trim().replace(/,/g, "");
+  if (!trimmed) return "";
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return "";
+  return String(Math.trunc(n));
+}
+
+function recomputeParticularLine(item: ParticularLineItem): ParticularLineItem {
+  if (!item.unitCost.trim()) return item;
+  const qty = Number(item.quantity.trim() || "0");
+  const unit = Number(item.unitCost.trim().replace(/,/g, ""));
+  if (!Number.isFinite(qty) || qty < 0 || !Number.isFinite(unit) || unit < 0) {
+    return item;
+  }
+  return { ...item, amount: (qty * unit).toFixed(2) };
+}
+
+/** Pull a leading "2x " quantity out of older descriptions. */
+function splitLegacyParticular(
+  description: string,
+  amount: string
+): ParticularLineItem {
+  const match = description.match(/^(\d+)\s*x\s+/i);
+  if (!match) {
+    return { description, quantity: "", unitCost: "", amount };
+  }
+  const quantity = match[1];
+  const rest = description.slice(match[0].length).trim();
+  const qty = Number(quantity);
+  const line = Number(amount);
+  const unitCost =
+    qty > 0 && Number.isFinite(line) && line > 0 ? (line / qty).toFixed(2) : "";
+  return {
+    description: rest || description,
+    quantity,
+    unitCost,
+    amount,
+  };
 }
 
 function normalizeAmount(value: string): string {
@@ -263,22 +364,24 @@ export function particularsFromPurchaseOrderLines(
   const items = lineItems
     .filter((li) => Boolean(li?.itemName?.trim()))
     .map((li) => {
-      const qty = li.quantity ? `${li.quantity}x ` : "";
+      const qtyNum = Number(li.quantity) || 0;
       const tCost = parseFloat(String(li.totalCost || "0"));
       const uCost = parseFloat(String(li.unitCost || "0"));
+      const unit =
+        uCost > 0 ? uCost : qtyNum > 0 && tCost > 0 ? tCost / qtyNum : 0;
       const lineAmount =
-        tCost > 0
-          ? tCost.toFixed(2)
-          : uCost > 0 && li.quantity
-            ? (uCost * Number(li.quantity)).toFixed(2)
-            : uCost > 0
-              ? uCost.toFixed(2)
-              : "";
+        qtyNum > 0 && unit > 0
+          ? (qtyNum * unit).toFixed(2)
+          : tCost > 0
+            ? tCost.toFixed(2)
+            : "";
       return {
-        description: `${qty}${li.itemName}`.trim(),
+        description: (li.itemName || "").trim(),
+        quantity: qtyNum > 0 ? String(Math.trunc(qtyNum)) : "",
+        unitCost: unit > 0 ? unit.toFixed(2) : "",
         amount: lineAmount,
       };
     });
 
-  return items.length > 0 ? items : [{ description: "", amount: "" }];
+  return items.length > 0 ? items : [blankParticular()];
 }

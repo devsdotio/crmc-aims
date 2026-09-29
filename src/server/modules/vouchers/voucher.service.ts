@@ -4,7 +4,11 @@ import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 import type { VoucherType } from "@/types/vouchers";
 
-import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
+import {
+  assertCashReleaseTransition,
+  assertPoAvailableForDisbursement,
+  resolveCashReleaseStatus,
+} from "@/server/modules/purchase-lots/po-disbursement";
 import {
   fallbackDepartments,
   listVoucherDepartmentLinks,
@@ -14,6 +18,7 @@ import {
 } from "@/server/modules/disbursements/disbursement-departments";
 import { VoucherRepository } from "./voucher.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { describeDisbursementChanges } from "@/server/modules/disbursements/disbursement-audit";
 import type { VoucherDTO, ListVoucherFilters } from "./voucher.types";
 import {
   createVoucherSchema,
@@ -258,6 +263,9 @@ export class VoucherService {
 
     const existing = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!existing) throw new NotFoundError("Voucher", id);
+    if (existing.status === "cancelled") {
+      throw new ConflictError("Cancelled disbursements cannot be edited.");
+    }
 
     if (input.voucherCode && input.voucherCode !== existing.voucherCode) {
       const codeConflict = await this.repo.findByCode(input.voucherCode, undefined, actor?.tenantId);
@@ -302,6 +310,7 @@ export class VoucherService {
 
     if (!updated) throw new NotFoundError("Voucher", id);
 
+    let saved = updated;
     let nextDepartments: Array<{ id: string; name: string }> | undefined;
     if (input.departmentIds !== undefined || input.departmentId !== undefined) {
       nextDepartments = await resolveDepartmentRefs(
@@ -323,9 +332,7 @@ export class VoucherService {
           undefined,
           actor?.tenantId
         );
-        if (patched) {
-          return withDepartments(toDTO(patched), nextDepartments);
-        }
+        if (patched) saved = patched;
       } else if (input.departmentId === null || input.departmentIds?.length === 0) {
         const patched = await this.repo.update(
           id,
@@ -333,31 +340,58 @@ export class VoucherService {
           undefined,
           actor?.tenantId
         );
-        if (patched) return withDepartments(toDTO(patched), []);
+        if (patched) saved = patched;
       }
     }
 
-    await this.auditLogs.log({
-      entityType: "voucher",
-      entityId: id,
-      action: "updated",
-      actorName: actor?.displayName || "System",
-      actorUserId: actor?.userId,
-      notes: `Updated voucher ${updated.voucherCode} details`,
-      metadata: {
-        updatedFields: Object.keys(input),
-        changes: input,
+    const diff = describeDisbursementChanges([
+      { label: "Voucher code", before: existing.voucherCode, after: saved.voucherCode },
+      { label: "Payee", before: existing.payeeName, after: saved.payeeName },
+      { label: "Date", before: existing.voucherDate, after: saved.voucherDate },
+      { label: "Amount", before: existing.amount, after: saved.amount, numeric: true },
+      { label: "Supplier", before: existing.supplierName, after: saved.supplierName },
+      {
+        label: "Purchase order",
+        before: existing.purchaseOrderNumber,
+        after: saved.purchaseOrderNumber,
       },
-    });
+      { label: "Asset code", before: existing.assetCode, after: saved.assetCode },
+      { label: "Asset", before: existing.assetName, after: saved.assetName },
+      { label: "Purpose", before: existing.purpose, after: saved.purpose },
+      {
+        label: "Particulars",
+        before: existing.particulars,
+        after: saved.particulars,
+        terse: true,
+      },
+      { label: "Check number", before: existing.checkNumber, after: saved.checkNumber },
+      { label: "Department", before: existing.departmentName, after: saved.departmentName },
+    ]);
+
+    if (diff.labels.length > 0) {
+      await this.auditLogs.log({
+        entityType: "voucher",
+        entityId: id,
+        action: "updated",
+        actorName: actor?.displayName || "System",
+        actorUserId: actor?.userId,
+        notes: `Updated voucher ${saved.voucherCode}: ${diff.summary}`,
+        metadata: {
+          updatedFields: diff.labels.join(", "),
+          summary: diff.summary,
+          changes: diff.items,
+        },
+      });
+    }
 
     serverCache.invalidateTag("vouchers");
     if (actor?.tenantId) {
       serverCache.invalidateTag(`tenant:${actor.tenantId}:vouchers`);
     }
     if (nextDepartments) {
-      return withDepartments(toDTO(updated), nextDepartments);
+      return withDepartments(toDTO(saved), nextDepartments);
     }
-    const [dto] = await attachVoucherDepartments([toDTO(updated)], actor?.tenantId);
+    const [dto] = await attachVoucherDepartments([toDTO(saved)], actor?.tenantId);
     return dto!;
   }
 
@@ -372,15 +406,25 @@ export class VoucherService {
     const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Voucher", id);
 
+    assertCashReleaseTransition(existing.status, input.status);
+
+    let nextStatus = input.status;
+    if (input.status === "disbursed") {
+      nextStatus = await resolveCashReleaseStatus(
+        existing.purchaseOrderNumber,
+        actor.tenantId
+      );
+    }
+
     const updatePayload: Partial<VoucherRow> = {
-      status: input.status,
+      status: nextStatus,
     };
 
     if (input.status === "approved") {
       updatePayload.approvedByUserId = actor.userId;
       updatePayload.approvedByName = actor.displayName;
       updatePayload.approvedAt = new Date();
-    } else if (input.status === "completed") {
+    } else if (input.status === "disbursed") {
       updatePayload.completedByUserId = actor.userId;
       updatePayload.completedByName = actor.displayName;
       updatePayload.completedAt = new Date();
@@ -392,13 +436,13 @@ export class VoucherService {
     await this.auditLogs.log({
       entityType: "voucher",
       entityId: id,
-      action: input.status,
+      action: nextStatus,
       actorName: actor.displayName,
       actorUserId: actor.userId,
-      notes: `Status changed from ${existing.status.replace("_", " ")} to ${input.status.replace("_", " ")}`,
+      notes: `Status changed from ${existing.status.replace(/_/g, " ")} to ${nextStatus.replace(/_/g, " ")}`,
       metadata: {
         previousStatus: existing.status,
-        newStatus: input.status,
+        newStatus: nextStatus,
       },
     });
 

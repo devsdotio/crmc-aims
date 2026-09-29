@@ -4,6 +4,7 @@ export const PETTY_CASH_STATUSES = [
   "draft",
   "pending_approval",
   "approved",
+  "disbursed",
   "completed",
   "cancelled",
 ] as const;

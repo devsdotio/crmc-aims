@@ -2976,7 +2976,7 @@ export function FileNewPODialog({
                     </h3>
                   </div>
                   <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25">
-                    Disabled Until Approved
+                    After disbursement
                   </span>
                 </div>
 
@@ -2985,7 +2985,7 @@ export function FileNewPODialog({
                     <Lock className="h-3.5 w-3.5" />
                   </div>
                   <p className="text-xs text-text-secondary leading-relaxed">
-                    Proof of purchase documents (scanned official receipts, delivery receipts, or sales invoices) can only be attached after this Purchase Order is reviewed and approved by the Property Custodian.
+                    Proof of purchase documents (scanned official receipts, delivery receipts, or sales invoices) can only be attached after the linked disbursement voucher or petty cash record has been disbursed.
                   </p>
                 </div>
               </div>

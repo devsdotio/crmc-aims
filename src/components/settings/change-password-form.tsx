@@ -55,8 +55,8 @@ export function ChangePasswordForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 rounded-2xl border border-border bg-bg space-y-6">
-      <div className="border-b border-border pb-4">
+    <form onSubmit={handleSubmit} className="flex flex-col p-4 rounded-xl border border-border bg-bg space-y-4">
+      <div className="border-b border-border pb-3">
         <h3 className="text-base font-bold text-text flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-text-secondary" />
           Change Account Password
@@ -66,7 +66,7 @@ export function ChangePasswordForm({
         </p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="space-y-1.5">
           <label htmlFor="current-password" className="block text-xs font-bold text-text">
             Current Password <span className="text-accent">*</span>
@@ -112,7 +112,7 @@ export function ChangePasswordForm({
           />
         </div>
 
-        <div className="p-3.5 rounded-xl border border-border bg-bg-subtle space-y-1 text-xs">
+        <div className="p-3 rounded-lg border border-border bg-bg-subtle space-y-1 text-xs">
           <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block mb-1">
             Password Security Checklist:
           </span>
@@ -137,7 +137,7 @@ export function ChangePasswordForm({
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-3 border-t border-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border mt-auto">
         {error ? (
           <span className="text-xs font-semibold text-status-outofservice-text">{error}</span>
         ) : savedSuccess ? (

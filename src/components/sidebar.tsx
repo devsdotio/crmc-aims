@@ -4,7 +4,7 @@ import type { UserRole } from "@/types/users";
 
 import Link from "next/link";
 import Image from "next/image";
-import { Krona_One } from "next/font/google";
+import localFont from "next/font/local";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -34,11 +34,13 @@ import {
   Bug,
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
+import { TextWeightToggle } from "@/components/text-weight-toggle";
 import { cn } from "@/lib/utils";
 
-const kronaOne = Krona_One({
+const kronaOne = localFont({
+  src: "../../public/fonts/Krona_One/KronaOne-Regular.ttf",
   weight: "400",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 interface NavSubItem {
@@ -1124,6 +1126,8 @@ export default function Sidebar({
               </div>
 
               <div className="h-px bg-white/10 my-1" />
+
+              <TextWeightToggle />
 
               {/* Action buttons */}
               <div className="space-y-0.5">

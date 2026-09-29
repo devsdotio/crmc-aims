@@ -6,6 +6,7 @@ export type VoucherStatus =
   | "draft"
   | "pending_approval"
   | "approved"
+  | "disbursed"
   | "completed"
   | "cancelled";
 

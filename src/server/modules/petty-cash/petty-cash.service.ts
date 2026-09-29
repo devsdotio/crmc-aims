@@ -1,9 +1,14 @@
 import type { PettyCashRow } from "@/server/db/schema";
 import type { ActorContext } from "@/server/shared/auth";
+import type { PettyCashStatus } from "@/types/petty-cash";
 import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 
-import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
+import {
+  assertCashReleaseTransition,
+  assertPoAvailableForDisbursement,
+  resolveCashReleaseStatus,
+} from "@/server/modules/purchase-lots/po-disbursement";
 import {
   fallbackDepartments,
   listPettyCashDepartmentLinks,
@@ -13,6 +18,7 @@ import {
 } from "@/server/modules/disbursements/disbursement-departments";
 import { PettyCashRepository } from "./petty-cash.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { describeDisbursementChanges } from "@/server/modules/disbursements/disbursement-audit";
 import type { PettyCashDTO, ListPettyCashFilters } from "./petty-cash.types";
 import {
   createPettyCashSchema,
@@ -235,6 +241,9 @@ export class PettyCashService {
     if (!existing) {
       throw new NotFoundError("Petty cash voucher not found");
     }
+    if (existing.status === "cancelled") {
+      throw new ConflictError("Cancelled disbursements cannot be edited.");
+    }
 
     if (input.pcvNumber && input.pcvNumber !== existing.pcvNumber) {
       const conflict = await this.repo.findByCode(input.pcvNumber, undefined, actor?.tenantId);
@@ -285,18 +294,44 @@ export class PettyCashService {
       );
     }
 
-    await this.auditLogs.log({
-      entityType: "petty_cash",
-      entityId: id,
-      action: "updated",
-      actorName: actor?.displayName || "System",
-      actorUserId: actor?.userId,
-      notes: `Updated petty cash voucher ${updated.pcvNumber} details`,
-      metadata: {
-        updatedFields: Object.keys(input),
-        changes: input,
+    const diff = describeDisbursementChanges([
+      { label: "PCV number", before: existing.pcvNumber, after: updated.pcvNumber },
+      { label: "Payee", before: existing.payeeName, after: updated.payeeName },
+      { label: "Date", before: existing.voucherDate, after: updated.voucherDate },
+      { label: "Amount", before: existing.amount, after: updated.amount, numeric: true },
+      { label: "Category", before: existing.category, after: updated.category },
+      { label: "Purpose", before: existing.purpose, after: updated.purpose },
+      {
+        label: "Particulars",
+        before: existing.particulars,
+        after: updated.particulars,
+        terse: true,
       },
-    });
+      { label: "Receipt number", before: existing.receiptNumber, after: updated.receiptNumber },
+      {
+        label: "Purchase order",
+        before: existing.purchaseOrderNumber,
+        after: updated.purchaseOrderNumber,
+      },
+      { label: "Supplier", before: existing.supplierName, after: updated.supplierName },
+      { label: "Department", before: existing.departmentName, after: updated.departmentName },
+    ]);
+
+    if (diff.labels.length > 0) {
+      await this.auditLogs.log({
+        entityType: "petty_cash",
+        entityId: id,
+        action: "updated",
+        actorName: actor?.displayName || "System",
+        actorUserId: actor?.userId,
+        notes: `Updated petty cash ${updated.pcvNumber}: ${diff.summary}`,
+        metadata: {
+          updatedFields: diff.labels.join(", "),
+          summary: diff.summary,
+          changes: diff.items,
+        },
+      });
+    }
 
     await serverCache.invalidateTag("petty-cash");
     if (actor?.tenantId) {
@@ -325,15 +360,25 @@ export class PettyCashService {
       throw new NotFoundError("Petty cash voucher not found");
     }
 
+    assertCashReleaseTransition(existing.status, status);
+
+    let nextStatus: PettyCashStatus = status;
+    if (status === "disbursed") {
+      nextStatus = await resolveCashReleaseStatus(
+        existing.purchaseOrderNumber,
+        actor.tenantId
+      );
+    }
+
     const updates: Partial<Parameters<PettyCashRepository["update"]>[1]> = {
-      status,
+      status: nextStatus,
     };
 
     if (status === "approved" && existing.status !== "approved") {
       updates.approvedByUserId = actor.userId;
       updates.approvedByName = actor.displayName;
       updates.approvedAt = new Date();
-    } else if (status === "completed" && existing.status !== "completed") {
+    } else if (status === "disbursed") {
       updates.completedByUserId = actor.userId;
       updates.completedByName = actor.displayName;
       updates.completedAt = new Date();
@@ -347,13 +392,13 @@ export class PettyCashService {
     await this.auditLogs.log({
       entityType: "petty_cash",
       entityId: id,
-      action: status,
+      action: nextStatus,
       actorName: actor.displayName,
       actorUserId: actor.userId,
-      notes: `Status changed from ${existing.status.replace("_", " ")} to ${status.replace("_", " ")}`,
+      notes: `Status changed from ${existing.status.replace(/_/g, " ")} to ${nextStatus.replace(/_/g, " ")}`,
       metadata: {
         previousStatus: existing.status,
-        newStatus: status,
+        newStatus: nextStatus,
       },
     });
 

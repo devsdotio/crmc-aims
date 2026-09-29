@@ -20,6 +20,7 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { VouchersTable } from "./vouchers-table";
 import { CreateVoucherDialog } from "./create-voucher-dialog";
 import { VoucherDetailSheet } from "./voucher-detail-sheet";
+import { DisbursementPrintSlipDialog } from "@/components/disbursements/disbursement-print-slip-dialog";
 import { cn } from "@/lib/utils";
 
 export function VouchersView() {
@@ -33,6 +34,7 @@ export function VouchersView() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [printVoucher, setPrintVoucher] = useState<Voucher | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
@@ -57,14 +59,16 @@ export function VouchersView() {
   const stats = useMemo(() => {
     let pendingCount = 0;
     let approvedCount = 0;
+    let awaitingReceiptCount = 0;
     let completedCount = 0;
     let totalDisbursed = 0;
 
     for (const v of vouchers) {
       if (v.status === "pending_approval") pendingCount++;
       if (v.status === "approved") approvedCount++;
-      if (v.status === "completed") {
-        completedCount++;
+      if (v.status === "disbursed") awaitingReceiptCount++;
+      if (v.status === "completed") completedCount++;
+      if (v.status === "disbursed" || v.status === "completed") {
         totalDisbursed += parseFloat(v.amount) || 0;
       }
     }
@@ -73,6 +77,7 @@ export function VouchersView() {
       total: vouchers.length,
       pendingCount,
       approvedCount,
+      awaitingReceiptCount,
       completedCount,
       totalDisbursed,
     };
@@ -154,7 +159,8 @@ export function VouchersView() {
             <option value="draft">Draft</option>
             <option value="pending_approval">Pending Approval</option>
             <option value="approved">Approved</option>
-            <option value="completed">Completed / Paid</option>
+            <option value="disbursed">Awaiting receipt</option>
+            <option value="completed">Closed</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -188,7 +194,7 @@ export function VouchersView() {
           <StatCard
             title="Total Disbursed"
             value={formatPhp(stats.totalDisbursed)}
-            subtitle={`${stats.completedCount} completed voucher(s)`}
+            subtitle={`${stats.awaitingReceiptCount} awaiting receipt · ${stats.completedCount} closed`}
             icon={Banknote}
             tone="emerald"
           />
@@ -200,6 +206,7 @@ export function VouchersView() {
             vouchers={vouchers}
             loading={isLoading}
             onSelectVoucher={handleSelectVoucher}
+            onPrintSlip={setPrintVoucher}
           />
         </div>
       </main>
@@ -213,6 +220,13 @@ export function VouchersView() {
           setSelectedVoucher(null);
         }}
         onRefresh={() => refetch()}
+        onPrintSlip={setPrintVoucher}
+      />
+
+      <DisbursementPrintSlipDialog
+        target={printVoucher ? { kind: "voucher", record: printVoucher } : null}
+        isOpen={Boolean(printVoucher)}
+        onClose={() => setPrintVoucher(null)}
       />
 
       {/* Create Voucher Dialog */}

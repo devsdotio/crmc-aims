@@ -4,6 +4,8 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { ToastProvider } from "@/components/providers/toast-context";
 import { LoadingProvider } from "@/components/providers/loading-context";
 import { ConfirmProvider } from "@/components/providers/confirm-context";
+import { WeightedTextSync } from "@/components/providers/text-weight-sync";
+import { weightedTextBootScript } from "@/lib/text-weight";
 import "./globals.css";
 
 const quicksand = localFont({
@@ -44,8 +46,13 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${quicksand.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: weightedTextBootScript }} />
+      </head>
       <body className="h-full flex flex-col bg-bg-subtle text-text overflow-hidden">
+        <WeightedTextSync />
         <ToastProvider>
           <ConfirmProvider>
             <LoadingProvider>

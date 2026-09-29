@@ -14,6 +14,7 @@ import {
   Building2,
   Boxes,
   Eye,
+  Printer,
 } from "lucide-react";
 import type { Voucher, VoucherStatus, VoucherType } from "@/types/vouchers";
 import { formatPhp } from "@/components/projects/format-money";
@@ -26,32 +27,44 @@ interface VouchersTableProps {
   vouchers: Voucher[];
   loading?: boolean;
   onSelectVoucher: (voucher: Voucher) => void;
+  onPrintSlip: (voucher: Voucher) => void;
 }
 
 function getStatusBadge(status: VoucherStatus) {
   switch (status) {
     case "completed":
       return {
-        label: "Completed",
+        label: "Closed",
         className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
+        rail: "bg-emerald-500",
         icon: CheckCircle2,
+      };
+    case "disbursed":
+      return {
+        label: "Awaiting receipt",
+        className: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20",
+        rail: "bg-orange-500",
+        icon: Receipt,
       };
     case "approved":
       return {
         label: "Approved",
         className: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20",
+        rail: "bg-blue-500",
         icon: ShieldCheck,
       };
     case "pending_approval":
       return {
         label: "Pending",
         className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20",
+        rail: "bg-amber-500",
         icon: Clock,
       };
     case "cancelled":
       return {
         label: "Cancelled",
         className: "bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/20",
+        rail: "bg-rose-500",
         icon: Ban,
       };
     case "draft":
@@ -59,6 +72,7 @@ function getStatusBadge(status: VoucherStatus) {
       return {
         label: "Draft",
         className: "bg-gray-500/15 text-gray-700 dark:text-gray-400 border-gray-500/20",
+        rail: "bg-gray-400",
         icon: FileText,
       };
   }
@@ -93,6 +107,7 @@ export function VouchersTable({
   vouchers,
   loading = false,
   onSelectVoucher,
+  onPrintSlip,
 }: VouchersTableProps) {
   const [sortField, setSortField] = useState<SortField>("voucherDate");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
@@ -250,7 +265,15 @@ export function VouchersTable({
                   className="cursor-pointer hover:bg-bg-subtle/50 transition-colors group"
                 >
                   {/* Voucher Code */}
-                  <td className="py-3.5 px-4 font-mono font-bold text-text">
+                  <td className="relative py-3.5 pl-5 pr-4 font-mono font-bold text-text">
+                    <span
+                      className={cn(
+                        "absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full",
+                        statusInfo.rail
+                      )}
+                      title={statusInfo.label}
+                      aria-hidden
+                    />
                     <div className="flex items-center gap-2">
                       <span className="text-primary group-hover:underline">
                         {voucher.voucherCode}
@@ -329,17 +352,31 @@ export function VouchersTable({
 
                   {/* Action */}
                   <td className="py-3.5 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectVoucher(voucher);
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle transition-colors"
-                    >
-                      <Eye className="h-3.5 w-3.5 text-text-secondary" />
-                      <span>View</span>
-                    </button>
+                    <div className="inline-flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onPrintSlip(voucher);
+                        }}
+                        title="Print or save slip"
+                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle transition-colors"
+                      >
+                        <Printer className="h-3.5 w-3.5 text-text-secondary" />
+                        <span>Slip</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectVoucher(voucher);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle transition-colors"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-text-secondary" />
+                        <span>View</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );

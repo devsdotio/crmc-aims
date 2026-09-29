@@ -114,7 +114,7 @@ export function ReceiptLightboxDialog({
   const isPdf = imageUrl.toLowerCase().includes(".pdf");
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-80 flex items-center justify-center bg-slate-900/40 p-4 animate-in fade-in duration-200">
       {/* Backdrop click to close */}
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
@@ -122,10 +122,10 @@ export function ReceiptLightboxDialog({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="relative flex flex-col w-full max-w-5xl h-[90vh] bg-bg rounded-2xl shadow-2xl overflow-hidden border border-border/80 z-10"
+        className="relative flex flex-col w-full max-w-5xl h-[90vh] bg-bg rounded-2xl shadow-lg shadow-slate-900/15 overflow-hidden border border-zinc-300 dark:border-zinc-500 z-10"
       >
         {/* Header toolbar */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-card/90 backdrop-blur-xs select-none">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-300 dark:border-zinc-600 bg-card/90 backdrop-blur-xs select-none">
           <div className="flex items-center gap-3 min-w-0">
             <div className="h-9 w-9 rounded-xl bg-accent/15 border border-accent/25 flex items-center justify-center text-accent shrink-0 shadow-2xs">
               <Receipt className="h-5 w-5" />
@@ -173,7 +173,7 @@ export function ReceiptLightboxDialog({
                 >
                   <ZoomIn className="h-4 w-4" />
                 </button>
-                <div className="w-px h-5 bg-border mx-1" />
+                <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-500 mx-1" />
                 <button
                   type="button"
                   onClick={() => setRotation((r) => (r + 90) % 360)}
@@ -213,7 +213,7 @@ export function ReceiptLightboxDialog({
               <ExternalLink className="h-4 w-4" />
             </a>
 
-            <div className="w-px h-5 bg-border mx-1" />
+            <div className="w-px h-5 bg-zinc-300 dark:bg-zinc-500 mx-1" />
 
             <button
               type="button"
@@ -227,12 +227,12 @@ export function ReceiptLightboxDialog({
         </div>
 
         {/* Viewport Canvas */}
-        <div className="relative flex-1 overflow-auto bg-black/5 dark:bg-black/30 flex items-center justify-center p-4">
+        <div className="relative flex-1 overflow-auto bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center p-4">
           {isPdf ? (
             <iframe
               src={imageUrl}
               title={title}
-              className="w-full h-full rounded-lg border border-border bg-white"
+              className="w-full h-full rounded-lg border border-zinc-300 dark:border-zinc-500 bg-white"
             />
           ) : (
             <div
@@ -246,14 +246,14 @@ export function ReceiptLightboxDialog({
               <img
                 src={imageUrl}
                 alt={title}
-                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-lg border border-border/50 bg-card select-none"
+                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-md shadow-slate-900/10 border border-zinc-300 dark:border-zinc-500 bg-card select-none"
               />
             </div>
           )}
         </div>
 
         {/* Footer info */}
-        <div className="flex items-center justify-between px-5 py-2.5 border-t border-border bg-card/60 text-xs text-text-secondary">
+        <div className="flex items-center justify-between px-5 py-2.5 border-t border-zinc-300 dark:border-zinc-600 bg-card/60 text-xs text-text-secondary">
           <div className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
             <span>Digital Receipt Archive · Attached to Purchase Order</span>

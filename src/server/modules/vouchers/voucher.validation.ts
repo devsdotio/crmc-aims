@@ -10,6 +10,7 @@ export const VOUCHER_STATUSES = [
   "draft",
   "pending_approval",
   "approved",
+  "disbursed",
   "completed",
   "cancelled",
 ] as const;

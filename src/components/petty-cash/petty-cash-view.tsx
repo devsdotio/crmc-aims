@@ -23,6 +23,7 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { PettyCashTable } from "./petty-cash-table";
 import { CreatePettyCashDialog } from "./create-petty-cash-dialog";
 import { PettyCashDetailSheet } from "./petty-cash-detail-sheet";
+import { DisbursementPrintSlipDialog } from "@/components/disbursements/disbursement-print-slip-dialog";
 
 export function PettyCashView() {
   // Real-time synchronization via Supabase postgres_changes
@@ -36,6 +37,7 @@ export function PettyCashView() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<PettyCashVoucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [printVoucher, setPrintVoucher] = useState<PettyCashVoucher | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
@@ -60,14 +62,16 @@ export function PettyCashView() {
   const stats = useMemo(() => {
     let pendingCount = 0;
     let approvedCount = 0;
+    let awaitingReceiptCount = 0;
     let completedCount = 0;
     let totalDisbursed = 0;
 
     for (const v of vouchers) {
       if (v.status === "pending_approval") pendingCount++;
       if (v.status === "approved") approvedCount++;
-      if (v.status === "completed") {
-        completedCount++;
+      if (v.status === "disbursed") awaitingReceiptCount++;
+      if (v.status === "completed") completedCount++;
+      if (v.status === "disbursed" || v.status === "completed") {
         totalDisbursed += parseFloat(v.amount) || 0;
       }
     }
@@ -76,6 +80,7 @@ export function PettyCashView() {
       total: vouchers.length,
       pendingCount,
       approvedCount,
+      awaitingReceiptCount,
       completedCount,
       totalDisbursed,
     };
@@ -171,7 +176,8 @@ export function PettyCashView() {
             <option value="draft">Draft</option>
             <option value="pending_approval">Pending Approval</option>
             <option value="approved">Approved</option>
-            <option value="completed">Disbursed / Paid</option>
+            <option value="disbursed">Awaiting receipt</option>
+            <option value="completed">Closed</option>
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
@@ -205,7 +211,7 @@ export function PettyCashView() {
           <StatCard
             title="Total Disbursed"
             value={formatPhp(stats.totalDisbursed)}
-            subtitle={`${stats.completedCount} completed disbursement(s)`}
+            subtitle={`${stats.awaitingReceiptCount} awaiting receipt · ${stats.completedCount} closed`}
             icon={Banknote}
             tone="emerald"
           />
@@ -217,6 +223,7 @@ export function PettyCashView() {
             vouchers={vouchers}
             loading={isLoading}
             onSelectVoucher={handleSelectVoucher}
+            onPrintSlip={setPrintVoucher}
           />
         </div>
       </main>
@@ -229,6 +236,13 @@ export function PettyCashView() {
           setIsDetailOpen(false);
           setSelectedVoucher(null);
         }}
+        onPrintSlip={setPrintVoucher}
+      />
+
+      <DisbursementPrintSlipDialog
+        target={printVoucher ? { kind: "petty_cash", record: printVoucher } : null}
+        isOpen={Boolean(printVoucher)}
+        onClose={() => setPrintVoucher(null)}
       />
 
       {/* Create Dialog */}
