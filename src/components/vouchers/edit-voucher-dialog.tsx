@@ -215,7 +215,7 @@ export function EditVoucherDialog({
 
   const handleItemChange = (
     index: number,
-    field: "description" | "quantity" | "unitCost" | "amount",
+    field: "description" | "quantity" | "unitOfMeasure" | "unitCost" | "amount",
     value: string
   ) => {
     if (isCatalogLinked) return;
@@ -224,7 +224,9 @@ export function EditVoucherDialog({
       if (!row) return prev;
       const next = [...prev];
       next[index] = { ...prev[index], ...row, id: prev[index].id };
-      if (field !== "description") syncAmountFromLines(next);
+      if (field !== "description" && field !== "unitOfMeasure") {
+        syncAmountFromLines(next);
+      }
       return next;
     });
   };
@@ -636,10 +638,11 @@ export function EditVoucherDialog({
                   : "Quantity × unit cost fills each line total and the overall total."}
               </p>
               <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
-                <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_4rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
                   <span className="text-center">#</span>
                   <span>Description</span>
                   <span className="text-right">Qty</span>
+                  <span className="text-center">UoM</span>
                   <span className="text-right">Unit</span>
                   <span className="text-right">Total</span>
                   <span />
@@ -648,7 +651,7 @@ export function EditVoucherDialog({
                   {listItems.map((item, idx) => (
                     <div
                       key={item.id}
-                      className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
+                      className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_4rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                     >
                       <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
                         {idx + 1}
@@ -673,6 +676,16 @@ export function EditVoucherDialog({
                         disabled={saving || isCatalogLinked}
                         placeholder="1"
                         className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
+                      />
+                      <input
+                        type="text"
+                        value={item.unitOfMeasure ?? ""}
+                        onChange={(e) =>
+                          handleItemChange(idx, "unitOfMeasure", e.target.value)
+                        }
+                        disabled={saving || isCatalogLinked}
+                        placeholder="pcs"
+                        className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-center text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
                       />
                       <input
                         type="text"

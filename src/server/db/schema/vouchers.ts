@@ -88,7 +88,7 @@ export const vouchers = pgTable(
 
     /**
      * Itemized particulars as JSON:
-     * [{ "description": "...", "quantity": "2", "unitCost": "50.00", "amount": "100.00", "purpose": "..." }, ...]
+     * [{ "description": "...", "quantity": "2", "unitOfMeasure": "pcs", "unitCost": "50.00", "amount": "100.00", "purpose": "..." }, ...]
      * `purpose` is optional and supports multi-purpose claims. The header purpose is the summary.
      * Legacy plain-text values are still accepted and parsed on read.
      */

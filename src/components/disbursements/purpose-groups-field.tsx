@@ -14,6 +14,7 @@ type PurposeLine = {
   id: string;
   description: string;
   quantity: string;
+  unitOfMeasure?: string;
 };
 
 interface PurposeGroupsFieldProps {
@@ -258,6 +259,9 @@ export function PurposeGroupsField({
                         </p>
                         <p className="text-[10px] text-text-secondary truncate">
                           Qty {line.quantity.trim() || "—"}
+                          {line.unitOfMeasure?.trim()
+                            ? ` ${line.unitOfMeasure.trim()}`
+                            : ""}
                         </p>
                       </div>
                     </div>

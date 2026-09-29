@@ -13,6 +13,7 @@ const RULED_ROWS = 6;
 
 export interface DisbursementSlipLine {
   quantity: string;
+  unitCost: string;
   description: string;
   dealer: string;
   purpose: string;
@@ -58,13 +59,20 @@ function formatSlipDate(dateStr: string | null | undefined): string {
   return `${month}/${day}/${date.getFullYear()}`;
 }
 
-function descriptionWithRate(item: ParticularLineItem): string {
-  const description = item.description.trim();
-  const unitRaw = item.unitCost.trim().replace(/,/g, "");
-  if (!unitRaw || /@/.test(description)) return description;
-  const unit = Number(unitRaw);
-  if (!Number.isFinite(unit)) return description;
-  return `${description} @ ${formatMoney(unit)}`;
+/** Strip legacy “@ 15.00” suffixes now that unit cost has its own column. */
+function plainDescription(item: ParticularLineItem): string {
+  return item.description
+    .trim()
+    .replace(/\s*@\s*(?:₱|PHP\s*)?[\d,]+(?:\.\d{1,2})?\s*$/i, "")
+    .trim();
+}
+
+function formatUnitCost(item: ParticularLineItem): string {
+  const raw = item.unitCost.trim().replace(/,/g, "");
+  if (!raw) return "—";
+  const unit = Number(raw);
+  if (!Number.isFinite(unit) || unit < 0) return "—";
+  return formatMoney(unit);
 }
 
 function slipLines(
@@ -80,6 +88,7 @@ function slipLines(
     return [
       {
         quantity: "1",
+        unitCost: "—",
         description: headerPurpose || "Disbursement",
         dealer: suggestedDealer,
         purpose: headerPurpose,
@@ -88,13 +97,19 @@ function slipLines(
     ];
   }
 
-  return items.map((item) => ({
-    quantity: item.quantity.trim() || "—",
-    description: descriptionWithRate(item),
-    dealer: suggestedDealer,
-    purpose: item.purpose?.trim() || headerPurpose,
-    amount: particularLineAmount(item),
-  }));
+  return items.map((item) => {
+    const qty = item.quantity.trim();
+    const uom = item.unitOfMeasure?.trim() ?? "";
+    const quantityLabel = [qty || "—", uom].filter(Boolean).join(" ");
+    return {
+      quantity: quantityLabel,
+      unitCost: formatUnitCost(item),
+      description: plainDescription(item) || item.description.trim(),
+      dealer: suggestedDealer,
+      purpose: item.purpose?.trim() || headerPurpose,
+      amount: particularLineAmount(item),
+    };
+  });
 }
 
 function voucherTitle(type: Voucher["type"]): string {
@@ -184,23 +199,24 @@ function buildLineRows(data: DisbursementSlipData): string {
           : "";
       return `<tr class="item-row">
         <td class="col-qty">${escapeHtml(line.quantity)}</td>
+        <td class="col-unit">${escapeHtml(line.unitCost)}</td>
         <td class="col-desc">${escapeHtml(line.description)}</td>
         ${dealerCell}
         ${purposeCell}
-        <td class="col-amount">${formatMoney(line.amount)}</td>
+        <td class="col-amount">${line.amount === 0 ? "" : formatMoney(line.amount)}</td>
       </tr>`;
     })
     .join("");
 
   const nothingFollows = `<tr class="nothing-row">
-      <td colspan="5" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
+      <td colspan="6" class="nothing-follows">*** NOTHING FOLLOWS ***</td>
     </tr>`;
 
   const padCount = Math.max(0, RULED_ROWS - data.lines.length);
   const pad = Array.from({ length: padCount })
     .map(
       () =>
-        `<tr class="empty-row"><td></td><td></td><td></td><td></td><td></td></tr>`
+        `<tr class="empty-row"><td></td><td></td><td></td><td></td><td></td><td></td></tr>`
     )
     .join("");
 
@@ -209,12 +225,12 @@ function buildLineRows(data: DisbursementSlipData): string {
     : "&nbsp;";
 
   const footer = `<tr class="total-row">
-      <td colspan="3"></td>
+      <td colspan="4"></td>
       <td class="total-label">Total:</td>
       <td class="col-amount">${formatMoney(data.amount)}</td>
     </tr>
     <tr class="sign-row">
-      <td colspan="5" class="sign-cell">
+      <td colspan="6" class="sign-cell">
         <div class="signatories-row">
           <div class="sign-block">
             <span class="sign-label">Requested by:</span>
@@ -333,6 +349,7 @@ export function buildDisbursementSlipStyles(): string {
     }
     th,
     th.col-qty,
+    th.col-unit,
     th.col-desc,
     th.col-dealer,
     th.col-purpose,
@@ -348,11 +365,12 @@ export function buildDisbursementSlipStyles(): string {
       white-space: normal;
       overflow-wrap: normal;
     }
-    .col-qty { width: 11%; text-align: center; font-weight: 700; }
-    .col-desc { width: 32%; }
-    .col-dealer { width: 18%; vertical-align: middle; }
-    .col-purpose { width: 24%; vertical-align: middle; }
-    .col-amount { width: 15%; text-align: right; font-weight: 700; white-space: nowrap; overflow-wrap: normal; }
+    .col-qty { width: 12%; text-align: center; font-weight: 700; white-space: nowrap; }
+    .col-unit { width: 12%; text-align: right; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .col-desc { width: 24%; }
+    .col-dealer { width: 16%; vertical-align: middle; }
+    .col-purpose { width: 20%; vertical-align: middle; }
+    .col-amount { width: 16%; text-align: right; font-weight: 700; white-space: nowrap; overflow-wrap: normal; }
     .item-row td { height: 28px; }
     .empty-row td { height: 24px; }
     .nothing-follows {
@@ -468,7 +486,8 @@ export function buildDisbursementSlipBodyHtml(data: DisbursementSlipData): strin
       <table>
         <thead>
           <tr>
-            <th class="col-qty">Quantity</th>
+            <th class="col-qty">Qty / UoM</th>
+            <th class="col-unit">Unit Cost</th>
             <th class="col-desc">Description</th>
             <th class="col-dealer">Suggested Dealer</th>
             <th class="col-purpose">Purpose</th>

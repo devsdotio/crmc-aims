@@ -327,7 +327,7 @@ export function CreateVoucherDialog({
 
   const handleItemChange = (
     index: number,
-    field: "description" | "quantity" | "unitCost" | "amount",
+    field: "description" | "quantity" | "unitOfMeasure" | "unitCost" | "amount",
     val: string
   ) => {
     if (isPoLinked) return;
@@ -336,7 +336,7 @@ export function CreateVoucherDialog({
       if (!nextRow) return prev;
       const updated = [...prev];
       updated[index] = { ...prev[index], ...nextRow, id: prev[index].id };
-      if (field !== "description") {
+      if (field !== "description" && field !== "unitOfMeasure") {
         syncAmountFromLines(updated);
       }
       return updated;
@@ -1127,10 +1127,11 @@ export function CreateVoucherDialog({
                       </p>
 
                       <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
-                        <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                        <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_4rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
                           <span className="text-center">#</span>
                           <span>Description</span>
                           <span className="text-right">Qty</span>
+                          <span className="text-center">UoM</span>
                           <span className="text-right">Unit</span>
                           <span className="text-right">Total</span>
                           <span />
@@ -1140,7 +1141,7 @@ export function CreateVoucherDialog({
                           {listItems.map((item, idx) => (
                             <div
                               key={item.id}
-                              className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
+                              className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_4rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                             >
                               <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
                                 {idx + 1}
@@ -1172,6 +1173,20 @@ export function CreateVoucherDialog({
                                 disabled={isPoLinked}
                                 className={cn(
                                   "w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                                  isPoLinked && "cursor-not-allowed bg-bg-subtle"
+                                )}
+                              />
+                              <input
+                                type="text"
+                                value={item.unitOfMeasure ?? ""}
+                                onChange={(e) =>
+                                  handleItemChange(idx, "unitOfMeasure", e.target.value)
+                                }
+                                placeholder="pcs"
+                                readOnly={isPoLinked}
+                                disabled={isPoLinked}
+                                className={cn(
+                                  "w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-center text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
                                   isPoLinked && "cursor-not-allowed bg-bg-subtle"
                                 )}
                               />
@@ -1345,7 +1360,11 @@ export function CreateVoucherDialog({
                                           {line.description}
                                         </span>
                                         <span className="shrink-0 font-mono text-text-secondary">
-                                          {line.quantity || "—"} × {formatPhp(line.unitCost || 0)}
+                                          {line.quantity || "—"}
+                                          {line.unitOfMeasure?.trim()
+                                            ? ` ${line.unitOfMeasure.trim()}`
+                                            : ""}{" "}
+                                          × {formatPhp(line.unitCost || 0)}
                                         </span>
                                         <span className="shrink-0 font-mono font-bold text-text">
                                           {formatPhp(particularLineAmount(line))}
