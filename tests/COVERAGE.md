@@ -1,7 +1,7 @@
 # Test coverage map
 
 Append new `*.test.ts` files under the matching domain folder. Keep prior suites green.
-Refine assertions later for field-level accuracy; this pass is broad checklist coverage.
+Assertions target real DTO fields (codes, status, qty, holders, ledger reasons, audit actor/entity).
 
 ## Unit (`tests/unit`)
 
@@ -19,18 +19,18 @@ Refine assertions later for field-level accuracy; this pass is broad checklist c
 | Domain | Status | Files / notes |
 |--------|--------|---------------|
 | Auth | partial | `auth/role-home.test.ts` (helper only; Supabase login e2e todo) |
-| Categories / departments / suppliers | done | `categories-departments-suppliers/crud.test.ts` |
-| Users | partial | `users/accounts.test.ts` (profile seed; no Supabase Auth createUser) |
-| Assets | done | `assets/asset-codes.test.ts`, `assets/lifecycle-maintenance.test.ts` |
-| Inventory | done | `inventory/opening-lot.test.ts`, adjust/issue in lifecycle-maintenance |
-| Requests (admin) | done | `requests/approve-reject.test.ts` |
-| Requests (requester) | done | `requests/requester-and-po-flows.test.ts` |
-| Purchase orders | done | `purchase-orders/po-delivery-intake.test.ts`, status/multi-dept in requester-and-po-flows |
-| Custody / issue history | done | `custody/release-return-void.test.ts` |
-| Vouchers / petty cash | done | `projects/project-flows.test.ts` (voucher/PCV block) |
-| Projects | done | `projects/project-flows.test.ts` (milestones, material refund, asset assign) |
-| Maintenance | done | flag/resolve + in-custody in `assets/lifecycle-maintenance.test.ts` |
-| Audit | done | `audit/audit-injection.test.ts` (+ PO cancel audit in requester-and-po-flows) |
+| Categories / departments / suppliers | done | CRUD + code/status fields |
+| Users | partial | profile list/update/deactivate (no Supabase Auth createUser) |
+| Assets | done | codes, lifecycle oldest=`created`, maintenance flag/resolve, in-custody |
+| Inventory | done | opening lot `Initial stock`, adjust/issue ledger qty+reason |
+| Requests (admin) | done | qty edit on approve, rejectionReason, history actions |
+| Requests (requester) | done | assignable assignee, cancel reason, `quantityRequested` |
+| Purchase orders | done | delivery intake fields, multi-dept, approve→ordered→cancel + audit |
+| Custody / issue history | done | holder/borrow log fields, void restores lot remaining |
+| Vouchers / petty cash | done | draft status, amount decimals, DRR/PCV codes |
+| Projects | done | milestones, material refund restock qty, asset assign/return status |
+| Maintenance | done | resolve → active, technician, openOnly |
+| Audit | done | actor/entity/action/notes/entityId (PO number) |
 
 ## Quality gate
 

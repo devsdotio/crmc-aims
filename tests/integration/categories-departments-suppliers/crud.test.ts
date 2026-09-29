@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { and, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
@@ -11,6 +11,8 @@ import { resetTestDatabase } from "../../setup/db";
 import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
+
+const SUP_CODE = /^SUP-\d{4}-[A-F0-9]{8}$/i;
 
 describeIntegration("categories / departments / suppliers CRUD", () => {
   const categoryRepo = new CategoryRepository();
@@ -35,12 +37,18 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
       })
       .returning();
 
+    expect(created.name).toBe("Lab Gear");
+    expect(created.type).toBe("asset");
+
     const listed = await categoryRepo.listWithCounts(
       "asset",
       undefined,
       fx.actor.tenantId
     );
-    expect(listed.some((c) => c.id === created.id)).toBe(true);
+    const found = listed.find((c) => c.id === created.id);
+    expect(found).toBeTruthy();
+    expect(found!.name).toBe("Lab Gear");
+    expect(found!.type).toBe("asset");
 
     const renamed = await categoryRepo.updateAndCascade(
       created.id,
@@ -49,6 +57,7 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
       fx.actor.tenantId
     );
     expect(renamed?.name).toBe("Laboratory Gear");
+    expect(renamed?.type).toBe("asset");
 
     await db.delete(categories).where(eq(categories.id, created.id));
     const after = await categoryRepo.findById(
@@ -65,16 +74,21 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
       fx.actor.tenantId
     );
     expect(created.code).toBe("REG");
+    expect(created.name).toBe("Registrar");
 
     const updated = await departments.update(
       created.id,
       { name: "Office of the Registrar" },
       fx.actor.tenantId
     );
+    expect(updated.id).toBe(created.id);
+    expect(updated.code).toBe("REG");
     expect(updated.name).toBe("Office of the Registrar");
 
     const listed = await departments.list({}, fx.actor.tenantId);
-    expect(listed.some((d) => d.id === created.id)).toBe(true);
+    expect(listed.some((d) => d.id === created.id && d.code === "REG")).toBe(
+      true
+    );
 
     await departments.delete(created.id, fx.actor.tenantId);
     const after = await departments.list({}, fx.actor.tenantId);
@@ -88,6 +102,8 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     );
     expect(created.name).toBe("Beta Office Depot");
     expect(created.status).toBe("active");
+    expect(created.supplierCode).toMatch(SUP_CODE);
+    expect(created.contactPhone).toBe("09170001111");
 
     const updated = await suppliers.update(
       created.id,
@@ -95,14 +111,19 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
       fx.actor.tenantId
     );
     expect(updated.contactName).toBe("Alex Vendor");
+    expect(updated.supplierCode).toBe(created.supplierCode);
+    expect(updated.status).toBe("active");
 
     const listed = await suppliers.list({}, fx.actor.tenantId);
-    expect(listed.some((s) => s.id === created.id)).toBe(true);
+    expect(
+      listed.some((s) => s.id === created.id && s.status === "active")
+    ).toBe(true);
 
     const deactivated = await suppliers.deactivate(
       created.id,
       fx.actor.tenantId
     );
     expect(deactivated.status).toBe("inactive");
+    expect(deactivated.id).toBe(created.id);
   });
 });

@@ -14,6 +14,8 @@ import {
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
+const PO_OR_LOT = /^(PO|LOT)-\d{4}-[A-F0-9]{8}$/i;
+
 describeIntegration("purchase orders / delivery intake (integration)", () => {
   const pos = new PurchaseLotService();
   let fx: TestFixtures;
@@ -50,6 +52,13 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
 
     expect(lot.status).toBe("pending_approval");
     expect(lot.assetId).toBeFalsy();
+    expect(lot.itemType).toBe("asset");
+    expect(lot.itemName).toBe("PO Projector Unit");
+    expect(lot.quantity).toBe(2);
+    expect(lot.departmentId).toBe(fx.departmentId);
+    expect(lot.supplierId).toBe(fx.supplierId);
+    expect(lot.lotCode).toMatch(PO_OR_LOT);
+    expect(lot.purpose).toBe(purpose);
 
     const delivered = await pos.updatePOStatus(
       lot.id,
@@ -57,6 +66,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       fx.actor
     );
     expect(delivered.status).toBe("delivered");
+    expect(delivered.quantity).toBe(2);
 
     const db = getDb();
     const rows = await db
@@ -66,7 +76,15 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(rows).toHaveLength(2);
     const codes = rows.map((r) => r.assetCode);
     expect(new Set(codes).size).toBe(2);
-    expect(codes.every((c) => c.startsWith("CP-"))).toBe(true);
+    for (const row of rows) {
+      expect(row.assetCode).toMatch(/^CP-\d{3}$/);
+      expect(row.name).toBe("PO Projector Unit");
+      expect(row.category).toBe(fx.assetCategory);
+      expect(row.assignmentType).toBe("borrowable");
+      expect(row.status).toBe("active");
+      expect(row.location).toBe("Depot");
+      expect(row.currentHolder).toBeNull();
+    }
   });
 
   it("delivers a new supply PO into consumables with stock movement", async () => {
@@ -95,7 +113,20 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       fx.actor
     );
 
-    await pos.updatePOStatus(lot.id, { status: "delivered" }, fx.actor);
+    expect(lot.itemType).toBe("consumable");
+    expect(lot.itemName).toBe("PO Bond Paper Ream");
+    expect(lot.quantity).toBe(5);
+    expect(lot.status).toBe("pending_approval");
+    expect(lot.consumableId).toBeFalsy();
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered" },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.consumableId).toBeTruthy();
+    expect(delivered.quantityRemaining).toBe(5);
 
     const db = getDb();
     const [item] = await db
@@ -103,8 +134,13 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       .from(consumables)
       .where(eq(consumables.tenantId, fx.actor.tenantId));
     expect(item).toBeTruthy();
+    expect(item.id).toBe(delivered.consumableId);
+    expect(item.name).toBe("PO Bond Paper Ream");
     expect(item.currentQty).toBe(5);
     expect(item.classification).toBe("supply");
+    expect(item.unit).toBe("ream");
+    expect(item.category).toBe(fx.consumableCategory);
+    expect(item.location).toBe("Store Room");
 
     const lots = await db
       .select()
@@ -112,13 +148,18 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       .where(eq(purchaseLots.tenantId, fx.actor.tenantId));
     expect(lots).toHaveLength(1);
     expect(lots[0].consumableId).toBe(item.id);
+    expect(lots[0].quantity).toBe(5);
+    expect(lots[0].quantityRemaining).toBe(5);
+    expect(Number(lots[0].unitCost)).toBe(250);
 
     const movements = await db
       .select()
       .from(stockMovements)
       .where(eq(stockMovements.consumableId, item.id));
-    expect(movements.some((m) => m.direction === "in" && m.reason === "restock")).toBe(
-      true
+    const restock = movements.find(
+      (m) => m.direction === "in" && m.reason === "restock"
     );
+    expect(restock).toBeTruthy();
+    expect(restock!.qty).toBe(5);
   });
 });

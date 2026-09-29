@@ -7,6 +7,7 @@ import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
+const CP_CODE = /^CP-\d{3}$/;
 
 describeIntegration("assets / codes (integration)", () => {
   const assets = new AssetService();
@@ -23,7 +24,7 @@ describeIntegration("assets / codes (integration)", () => {
       fx.actor.tenantId
     );
     expect(peeked.prefix).toBe("CP");
-    expect(peeked.assetCode).toMatch(/^CP-\d{3}$/);
+    expect(peeked.assetCode).toMatch(CP_CODE);
 
     const first = await assets.createAsset(
       {
@@ -35,7 +36,12 @@ describeIntegration("assets / codes (integration)", () => {
       fx.actor
     );
     expect(first.assetCode).toBe(peeked.assetCode);
+    expect(first.name).toBe("Laptop A");
+    expect(first.category).toBe(fx.assetCategory);
+    expect(first.location).toBe("Depot");
+    expect(first.status).toBe("active");
     expect(first.assignmentType).toBe("borrowable");
+    expect(first.currentHolder).toBeFalsy();
 
     const second = await assets.createAsset(
       {
@@ -47,17 +53,19 @@ describeIntegration("assets / codes (integration)", () => {
       fx.actor
     );
     expect(second.assetCode).not.toBe(first.assetCode);
-    expect(second.assetCode).toMatch(/^CP-\d{3}$/);
+    expect(second.assetCode).toMatch(CP_CODE);
     expect(second.assignmentType).toBe("assignable");
+    expect(second.status).toBe("active");
 
     const lifecycle = await assets.listLifecycle(
       first.id,
       20,
       fx.actor.tenantId
     );
+    // Newest-first ledger — oldest event is always registration.
     expect(lifecycle.length).toBeGreaterThanOrEqual(1);
-    // Newest-first ledger — created is present (and first when only one event).
-    expect(lifecycle.some((e) => e.eventType === "created")).toBe(true);
+    expect(lifecycle.at(-1)?.eventType).toBe("created");
+    expect(lifecycle.at(-1)?.assetCode).toBe(first.assetCode);
   });
 
   it("does not collide when preferred code is already taken", async () => {
@@ -80,5 +88,8 @@ describeIntegration("assets / codes (integration)", () => {
       fx.actor
     );
     expect(retry.assetCode).not.toBe(first.assetCode);
+    expect(retry.assetCode).toMatch(CP_CODE);
+    expect(retry.name).toBe("Printer B");
+    expect(retry.status).toBe("active");
   });
 });

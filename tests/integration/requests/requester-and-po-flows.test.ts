@@ -50,7 +50,12 @@ describeIntegration("requests requester flows", () => {
       fx.borrower
     );
     expect(assignable.status).toBe("pending");
+    expect(assignable.requestType).toBe("assignable");
     expect(assignable.assignedToName).toBe("Jane Assignee");
+    expect(assignable.expectedReturnDate).toBeFalsy();
+    expect(assignable.departmentId).toBe(fx.departmentId);
+    expect(assignable.items[0]?.quantity).toBe(1);
+    expect(assignable.history.some((h) => h.action === "submitted")).toBe(true);
 
     const pending = await borrow.create(
       {
@@ -72,6 +77,8 @@ describeIntegration("requests requester flows", () => {
       },
       fx.borrower
     );
+    expect(pending.requestType).toBe("borrowable");
+    expect(pending.expectedReturnDate).toBe("2026-11-01");
 
     const cancelled = await borrow.cancel(
       pending.id,
@@ -79,6 +86,8 @@ describeIntegration("requests requester flows", () => {
       fx.borrower
     );
     expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.cancellationReason).toBe("Event postponed");
+    expect(cancelled.history.some((h) => h.action === "cancelled")).toBe(true);
   });
 
   it("requester can create and cancel a consumable request", async () => {
@@ -113,6 +122,11 @@ describeIntegration("requests requester flows", () => {
       fx.borrower
     );
     expect(req.status).toBe("pending");
+    expect(req.lines).toHaveLength(1);
+    expect(req.lines[0]?.quantityRequested).toBe(4);
+    expect(req.lines[0]?.consumableId).toBe(item.id);
+    expect(req.lines[0]?.itemName).toBe("Markers for request");
+    expect(req.departmentId).toBe(fx.departmentId);
 
     const cancelled = await consumableRequests.cancel(
       req.id,
@@ -120,6 +134,7 @@ describeIntegration("requests requester flows", () => {
       fx.borrower
     );
     expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.cancellationReason).toBe("Already have stock");
   });
 });
 
@@ -166,7 +181,14 @@ describeIntegration("purchase order status flows", () => {
     );
 
     expect(lot.status).toBe("pending_approval");
-    expect((lot.departments?.length ?? 0) >= 1 || lot.departmentId).toBeTruthy();
+    expect(lot.itemName).toBe("Multi-dept Toner");
+    expect(lot.quantity).toBe(3);
+    expect(lot.recordedByName).toBe(fx.actor.displayName);
+    const deptIds = (lot.departments ?? []).map((d) => d.id);
+    expect(deptIds).toEqual(
+      expect.arrayContaining([fx.departmentId, second.id])
+    );
+    expect(deptIds).toHaveLength(2);
 
     const approved = await pos.updatePOStatus(
       lot.id,
@@ -188,6 +210,7 @@ describeIntegration("purchase order status flows", () => {
       fx.actor
     );
     expect(cancelled.status).toBe("cancelled");
+    expect(cancelled.cancellationReason).toBe("Budget reallocated");
 
     const logs = await audit.list(
       {
@@ -197,5 +220,8 @@ describeIntegration("purchase order status flows", () => {
       fx.actor
     );
     expect(logs.length).toBeGreaterThanOrEqual(1);
+    expect(logs[0].actorUserId).toBe(fx.actor.userId);
+    expect(logs[0].actorName).toBe(fx.actor.displayName);
+    expect(logs[0].notes).toMatch(/cancel|Budget reallocated/i);
   });
 });

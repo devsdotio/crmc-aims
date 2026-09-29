@@ -11,6 +11,8 @@ import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
+const REQ_CODE = /^REQ-\d{4}-[A-F0-9]{8}$/i;
+
 describeIntegration("requests approve / reject / edit (integration)", () => {
   const assets = new AssetService();
   const borrowRequests = new BorrowRequestService();
@@ -56,6 +58,17 @@ describeIntegration("requests approve / reject / edit (integration)", () => {
       fx.borrower
     );
     expect(pending.status).toBe("pending");
+    expect(pending.requestCode).toMatch(REQ_CODE);
+    expect(pending.requestType).toBe("borrowable");
+    expect(pending.departmentId).toBe(fx.departmentId);
+    expect(pending.department).toBe(fx.departmentName);
+    expect(pending.requesterName).toBe(fx.borrower.displayName);
+    expect(pending.requesterEmail).toBe(fx.borrower.email);
+    expect(pending.expectedReturnDate).toBe("2026-10-15");
+    expect(pending.items).toHaveLength(1);
+    expect(pending.items[0]?.quantity).toBe(1);
+    expect(pending.items[0]?.itemDescription).toBe("Laptop");
+    expect(pending.history.some((h) => h.action === "submitted")).toBe(true);
 
     const approved = await borrowRequests.approve(
       pending.id,
@@ -75,6 +88,10 @@ describeIntegration("requests approve / reject / edit (integration)", () => {
     );
     expect(approved.status).toBe("approved");
     expect(approved.items[0]?.quantity).toBe(2);
+    expect(approved.history.some((h) => h.action === "approved")).toBe(true);
+    expect(approved.history.some((h) => h.actor === fx.actor.displayName)).toBe(
+      true
+    );
 
     const logs = await audit.list(
       {
@@ -86,7 +103,9 @@ describeIntegration("requests approve / reject / edit (integration)", () => {
     expect(logs.length).toBeGreaterThanOrEqual(1);
     expect(logs[0].actorUserId).toBe(fx.actor.userId);
     expect(logs[0].actorName).toBe(fx.actor.displayName);
-    expect(logs[0].entityId).toBeTruthy();
+    expect(logs[0].entityId).toBe(approved.id);
+    expect(logs[0].entityType).toBe(AUDIT_ENTITY.borrowRequest);
+    expect(logs[0].notes).toMatch(/approved/i);
     expect(logs[0].timestamp).toBeTruthy();
 
     const toReject = await borrowRequests.create(
@@ -116,6 +135,8 @@ describeIntegration("requests approve / reject / edit (integration)", () => {
       fx.actor
     );
     expect(rejected.status).toBe("rejected");
+    expect(rejected.rejectionReason).toBe("Not available this week");
+    expect(rejected.history.some((h) => h.action === "rejected")).toBe(true);
   });
 
   it("creates and rejects a consumable request", async () => {
@@ -150,6 +171,13 @@ describeIntegration("requests approve / reject / edit (integration)", () => {
       fx.borrower
     );
     expect(req.status).toBe("pending");
+    expect(req.departmentId).toBe(fx.departmentId);
+    expect(req.requesterName).toBe(fx.borrower.displayName);
+    expect(req.lines).toHaveLength(1);
+    expect(req.lines[0]?.consumableId).toBe(item.id);
+    expect(req.lines[0]?.quantityRequested).toBe(2);
+    expect(req.lines[0]?.purpose).toBe("Classroom use");
+    expect(req.lines[0]?.itemName).toBe("Paper for requests");
 
     const rejected = await consumableRequests.reject(
       req.id,
@@ -157,5 +185,6 @@ describeIntegration("requests approve / reject / edit (integration)", () => {
       fx.actor
     );
     expect(rejected.status).toBe("rejected");
+    expect(rejected.rejectionReason).toBe("Use existing stock in room");
   });
 });

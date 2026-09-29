@@ -34,8 +34,16 @@ describeIntegration("users / department accounts", () => {
 
   it("lists accounts and can update / deactivate a department-scoped user", async () => {
     const listed = await users.listUsersForActor(fx.actor, {});
-    expect(listed.some((u) => u.id === staffUserId)).toBe(true);
-    expect(listed.some((u) => u.id === fx.borrower.userId)).toBe(true);
+    const staff = listed.find((u) => u.id === staffUserId);
+    const borrower = listed.find((u) => u.id === fx.borrower.userId);
+    expect(staff).toBeTruthy();
+    expect(staff!.email).toBe("staff.ops@test.local");
+    expect(staff!.name).toBe("Staff Operator");
+    expect(staff!.role).toBe("staff");
+    expect(staff!.status).toBe("active");
+    expect(borrower).toBeTruthy();
+    expect(borrower!.role).toBe("borrower");
+    expect(borrower!.status).toBe("active");
 
     const updated = await users.updateUser(
       staffUserId,
@@ -43,8 +51,13 @@ describeIntegration("users / department accounts", () => {
       fx.actor
     );
     expect(updated.name).toBe("Staff Ops Updated");
+    expect(updated.role).toBe("staff");
+    expect(updated.status).toBe("active");
+    expect(updated.email).toBe("staff.ops@test.local");
 
     const deactivated = await users.deactivateUser(staffUserId, fx.actor);
     expect(deactivated.status).toBe("deactivated");
+    expect(deactivated.id).toBe(staffUserId);
+    expect(deactivated.name).toBe("Staff Ops Updated");
   });
 });

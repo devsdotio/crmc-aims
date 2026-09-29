@@ -46,14 +46,23 @@ describeIntegration("custody / stock void (integration)", () => {
       },
       fx.actor
     );
-    expect(released.currentHolder).toBeTruthy();
+    expect(released.currentHolder).toMatch(/Dept:|Jane Doe|Information Technology/i);
+    expect(released.status).toBe("active");
 
     const openLogsRaw = await borrowLogs.list(
       { assetId: asset.id, status: "active" },
       fx.actor
     );
     const openLogs = Array.isArray(openLogsRaw) ? openLogsRaw : openLogsRaw.data;
-    expect(openLogs.length).toBe(1);
+    expect(openLogs).toHaveLength(1);
+    expect(openLogs[0].borrowerName).toBe("Jane Doe");
+    expect(openLogs[0].custodyKind).toBe("borrow");
+    expect(openLogs[0].departmentId).toBe(fx.departmentId);
+    expect(openLogs[0].assetCode).toBe(asset.assetCode);
+    expect(openLogs[0].assetName).toBe("Custody Camera");
+    expect(openLogs[0].status).toBe("active");
+    expect(openLogs[0].dueDate).toBe("2026-10-01");
+    expect(openLogs[0].department).toBe(fx.departmentName);
     const logId = openLogs[0].id;
 
     const returned = await assets.returnAsset(
@@ -62,6 +71,17 @@ describeIntegration("custody / stock void (integration)", () => {
       fx.actor
     );
     expect(returned.currentHolder).toBeFalsy();
+    expect(returned.status).toBe("active");
+
+    const lifecycle = await assets.listLifecycle(
+      asset.id,
+      50,
+      fx.actor.tenantId
+    );
+    const types = lifecycle.map((e) => e.eventType);
+    expect(types).toContain("released");
+    expect(types).toContain("returned");
+    expect(lifecycle.at(-1)?.eventType).toBe("created");
 
     const asset2 = await assets.createAsset(
       {
@@ -87,14 +107,18 @@ describeIntegration("custody / stock void (integration)", () => {
       fx.actor
     );
     const mistaken = Array.isArray(mistakenRaw) ? mistakenRaw : mistakenRaw.data;
+    expect(mistaken[0].borrowerName).toBe("Wrong Person");
+
     const voided = await borrowLogs.voidLog(
       mistaken[0].id,
       { reason: "Wrong borrower selected" },
       fx.actor
     );
     expect(voided.status).toBe("voided");
+    expect(voided.borrowerName).toBe("Wrong Person");
 
-    // logId used only to assert we tracked the first log
+    const freed = await assets.getAssetById(asset2.id, fx.actor.tenantId);
+    expect(freed.currentHolder).toBeFalsy();
     expect(logId).toBeTruthy();
   });
 
@@ -119,6 +143,7 @@ describeIntegration("custody / stock void (integration)", () => {
     );
     expect(availableLots.length).toBeGreaterThanOrEqual(1);
     const lotId = availableLots[0].id;
+    expect(availableLots[0].quantityRemaining).toBe(8);
 
     await consumables.issue(
       item.id,
@@ -139,6 +164,9 @@ describeIntegration("custody / stock void (integration)", () => {
       (m) => m.direction === "out" && m.reason === "issue" && !isVoidedNotes(m.notes)
     );
     expect(issueMove).toBeTruthy();
+    expect(issueMove!.qty).toBe(3);
+    expect(issueMove!.departmentId).toBe(fx.departmentId);
+    expect(issueMove!.purchaseLotId).toBe(lotId);
 
     await movements.voidIssue(
       issueMove!.id,
@@ -150,8 +178,20 @@ describeIntegration("custody / stock void (integration)", () => {
     expect(restored.currentQty).toBe(8);
 
     const afterVoid = await movements.listByConsumable(item.id, fx.actor.tenantId);
-    expect(
-      afterVoid.some((m) => m.direction === "in" && m.notes?.includes("[REVERSES:"))
-    ).toBe(true);
+    const voidedOriginal = afterVoid.find((m) => m.id === issueMove!.id);
+    expect(voidedOriginal?.voided || isVoidedNotes(voidedOriginal?.notes)).toBe(
+      true
+    );
+    const reversal = afterVoid.find(
+      (m) => m.direction === "in" && m.isReversal
+    );
+    expect(reversal).toBeTruthy();
+    expect(reversal!.qty).toBe(3);
+
+    const lotsAfter = await lots.list(
+      { consumableId: item.id },
+      fx.actor.tenantId
+    );
+    expect(lotsAfter[0].quantityRemaining).toBe(8);
   });
 });

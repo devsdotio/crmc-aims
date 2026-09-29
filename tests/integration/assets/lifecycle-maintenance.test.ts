@@ -13,6 +13,9 @@ import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
+const LOT_CODE = /^LOT-\d{4}-[A-F0-9]{8}$/i;
+const MNT_CODE = /^MNT-\d{4}-[A-F0-9]{8}$/i;
+
 describeIntegration("assets expand (CRUD / history / maintenance)", () => {
   const assets = new AssetService();
   const maintenance = new MaintenanceLogService();
@@ -33,6 +36,9 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
       },
       fx.actor
     );
+    expect(created.status).toBe("active");
+    expect(created.assignmentType).toBe("borrowable");
+    expect(created.category).toBe(fx.assetCategory);
 
     const updated = await assets.updateAsset(
       created.id,
@@ -40,13 +46,18 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
       fx.actor
     );
     expect(updated.location).toBe("IT Storeroom");
+    expect(updated.notes).toBe("Moved for inventory");
+    expect(updated.name).toBe("Scanner Unit");
 
-    const lifecycle = await assets.listLifecycle(
+    const lifecycleBeforeFlag = await assets.listLifecycle(
       created.id,
       50,
       fx.actor.tenantId
     );
-    expect(lifecycle.some((e) => e.eventType === "created")).toBe(true);
+    expect(lifecycleBeforeFlag.at(-1)?.eventType).toBe("created");
+    expect(lifecycleBeforeFlag.some((e) => e.eventType === "updated")).toBe(
+      true
+    );
 
     await assets.flagForMaintenance(
       created.id,
@@ -56,13 +67,28 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
     const afterFlag = await assets.getAssetById(created.id);
     expect(afterFlag.status).toBe("needs_repair");
 
+    const lifecycle = await assets.listLifecycle(
+      created.id,
+      50,
+      fx.actor.tenantId
+    );
+    expect(lifecycle.at(-1)?.eventType).toBe("created");
+    expect(lifecycle.some((e) => e.eventType === "flagged_maintenance")).toBe(
+      true
+    );
+    expect(lifecycle.some((e) => e.eventType === "status_changed")).toBe(true);
+
     const openLogs = await maintenance.list(
       { assetId: created.id, openOnly: true },
       fx.actor
     );
-    expect(openLogs.length).toBeGreaterThanOrEqual(1);
+    expect(openLogs).toHaveLength(1);
+    expect(openLogs[0].assetId).toBe(created.id);
+    expect(openLogs[0].assetCode).toBe(created.assetCode);
+    expect(openLogs[0].isResolved).toBe(false);
+    expect(openLogs[0].notes).toMatch(/Feed roller worn/i);
+    expect(openLogs[0].logCode).toMatch(MNT_CODE);
 
-    // Create a disposable asset to delete (flagged ones may block delete)
     const disposable = await assets.createAsset(
       {
         name: "Disposable Webcam",
@@ -72,6 +98,9 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
       fx.actor
     );
     await assets.deleteAsset(disposable.id, fx.actor);
+    await expect(
+      assets.getAssetById(disposable.id, fx.actor.tenantId)
+    ).rejects.toThrow();
   });
 
   it("flags maintenance while asset is still in custody", async () => {
@@ -104,13 +133,16 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
 
     const after = await assets.getAssetById(asset.id);
     expect(after.status).toBe("needs_repair");
-    expect(after.currentHolder).toBeTruthy();
+    // Department release stores a Dept: custody label; person is on the borrow log.
+    expect(after.currentHolder).toMatch(/Dept:|Field Tech|Information Technology/i);
 
     const openLogs = await maintenance.list(
       { assetId: asset.id, openOnly: true },
       fx.actor
     );
-    expect(openLogs.length).toBeGreaterThanOrEqual(1);
+    expect(openLogs).toHaveLength(1);
+    expect(openLogs[0].isResolved).toBe(false);
+    expect(openLogs[0].assignedToName).toMatch(/Field Tech/i);
   });
 
   it("resolves an open maintenance log", async () => {
@@ -124,6 +156,7 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
       },
       fx.actor
     );
+    expect(asset.status).toBe("needs_repair");
 
     const logs = await maintenance.list(
       { assetId: asset.id, openOnly: true },
@@ -131,6 +164,8 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
     );
     const open = logs[0];
     expect(open).toBeTruthy();
+    expect(open.isResolved).toBe(false);
+    expect(open.assetCode).toBe(asset.assetCode);
 
     const resolved = await maintenance.resolve(
       open.id,
@@ -142,6 +177,19 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
       fx.actor
     );
     expect(resolved.isResolved).toBe(true);
+    expect(resolved.condition).toBe("resolved");
+    expect(resolved.resolvedBy).toBe("Tech A");
+    expect(resolved.resolutionNotes).toBe("Replaced power board");
+    expect(resolved.repairParts).toEqual([]);
+
+    const after = await assets.getAssetById(asset.id, fx.actor.tenantId);
+    expect(after.status).toBe("active");
+
+    const stillOpen = await maintenance.list(
+      { assetId: asset.id, openOnly: true },
+      fx.actor
+    );
+    expect(stillOpen).toHaveLength(0);
   });
 });
 
@@ -169,6 +217,8 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       },
       fx.actor
     );
+    expect(item.currentQty).toBe(5);
+    expect(item.classification).toBe("supply");
 
     await consumables.adjust(
       item.id,
@@ -188,7 +238,12 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
 
     const ledger = await movements.listByConsumable(item.id, fx.actor.tenantId);
     expect(ledger.length).toBeGreaterThanOrEqual(3);
-    expect(ledger.some((m) => m.reason === "adjust")).toBe(true);
+    const adjusts = ledger.filter((m) => m.reason === "adjust");
+    expect(adjusts.length).toBeGreaterThanOrEqual(2);
+    expect(adjusts.some((m) => m.direction === "in" && m.qty === 3)).toBe(true);
+    expect(adjusts.some((m) => m.direction === "out" && m.qty === 2)).toBe(
+      true
+    );
 
     const lots = await getDb()
       .select()
@@ -196,6 +251,8 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       .where(eq(purchaseLots.consumableId, item.id));
     const codes = lots.map((l) => l.lotCode);
     expect(new Set(codes).size).toBe(codes.length);
+    expect(codes.every((c) => LOT_CODE.test(c))).toBe(true);
+    expect(lots.reduce((sum, l) => sum + l.quantityRemaining, 0)).toBe(6);
   });
 
   it("issues to a department and records an out movement", async () => {
@@ -216,6 +273,8 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       .select()
       .from(purchaseLots)
       .where(eq(purchaseLots.consumableId, item.id));
+    expect(lots).toHaveLength(1);
+    expect(lots[0].quantityRemaining).toBe(10);
 
     await consumables.issue(
       item.id,
@@ -235,8 +294,18 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       .select()
       .from(stockMovements)
       .where(eq(stockMovements.consumableId, item.id));
-    expect(outs.some((m) => m.direction === "out" && m.reason === "issue")).toBe(
-      true
+    const issue = outs.find(
+      (m) => m.direction === "out" && m.reason === "issue"
     );
+    expect(issue).toBeTruthy();
+    expect(issue!.qty).toBe(2);
+    expect(issue!.departmentId).toBe(fx.departmentId);
+    expect(issue!.purchaseLotId).toBe(lots[0].id);
+
+    const lotsAfter = await getDb()
+      .select()
+      .from(purchaseLots)
+      .where(eq(purchaseLots.consumableId, item.id));
+    expect(lotsAfter[0].quantityRemaining).toBe(8);
   });
 });

@@ -11,6 +11,9 @@ import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
+const CON_CODE = /^CON-\d{4}-[A-F0-9]{8}$/i;
+const LOT_CODE = /^LOT-\d{4}-[A-F0-9]{8}$/i;
+
 describeIntegration("inventory / opening lot (integration)", () => {
   const consumables = new ConsumableService();
   const movements = new StockMovementService();
@@ -33,7 +36,13 @@ describeIntegration("inventory / opening lot (integration)", () => {
       },
       fx.actor
     );
+    expect(item.name).toBe("Empty Toner");
+    expect(item.category).toBe(fx.consumableCategory);
+    expect(item.classification).toBe("supply");
+    expect(item.unit).toBe("pcs");
     expect(item.currentQty).toBe(0);
+    expect(item.itemCode).toMatch(CON_CODE);
+    expect(item.location).toBe("Store");
 
     const db = getDb();
     const lots = await db
@@ -62,6 +71,10 @@ describeIntegration("inventory / opening lot (integration)", () => {
       fx.actor
     );
     expect(item.currentQty).toBe(10);
+    expect(item.itemCode).toMatch(CON_CODE);
+    expect(item.classification).toBe("supply");
+    expect(item.unit).toBe("box");
+    expect(item.supplier).toBe(fx.supplierName);
 
     const db = getDb();
     const lots = await db
@@ -69,18 +82,29 @@ describeIntegration("inventory / opening lot (integration)", () => {
       .from(purchaseLots)
       .where(eq(purchaseLots.consumableId, item.id));
     expect(lots).toHaveLength(1);
+    expect(lots[0].lotCode).toMatch(LOT_CODE);
+    expect(lots[0].itemType).toBe("consumable");
+    expect(lots[0].itemCode).toBe(item.itemCode);
+    expect(lots[0].itemName).toBe("Starter Pens");
     expect(lots[0].quantity).toBe(10);
-    expect(lots[0].reference?.toLowerCase() ?? "").toMatch(/initial|opening/i);
+    expect(lots[0].quantityRemaining).toBe(10);
+    expect(Number(lots[0].unitCost)).toBe(45);
+    expect(lots[0].reference).toBe("Initial stock");
+    expect(lots[0].supplierId).toBe(fx.supplierId);
 
     const ledger = await movements.listByConsumable(item.id, fx.actor.tenantId);
-    expect(ledger.some((m) => m.direction === "in" && m.reason === "restock")).toBe(
-      true
+    const opening = ledger.find(
+      (m) => m.direction === "in" && m.reason === "restock"
     );
+    expect(opening).toBeTruthy();
+    expect(opening!.qty).toBe(10);
+    expect(opening!.consumableId).toBe(item.id);
+    expect(opening!.lotCode).toBe(lots[0].lotCode);
 
     const rawMoves = await db
       .select()
       .from(stockMovements)
       .where(eq(stockMovements.consumableId, item.id));
-    expect(rawMoves.length).toBeGreaterThanOrEqual(1);
+    expect(rawMoves).toHaveLength(1);
   });
 });

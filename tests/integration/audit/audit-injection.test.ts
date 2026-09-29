@@ -12,6 +12,8 @@ import {
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
+const PO_ENTITY = /^PO-\d{4}-[A-F0-9]{8}$/i;
+
 describeIntegration("audit injection (integration)", () => {
   const pos = new PurchaseLotService();
   const audit = new AuditLogService();
@@ -62,8 +64,10 @@ describeIntegration("audit injection (integration)", () => {
     expect(created.actorUserId).toBe(fx.actor.userId);
     expect(created.actorName).toBe(fx.actor.displayName);
     expect(created.entityType).toBe(AUDIT_ENTITY.purchaseOrder);
-    expect(created.notes).toBeTruthy();
+    expect(created.entityId).toMatch(PO_ENTITY);
+    expect(created.notes).toMatch(/created|purchase order/i);
     expect(created.timestamp).toBeTruthy();
+    expect(created.action).toBe("purchase_order_created");
 
     const deliveredLogs = await audit.list(
       {
@@ -74,5 +78,8 @@ describeIntegration("audit injection (integration)", () => {
     );
     expect(deliveredLogs.length).toBeGreaterThanOrEqual(1);
     expect(deliveredLogs[0].actorUserId).toBe(fx.actor.userId);
+    expect(deliveredLogs[0].actorName).toBe(fx.actor.displayName);
+    expect(deliveredLogs[0].entityId).toBe(created.entityId);
+    expect(deliveredLogs[0].notes).toMatch(/deliver/i);
   });
 });
