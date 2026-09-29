@@ -280,11 +280,13 @@ export class BorrowLogService {
       );
       if (!updated) throw new NotFoundError("Borrow log", id);
 
-      const asset = await this.assets.findById(
-        existing.assetId,
-        tx,
-        actor.tenantId
-      );
+      const asset = existing.assetId
+        ? await this.assets.findById(
+            existing.assetId,
+            tx,
+            actor.tenantId
+          )
+        : null;
       const assignedSnapshot = maintenanceAssigneeSnapshot({
         borrowerName: nextName,
         currentHolder: asset?.currentHolder ?? existing.department,
