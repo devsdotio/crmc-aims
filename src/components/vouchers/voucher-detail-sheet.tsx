@@ -27,6 +27,7 @@ import {
   Sparkles,
   Copy,
   Edit3,
+  Printer,
 } from "lucide-react";
 import type { Voucher, VoucherStatus, VoucherType } from "@/types/vouchers";
 import { formatPhp } from "@/components/projects/format-money";
@@ -47,12 +48,19 @@ import {
   sumParticularAmounts,
 } from "@/lib/voucher-particulars";
 import { EditVoucherDialog } from "@/components/vouchers/edit-voucher-dialog";
+import {
+  auditActionRail,
+  DisbursementAuditChanges,
+  leftoverAuditMeta,
+  readDisbursementChanges,
+} from "@/components/disbursements/disbursement-audit-changes";
 
 interface VoucherDetailSheetProps {
   voucher: Voucher | null;
   isOpen: boolean;
   onClose: () => void;
   onRefresh?: () => void;
+  onPrintSlip?: (voucher: Voucher) => void;
 }
 
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -160,6 +168,7 @@ export function VoucherDetailSheet({
   isOpen,
   onClose,
   onRefresh,
+  onPrintSlip,
 }: VoucherDetailSheetProps) {
   const toast = useToast();
   const { confirm } = useConfirm();
@@ -288,8 +297,7 @@ export function VoucherDetailSheet({
   const typeInfo = getTypeBadge(voucher.type);
   const StatusIcon = statusInfo.icon;
 
-  const canEdit =
-    voucher.status !== "completed" && voucher.status !== "disbursed";
+  const canEdit = voucher.status !== "cancelled";
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(voucher.voucherCode);
@@ -394,6 +402,17 @@ export function VoucherDetailSheet({
 
             {/* Header Right Controls */}
             <div className="flex items-center gap-1.5 shrink-0">
+              {onPrintSlip && (
+                <button
+                  type="button"
+                  onClick={() => onPrintSlip(voucher)}
+                  title="Print or save the disbursement slip"
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-border bg-bg text-text hover:bg-bg-subtle hover:border-primary/40 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Slip</span>
+                </button>
+              )}
               {canEdit && (
                 <button
                   type="button"
@@ -1207,8 +1226,18 @@ export function VoucherDetailSheet({
 
                     {auditLogs.length > 0 ? (
                     <div className="divide-y divide-border/50 border border-border/60 rounded-xl overflow-hidden bg-bg text-xs">
-                      {auditLogs.map((log) => (
-                        <div key={log.id} className="p-3 space-y-1 hover:bg-bg-subtle/30 transition-colors">
+                      {auditLogs.map((log) => {
+                        const fieldChanges = readDisbursementChanges(log.metadata);
+                        const extraMeta = leftoverAuditMeta(log.metadata);
+                        return (
+                        <div key={log.id} className="relative p-3 pl-4 space-y-1 hover:bg-bg-subtle/30 transition-colors">
+                          <span
+                            className={cn(
+                              "absolute left-0 top-2 bottom-2 w-1 rounded-r-full",
+                              auditActionRail(log.action)
+                            )}
+                            aria-hidden
+                          />
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <span className={cn(
@@ -1232,25 +1261,28 @@ export function VoucherDetailSheet({
                             </span>
                           </div>
 
-                          {log.notes && (
-                            <p className="text-xs text-text-secondary pl-0.5">
-                              {log.notes}
-                            </p>
+                          {fieldChanges.length > 0 ? (
+                            <DisbursementAuditChanges items={fieldChanges} />
+                          ) : (
+                            log.notes && (
+                              <p className="text-xs text-text-secondary pl-0.5">
+                                {log.notes}
+                              </p>
+                            )
                           )}
 
-                          {Boolean(log.metadata && typeof log.metadata === "object") && (
+                          {extraMeta.length > 0 && (
                             <div className="text-[10px] text-text-muted font-mono bg-bg-subtle/60 px-2 py-1 rounded-md border border-border/40 mt-1">
-                              {Object.entries(log.metadata as Record<string, unknown>)
-                                .filter(([key]) => key !== "changes")
-                                .map(([key, val]) => (
-                                  <span key={key} className="mr-3 inline-block">
-                                    <span className="text-text-secondary font-medium">{key}:</span> {String(val)}
-                                  </span>
-                                ))}
+                              {extraMeta.map(([key, val]) => (
+                                <span key={key} className="mr-3 inline-block">
+                                  <span className="text-text-secondary font-medium">{key}:</span> {val}
+                                </span>
+                              ))}
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     ) : (
                       <p className="text-xs text-text-secondary py-2">

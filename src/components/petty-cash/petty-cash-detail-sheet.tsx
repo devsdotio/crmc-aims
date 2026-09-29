@@ -25,6 +25,7 @@ import {
   ListOrdered,
   Plus,
   Trash2,
+  Printer,
 } from "lucide-react";
 import type { PettyCashVoucher, PettyCashStatus } from "@/types/petty-cash";
 import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
@@ -42,6 +43,12 @@ import { useToast } from "@/components/providers/toast-context";
 import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
 import {
+  auditActionRail,
+  DisbursementAuditChanges,
+  leftoverAuditMeta,
+  readDisbursementChanges,
+} from "@/components/disbursements/disbursement-audit-changes";
+import {
   blankParticular,
   parseParticulars,
   particularLineAmount,
@@ -55,6 +62,7 @@ interface PettyCashDetailSheetProps {
   voucher: PettyCashVoucher | null;
   isOpen: boolean;
   onClose: () => void;
+  onPrintSlip?: (voucher: PettyCashVoucher) => void;
 }
 
 type TabType = "details" | "workflow";
@@ -105,6 +113,7 @@ export function PettyCashDetailSheet({
   voucher: initialVoucher,
   isOpen,
   onClose,
+  onPrintSlip,
 }: PettyCashDetailSheetProps) {
   const toast = useToast();
   const { confirm } = useConfirm();
@@ -347,9 +356,18 @@ export function PettyCashDetailSheet({
               </div>
 
               <div className="flex items-center gap-2">
-                {voucher.status !== "completed" &&
-                  voucher.status !== "disbursed" &&
-                  voucher.status !== "cancelled" && (
+                {onPrintSlip && (
+                  <button
+                    type="button"
+                    onClick={() => onPrintSlip(voucher)}
+                    title="Print or save the petty cash slip"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle transition-colors shadow-2xs"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Slip</span>
+                  </button>
+                )}
+                {voucher.status !== "cancelled" && (
                   <button
                     type="button"
                     onClick={() => setIsEditing(!isEditing)}
@@ -1041,8 +1059,18 @@ export function PettyCashDetailSheet({
 
                       {auditLogs.length > 0 ? (
                       <div className="divide-y divide-border/50 border border-border/60 rounded-xl overflow-hidden bg-bg">
-                        {auditLogs.map((log) => (
-                          <div key={log.id} className="p-3 space-y-1 hover:bg-bg-subtle/30 transition-colors">
+                        {auditLogs.map((log) => {
+                          const fieldChanges = readDisbursementChanges(log.metadata);
+                          const extraMeta = leftoverAuditMeta(log.metadata);
+                          return (
+                          <div key={log.id} className="relative p-3 pl-4 space-y-1 hover:bg-bg-subtle/30 transition-colors">
+                            <span
+                              className={cn(
+                                "absolute left-0 top-2 bottom-2 w-1 rounded-r-full",
+                                auditActionRail(log.action)
+                              )}
+                              aria-hidden
+                            />
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2">
                                 <span className={cn(
@@ -1066,25 +1094,28 @@ export function PettyCashDetailSheet({
                               </span>
                             </div>
 
-                            {log.notes && (
-                              <p className="text-xs text-text-secondary pl-0.5">
-                                {log.notes}
-                              </p>
+                            {fieldChanges.length > 0 ? (
+                              <DisbursementAuditChanges items={fieldChanges} />
+                            ) : (
+                              log.notes && (
+                                <p className="text-xs text-text-secondary pl-0.5">
+                                  {log.notes}
+                                </p>
+                              )
                             )}
 
-                            {Boolean(log.metadata && typeof log.metadata === "object") && (
+                            {extraMeta.length > 0 && (
                               <div className="text-[10px] text-text-muted font-mono bg-bg-subtle/60 px-2 py-1 rounded-md border border-border/40 mt-1">
-                                {Object.entries(log.metadata as Record<string, unknown>)
-                                  .filter(([key]) => key !== "changes")
-                                  .map(([key, val]) => (
-                                    <span key={key} className="mr-3 inline-block">
-                                      <span className="text-text-secondary font-medium">{key}:</span> {String(val)}
-                                    </span>
-                                  ))}
+                                {extraMeta.map(([key, val]) => (
+                                  <span key={key} className="mr-3 inline-block">
+                                    <span className="text-text-secondary font-medium">{key}:</span> {val}
+                                  </span>
+                                ))}
                               </div>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       ) : (
                         <p className="text-xs text-text-secondary py-1">

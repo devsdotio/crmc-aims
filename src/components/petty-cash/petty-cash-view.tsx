@@ -23,6 +23,7 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { PettyCashTable } from "./petty-cash-table";
 import { CreatePettyCashDialog } from "./create-petty-cash-dialog";
 import { PettyCashDetailSheet } from "./petty-cash-detail-sheet";
+import { DisbursementPrintSlipDialog } from "@/components/disbursements/disbursement-print-slip-dialog";
 
 export function PettyCashView() {
   // Real-time synchronization via Supabase postgres_changes
@@ -36,6 +37,7 @@ export function PettyCashView() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<PettyCashVoucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [printVoucher, setPrintVoucher] = useState<PettyCashVoucher | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
@@ -221,6 +223,7 @@ export function PettyCashView() {
             vouchers={vouchers}
             loading={isLoading}
             onSelectVoucher={handleSelectVoucher}
+            onPrintSlip={setPrintVoucher}
           />
         </div>
       </main>
@@ -233,6 +236,13 @@ export function PettyCashView() {
           setIsDetailOpen(false);
           setSelectedVoucher(null);
         }}
+        onPrintSlip={setPrintVoucher}
+      />
+
+      <DisbursementPrintSlipDialog
+        target={printVoucher ? { kind: "petty_cash", record: printVoucher } : null}
+        isOpen={Boolean(printVoucher)}
+        onClose={() => setPrintVoucher(null)}
       />
 
       {/* Create Dialog */}

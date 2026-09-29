@@ -20,6 +20,7 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { VouchersTable } from "./vouchers-table";
 import { CreateVoucherDialog } from "./create-voucher-dialog";
 import { VoucherDetailSheet } from "./voucher-detail-sheet";
+import { DisbursementPrintSlipDialog } from "@/components/disbursements/disbursement-print-slip-dialog";
 import { cn } from "@/lib/utils";
 
 export function VouchersView() {
@@ -33,6 +34,7 @@ export function VouchersView() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [printVoucher, setPrintVoucher] = useState<Voucher | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
@@ -204,6 +206,7 @@ export function VouchersView() {
             vouchers={vouchers}
             loading={isLoading}
             onSelectVoucher={handleSelectVoucher}
+            onPrintSlip={setPrintVoucher}
           />
         </div>
       </main>
@@ -217,6 +220,13 @@ export function VouchersView() {
           setSelectedVoucher(null);
         }}
         onRefresh={() => refetch()}
+        onPrintSlip={setPrintVoucher}
+      />
+
+      <DisbursementPrintSlipDialog
+        target={printVoucher ? { kind: "voucher", record: printVoucher } : null}
+        isOpen={Boolean(printVoucher)}
+        onClose={() => setPrintVoucher(null)}
       />
 
       {/* Create Voucher Dialog */}
