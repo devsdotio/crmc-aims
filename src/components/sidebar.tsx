@@ -4,7 +4,7 @@ import type { UserRole } from "@/types/users";
 
 import Link from "next/link";
 import Image from "next/image";
-import { Krona_One } from "next/font/google";
+import localFont from "next/font/local";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -36,9 +36,10 @@ import {
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { cn } from "@/lib/utils";
 
-const kronaOne = Krona_One({
+const kronaOne = localFont({
+  src: "../../public/fonts/Krona_One/KronaOne-Regular.ttf",
   weight: "400",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 interface NavSubItem {
