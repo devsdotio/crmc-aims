@@ -1,5 +1,5 @@
-This is your new *vault*.
+# CRMC-AIMS Obsidian vault
 
-Make a note of something, [[create a link]], or try [the Importer](https://help.obsidian.md/Plugins/Importer)!
+Open **[[00-Home]]** for the current-system index.
 
-When you're ready, delete this note and make the vault your own.
+This vault documents **what the working code actually does** (scanned from `src/`, configs, and scripts) — not aspirational docs under `docs/`.
