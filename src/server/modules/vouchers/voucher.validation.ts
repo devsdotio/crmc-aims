@@ -82,6 +82,7 @@ export const updateVoucherSchema = z
     departmentId: z.string().uuid().optional().nullable(),
     departmentName: z.string().trim().max(255).optional().nullable(),
     departmentIds: z.array(z.string().uuid()).optional(),
+    approvedByName: z.string().trim().max(255).nullable().optional(),
   })
   .refine((body) => Object.keys(body).length > 0, {
     message: "At least one field is required to update a voucher.",

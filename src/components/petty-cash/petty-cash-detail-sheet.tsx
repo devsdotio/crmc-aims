@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -48,14 +48,25 @@ import {
   leftoverAuditMeta,
   readDisbursementChanges,
 } from "@/components/disbursements/disbursement-audit-changes";
+import { PurposeGroupsField } from "@/components/disbursements/purpose-groups-field";
+import { PurposeParticularsView } from "@/components/disbursements/purpose-particulars-view";
+import { DisbursementReceiptSlot } from "@/components/disbursements/disbursement-receipt-slot";
+import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
+import { groupLotsByPO } from "@/types/grouped-purchase-order";
 import {
-  blankParticular,
+  attachLineToGroups,
+  blankDraftParticular,
+  commitPurposeDraft,
+  detachLineFromGroups,
+  draftFromPurchaseOrderLines,
+  draftFromStoredParticulars,
+  emptyPurposeDraft,
   parseParticulars,
   particularLineAmount,
   patchParticularLine,
-  serializeParticulars,
   sumParticularAmounts,
-  type ParticularLineItem,
+  type DraftParticularLine,
+  type PurposeGroupDraft,
 } from "@/lib/voucher-particulars";
 
 interface PettyCashDetailSheetProps {
@@ -129,6 +140,10 @@ export function PettyCashDetailSheet({
   const { data: departments = [] } = useDepartmentsQuery({
     enabled: Boolean(isOpen && voucher?.id),
   });
+  const { data: lots = [] } = usePurchaseLotsQuery({
+    enabled: Boolean(isOpen),
+  });
+  const groupedPOs = useMemo(() => groupLotsByPO(lots), [lots]);
 
   // Fetch live audit logs for this petty cash record
   const { data: auditLogs = [] } = useAuditLogsQuery({
@@ -148,10 +163,8 @@ export function PettyCashDetailSheet({
   const [editReceiptNumber, setEditReceiptNumber] = useState("");
   const [editPurchaseOrderNumber, setEditPurchaseOrderNumber] = useState("");
   const [editSupplierName, setEditSupplierName] = useState("");
-  const [editPurpose, setEditPurpose] = useState("");
-  const [editListItems, setEditListItems] = useState<ParticularLineItem[]>([
-    blankParticular(),
-  ]);
+  const [editPurposeGroups, setEditPurposeGroups] = useState<PurposeGroupDraft[]>([]);
+  const [editListItems, setEditListItems] = useState<DraftParticularLine[]>([]);
 
   const updateMutation = useUpdatePettyCashMutation();
   const statusMutation = useUpdatePettyCashStatusMutation();
@@ -175,11 +188,12 @@ export function PettyCashDetailSheet({
       setEditReceiptNumber(voucher.receiptNumber || "");
       setEditPurchaseOrderNumber(voucher.purchaseOrderNumber || "");
       setEditSupplierName(voucher.supplierName || "");
-      setEditPurpose(voucher.purpose || "");
-      const parsed = parseParticulars(voucher.particulars);
-      setEditListItems(
-        parsed.length > 0 ? parsed : [blankParticular()]
+      const draft = draftFromStoredParticulars(
+        parseParticulars(voucher.particulars),
+        voucher.purpose || ""
       );
+      setEditListItems(draft.lines);
+      setEditPurposeGroups(draft.groups);
       setIsEditing(false);
     }
   }, [voucher]);
@@ -189,17 +203,32 @@ export function PettyCashDetailSheet({
   const statusConfig = getStatusBadge(voucher.status);
   const StatusIcon = statusConfig.icon;
   const particularItems = parseParticulars(voucher.particulars);
+  const isCatalogLinked = groupedPOs.some(
+    (po) => po.poNumber === editPurchaseOrderNumber.trim()
+  );
+
+  const applyCatalogPo = (poNumber: string) => {
+    const po = groupedPOs.find((entry) => entry.poNumber === poNumber.trim());
+    if (!po) return;
+    const raw = po.lineItems.length > 0 ? po.lineItems : [po.representative];
+    const draft = draftFromPurchaseOrderLines(raw);
+    setEditListItems(draft.lines);
+    setEditPurposeGroups(draft.groups);
+    const total = sumParticularAmounts(draft.lines);
+    if (total > 0) setEditAmount(total.toFixed(2));
+  };
 
   const handleEditItemChange = (
     index: number,
-    field: keyof ParticularLineItem,
+    field: "description" | "quantity" | "unitCost" | "amount",
     val: string
   ) => {
+    if (isCatalogLinked) return;
     setEditListItems((prev) => {
       const nextRow = patchParticularLine(prev[index], field, val);
       if (!nextRow) return prev;
       const updated = [...prev];
-      updated[index] = nextRow;
+      updated[index] = { ...prev[index], ...nextRow, id: prev[index].id };
       if (field !== "description") {
         const total = sumParticularAmounts(updated);
         if (total > 0) setEditAmount(total.toFixed(2));
@@ -209,17 +238,28 @@ export function PettyCashDetailSheet({
   };
 
   const handleAddEditItem = () => {
-    setEditListItems((prev) => [...prev, blankParticular()]);
+    if (isCatalogLinked) return;
+    const line = blankDraftParticular();
+    setEditListItems((prev) => [...prev, line]);
+    setEditPurposeGroups((prev) => attachLineToGroups(prev, line.id));
   };
 
   const handleRemoveEditItem = (index: number) => {
-    setEditListItems((prev) => {
-      if (prev.length <= 1) return [blankParticular()];
-      const next = prev.filter((_, i) => i !== index);
-      const total = sumParticularAmounts(next);
-      if (total > 0) setEditAmount(total.toFixed(2));
-      return next;
-    });
+    if (isCatalogLinked) return;
+    const removed = editListItems[index];
+    if (!removed) return;
+    if (editListItems.length <= 1) {
+      const fresh = emptyPurposeDraft();
+      const keptPurpose = editPurposeGroups[0]?.purpose ?? "";
+      setEditPurposeGroups([{ ...fresh.groups[0], purpose: keptPurpose }]);
+      setEditListItems(fresh.lines);
+      return;
+    }
+    const next = editListItems.filter((_, i) => i !== index);
+    setEditPurposeGroups((groups) => detachLineFromGroups(groups, removed.id));
+    setEditListItems(next);
+    const total = sumParticularAmounts(next);
+    if (total > 0) setEditAmount(total.toFixed(2));
   };
 
   const handleSaveEdit = async () => {
@@ -233,6 +273,12 @@ export function PettyCashDetailSheet({
       .map((id) => departments.find((d) => d.id === id))
       .filter((d): d is NonNullable<typeof d> => Boolean(d));
     const selectedDept = selectedDepts[0];
+
+    const committed = commitPurposeDraft(editListItems, editPurposeGroups);
+    if (committed.error) {
+      toast.error(committed.error);
+      return;
+    }
 
     try {
       await updateMutation.mutateAsync({
@@ -250,8 +296,8 @@ export function PettyCashDetailSheet({
           receiptNumber: editReceiptNumber.trim() || null,
           purchaseOrderNumber: editPurchaseOrderNumber.trim() || null,
           supplierName: editSupplierName.trim() || null,
-          purpose: editPurpose.trim(),
-          particulars: serializeParticulars(editListItems),
+          purpose: committed.purpose,
+          particulars: committed.particulars,
         },
       });
 
@@ -695,7 +741,11 @@ export function PettyCashDetailSheet({
                           <input
                             type="text"
                             value={editPurchaseOrderNumber}
-                            onChange={(e) => setEditPurchaseOrderNumber(e.target.value)}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              setEditPurchaseOrderNumber(value);
+                              applyCatalogPo(value);
+                            }}
                             placeholder="e.g. 2026-0012"
                             className="w-full text-xs font-mono rounded-md border border-border bg-bg px-2.5 py-1.5 text-text"
                           />
@@ -715,18 +765,13 @@ export function PettyCashDetailSheet({
                       </div>
 
                       <div className="space-y-3">
-                        <div>
-                          <label className="text-[11px] font-semibold text-text block mb-1">
-                            Purpose
-                          </label>
-                          <textarea
-                            rows={3}
-                            value={editPurpose}
-                            onChange={(e) => setEditPurpose(e.target.value)}
-                            placeholder="Brief purpose / justification..."
-                            className="w-full text-xs rounded-md border border-border bg-bg px-2.5 py-1.5 text-text leading-relaxed"
-                          />
-                        </div>
+                        <PurposeGroupsField
+                          groups={editPurposeGroups}
+                          lines={editListItems}
+                          onGroupsChange={setEditPurposeGroups}
+                          locked={isCatalogLinked}
+                          purposeInputId="edit-petty-cash-purpose"
+                        />
 
                         <div>
                           <label className="text-[11px] font-semibold text-text mb-1 flex items-center gap-1.5">
@@ -744,7 +789,7 @@ export function PettyCashDetailSheet({
                             </div>
                             {editListItems.map((item, idx) => (
                               <div
-                                key={idx}
+                                key={item.id}
                                 className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_4.5rem_4.5rem_1.5rem] gap-1.5 items-center"
                               >
                                 <span className="flex h-6 w-6 items-center justify-center rounded bg-bg border border-border text-[10px] font-mono text-text-muted">
@@ -761,7 +806,8 @@ export function PettyCashDetailSheet({
                                     )
                                   }
                                   placeholder={`Item #${idx + 1}`}
-                                  className="w-full text-xs rounded-md border border-border bg-bg px-2 py-1.5 text-text"
+                                  disabled={isCatalogLinked}
+                                  className="w-full text-xs rounded-md border border-border bg-bg px-2 py-1.5 text-text disabled:opacity-70"
                                 />
                                 <input
                                   type="text"
@@ -775,7 +821,8 @@ export function PettyCashDetailSheet({
                                     )
                                   }
                                   placeholder="1"
-                                  className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text"
+                                  disabled={isCatalogLinked}
+                                  className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text disabled:opacity-70"
                                 />
                                 <input
                                   type="text"
@@ -789,7 +836,8 @@ export function PettyCashDetailSheet({
                                     )
                                   }
                                   placeholder="0.00"
-                                  className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text"
+                                  disabled={isCatalogLinked}
+                                  className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text disabled:opacity-70"
                                 />
                                 <span className="px-1 text-xs font-mono font-semibold text-right text-text tabular-nums">
                                   {formatPhp(particularLineAmount(item))}
@@ -797,7 +845,8 @@ export function PettyCashDetailSheet({
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveEditItem(idx)}
-                                  className="p-1 text-text-muted hover:text-red-500"
+                                  disabled={isCatalogLinked}
+                                  className="p-1 text-text-muted hover:text-red-500 disabled:opacity-40"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -807,7 +856,8 @@ export function PettyCashDetailSheet({
                               <button
                                 type="button"
                                 onClick={handleAddEditItem}
-                                className="inline-flex items-center gap-1 text-[11px] font-medium text-text px-2 py-1 rounded border border-border bg-bg hover:bg-bg-subtle"
+                                disabled={isCatalogLinked}
+                                className="inline-flex items-center gap-1 text-[11px] font-medium text-text px-2 py-1 rounded border border-border bg-bg hover:bg-bg-subtle disabled:opacity-50"
                               >
                                 <Plus className="h-3 w-3" />
                                 Add Item
@@ -826,6 +876,12 @@ export function PettyCashDetailSheet({
                       </div>
                     </div>
                   ) : null}
+
+                  <DisbursementReceiptSlot
+                    purchaseOrderNumber={voucher.purchaseOrderNumber}
+                    claimStatus={voucher.status}
+                    enabled={isOpen}
+                  />
 
                   {/* Standard View Card */}
                   <div className="bg-bg rounded-lg border border-border p-4 shadow-2xs space-y-4">
@@ -913,57 +969,10 @@ export function PettyCashDetailSheet({
                       )}
                     </div>
 
-                    {voucher.purpose?.trim() ? (
-                      <div className="space-y-1">
-                        <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">
-                          Purpose
-                        </span>
-                        <div className="text-xs text-text leading-relaxed whitespace-pre-line bg-bg-subtle/30 p-3 rounded-md border border-border/50">
-                          {voucher.purpose}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {particularItems.length > 0 ? (
-                      <div className="space-y-2">
-                        <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">
-                          Particulars
-                        </span>
-                        {particularItems.map((item, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-start gap-2.5 rounded-md border border-border/60 bg-bg-subtle/20 p-2.5 text-xs"
-                          >
-                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-primary/10 font-mono text-[10px] font-bold text-primary">
-                              {idx + 1}
-                            </span>
-                            <span className="flex-1 font-medium text-text leading-relaxed">
-                              {item.description}
-                            </span>
-                            {item.quantity && item.unitCost ? (
-                              <span className="shrink-0 font-mono text-[11px] text-text-secondary">
-                                {item.quantity} × {formatPhp(item.unitCost)}
-                              </span>
-                            ) : null}
-                            {particularLineAmount(item) > 0 ? (
-                              <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                {formatPhp(particularLineAmount(item))}
-                              </span>
-                            ) : null}
-                          </div>
-                        ))}
-                        <div className="flex justify-between text-[11px] text-text-muted px-1 pt-0.5">
-                          <span>Overall total</span>
-                          <span className="font-mono font-bold text-text">
-                            {formatPhp(sumParticularAmounts(particularItems))}
-                          </span>
-                        </div>
-                      </div>
-                    ) : !voucher.purpose?.trim() ? (
-                      <p className="text-xs text-text-muted italic">
-                        No purpose or particulars provided.
-                      </p>
-                    ) : null}
+                    <PurposeParticularsView
+                      purpose={voucher.purpose}
+                      items={particularItems}
+                    />
                   </div>
                 </>
               )}

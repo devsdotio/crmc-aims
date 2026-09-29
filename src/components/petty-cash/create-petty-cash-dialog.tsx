@@ -41,15 +41,21 @@ import { PETTY_CASH_CATEGORIES } from "@/types/petty-cash";
 import { cn } from "@/lib/utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
+import { PurposeGroupsField } from "@/components/disbursements/purpose-groups-field";
 import {
-  blankParticular,
+  attachLineToGroups,
+  blankDraftParticular,
+  commitPurposeDraft,
+  detachLineFromGroups,
+  draftFromPurchaseOrderLines,
+  draftFromStoredParticulars,
+  emptyPurposeDraft,
   patchParticularLine,
   particularLineAmount,
-  serializeParticulars,
   sumParticularAmounts,
   resolveDepartmentsFromPo,
-  particularsFromPurchaseOrderLines,
-  type ParticularLineItem,
+  type DraftParticularLine,
+  type PurposeGroupDraft,
 } from "@/lib/voucher-particulars";
 
 interface CreatePettyCashDialogProps {
@@ -82,10 +88,8 @@ export function CreatePettyCashDialog({
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
   const [receiptNumber, setReceiptNumber] = useState("");
-  const [purpose, setPurpose] = useState("");
-  const [listItems, setListItems] = useState<ParticularLineItem[]>([
-    blankParticular(),
-  ]);
+  const [purposeGroups, setPurposeGroups] = useState<PurposeGroupDraft[]>([]);
+  const [listItems, setListItems] = useState<DraftParticularLine[]>([]);
   const [isLegacy, setIsLegacy] = useState(false);
 
   // PO Search state for the second column
@@ -155,8 +159,9 @@ export function CreatePettyCashDialog({
       setDepartmentId(null);
       setDepartmentIds([]);
       setReceiptNumber("");
-      setPurpose("");
-      setListItems([blankParticular()]);
+      const fresh = emptyPurposeDraft();
+      setPurposeGroups(fresh.groups);
+      setListItems(fresh.lines);
       setIsLegacy(false);
       setPoSearch("");
     }
@@ -203,23 +208,25 @@ export function CreatePettyCashDialog({
           ? [po.representative]
           : [];
 
-    const formattedList = particularsFromPurchaseOrderLines(rawItems);
     const fallbackAmount = po.totalCost ? Number(po.totalCost).toFixed(2) : "0.00";
-    const lineTotal = sumParticularAmounts(formattedList);
-    setListItems(
-      formattedList.some((i) => i.description)
-        ? formattedList
-        : [
-            {
-              description: `Items from Purchase Order #${po.poNumber}`,
-              quantity: "1",
-              unitCost: fallbackAmount,
-              amount: fallbackAmount,
-            },
-          ]
-    );
+    let draft = draftFromPurchaseOrderLines(rawItems);
+    if (!draft.lines.some((item) => item.description.trim())) {
+      draft = draftFromStoredParticulars(
+        [
+          {
+            description: `Items from Purchase Order #${po.poNumber}`,
+            quantity: "1",
+            unitCost: fallbackAmount,
+            amount: fallbackAmount,
+          },
+        ],
+        ""
+      );
+    }
+    const lineTotal = sumParticularAmounts(draft.lines);
+    setListItems(draft.lines);
+    setPurposeGroups(draft.groups);
     setAmount(lineTotal > 0 ? lineTotal.toFixed(2) : fallbackAmount);
-    setPurpose(`Petty cash disbursement for Purchase Order #${po.poNumber}`);
 
     const resolvedDepts = resolveDepartmentsFromPo(
       [po.representative, ...po.lineItems],
@@ -267,8 +274,9 @@ export function CreatePettyCashDialog({
     setPurchaseOrderNumber("");
     setPayeeName("");
     setAmount("");
-    setPurpose("");
-    setListItems([blankParticular()]);
+    const fresh = emptyPurposeDraft();
+    setPurposeGroups(fresh.groups);
+    setListItems(fresh.lines);
     setSupplierId(null);
     setSupplierName("");
     setDepartmentId(null);
@@ -277,7 +285,7 @@ export function CreatePettyCashDialog({
 
   const isPoLinked = Boolean(purchaseOrderNumber) && !isLegacy;
 
-  const syncAmountFromLines = (items: ParticularLineItem[]) => {
+  const syncAmountFromLines = (items: DraftParticularLine[]) => {
     if (isPoLinked) return;
     const total = sumParticularAmounts(items);
     if (total > 0) {
@@ -287,7 +295,7 @@ export function CreatePettyCashDialog({
 
   const handleItemChange = (
     index: number,
-    field: keyof ParticularLineItem,
+    field: "description" | "quantity" | "unitCost" | "amount",
     val: string
   ) => {
     if (isPoLinked) return;
@@ -295,7 +303,7 @@ export function CreatePettyCashDialog({
       const nextRow = patchParticularLine(prev[index], field, val);
       if (!nextRow) return prev;
       const updated = [...prev];
-      updated[index] = nextRow;
+      updated[index] = { ...prev[index], ...nextRow, id: prev[index].id };
       if (field !== "description") {
         syncAmountFromLines(updated);
       }
@@ -305,17 +313,27 @@ export function CreatePettyCashDialog({
 
   const handleAddItem = () => {
     if (isPoLinked) return;
-    setListItems((prev) => [...prev, blankParticular()]);
+    const line = blankDraftParticular();
+    setListItems((prev) => [...prev, line]);
+    setPurposeGroups((prev) => attachLineToGroups(prev, line.id));
   };
 
   const handleRemoveItem = (index: number) => {
     if (isPoLinked) return;
-    setListItems((prev) => {
-      if (prev.length <= 1) return [blankParticular()];
-      const next = prev.filter((_, i) => i !== index);
-      syncAmountFromLines(next);
-      return next;
-    });
+    const removed = listItems[index];
+    if (!removed) return;
+    if (listItems.length <= 1) {
+      const fresh = emptyPurposeDraft();
+      const keptPurpose = purposeGroups[0]?.purpose ?? "";
+      setPurposeGroups([{ ...fresh.groups[0], purpose: keptPurpose }]);
+      setListItems(fresh.lines);
+      setAmount("");
+      return;
+    }
+    const next = listItems.filter((_, i) => i !== index);
+    setPurposeGroups((groups) => detachLineFromGroups(groups, removed.id));
+    setListItems(next);
+    syncAmountFromLines(next);
   };
 
   const handleItemKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -349,7 +367,12 @@ export function CreatePettyCashDialog({
       return;
     }
 
-    const finalParticulars = serializeParticulars(listItems);
+    const committed = commitPurposeDraft(listItems, purposeGroups);
+    if (committed.error) {
+      toast.error(committed.error);
+      return;
+    }
+    const finalParticulars = committed.particulars;
 
     const selectedDepts = departmentIds
       .map((id) => departments.find((d) => d.id === id))
@@ -374,7 +397,7 @@ export function CreatePettyCashDialog({
           null,
         departmentIds: selectedDepts.map((d) => d.id),
         receiptNumber: receiptNumber.trim() || null,
-        purpose: purpose.trim(),
+        purpose: committed.purpose,
         particulars: finalParticulars,
         isLegacy,
       });
@@ -760,25 +783,16 @@ export function CreatePettyCashDialog({
                     )}
                   </div>
 
-                  {/* Purpose (paragraph) + Particulars (itemized with costs) */}
+                  {/* Purpose groups + Particulars (itemized with costs) */}
                   <div className="space-y-3">
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="text-xs font-semibold uppercase tracking-wider text-text">
-                          Purpose
-                        </label>
-                        <span className="text-[11px] text-text-secondary">
-                          Optional
-                        </span>
-                      </div>
-                      <textarea
-                        rows={3}
-                        value={purpose}
-                        onChange={(e) => setPurpose(e.target.value)}
-                        placeholder="Briefly state why petty cash is needed (e.g. urgent supplies, fare reimbursement, emergency repair)..."
-                        className="w-full rounded-lg border border-border bg-bg p-3 text-sm text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-                      />
-                    </div>
+                    <PurposeGroupsField
+                      groups={purposeGroups}
+                      lines={listItems}
+                      onGroupsChange={setPurposeGroups}
+                      locked={isPoLinked}
+                      disabled={createMutation.isPending}
+                      purposeInputId="petty-cash-purpose"
+                    />
 
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
@@ -821,7 +835,7 @@ export function CreatePettyCashDialog({
                         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                           {listItems.map((item, idx) => (
                             <div
-                              key={idx}
+                              key={item.id}
                               className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                             >
                               <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">

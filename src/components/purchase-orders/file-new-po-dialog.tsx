@@ -1315,7 +1315,7 @@ export function FileNewPODialog({
         <div className="shrink-0 border-b border-border bg-bg-subtle/50">
           <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-3 pb-2">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="p-1.5 rounded-lg bg-accent/10 border border-accent/20 text-accent shrink-0">
+              <div className="p-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary shrink-0">
                 <FilePlus2 className="h-4 w-4" />
               </div>
               <div className="min-w-0">
@@ -1344,92 +1344,53 @@ export function FileNewPODialog({
             </button>
           </div>
 
-          <nav
-            aria-label="Purchase order steps"
-            className="flex items-center gap-2 px-4 sm:px-5 pb-2.5 min-w-0"
-          >
-            <span className="shrink-0 inline-flex items-center rounded-md bg-accent/10 border border-accent/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-accent tabular-nums">
-              {currentStepIdx + 1}/{STEPS.length}
-            </span>
-
-            <ol className="flex items-center flex-1 min-w-0 gap-0">
-              {STEPS.map((step, idx) => {
-                const Icon = step.icon;
-                const isPassed = currentStepIdx > idx;
-                const isCurrent = currentStepIdx === idx;
-                const isLast = idx === STEPS.length - 1;
-
-                return (
-                  <li
-                    key={step.id}
+          <div className="flex items-stretch gap-2 px-4 sm:px-5 pb-2.5 min-w-0">
+            {STEPS.map((step, idx) => {
+              const isPassed = currentStepIdx > idx;
+              const isCurrent = currentStepIdx === idx;
+              return (
+                <button
+                  key={step.id}
+                  type="button"
+                  onClick={() => {
+                    if (idx <= currentStepIdx) {
+                      setErrorMessage(null);
+                      setCurrentStep(step.id);
+                      return;
+                    }
+                    if (canJumpToStep(step.id)) setCurrentStep(step.id);
+                  }}
+                  aria-current={isCurrent ? "step" : undefined}
+                  title={`${step.label} — ${step.description}`}
+                  className={cn(
+                    "flex flex-1 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left cursor-pointer",
+                    isCurrent
+                      ? "border-primary/40 bg-primary/10"
+                      : "border-border bg-bg hover:bg-bg-subtle"
+                  )}
+                >
+                  <span
                     className={cn(
-                      "flex items-center min-w-0",
-                      isLast ? "shrink-0" : "flex-1"
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                      isCurrent || isPassed
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-bg border border-border text-text-secondary"
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (idx <= currentStepIdx) {
-                          setErrorMessage(null);
-                          setCurrentStep(step.id);
-                          return;
-                        }
-                        if (canJumpToStep(step.id)) setCurrentStep(step.id);
-                      }}
-                      aria-current={isCurrent ? "step" : undefined}
-                      title={`${step.label} — ${step.description}`}
-                      className={cn(
-                        "group inline-flex items-center gap-1 rounded-full pl-0.5 pr-1 sm:pr-1.5 py-0.5 cursor-pointer transition-all duration-200",
-                        isCurrent
-                          ? "bg-accent/10 ring-1 ring-accent/25"
-                          : "hover:bg-bg/80"
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "h-6 w-6 rounded-full flex items-center justify-center border-2 shrink-0 transition-all duration-200",
-                          isPassed
-                            ? "bg-emerald-500 text-white border-emerald-500"
-                            : isCurrent
-                              ? "bg-accent text-accent-foreground border-accent"
-                              : "bg-bg text-text-secondary border-border group-hover:border-accent/40"
-                        )}
-                      >
-                        {isPassed ? (
-                          <Check className="h-2.5 w-2.5" strokeWidth={2.5} />
-                        ) : (
-                          <Icon className="h-2.5 w-2.5" />
-                        )}
-                      </span>
-                      <span
-                        className={cn(
-                          "hidden md:inline text-[10px] font-semibold leading-none whitespace-nowrap",
-                          isCurrent ? "text-text" : "text-text-secondary"
-                        )}
-                      >
-                        {step.shortLabel}
-                      </span>
-                    </button>
-
-                    {!isLast && (
-                      <div
-                        className="flex-1 mx-0.5 sm:mx-1 h-0.5 rounded-full bg-border overflow-hidden min-w-1"
-                        aria-hidden="true"
-                      >
-                        <div
-                          className={cn(
-                            "h-full rounded-full bg-accent transition-all duration-300 ease-out",
-                            isPassed ? "w-full" : "w-0"
-                          )}
-                        />
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          </nav>
+                    {isPassed ? <Check className="h-3 w-3" /> : idx + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-semibold text-text">
+                      {step.label}
+                    </span>
+                    <span className="block truncate text-[10px] text-text-secondary">
+                      {step.description}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Form Body Area */}
@@ -1445,8 +1406,8 @@ export function FileNewPODialog({
           {currentStep === "routing" && (
             <div className="space-y-3 animate-in fade-in duration-200">
               {isScopeLocked && (
-                <div className="p-3 rounded-xl border border-accent/30 bg-accent/10 text-text flex items-start gap-2.5 shadow-2xs">
-                  <Lock className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
+                <div className="p-3 rounded-xl border border-primary/30 bg-primary/10 text-text flex items-start gap-2.5 shadow-2xs">
+                  <Lock className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
                   <div>
                     <span className="font-bold text-xs block">
                       Scoped from{" "}
@@ -1476,7 +1437,7 @@ export function FileNewPODialog({
               <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Tag className="h-3.5 w-3.5 text-accent" />
+                    <Tag className="h-3.5 w-3.5 text-primary" />
                     1. What are you buying?
                   </span>
                   <span className="text-[10px] text-text-secondary">
@@ -1571,7 +1532,7 @@ export function FileNewPODialog({
               <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <FolderKanban className="h-3.5 w-3.5 text-accent" />
+                    <FolderKanban className="h-3.5 w-3.5 text-primary" />
                     2. Where does it go?
                   </span>
                   <span className="text-[10px] text-text-secondary">
@@ -1590,18 +1551,18 @@ export function FileNewPODialog({
                         ? "opacity-40 cursor-not-allowed"
                         : "cursor-pointer",
                       destinationKind === "department"
-                        ? "border-accent/60 bg-accent/10 shadow-xs ring-2 ring-accent/20"
+                        ? "border-primary/60 bg-primary/10 shadow-xs ring-2 ring-primary/20"
                         : "border-border bg-card hover:bg-bg-subtle/50 hover:border-border"
                     )}
                   >
-                    <div className="p-2 rounded-lg bg-accent/15 text-accent mt-0.5 shrink-0">
+                    <div className="p-2 rounded-lg bg-primary/15 text-primary mt-0.5 shrink-0">
                       <Building2 className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-xs text-text">Warehouse Inventory</span>
                         {destinationKind === "department" && (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-accent" />
+                          <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                         )}
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5 leading-relaxed">
@@ -1697,7 +1658,7 @@ export function FileNewPODialog({
                 <div className="p-3.5 rounded-xl border border-border bg-card space-y-2.5 shadow-2xs animate-in fade-in duration-150">
                   <div className="flex items-center justify-between border-b border-border pb-2">
                     <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                      <Boxes className="h-3.5 w-3.5 text-accent" />
+                      <Boxes className="h-3.5 w-3.5 text-primary" />
                       3. Consumable classification
                     </span>
                     <span className="text-[10px] text-text-secondary">
@@ -1788,7 +1749,7 @@ export function FileNewPODialog({
               <div className="p-3.5 sm:p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2">
                   <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5 text-accent" />
+                    <Building2 className="h-3.5 w-3.5 text-primary" />
                     Order Metadata & Authorization
                   </span>
                   <span className="text-[10px] text-text-secondary">
@@ -1800,7 +1761,7 @@ export function FileNewPODialog({
                 <div className="p-3.5 rounded-xl border border-border bg-bg-subtle/50 space-y-2.5">
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <label className="font-semibold text-text flex items-center gap-1.5 text-xs">
-                      <FileText className="h-3.5 w-3.5 text-accent" />
+                      <FileText className="h-3.5 w-3.5 text-primary" />
                       <span>Purchase Order (P.O.) Number</span>
                     </label>
                     <div className="flex items-center gap-1 bg-bg p-0.5 rounded-lg border border-border">
@@ -1810,7 +1771,7 @@ export function FileNewPODialog({
                         className={cn(
                           "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
                           poNumberMode === "auto"
-                            ? "bg-accent text-accent-foreground shadow-2xs"
+                            ? "bg-primary text-primary-foreground shadow-2xs"
                             : "text-text-secondary hover:text-text"
                         )}
                       >
@@ -1822,7 +1783,7 @@ export function FileNewPODialog({
                         className={cn(
                           "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
                           poNumberMode === "manual"
-                            ? "bg-accent text-accent-foreground shadow-2xs"
+                            ? "bg-primary text-primary-foreground shadow-2xs"
                             : "text-text-secondary hover:text-text"
                         )}
                       >
@@ -1849,7 +1810,7 @@ export function FileNewPODialog({
                         value={customPoNumber}
                         onChange={(e) => setCustomPoNumber(e.target.value)}
                         placeholder="e.g. PO-2026-0042, CRMC-PO-101, or voucher reference..."
-                        className="w-full h-9 px-3 font-mono font-bold rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden"
+                        className="w-full h-9 px-3 font-mono font-bold rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-hidden"
                       />
                       <p className="text-[10px] text-text-secondary">
                         Matches physical procurement forms, custodian vouchers, or official accounting documents.
@@ -1871,14 +1832,14 @@ export function FileNewPODialog({
                       value={poDate}
                       onChange={(e) => setPoDate(e.target.value)}
                       required
-                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden"
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-hidden"
                     />
                   </div>
 
                   {/* Requested By */}
                   <div className="space-y-1">
                     <label className="font-semibold text-text flex items-center gap-1">
-                      <User className="h-3.5 w-3.5 text-accent" />
+                      <User className="h-3.5 w-3.5 text-primary" />
                       <span>Requested By</span>
                     </label>
                     <input
@@ -1887,7 +1848,7 @@ export function FileNewPODialog({
                       onChange={(e) => setRequestedByName(e.target.value)}
                       placeholder="Name of the person requesting this PO"
                       required
-                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden font-medium"
+                      className="w-full h-9 px-3 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-hidden font-medium"
                     />
                     <p className="text-[10px] text-text-secondary">
                       Defaults to your account; edit to match the physical request form.
@@ -1940,7 +1901,7 @@ export function FileNewPODialog({
                       }
                       disabled={departmentsLoading}
                       aria-required="true"
-                      triggerClassName="focus:ring-accent/20 focus:border-accent disabled:opacity-60"
+                      triggerClassName="focus:ring-primary/20 focus:border-primary disabled:opacity-60"
                     />
                     {targetDepartmentIds.length > 0 && (
                       <p className="text-[10px] text-text-secondary">
@@ -1956,7 +1917,7 @@ export function FileNewPODialog({
                       <button
                         type="button"
                         onClick={() => void refetchDepartments()}
-                        className="text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                        className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                       >
                         Retry loading departments
                       </button>
@@ -1982,7 +1943,7 @@ export function FileNewPODialog({
                     onChange={(e) => setGeneralNotes(e.target.value)}
                     placeholder="e.g. Approved under Semester 1 Supply Budget Allocation / Urgently required for midterm examinations..."
                     rows={4}
-                    className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed min-h-24"
+                    className="w-full p-2.5 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-hidden resize-none leading-relaxed min-h-24"
                   />
                   <p className="text-[10px] text-text-secondary">
                     Procurement purpose is assigned to line items in a later step.
@@ -1999,7 +1960,7 @@ export function FileNewPODialog({
               <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-accent/10 text-accent">
+                    <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
                       <Search className="h-4 w-4" />
                     </div>
                     <h3 className="font-bold text-xs text-text">
@@ -2019,7 +1980,7 @@ export function FileNewPODialog({
                       value={catalogSearch}
                       onChange={(e) => setCatalogSearch(e.target.value)}
                       placeholder={`Search ${poType === "asset" ? "assets" : "consumable stocks"} by name, SKU, or category…`}
-                      className="w-full h-8.5 pl-8.5 pr-8 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden"
+                      className="w-full h-8.5 pl-8.5 pr-8 rounded-lg border border-border bg-bg text-text text-xs focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-hidden"
                     />
                     {catalogSearch && (
                       <button
@@ -2063,8 +2024,8 @@ export function FileNewPODialog({
                               className={cn(
                                 "p-2 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group relative hover:shadow-xs min-h-16",
                                 existingInPO
-                                  ? "border-accent/60 bg-accent/5 ring-1 ring-accent/30 hover:border-rose-400 hover:ring-rose-300"
-                                  : "border-border bg-bg hover:border-accent/40 hover:bg-card"
+                                  ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30 hover:border-rose-400 hover:ring-rose-300"
+                                  : "border-border bg-bg hover:border-primary/40 hover:bg-card"
                               )}
                             >
                               <div className="flex items-start justify-between gap-1">
@@ -2072,14 +2033,14 @@ export function FileNewPODialog({
                                   {c.itemCode}
                                 </span>
                                 {existingInPO ? (
-                                  <span className="px-1 py-0.2 rounded-full text-[8px] font-bold bg-accent text-accent-foreground shrink-0 flex items-center gap-0.5 group-hover:bg-rose-500 group-hover:text-white transition-colors">
+                                  <span className="px-1 py-0.2 rounded-full text-[8px] font-bold bg-primary text-primary-foreground shrink-0 flex items-center gap-0.5 group-hover:bg-rose-500 group-hover:text-white transition-colors">
                                     <Check className="h-2 w-2 group-hover:hidden" />
                                     <X className="h-2 w-2 hidden group-hover:inline" />
                                     <span className="group-hover:hidden">Added</span>
                                     <span className="hidden group-hover:inline">Unselect</span>
                                   </span>
                                 ) : (
-                                  <span className="text-[9px] text-accent font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                                  <span className="text-[9px] text-primary font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                                     <Plus className="h-2.5 w-2.5" />
                                     <span>Add</span>
                                   </span>
@@ -2120,7 +2081,7 @@ export function FileNewPODialog({
                           <button
                             type="button"
                             onClick={() => handleAddItem(true)}
-                            className="text-accent underline font-semibold cursor-pointer"
+                            className="text-primary underline font-semibold cursor-pointer"
                           >
                             + Custom {effectiveClassification === "material" ? "Material" : "Supply"}
                           </button>
@@ -2143,8 +2104,8 @@ export function FileNewPODialog({
                             className={cn(
                               "p-2 rounded-lg border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group relative hover:shadow-xs min-h-16",
                               existingInPO
-                                ? "border-accent/60 bg-accent/5 ring-1 ring-accent/30 hover:border-rose-400 hover:ring-rose-300"
-                                : "border-border bg-bg hover:border-accent/40 hover:bg-card"
+                                ? "border-primary/60 bg-primary/5 ring-1 ring-primary/30 hover:border-rose-400 hover:ring-rose-300"
+                                : "border-border bg-bg hover:border-primary/40 hover:bg-card"
                             )}
                           >
                             <div className="flex items-start justify-between gap-1">
@@ -2152,14 +2113,14 @@ export function FileNewPODialog({
                                 {a.assetCode}
                               </span>
                               {existingInPO ? (
-                                <span className="px-1 py-0.2 rounded-full text-[8px] font-bold bg-accent text-accent-foreground shrink-0 flex items-center gap-0.5 group-hover:bg-rose-500 group-hover:text-white transition-colors">
+                                <span className="px-1 py-0.2 rounded-full text-[8px] font-bold bg-primary text-primary-foreground shrink-0 flex items-center gap-0.5 group-hover:bg-rose-500 group-hover:text-white transition-colors">
                                   <Check className="h-2 w-2 group-hover:hidden" />
                                   <X className="h-2 w-2 hidden group-hover:inline" />
                                   <span className="group-hover:hidden">Added</span>
                                   <span className="hidden group-hover:inline">Unselect</span>
                                 </span>
                               ) : (
-                                <span className="text-[9px] text-accent font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                                <span className="text-[9px] text-primary font-semibold opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
                                   <Plus className="h-2.5 w-2.5" />
                                   <span>Add</span>
                                 </span>
@@ -2188,7 +2149,7 @@ export function FileNewPODialog({
                         <button
                           type="button"
                           onClick={() => handleAddItem(true)}
-                          className="text-accent underline font-semibold cursor-pointer"
+                          className="text-primary underline font-semibold cursor-pointer"
                         >
                           + Custom Asset
                         </button>
@@ -2243,7 +2204,7 @@ export function FileNewPODialog({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-text uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                      <Boxes className="h-3.5 w-3.5 text-accent" />
+                      <Boxes className="h-3.5 w-3.5 text-primary" />
                       Configured PO Line Items ({items.length})
                     </span>
                   </div>
@@ -2265,7 +2226,7 @@ export function FileNewPODialog({
                       {/* Top Mode Row */}
                       <div className="flex items-center justify-between flex-wrap gap-2 border-b border-border/60 pb-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="h-5 w-5 rounded-full bg-accent/15 text-accent font-bold text-[10px] flex items-center justify-center">
+                          <span className="h-5 w-5 rounded-full bg-primary/15 text-primary font-bold text-[10px] flex items-center justify-center">
                             {idx + 1}
                           </span>
 
@@ -2338,7 +2299,7 @@ export function FileNewPODialog({
                                     {item.name}
                                   </span>
                                   <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-accent/15 text-accent border border-accent/25">
+                                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-primary/15 text-primary border border-primary/25">
                                       Catalog Stock
                                     </span>
                                     <button
@@ -2486,7 +2447,7 @@ export function FileNewPODialog({
                                 options={itemCategoryOptions}
                                 placeholder="Select category…"
                                 emptyMessage="No categories available"
-                                inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-accent"
+                                inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-primary"
                               />
                             ) : (
                               <input
@@ -2512,7 +2473,7 @@ export function FileNewPODialog({
                                     handleItemFieldChange(item.id, "unit", e.target.value)
                                   }
                                   placeholder="pcs, reams..."
-                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-accent focus:outline-hidden"
+                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-primary focus:outline-hidden"
                                 />
                               ) : (
                                 <SearchableSelect
@@ -2522,7 +2483,7 @@ export function FileNewPODialog({
                                   }
                                   options={assignmentTypeOptions}
                                   placeholder="Select assignment type…"
-                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-accent"
+                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-primary"
                                 />
                               )
                             ) : (
@@ -2572,7 +2533,7 @@ export function FileNewPODialog({
                   onClick={() =>
                     setPurposeGroups((prev) => [...prev, newPoPurposeGroup()])
                   }
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                 >
                   <Plus className="h-3 w-3" />
                   Add purpose
@@ -2655,7 +2616,7 @@ export function FileNewPODialog({
                           rows={2}
                           required
                           aria-required="true"
-                          className="w-full p-1.5 rounded-md border border-border bg-bg text-[11px] focus:ring-2 focus:ring-accent/20 focus:border-accent focus:outline-hidden resize-none leading-relaxed"
+                          className="w-full p-1.5 rounded-md border border-border bg-bg text-[11px] focus:ring-2 focus:ring-primary/20 focus:border-primary focus:outline-hidden resize-none leading-relaxed"
                         />
                       </div>
                       <div className="p-2 space-y-1.5 flex-1 min-h-36 max-h-64 overflow-y-auto">
@@ -2675,8 +2636,8 @@ export function FileNewPODialog({
                                 className={cn(
                                   "flex items-start gap-1.5 px-2 py-1.5 rounded-md border bg-card text-xs cursor-grab active:cursor-grabbing select-none shadow-2xs transition-opacity",
                                   isDragging
-                                    ? "opacity-40 border-accent"
-                                    : "border-border hover:border-accent/40"
+                                    ? "opacity-40 border-primary"
+                                    : "border-border hover:border-primary/40"
                                 )}
                               >
                                 <GripVertical className="h-3.5 w-3.5 text-text-secondary shrink-0 mt-0.5" />
@@ -2713,7 +2674,7 @@ export function FileNewPODialog({
               {/* Review Master PO Details Card */}
               <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                 <div className="flex items-center gap-2 border-b border-border pb-2.5">
-                  <Building2 className="h-4 w-4 text-accent" />
+                  <Building2 className="h-4 w-4 text-primary" />
                   <h3 className="font-bold text-xs text-text uppercase tracking-wider">
                     Purchase Order Header Details
                   </h3>
@@ -2724,7 +2685,7 @@ export function FileNewPODialog({
                     <span className="text-[10px] text-text-secondary font-medium block">P.O. Number</span>
                     <span className="font-mono font-bold text-text">
                       {poNumberMode === "manual" && customPoNumber.trim() ? (
-                        <span className="text-accent">{customPoNumber.trim()}</span>
+                        <span className="text-primary">{customPoNumber.trim()}</span>
                       ) : (
                         <span className="text-text-secondary italic">Auto-generated on filing</span>
                       )}
@@ -2760,13 +2721,13 @@ export function FileNewPODialog({
                     "mt-3 p-3 rounded-xl border text-xs flex items-start gap-2.5",
                     destinationKind === "project"
                       ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200"
-                      : "bg-accent/10 border-accent/25 text-text"
+                      : "bg-primary/10 border-primary/25 text-text"
                   )}
                 >
                   {destinationKind === "project" ? (
                     <HardHat className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                   ) : (
-                    <Building2 className="h-4 w-4 shrink-0 mt-0.5 text-accent" />
+                    <Building2 className="h-4 w-4 shrink-0 mt-0.5 text-primary" />
                   )}
                   <div>
                     <span className="font-bold uppercase tracking-wider text-[10px] block">
@@ -2859,7 +2820,7 @@ export function FileNewPODialog({
               <div className="p-4 rounded-xl border border-border bg-card space-y-3 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2.5">
                   <div className="flex items-center gap-2">
-                    <Boxes className="h-4 w-4 text-accent" />
+                    <Boxes className="h-4 w-4 text-primary" />
                     <h3 className="font-bold text-xs text-text uppercase tracking-wider">
                       Line Items Breakdown ({items.length})
                     </h3>
@@ -2867,7 +2828,7 @@ export function FileNewPODialog({
                   <button
                     type="button"
                     onClick={() => setCurrentStep("items")}
-                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline cursor-pointer"
                   >
                     <Edit3 className="h-3 w-3" />
                     Edit Items
@@ -2898,7 +2859,7 @@ export function FileNewPODialog({
                               <div className="flex items-center gap-1.5">
                                 <span className="font-bold text-text block">{item.name}</span>
                                 {item.isNew && (
-                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-accent/15 text-accent border border-accent/25">
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-primary/15 text-primary border border-primary/25">
                                     NEW
                                   </span>
                                 )}
@@ -2970,7 +2931,7 @@ export function FileNewPODialog({
               <div className="p-4 rounded-xl border border-border bg-card/60 space-y-2.5 shadow-2xs">
                 <div className="flex items-center justify-between border-b border-border pb-2.5">
                   <div className="flex items-center gap-2">
-                    <Receipt className="h-4 w-4 text-accent" />
+                    <Receipt className="h-4 w-4 text-primary" />
                     <h3 className="font-bold text-xs text-text uppercase tracking-wider">
                       Official Vendor Receipt Upload
                     </h3>
@@ -3021,7 +2982,7 @@ export function FileNewPODialog({
               <button
                 type="button"
                 onClick={handleNextFromRouting}
-                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <span>Continue to Order Info</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -3032,7 +2993,7 @@ export function FileNewPODialog({
               <button
                 type="button"
                 onClick={handleNextFromMetadata}
-                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <span>Continue to Line Items</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -3043,7 +3004,7 @@ export function FileNewPODialog({
               <button
                 type="button"
                 onClick={handleNextFromItems}
-                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <span>Continue to Purpose Assignment</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -3054,7 +3015,7 @@ export function FileNewPODialog({
               <button
                 type="button"
                 onClick={handleNextFromPurposes}
-                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
               >
                 <span>Review Order Details</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -3066,7 +3027,7 @@ export function FileNewPODialog({
                 type="button"
                 onClick={() => handleSubmit()}
                 disabled={isSubmitting}
-                className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-lg bg-accent text-accent-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
+                className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
               >
                 {isSubmitting ? (
                   <>

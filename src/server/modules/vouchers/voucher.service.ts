@@ -306,6 +306,9 @@ export class VoucherService {
       ...(input.departmentName !== undefined
         ? { departmentName: emptyToNull(input.departmentName) }
         : {}),
+      ...(input.approvedByName !== undefined
+        ? { approvedByName: emptyToNull(input.approvedByName) }
+        : {}),
     }, undefined, actor?.tenantId);
 
     if (!updated) throw new NotFoundError("Voucher", id);
@@ -366,6 +369,7 @@ export class VoucherService {
       },
       { label: "Check number", before: existing.checkNumber, after: saved.checkNumber },
       { label: "Department", before: existing.departmentName, after: saved.departmentName },
+      { label: "Verified by", before: existing.approvedByName, after: saved.approvedByName },
     ]);
 
     if (diff.labels.length > 0) {

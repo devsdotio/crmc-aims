@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { Voucher, VoucherStatus, VoucherType } from "@/types/vouchers";
 import { formatPhp } from "@/components/projects/format-money";
+import { disbursementPurposeLabel } from "@/lib/voucher-particulars";
 import { cn } from "@/lib/utils";
 
 type SortField = "voucherCode" | "voucherDate" | "payeeName" | "amount" | "status";
@@ -313,6 +314,21 @@ export function VouchersTable({
                         via {voucher.supplierName}
                       </div>
                     )}
+                    {(() => {
+                      const preview = disbursementPurposeLabel(
+                        voucher.purpose,
+                        voucher.particulars
+                      );
+                      if (!preview.label) return null;
+                      return (
+                        <span
+                          title={preview.title}
+                          className="mt-1 inline-flex max-w-50 truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/25"
+                        >
+                          {preview.label}
+                        </span>
+                      );
+                    })()}
                   </td>
 
                   {/* References */}

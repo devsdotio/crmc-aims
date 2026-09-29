@@ -23,7 +23,9 @@ export type CreateVoucherPayload = {
   isLegacy?: boolean;
 };
 
-export type UpdateVoucherPayload = Partial<CreateVoucherPayload>;
+export type UpdateVoucherPayload = Partial<CreateVoucherPayload> & {
+  approvedByName?: string | null;
+};
 
 export type UpdateVoucherStatusPayload = {
   status: VoucherStatus;

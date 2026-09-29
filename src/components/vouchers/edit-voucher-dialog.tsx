@@ -17,14 +17,23 @@ import { useDepartmentsQuery } from "@/features/departments/client/use-departmen
 import { useToast } from "@/components/providers/toast-context";
 import { useConfirm } from "@/components/providers/confirm-context";
 import { formatPhp } from "@/components/projects/format-money";
+import { PurposeGroupsField } from "@/components/disbursements/purpose-groups-field";
+import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
+import { groupLotsByPO } from "@/types/grouped-purchase-order";
 import {
-  blankParticular,
+  attachLineToGroups,
+  blankDraftParticular,
+  commitPurposeDraft,
+  detachLineFromGroups,
+  draftFromPurchaseOrderLines,
+  draftFromStoredParticulars,
+  emptyPurposeDraft,
   parseParticulars,
   particularLineAmount,
   patchParticularLine,
-  serializeParticulars,
   sumParticularAmounts,
-  type ParticularLineItem,
+  type DraftParticularLine,
+  type PurposeGroupDraft,
 } from "@/lib/voucher-particulars";
 import { cn } from "@/lib/utils";
 import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
@@ -45,27 +54,16 @@ type FormState = {
   supplierName: string;
   purchaseOrderNumber: string;
   assetCode: string;
-  purpose: string;
   departmentId: string;
   departmentIds: string[];
 };
 
-function emptyParticulars(): ParticularLineItem[] {
-  return [blankParticular()];
-}
-
-function particularsEqual(
-  a: ParticularLineItem[],
-  b: ParticularLineItem[]
-): boolean {
-  if (a.length !== b.length) return false;
-  return a.every(
-    (row, i) =>
-      row.description === b[i].description &&
-      row.quantity === b[i].quantity &&
-      row.unitCost === b[i].unitCost &&
-      row.amount === b[i].amount
-  );
+function draftSignature(
+  lines: DraftParticularLine[],
+  groups: PurposeGroupDraft[]
+): string {
+  const committed = commitPurposeDraft(lines, groups);
+  return `${committed.purpose}\n${committed.particulars}`;
 }
 
 export function EditVoucherDialog({
@@ -78,6 +76,7 @@ export function EditVoucherDialog({
   const { confirm } = useConfirm();
   const updateMutation = useUpdateVoucherMutation();
   const { data: departments = [] } = useDepartmentsQuery({ enabled: isOpen });
+  const { data: lots = [] } = usePurchaseLotsQuery({ enabled: isOpen });
 
   const departmentOptions = useMemo(
     () =>
@@ -89,6 +88,8 @@ export function EditVoucherDialog({
     [departments]
   );
 
+  const groupedPOs = useMemo(() => groupLotsByPO(lots), [lots]);
+
   const [form, setForm] = useState<FormState>({
     voucherCode: "",
     payeeName: "",
@@ -98,17 +99,18 @@ export function EditVoucherDialog({
     supplierName: "",
     purchaseOrderNumber: "",
     assetCode: "",
-    purpose: "",
     departmentId: "",
     departmentIds: [],
   });
-  const [listItems, setListItems] = useState<ParticularLineItem[]>(
-    emptyParticulars()
-  );
+  const [listItems, setListItems] = useState<DraftParticularLine[]>([]);
+  const [purposeGroups, setPurposeGroups] = useState<PurposeGroupDraft[]>([]);
   const [baseline, setBaseline] = useState<{
     form: FormState;
-    listItems: ParticularLineItem[];
+    signature: string;
   } | null>(null);
+  const isCatalogLinked = groupedPOs.some(
+    (po) => po.poNumber === form.purchaseOrderNumber.trim()
+  );
 
   useEffect(() => {
     if (!isOpen || !voucher) return;
@@ -121,7 +123,6 @@ export function EditVoucherDialog({
       supplierName: voucher.supplierName || "",
       purchaseOrderNumber: voucher.purchaseOrderNumber || "",
       assetCode: voucher.assetCode || "",
-      purpose: voucher.purpose || "",
       departmentId: voucher.departmentId || "",
       departmentIds:
         voucher.departments && voucher.departments.length > 0
@@ -131,11 +132,14 @@ export function EditVoucherDialog({
             : [],
     };
     const parsed = parseParticulars(voucher.particulars);
-    const nextItems =
-      parsed.length > 0 ? parsed : emptyParticulars();
+    const draft = draftFromStoredParticulars(parsed, voucher.purpose || "");
     setForm(nextForm);
-    setListItems(nextItems);
-    setBaseline({ form: nextForm, listItems: nextItems });
+    setListItems(draft.lines);
+    setPurposeGroups(draft.groups);
+    setBaseline({
+      form: nextForm,
+      signature: draftSignature(draft.lines, draft.groups),
+    });
   }, [isOpen, voucher]);
 
   const isDirty = useMemo(() => {
@@ -150,8 +154,11 @@ export function EditVoucherDialog({
         return form[key] !== baseline.form[key];
       }
     );
-    return formChanged || !particularsEqual(listItems, baseline.listItems);
-  }, [baseline, form, listItems]);
+    return (
+      formChanged ||
+      draftSignature(listItems, purposeGroups) !== baseline.signature
+    );
+  }, [baseline, form, listItems, purposeGroups]);
 
   const saving = updateMutation.isPending;
 
@@ -186,41 +193,64 @@ export function EditVoucherDialog({
 
   if (!isOpen || !voucher) return null;
 
-  const syncAmountFromLines = (items: ParticularLineItem[]) => {
+  const syncAmountFromLines = (items: DraftParticularLine[]) => {
     const total = sumParticularAmounts(items);
     if (total > 0) {
       setForm((f) => ({ ...f, amount: total.toFixed(2) }));
     }
   };
 
+  const applyCatalogPo = (poNumber: string) => {
+    const po = groupedPOs.find((entry) => entry.poNumber === poNumber.trim());
+    if (!po) return;
+    const raw = po.lineItems.length > 0 ? po.lineItems : [po.representative];
+    const draft = draftFromPurchaseOrderLines(raw);
+    setListItems(draft.lines);
+    setPurposeGroups(draft.groups);
+    const total = sumParticularAmounts(draft.lines);
+    if (total > 0) {
+      setForm((prev) => ({ ...prev, amount: total.toFixed(2) }));
+    }
+  };
+
   const handleItemChange = (
     index: number,
-    field: keyof ParticularLineItem,
+    field: "description" | "quantity" | "unitCost" | "amount",
     value: string
   ) => {
+    if (isCatalogLinked) return;
     setListItems((prev) => {
       const row = patchParticularLine(prev[index], field, value);
       if (!row) return prev;
       const next = [...prev];
-      next[index] = row;
+      next[index] = { ...prev[index], ...row, id: prev[index].id };
       if (field !== "description") syncAmountFromLines(next);
       return next;
     });
   };
 
   const handleAddItem = () => {
-    setListItems((prev) => [...prev, blankParticular()]);
+    if (isCatalogLinked) return;
+    const line = blankDraftParticular();
+    setListItems((prev) => [...prev, line]);
+    setPurposeGroups((prev) => attachLineToGroups(prev, line.id));
   };
 
   const handleRemoveItem = (index: number) => {
-    setListItems((prev) => {
-      const next =
-        prev.length <= 1
-          ? emptyParticulars()
-          : prev.filter((_, i) => i !== index);
-      syncAmountFromLines(next);
-      return next;
-    });
+    if (isCatalogLinked) return;
+    const removed = listItems[index];
+    if (!removed) return;
+    if (listItems.length <= 1) {
+      const fresh = emptyPurposeDraft();
+      const keptPurpose = purposeGroups[0]?.purpose ?? "";
+      setPurposeGroups([{ ...fresh.groups[0], purpose: keptPurpose }]);
+      setListItems(fresh.lines);
+      return;
+    }
+    const next = listItems.filter((_, i) => i !== index);
+    setPurposeGroups((groups) => detachLineFromGroups(groups, removed.id));
+    setListItems(next);
+    syncAmountFromLines(next);
   };
 
   const handleSave = async (e?: React.FormEvent) => {
@@ -232,6 +262,12 @@ export function EditVoucherDialog({
     const amountNum = Number(form.amount);
     if (!Number.isFinite(amountNum) || amountNum < 0) {
       toast.error("Enter a valid amount.");
+      return;
+    }
+
+    const committed = commitPurposeDraft(listItems, purposeGroups);
+    if (committed.error) {
+      toast.error(committed.error);
       return;
     }
 
@@ -251,8 +287,8 @@ export function EditVoucherDialog({
           supplierName: form.supplierName.trim() || null,
           purchaseOrderNumber: form.purchaseOrderNumber.trim() || null,
           assetCode: form.assetCode.trim() || null,
-          purpose: form.purpose.trim(),
-          particulars: serializeParticulars(listItems),
+          purpose: committed.purpose,
+          particulars: committed.particulars,
           departmentId: selectedDept?.id || form.departmentId || null,
           departmentName:
             selectedDepts.map((d) => d.name).join(", ") ||
@@ -497,12 +533,14 @@ export function EditVoucherDialog({
                   id="edit-voucher-po"
                   type="text"
                   value={form.purchaseOrderNumber}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const value = e.target.value;
                     setForm((prev) => ({
                       ...prev,
-                      purchaseOrderNumber: e.target.value,
-                    }))
-                  }
+                      purchaseOrderNumber: value,
+                    }));
+                    applyCatalogPo(value);
+                  }}
                   disabled={saving}
                   aria-describedby="edit-po-hint"
                   placeholder="PO-YYYY-XXXX or external reference"
@@ -578,29 +616,14 @@ export function EditVoucherDialog({
               Purpose & particulars
             </legend>
 
-            <div className="space-y-1">
-              <label
-                htmlFor="edit-voucher-purpose"
-                className="block text-xs font-semibold text-text"
-              >
-                Purpose
-              </label>
-              <textarea
-                id="edit-voucher-purpose"
-                rows={3}
-                value={form.purpose}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, purpose: e.target.value }))
-                }
-                disabled={saving}
-                placeholder="e.g. Office replenishment, PO settlement, emergency purchase"
-                aria-describedby="edit-purpose-hint"
-                className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-text text-xs leading-relaxed focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y disabled:opacity-70"
-              />
-              <p id="edit-purpose-hint" className="text-[11px] text-text-secondary">
-                Optional justification for this disbursement.
-              </p>
-            </div>
+            <PurposeGroupsField
+              groups={purposeGroups}
+              lines={listItems}
+              onGroupsChange={setPurposeGroups}
+              locked={isCatalogLinked}
+              disabled={saving}
+              purposeInputId="edit-voucher-purpose"
+            />
 
             <div className="space-y-1">
               <label className="flex items-center gap-1.5 text-xs font-semibold text-text">
@@ -608,7 +631,9 @@ export function EditVoucherDialog({
                 Particulars
               </label>
               <p className="text-[11px] text-text-secondary">
-                Quantity × unit cost fills each line total and the overall total.
+                {isCatalogLinked
+                  ? "Line items are locked to the linked purchase order."
+                  : "Quantity × unit cost fills each line total and the overall total."}
               </p>
               <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
                 <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
@@ -622,7 +647,7 @@ export function EditVoucherDialog({
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                   {listItems.map((item, idx) => (
                     <div
-                      key={idx}
+                      key={item.id}
                       className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                     >
                       <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
@@ -634,7 +659,7 @@ export function EditVoucherDialog({
                         onChange={(e) =>
                           handleItemChange(idx, "description", e.target.value)
                         }
-                        disabled={saving}
+                        disabled={saving || isCatalogLinked}
                         placeholder={`Item #${idx + 1} description`}
                         className="w-full rounded-lg border border-border bg-bg px-3 py-1.5 text-xs text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
                       />
@@ -645,7 +670,7 @@ export function EditVoucherDialog({
                         onChange={(e) =>
                           handleItemChange(idx, "quantity", e.target.value)
                         }
-                        disabled={saving}
+                        disabled={saving || isCatalogLinked}
                         placeholder="1"
                         className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
                       />
@@ -656,7 +681,7 @@ export function EditVoucherDialog({
                         onChange={(e) =>
                           handleItemChange(idx, "unitCost", e.target.value)
                         }
-                        disabled={saving}
+                        disabled={saving || isCatalogLinked}
                         placeholder="0.00"
                         className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
                       />
@@ -666,7 +691,7 @@ export function EditVoucherDialog({
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(idx)}
-                        disabled={saving}
+                        disabled={saving || isCatalogLinked}
                         className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-bg transition-colors cursor-pointer disabled:opacity-50"
                         title="Remove item"
                       >
@@ -679,7 +704,7 @@ export function EditVoucherDialog({
                   <button
                     type="button"
                     onClick={handleAddItem}
-                    disabled={saving}
+                    disabled={saving || isCatalogLinked}
                     className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <Plus className="h-3 w-3" />

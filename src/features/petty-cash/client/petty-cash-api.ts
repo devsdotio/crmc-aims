@@ -20,7 +20,9 @@ export type CreatePettyCashPayload = {
   isLegacy?: boolean;
 };
 
-export type UpdatePettyCashPayload = Partial<CreatePettyCashPayload>;
+export type UpdatePettyCashPayload = Partial<CreatePettyCashPayload> & {
+  approvedByName?: string | null;
+};
 
 export type UpdatePettyCashStatusPayload = {
   status: PettyCashStatus;
