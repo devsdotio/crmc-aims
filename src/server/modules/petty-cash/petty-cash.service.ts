@@ -1,9 +1,14 @@
 import type { PettyCashRow } from "@/server/db/schema";
 import type { ActorContext } from "@/server/shared/auth";
+import type { PettyCashStatus } from "@/types/petty-cash";
 import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 
-import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
+import {
+  assertCashReleaseTransition,
+  assertPoAvailableForDisbursement,
+  resolveCashReleaseStatus,
+} from "@/server/modules/purchase-lots/po-disbursement";
 import {
   fallbackDepartments,
   listPettyCashDepartmentLinks,
@@ -325,15 +330,25 @@ export class PettyCashService {
       throw new NotFoundError("Petty cash voucher not found");
     }
 
+    assertCashReleaseTransition(existing.status, status);
+
+    let nextStatus: PettyCashStatus = status;
+    if (status === "disbursed") {
+      nextStatus = await resolveCashReleaseStatus(
+        existing.purchaseOrderNumber,
+        actor.tenantId
+      );
+    }
+
     const updates: Partial<Parameters<PettyCashRepository["update"]>[1]> = {
-      status,
+      status: nextStatus,
     };
 
     if (status === "approved" && existing.status !== "approved") {
       updates.approvedByUserId = actor.userId;
       updates.approvedByName = actor.displayName;
       updates.approvedAt = new Date();
-    } else if (status === "completed" && existing.status !== "completed") {
+    } else if (status === "disbursed") {
       updates.completedByUserId = actor.userId;
       updates.completedByName = actor.displayName;
       updates.completedAt = new Date();
@@ -347,13 +362,13 @@ export class PettyCashService {
     await this.auditLogs.log({
       entityType: "petty_cash",
       entityId: id,
-      action: status,
+      action: nextStatus,
       actorName: actor.displayName,
       actorUserId: actor.userId,
-      notes: `Status changed from ${existing.status.replace("_", " ")} to ${status.replace("_", " ")}`,
+      notes: `Status changed from ${existing.status.replace(/_/g, " ")} to ${nextStatus.replace(/_/g, " ")}`,
       metadata: {
         previousStatus: existing.status,
-        newStatus: status,
+        newStatus: nextStatus,
       },
     });
 

@@ -16,9 +16,12 @@ import { useUpdateVoucherMutation } from "@/features/vouchers/client";
 import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
 import { useToast } from "@/components/providers/toast-context";
 import { useConfirm } from "@/components/providers/confirm-context";
-import { filterMoneyInput } from "@/lib/numeric-input";
+import { formatPhp } from "@/components/projects/format-money";
 import {
+  blankParticular,
   parseParticulars,
+  particularLineAmount,
+  patchParticularLine,
   serializeParticulars,
   sumParticularAmounts,
   type ParticularLineItem,
@@ -48,7 +51,7 @@ type FormState = {
 };
 
 function emptyParticulars(): ParticularLineItem[] {
-  return [{ description: "", amount: "" }];
+  return [blankParticular()];
 }
 
 function particularsEqual(
@@ -58,7 +61,10 @@ function particularsEqual(
   if (a.length !== b.length) return false;
   return a.every(
     (row, i) =>
-      row.description === b[i].description && row.amount === b[i].amount
+      row.description === b[i].description &&
+      row.quantity === b[i].quantity &&
+      row.unitCost === b[i].unitCost &&
+      row.amount === b[i].amount
   );
 }
 
@@ -193,21 +199,17 @@ export function EditVoucherDialog({
     value: string
   ) => {
     setListItems((prev) => {
+      const row = patchParticularLine(prev[index], field, value);
+      if (!row) return prev;
       const next = [...prev];
-      const row = { ...next[index] };
-      if (field === "amount") {
-        row.amount = filterMoneyInput(value) ?? row.amount;
-      } else {
-        row.description = value;
-      }
       next[index] = row;
-      if (field === "amount") syncAmountFromLines(next);
+      if (field !== "description") syncAmountFromLines(next);
       return next;
     });
   };
 
   const handleAddItem = () => {
-    setListItems((prev) => [...prev, { description: "", amount: "" }]);
+    setListItems((prev) => [...prev, blankParticular()]);
   };
 
   const handleRemoveItem = (index: number) => {
@@ -606,20 +608,22 @@ export function EditVoucherDialog({
                 Particulars
               </label>
               <p className="text-[11px] text-text-secondary">
-                Itemized costs. Line totals update the amount when filled.
+                Quantity × unit cost fills each line total and the overall total.
               </p>
               <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
-                <div className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-                  <span className="w-7 text-center">#</span>
+                <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                  <span className="text-center">#</span>
                   <span>Description</span>
-                  <span className="text-right pr-1">Cost</span>
-                  <span className="w-8" />
+                  <span className="text-right">Qty</span>
+                  <span className="text-right">Unit</span>
+                  <span className="text-right">Total</span>
+                  <span />
                 </div>
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                   {listItems.map((item, idx) => (
                     <div
                       key={idx}
-                      className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 items-center"
+                      className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                     >
                       <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
                         {idx + 1}
@@ -636,15 +640,29 @@ export function EditVoucherDialog({
                       />
                       <input
                         type="text"
-                        inputMode="decimal"
-                        value={item.amount}
+                        inputMode="numeric"
+                        value={item.quantity}
                         onChange={(e) =>
-                          handleItemChange(idx, "amount", e.target.value)
+                          handleItemChange(idx, "quantity", e.target.value)
+                        }
+                        disabled={saving}
+                        placeholder="1"
+                        className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
+                      />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.unitCost}
+                        onChange={(e) =>
+                          handleItemChange(idx, "unitCost", e.target.value)
                         }
                         disabled={saving}
                         placeholder="0.00"
                         className="w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-70"
                       />
+                      <span className="px-1 text-xs font-mono font-semibold text-right text-text tabular-nums">
+                        {formatPhp(particularLineAmount(item))}
+                      </span>
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(idx)}
@@ -657,7 +675,7 @@ export function EditVoucherDialog({
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-end pt-1 border-t border-border/50">
+                <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/50">
                   <button
                     type="button"
                     onClick={handleAddItem}
@@ -667,6 +685,14 @@ export function EditVoucherDialog({
                     <Plus className="h-3 w-3" />
                     Add item
                   </button>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                      Overall total
+                    </span>
+                    <span className="font-mono text-sm font-bold text-text tabular-nums">
+                      {formatPhp(sumParticularAmounts(listItems))}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>

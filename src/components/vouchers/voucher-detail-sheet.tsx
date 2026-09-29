@@ -43,6 +43,7 @@ import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
 import {
   parseParticulars,
+  particularLineAmount,
   sumParticularAmounts,
 } from "@/lib/voucher-particulars";
 import { EditVoucherDialog } from "@/components/vouchers/edit-voucher-dialog";
@@ -74,10 +75,17 @@ function getStatusBadge(status: VoucherStatus) {
   switch (status) {
     case "completed":
       return {
-        label: "Completed / Paid",
+        label: "Closed",
         className:
           "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
         icon: CheckCircle2,
+      };
+    case "disbursed":
+      return {
+        label: "Awaiting receipt",
+        className:
+          "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30",
+        icon: Receipt,
       };
     case "approved":
       return {
@@ -280,7 +288,8 @@ export function VoucherDetailSheet({
   const typeInfo = getTypeBadge(voucher.type);
   const StatusIcon = statusInfo.icon;
 
-  const canEdit = voucher.status !== "completed";
+  const canEdit =
+    voucher.status !== "completed" && voucher.status !== "disbursed";
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(voucher.voucherCode);
@@ -291,11 +300,11 @@ export function VoucherDetailSheet({
   const handleStatusChange = async (newStatus: VoucherStatus) => {
     setActionLoading(true);
     try {
-      await updateStatusMutation.mutateAsync({
+      const updated = await updateStatusMutation.mutateAsync({
         id: voucher.id,
         payload: { status: newStatus },
       });
-      toast.success(`Voucher marked as ${newStatus.replace("_", " ")}.`);
+      toast.success(`Voucher marked as ${updated.status.replace(/_/g, " ")}.`);
       onRefresh?.();
       onClose();
     } catch (err: unknown) {
@@ -509,7 +518,9 @@ export function VoucherDetailSheet({
           <div
             className={cn(
               "flex items-center justify-between gap-3 p-2.5 rounded-xl border transition-colors",
-              voucher.status === "completed"
+              voucher.status === "disbursed"
+                ? "border-orange-500/30 bg-orange-500/10 dark:bg-orange-500/15"
+                : voucher.status === "completed"
                 ? "border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/15"
                 : voucher.status === "approved"
                   ? "border-blue-500/30 bg-blue-500/10 dark:bg-blue-500/15"
@@ -524,7 +535,9 @@ export function VoucherDetailSheet({
               <div
                 className={cn(
                   "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 shadow-2xs",
-                  voucher.status === "completed"
+                  voucher.status === "disbursed"
+                    ? "bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30"
+                    : voucher.status === "completed"
                     ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                     : voucher.status === "approved"
                       ? "bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30"
@@ -542,6 +555,9 @@ export function VoucherDetailSheet({
                 {voucher.status === "approved" && (
                   <ShieldCheck className="h-4 w-4" />
                 )}
+                {voucher.status === "disbursed" && (
+                  <Receipt className="h-4 w-4" />
+                )}
                 {voucher.status === "completed" && (
                   <CheckCircle2 className="h-4 w-4" />
                 )}
@@ -555,8 +571,10 @@ export function VoucherDetailSheet({
                     "Pending Approval — Authorize Disbursing Voucher"}
                   {voucher.status === "approved" &&
                     "Approved — Ready for Cashier Disbursement & Payment"}
+                  {voucher.status === "disbursed" &&
+                    "Disbursed — Upload the purchase order receipt to close"}
                   {voucher.status === "completed" &&
-                    "Completed & Paid — Disbursement Finalized"}
+                    "Closed — Receipt filed on the purchase order"}
                   {voucher.status === "cancelled" && "Voucher Void / Cancelled"}
                 </p>
                 <p className="text-[10px] text-text-secondary truncate">
@@ -565,9 +583,13 @@ export function VoucherDetailSheet({
                   {voucher.status === "pending_approval" &&
                     "Custodian review required before releasing funds"}
                   {voucher.status === "approved" &&
-                    "Cashier payment release and liquidation tracking"}
+                    "Cashier payment release comes before the receipt"}
+                  {voucher.status === "disbursed" &&
+                    (voucher.purchaseOrderNumber
+                      ? `Upload the receipt on ${voucher.purchaseOrderNumber}`
+                      : "Waiting for the purchase order receipt")}
                   {voucher.status === "completed" &&
-                    "All financial disbursement transactions concluded"}
+                    "Receipt is on file and this disbursement is closed"}
                   {voucher.status === "cancelled" &&
                     "This disbursement record is permanently closed"}
                 </p>
@@ -622,7 +644,7 @@ export function VoucherDetailSheet({
                   <button
                     type="button"
                     disabled={actionLoading}
-                    onClick={() => handleStatusChange("completed")}
+                    onClick={() => handleStatusChange("disbursed")}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer shadow-xs"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" />
@@ -843,21 +865,24 @@ export function VoucherDetailSheet({
                           <span className="flex-1 font-medium leading-relaxed pt-0.5">
                             {item.description}
                           </span>
-                          {item.amount ? (
+                          {item.quantity && item.unitCost ? (
+                            <span className="shrink-0 font-mono text-[11px] text-text-secondary pt-0.5">
+                              {item.quantity} × {formatPhp(item.unitCost)}
+                            </span>
+                          ) : null}
+                          {particularLineAmount(item) > 0 ? (
                             <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400 pt-0.5">
-                              {formatPhp(item.amount)}
+                              {formatPhp(particularLineAmount(item))}
                             </span>
                           ) : null}
                         </div>
                       ))}
-                      {sumParticularAmounts(particularItems) > 0 ? (
-                        <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
-                          <span>Line items total</span>
-                          <span className="font-mono font-bold text-text">
-                            {formatPhp(sumParticularAmounts(particularItems))}
-                          </span>
-                        </div>
-                      ) : null}
+                      <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
+                        <span>Overall total</span>
+                        <span className="font-mono font-bold text-text">
+                          {formatPhp(sumParticularAmounts(particularItems))}
+                        </span>
+                      </div>
                     </div>
                   ) : !cleanPurpose ? (
                     <div className="rounded-xl border border-dashed border-border bg-bg/50 p-4 text-center">
@@ -1191,9 +1216,10 @@ export function VoucherDetailSheet({
                                 log.action === "created" && "bg-blue-500/10 text-blue-600 border-blue-500/20",
                                 log.action === "updated" && "bg-amber-500/10 text-amber-600 border-amber-500/20",
                                 log.action === "approved" && "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                                log.action === "disbursed" && "bg-orange-500/10 text-orange-600 border-orange-500/20",
                                 log.action === "completed" && "bg-primary/10 text-primary border-primary/20",
                                 log.action === "cancelled" && "bg-rose-500/10 text-rose-600 border-rose-500/20",
-                                !["created", "updated", "approved", "completed", "cancelled"].includes(log.action) && "bg-bg-subtle text-text-secondary border-border"
+                                !["created", "updated", "approved", "disbursed", "completed", "cancelled"].includes(log.action) && "bg-bg-subtle text-text-secondary border-border"
                               )}>
                                 {log.action.replace("_", " ")}
                               </span>
@@ -1310,7 +1336,7 @@ export function VoucherDetailSheet({
                 <button
                   type="button"
                   disabled={actionLoading}
-                  onClick={() => handleStatusChange("completed")}
+                  onClick={() => handleStatusChange("disbursed")}
                   className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 transition-colors disabled:opacity-50 cursor-pointer"
                 >
                   {actionLoading ? (
@@ -1318,7 +1344,7 @@ export function VoucherDetailSheet({
                   ) : (
                     <CheckCircle2 className="h-3.5 w-3.5" />
                   )}
-                  <span>Mark Completed / Paid</span>
+                  <span>Disburse / Pay</span>
                 </button>
               </>
             )}

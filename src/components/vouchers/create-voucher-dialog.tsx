@@ -32,9 +32,11 @@ import { groupLotsByPO, type GroupedPurchaseOrder } from "@/types/grouped-purcha
 import { formatPhp } from "@/components/projects/format-money";
 import type { VoucherType } from "@/types/vouchers";
 import { cn } from "@/lib/utils";
-import { filterMoneyInput } from "@/lib/numeric-input";
 import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 import {
+  blankParticular,
+  patchParticularLine,
+  particularLineAmount,
   serializeParticulars,
   sumParticularAmounts,
   resolveDepartmentsFromPo,
@@ -77,7 +79,7 @@ export function CreateVoucherDialog({
   const [departmentIds, setDepartmentIds] = useState<string[]>([]);
   const [purpose, setPurpose] = useState("");
   const [listItems, setListItems] = useState<ParticularLineItem[]>([
-    { description: "", amount: "" },
+    blankParticular(),
   ]);
   const [checkNumber, setCheckNumber] = useState("");
   const [isLegacy, setIsLegacy] = useState(false);
@@ -140,7 +142,7 @@ export function CreateVoucherDialog({
       setDepartmentId(null);
       setDepartmentIds([]);
       setPurpose("");
-      setListItems([{ description: "", amount: "" }]);
+      setListItems([blankParticular()]);
       setCheckNumber("");
       setIsLegacy(false);
       setPoSearch("");
@@ -198,6 +200,8 @@ export function CreateVoucherDialog({
         : [
             {
               description: `Items from Purchase Order #${po.poNumber}`,
+              quantity: "1",
+              unitCost: fallbackAmount,
               amount: fallbackAmount,
             },
           ]
@@ -258,7 +262,7 @@ export function CreateVoucherDialog({
     setPayeeName("");
     setAmount("");
     setPurpose("");
-    setListItems([{ description: "", amount: "" }]);
+    setListItems([blankParticular()]);
     setSupplierId(null);
     setSupplierName("");
     setDepartmentId(null);
@@ -283,11 +287,11 @@ export function CreateVoucherDialog({
   ) => {
     if (isPoLinked) return;
     setListItems((prev) => {
+      const nextRow = patchParticularLine(prev[index], field, val);
+      if (!nextRow) return prev;
       const updated = [...prev];
-      const nextVal =
-        field === "amount" ? (filterMoneyInput(val) ?? prev[index].amount) : val;
-      updated[index] = { ...updated[index], [field]: nextVal };
-      if (field === "amount") {
+      updated[index] = nextRow;
+      if (field !== "description") {
         syncAmountFromLines(updated);
       }
       return updated;
@@ -296,13 +300,13 @@ export function CreateVoucherDialog({
 
   const handleAddItem = () => {
     if (isPoLinked) return;
-    setListItems((prev) => [...prev, { description: "", amount: "" }]);
+    setListItems((prev) => [...prev, blankParticular()]);
   };
 
   const handleRemoveItem = (index: number) => {
     if (isPoLinked) return;
     setListItems((prev) => {
-      if (prev.length <= 1) return [{ description: "", amount: "" }];
+      if (prev.length <= 1) return [blankParticular()];
       const next = prev.filter((_, i) => i !== index);
       syncAmountFromLines(next);
       return next;
@@ -952,22 +956,24 @@ export function CreateVoucherDialog({
                       <p className="text-[11px] text-text-secondary">
                         {isPoLinked
                           ? "Line items are locked to the linked purchase order."
-                          : "Itemized costs. Totals update the amount when filled."}
+                          : "Quantity × unit cost fills each line total and the overall total."}
                       </p>
 
                       <div className="rounded-lg border border-border bg-bg-subtle/30 p-2.5 space-y-2">
-                        <div className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-                          <span className="w-7 text-center">#</span>
+                        <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 px-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                          <span className="text-center">#</span>
                           <span>Description</span>
-                          <span className="text-right pr-1">Cost</span>
-                          <span className="w-8" />
+                          <span className="text-right">Qty</span>
+                          <span className="text-right">Unit</span>
+                          <span className="text-right">Total</span>
+                          <span />
                         </div>
 
                         <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                           {listItems.map((item, idx) => (
                             <div
                               key={idx}
-                              className="grid grid-cols-[auto_minmax(0,1fr)_6.5rem_auto] gap-2 items-center"
+                              className="grid grid-cols-[1.75rem_minmax(0,1fr)_3rem_5.25rem_5.25rem_1.75rem] gap-2 items-center"
                             >
                               <span className="flex items-center justify-center h-7 w-7 rounded-lg bg-bg border border-border text-xs font-mono font-semibold text-text-secondary shrink-0">
                                 {idx + 1}
@@ -989,10 +995,25 @@ export function CreateVoucherDialog({
                               />
                               <input
                                 type="text"
-                                inputMode="decimal"
-                                value={item.amount}
+                                inputMode="numeric"
+                                value={item.quantity}
                                 onChange={(e) =>
-                                  handleItemChange(idx, "amount", e.target.value)
+                                  handleItemChange(idx, "quantity", e.target.value)
+                                }
+                                placeholder="1"
+                                readOnly={isPoLinked}
+                                disabled={isPoLinked}
+                                className={cn(
+                                  "w-full rounded-lg border border-border bg-bg px-2 py-1.5 text-xs font-mono text-right text-text placeholder:text-text-secondary/50 focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                                  isPoLinked && "cursor-not-allowed bg-bg-subtle"
+                                )}
+                              />
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={item.unitCost}
+                                onChange={(e) =>
+                                  handleItemChange(idx, "unitCost", e.target.value)
                                 }
                                 placeholder="0.00"
                                 readOnly={isPoLinked}
@@ -1002,6 +1023,9 @@ export function CreateVoucherDialog({
                                   isPoLinked && "cursor-not-allowed bg-bg-subtle"
                                 )}
                               />
+                              <span className="px-1 text-xs font-mono font-semibold text-right text-text tabular-nums">
+                                {formatPhp(particularLineAmount(item))}
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveItem(idx)}
@@ -1010,7 +1034,7 @@ export function CreateVoucherDialog({
                                   (listItems.length <= 1 &&
                                     idx === 0 &&
                                     !item.description &&
-                                    !item.amount)
+                                    !item.unitCost)
                                 }
                                 className="p-1.5 text-text-secondary hover:text-red-500 rounded-lg hover:bg-bg transition-colors cursor-pointer disabled:opacity-30 disabled:hover:text-text-secondary disabled:cursor-not-allowed"
                                 title={isPoLinked ? "Locked to PO line items" : "Remove item"}
@@ -1021,30 +1045,31 @@ export function CreateVoucherDialog({
                           ))}
                         </div>
 
-                        <div className="flex items-center justify-between pt-1 border-t border-border/50">
-                          <span className="text-[11px] text-text-secondary">
-                            {isPoLinked
-                              ? "Particulars are linked to the selected PO line items."
-                              : (
-                                <>
-                                  Line costs update the total amount when provided. Press{" "}
-                                  <kbd className="px-1 py-0.5 text-[10px] font-mono bg-bg rounded border border-border">
-                                    Enter
-                                  </kbd>{" "}
-                                  to add a row.
-                                </>
-                              )}
+                        <div className="flex items-center justify-between gap-3 pt-1 border-t border-border/50">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {!isPoLinked ? (
+                              <button
+                                type="button"
+                                onClick={handleAddItem}
+                                className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer shadow-2xs shrink-0"
+                              >
+                                <Plus className="h-3 w-3" />
+                                Add Item
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-text-secondary">
+                                Particulars are linked to the selected PO line items.
+                              </span>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-right">
+                            <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+                              Overall total
+                            </span>
+                            <span className="font-mono text-sm font-bold text-text tabular-nums">
+                              {formatPhp(sumParticularAmounts(listItems))}
+                            </span>
                           </span>
-                          {!isPoLinked ? (
-                            <button
-                              type="button"
-                              onClick={handleAddItem}
-                              className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-text bg-bg hover:bg-bg-subtle border border-border rounded-lg transition-colors cursor-pointer shadow-2xs"
-                            >
-                              <Plus className="h-3 w-3" />
-                              Add Item
-                            </button>
-                          ) : null}
                         </div>
                       </div>
                     </div>
