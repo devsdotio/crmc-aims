@@ -339,6 +339,9 @@ export class MaintenanceLogService {
           ...(input.scheduledDate !== undefined
             ? { scheduledDate: input.scheduledDate }
             : {}),
+          ...(input.assignedToName !== undefined
+            ? { assignedToName: input.assignedToName }
+            : {}),
         },
         tx,
         actor.tenantId
@@ -376,6 +379,9 @@ export class MaintenanceLogService {
                   : {}),
                 ...(input.scheduledDate !== undefined
                   ? { scheduledDate: input.scheduledDate }
+                  : {}),
+                ...(input.assignedToName !== undefined
+                  ? { assignedToName: input.assignedToName }
                   : {}),
               },
             },

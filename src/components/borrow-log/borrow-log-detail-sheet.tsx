@@ -21,9 +21,11 @@ import {
   Undo2,
   Loader2,
   Trash2,
+  Edit3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BorrowLogRecord } from "@/features/borrow-log/client";
+import { useUpdateAssigneeMutation } from "@/features/borrow-log/client";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { OverdueBadge } from "@/components/ui/overdue-badge";
 import { LoadingState } from "@/components/providers/loading-context";
@@ -51,11 +53,15 @@ export function BorrowLogDetailSheet({
   canOperate,
 }: BorrowLogDetailSheetProps) {
   const { getCategoryStyle } = useCategoryStyleMap();
+  const updateAssignee = useUpdateAssigneeMutation();
   const [copied, setCopied] = useState(false);
   const [isOverdue, setIsOverdue] = useState(false);
   const [showVoidForm, setShowVoidForm] = useState(false);
   const [voidReason, setVoidReason] = useState("");
   const [isVoiding, setIsVoiding] = useState(false);
+  const [editingAssignee, setEditingAssignee] = useState(false);
+  const [assigneeValue, setAssigneeValue] = useState("");
+  const [assigneeError, setAssigneeError] = useState("");
 
   useEffect(() => {
     if (!isOpen || !record?.dueDate) {
@@ -70,8 +76,16 @@ export function BorrowLogDetailSheet({
       setShowVoidForm(false);
       setVoidReason("");
       setIsVoiding(false);
+      setEditingAssignee(false);
+      setAssigneeError("");
     }
   }, [isOpen, record?.id]);
+
+  useEffect(() => {
+    if (!editingAssignee) {
+      setAssigneeValue(record?.borrowerName?.trim() || "");
+    }
+  }, [record?.borrowerName, editingAssignee]);
 
   if (!isOpen) return null;
 
@@ -266,14 +280,134 @@ export function BorrowLogDetailSheet({
               </div>
 
               <div className="space-y-1 rounded-md border border-amber-500/25 bg-amber-500/5 px-2.5 py-2">
-                <span className="text-text-secondary text-[11px] block uppercase tracking-wide">
-                  {record.custodyKind === "assignment"
-                    ? "Assign to"
-                    : "Received by"}
-                </span>
-                <p className="font-bold text-text">
-                  {record.borrowerName || "—"}
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-text-secondary text-[11px] block uppercase tracking-wide">
+                    {record.custodyKind === "assignment"
+                      ? "Assign to"
+                      : "Received by"}
+                  </span>
+                  {canOperate &&
+                    (record.status === "active" || record.status === "overdue") &&
+                    !editingAssignee && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssigneeValue(record.borrowerName?.trim() || "");
+                          setEditingAssignee(true);
+                          setAssigneeError("");
+                        }}
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-accent hover:underline cursor-pointer"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                        {record.borrowerName?.trim() ? "Edit" : "Set person"}
+                      </button>
+                    )}
+                </div>
+                {editingAssignee ? (
+                  <div className="space-y-1.5 pt-1">
+                    <input
+                      type="text"
+                      value={assigneeValue}
+                      onChange={(e) => {
+                        setAssigneeValue(e.target.value);
+                        if (assigneeError) setAssigneeError("");
+                      }}
+                      disabled={updateAssignee.isPending}
+                      placeholder="Person name"
+                      className="w-full h-8 px-2 text-xs bg-bg border border-border rounded-md text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void (async () => {
+                            const trimmed = assigneeValue.trim();
+                            if (!trimmed) {
+                              setAssigneeError("Enter the person name.");
+                              return;
+                            }
+                            try {
+                              await updateAssignee.mutateAsync({
+                                id: record.id,
+                                payload: { assignedToName: trimmed },
+                              });
+                              setEditingAssignee(false);
+                            } catch (err) {
+                              setAssigneeError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to update assignee."
+                              );
+                            }
+                          })();
+                        }
+                        if (e.key === "Escape") {
+                          setEditingAssignee(false);
+                          setAssigneeError("");
+                        }
+                      }}
+                    />
+                    {assigneeError && (
+                      <p className="text-[10px] font-semibold text-status-outofservice-text">
+                        {assigneeError}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void (async () => {
+                            const trimmed = assigneeValue.trim();
+                            if (!trimmed) {
+                              setAssigneeError("Enter the person name.");
+                              return;
+                            }
+                            try {
+                              await updateAssignee.mutateAsync({
+                                id: record.id,
+                                payload: { assignedToName: trimmed },
+                              });
+                              setEditingAssignee(false);
+                            } catch (err) {
+                              setAssigneeError(
+                                err instanceof Error
+                                  ? err.message
+                                  : "Failed to update assignee."
+                              );
+                            }
+                          })();
+                        }}
+                        disabled={updateAssignee.isPending}
+                        className="inline-flex items-center gap-1 h-7 px-2 text-[11px] font-bold rounded-md bg-primary text-primary-foreground hover:opacity-90 cursor-pointer disabled:opacity-50"
+                      >
+                        {updateAssignee.isPending ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Check className="h-3 w-3" />
+                        )}
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingAssignee(false);
+                          setAssigneeError("");
+                        }}
+                        disabled={updateAssignee.isPending}
+                        className="inline-flex items-center h-7 px-2 text-[11px] font-semibold rounded-md border border-border text-text-secondary hover:text-text cursor-pointer disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="font-bold text-text">
+                    {record.borrowerName?.trim() || (
+                      <span className="text-text-secondary font-medium italic">
+                        No person recorded
+                      </span>
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">

@@ -24,6 +24,7 @@ import {
   type ReleaseBorrowPayload,
   type ReturnBorrowPayload,
   type VoidBorrowPayload,
+  type UpdateAssigneePayload,
 } from "./borrow-log-api";
 import { borrowLogQueryKeys } from "./query-keys";
 
@@ -114,6 +115,20 @@ export function useVoidBorrowMutation(): UseMutationResult<
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, payload }) => borrowLogApi.voidLog(id, payload ?? {}),
+    onSettled: () => {
+      void invalidateDomains(qc, CUSTODY_DOMAINS);
+    },
+  });
+}
+
+export function useUpdateAssigneeMutation(): UseMutationResult<
+  BorrowLogRecord,
+  Error,
+  { id: string; payload: UpdateAssigneePayload }
+> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }) => borrowLogApi.updateAssignee(id, payload),
     onSettled: () => {
       void invalidateDomains(qc, CUSTODY_DOMAINS);
     },

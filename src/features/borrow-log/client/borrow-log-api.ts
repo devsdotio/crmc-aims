@@ -27,6 +27,10 @@ export type VoidBorrowPayload = {
   reason?: string;
 };
 
+export type UpdateAssigneePayload = {
+  assignedToName: string;
+};
+
 export type BorrowLogListParams = {
   status?: BorrowLogRecord["status"] | "closed";
   department?: string;
@@ -107,6 +111,17 @@ export const borrowLogApi = {
     const res = await fetchJson<ApiResponse<BorrowLogRecord>>(
       `/api/borrow-log/${id}/void`,
       { method: "POST", body: JSON.stringify(payload) }
+    );
+    return res.data;
+  },
+
+  async updateAssignee(
+    id: string,
+    payload: UpdateAssigneePayload
+  ): Promise<BorrowLogRecord> {
+    const res = await fetchJson<ApiResponse<BorrowLogRecord>>(
+      `/api/borrow-log/${id}`,
+      { method: "PATCH", body: JSON.stringify(payload) }
     );
     return res.data;
   },

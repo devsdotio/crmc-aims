@@ -53,6 +53,16 @@ export class BorrowLogController {
     }
   }
 
+  async updateAssignee(request: NextRequest | Request, id: string) {
+    try {
+      const session = await requireAssetOperator();
+      const body = await request.json();
+      return ok(await this.service.updateAssignee(id, body, session.actor));
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
   async release(request: NextRequest | Request) {
     try {
       const session = await requireAssetOperator();

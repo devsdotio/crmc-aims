@@ -110,13 +110,22 @@ export const updateOpenMaintenanceSchema = z
         if (v === null || v === "") return null;
         return v;
       }),
+    assignedToName: z
+      .union([z.string().trim().max(255), z.literal(""), z.null()])
+      .optional()
+      .transform((v) => {
+        if (v === undefined) return undefined;
+        if (v === null || v === "") return null;
+        return v;
+      }),
   })
   .refine(
     (data) =>
       data.workNotes !== undefined ||
       data.repairCost !== undefined ||
       data.repairParts !== undefined ||
-      data.scheduledDate !== undefined,
+      data.scheduledDate !== undefined ||
+      data.assignedToName !== undefined,
     { message: "Provide at least one field to update." }
   )
   .transform((data) => {
@@ -141,6 +150,9 @@ export const updateOpenMaintenanceSchema = z
       ...(repairCost !== undefined ? { repairCost } : {}),
       ...(data.scheduledDate !== undefined
         ? { scheduledDate: data.scheduledDate }
+        : {}),
+      ...(data.assignedToName !== undefined
+        ? { assignedToName: data.assignedToName }
         : {}),
     };
   });
