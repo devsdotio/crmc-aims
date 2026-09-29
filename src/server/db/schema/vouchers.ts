@@ -31,12 +31,15 @@ export const voucherTypeEnum = pgEnum("voucher_type", [
 
 /**
  * Voucher workflow statuses:
- * draft -> pending_approval -> approved -> completed (or cancelled)
+ * draft -> pending_approval -> approved -> disbursed -> completed (or cancelled)
+ * `disbursed` is cash released, waiting for the linked PO receipt.
+ * `completed` is that receipt filed. Claims with no PO close on disburse.
  */
 export const voucherStatusEnum = pgEnum("voucher_status", [
   "draft",
   "pending_approval",
   "approved",
+  "disbursed",
   "completed",
   "cancelled",
 ]);
@@ -85,7 +88,7 @@ export const vouchers = pgTable(
 
     /**
      * Itemized particulars as JSON:
-     * [{ "description": "...", "amount": "123.45" }, ...]
+     * [{ "description": "...", "quantity": "2", "unitCost": "50.00", "amount": "100.00" }, ...]
      * Legacy plain-text values are still accepted and parsed on read.
      */
     particulars: text("particulars").notNull().default(""),

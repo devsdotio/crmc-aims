@@ -28,8 +28,10 @@ const PO_DOMAINS = [
   "assets",
   "auditLogs",
   "dashboard",
+  "pettyCash",
   "projects",
-] as const;
+  "vouchers",
+] as const
 
 export function usePurchaseLotsQuery(params?: {
   consumableId?: string;

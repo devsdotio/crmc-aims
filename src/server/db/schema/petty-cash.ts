@@ -18,12 +18,15 @@ import { suppliers } from "./suppliers";
 
 /**
  * Petty Cash Voucher workflow statuses:
- * draft -> pending_approval -> approved -> completed (disbursed) (or cancelled)
+ * draft -> pending_approval -> approved -> disbursed -> completed (or cancelled)
+ * `disbursed` is cash released, waiting for the linked PO receipt.
+ * `completed` is that receipt filed. Claims with no PO close on disburse.
  */
 export const pettyCashStatusEnum = pgEnum("petty_cash_status", [
   "draft",
   "pending_approval",
   "approved",
+  "disbursed",
   "completed",
   "cancelled",
 ]);
@@ -61,7 +64,7 @@ export const pettyCashVouchers = pgTable(
 
     /**
      * Itemized particulars as JSON:
-     * [{ "description": "...", "amount": "123.45" }, ...]
+     * [{ "description": "...", "quantity": "2", "unitCost": "50.00", "amount": "100.00" }, ...]
      * Legacy plain-text values are still accepted and parsed on read.
      */
     particulars: text("particulars").notNull().default(""),

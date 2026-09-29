@@ -11,7 +11,9 @@ import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 import { departmentQueryKeys } from "@/features/departments/client/query-keys";
 import { maintenanceQueryKeys } from "@/features/maintenance-logs/client/query-keys";
 import { projectQueryKeys } from "@/features/projects/client/query-keys";
+import { pettyCashQueryKeys } from "@/features/petty-cash/client/query-keys";
 import { purchaseLotQueryKeys } from "@/features/purchase-lots/client/query-keys";
+import { voucherQueryKeys } from "@/features/vouchers/client/query-keys";
 import { stockMovementQueryKeys } from "@/features/stock-movements/client/query-keys";
 import { supplierQueryKeys } from "@/features/suppliers/client/query-keys";
 import { userQueryKeys } from "@/features/users/client/query-keys";
@@ -34,8 +36,10 @@ export const CACHE_DOMAIN_KEYS = {
   dashboard: dashboardQueryKeys.all,
   departments: departmentQueryKeys.all,
   maintenance: maintenanceQueryKeys.all,
+  pettyCash: pettyCashQueryKeys.all,
   projects: projectQueryKeys.all,
   purchaseLots: purchaseLotQueryKeys.all,
+  vouchers: voucherQueryKeys.all,
   stockMovements: stockMovementQueryKeys.all,
   suppliers: supplierQueryKeys.all,
   users: userQueryKeys.all,

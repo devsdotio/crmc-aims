@@ -35,9 +35,15 @@ function getStatusBadge(status: PettyCashStatus) {
   switch (status) {
     case "completed":
       return {
-        label: "Disbursed / Done",
+        label: "Closed",
         className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
         icon: CheckCircle2,
+      };
+    case "disbursed":
+      return {
+        label: "Awaiting receipt",
+        className: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20",
+        icon: Receipt,
       };
     case "approved":
       return {

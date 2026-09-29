@@ -2,6 +2,7 @@ export type PettyCashStatus =
   | "draft"
   | "pending_approval"
   | "approved"
+  | "disbursed"
   | "completed"
   | "cancelled";
 

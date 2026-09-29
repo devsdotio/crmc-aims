@@ -30,6 +30,7 @@ import { hasPoJustification } from "@/lib/po-purpose";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import {
+  assertPoReceiptUploadAllowed,
   findActivePoDisbursement,
   listActivePoDisbursements,
 } from "./po-disbursement";
@@ -155,6 +156,27 @@ function parseDraftItem(raw: unknown): DraftItemSpecs | null {
     location: typeof d.location === "string" ? d.location : null,
     assignmentType,
   };
+}
+
+/**
+ * Materials purchase lots must not keep a supplier id.
+ * Supplier history lists every lot with purchase_lots.supplier_id, so a stored id
+ * makes a materials PO appear on that supplier. Supply and asset lots keep the id.
+ * A lot is material when classification is material, the linked consumable is material,
+ * or projectId is set (project procurement is materials-only).
+ */
+export function supplierLinkForMaterialLot(input: {
+  supplierId: string | null | undefined;
+  classification?: "supply" | "material" | null;
+  consumableClassification?: string | null;
+  projectId?: string | null;
+}): string | null {
+  const isMaterial =
+    input.classification === "material" ||
+    input.consumableClassification === "material" ||
+    Boolean(input.projectId);
+  if (isMaterial) return null;
+  return input.supplierId ?? null;
 }
 
 export function parseNotesMetadata(rawNotes?: string | null): {
@@ -450,7 +472,47 @@ export class PurchaseLotService {
     const filters = listPurchaseLotsQuerySchema.parse(rawQuery ?? {});
     // Flat list — never strips opening-balance / initial-stock lots.
     // PO index UIs exclude those via groupLotsByPO({ excludeInitialStock: true }).
-    const rows = await this.repo.list(filters, undefined, actorTenantId);
+    let rows = await this.repo.list(filters, undefined, actorTenantId);
+    if (filters.supplierId && rows.length > 0) {
+      const consumableIds = [
+        ...new Set(
+          rows
+            .map((row) => row.consumableId)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ];
+      const classificationByConsumableId = new Map<string, string>();
+      if (consumableIds.length > 0) {
+        const linked = await getDb()
+          .select({
+            id: consumables.id,
+            classification: consumables.classification,
+          })
+          .from(consumables)
+          .where(
+            and(
+              inArray(consumables.id, consumableIds),
+              byTenantId(consumables.tenantId, actorTenantId)
+            )
+          );
+        for (const linkedRow of linked) {
+          classificationByConsumableId.set(linkedRow.id, linkedRow.classification);
+        }
+      }
+      rows = rows.filter((row) => {
+        const meta = parseNotesMetadata(row.notes);
+        return (
+          supplierLinkForMaterialLot({
+            supplierId: row.supplierId,
+            classification: meta.draftItem?.classification ?? null,
+            consumableClassification: row.consumableId
+              ? classificationByConsumableId.get(row.consumableId) ?? null
+              : null,
+            projectId: row.projectId,
+          }) != null
+        );
+      });
+    }
     let dtos = rows.map(toPurchaseLotDTO);
 
     const statusSet =
@@ -520,6 +582,11 @@ export class PurchaseLotService {
     actor: ActorContext
   ): Promise<PurchaseLotDTO[]> {
     const body: CreatePurchaseOrderInput = createPurchaseOrderSchema.parse(rawBody);
+    if (body.receiptUrl?.trim()) {
+      throw new BadRequestError(
+        "Receipt upload is locked until this purchase order is disbursed on a voucher or petty cash record."
+      );
+    }
     const poNumber = body.poNumber?.trim() || generateOperationalCode("PO");
 
     if (body.poNumber?.trim()) {
@@ -574,7 +641,7 @@ export class PurchaseLotService {
 
       let departmentId = body.departmentId ?? null;
       let departmentName = body.departmentName?.trim() || null;
-      let poDepartments: Array<{ id: string; name: string }> = [];
+      const poDepartments: Array<{ id: string; name: string }> = [];
 
       if (isProjectPo && requestedDepartmentIds.length < 1) {
         throw new BadRequestError(
@@ -638,6 +705,7 @@ export class PurchaseLotService {
         let itemName = item.name.trim();
         /** Deferred catalog specs when filing a new item before delivery. */
         let draftItem: DraftItemSpecs | null = null;
+        let linkedConsumableClassification: string | null = null;
 
         const targetProjectId = item.projectId || body.projectId || null;
         const targetProjectName = item.projectName || body.projectName || null;
@@ -694,6 +762,9 @@ export class PurchaseLotService {
                   )
                 );
             }
+            linkedConsumableClassification = targetProjectId
+              ? "material"
+              : existing.classification;
 
             // If created directly in "delivered" state
             if (initialStatus === "delivered") {
@@ -986,6 +1057,16 @@ export class PurchaseLotService {
           orderedAt,
           deliveredAt,
           draftItem,
+        });
+
+        lineSupplierId = supplierLinkForMaterialLot({
+          supplierId: lineSupplierId,
+          classification:
+            item.itemType === "consumable"
+              ? item.classification || draftItem?.classification || null
+              : null,
+          consumableClassification: linkedConsumableClassification,
+          projectId: targetProjectId,
         });
 
         const row = await this.repo.create(
@@ -1466,6 +1547,17 @@ export class PurchaseLotService {
           ? body.receiptUrl
           : (lot.receiptUrl || currentMeta.receiptUrl || null);
 
+      if (body.receiptUrl !== undefined) {
+        await assertPoReceiptUploadAllowed({
+          poNumber: derivePONumber(lot.lotCode, lot.reference),
+          previousReceipt: lot.receiptUrl || currentMeta.receiptUrl,
+          nextReceipt: nextReceiptUrl,
+          tenantId: actor.tenantId,
+          actor,
+          session,
+        });
+      }
+
       const cancellationReason =
         nextStatus === "cancelled"
           ? (body.cancellationReason || body.notes || currentMeta.cancellationReason || "").trim() ||
@@ -1602,9 +1694,29 @@ export class PurchaseLotService {
       }
 
       const currentMeta = parseNotesMetadata(lot.notes);
+      let linkedConsumableClassification: string | null = null;
+      if (lot.consumableId) {
+        const [linkedConsumable] = await db
+          .select({ classification: consumables.classification })
+          .from(consumables)
+          .where(
+            and(
+              eq(consumables.id, lot.consumableId),
+              byTenantId(consumables.tenantId, actor.tenantId)
+            )
+          )
+          .limit(1);
+        linkedConsumableClassification = linkedConsumable?.classification ?? null;
+      }
       let supplierName = lot.supplierName;
-      const supplierId =
+      const requestedSupplierId =
         body.supplierId !== undefined ? body.supplierId : lot.supplierId;
+      const supplierId = supplierLinkForMaterialLot({
+        supplierId: requestedSupplierId,
+        classification: currentMeta.draftItem?.classification ?? null,
+        consumableClassification: linkedConsumableClassification,
+        projectId: lot.projectId,
+      });
 
       if (supplierId && supplierId !== lot.supplierId) {
         const sup = await this.suppliers.findById(
@@ -1613,26 +1725,32 @@ export class PurchaseLotService {
           actor.tenantId
         );
         if (sup) supplierName = sup.name;
-      } else if (body.supplierName !== undefined) {
+      } else if (supplierId && body.supplierName !== undefined) {
         supplierName = body.supplierName;
-      }
-
-      if (
-        body.receiptUrl &&
-        (currentMeta.status === "pending_approval" || currentMeta.status === "cancelled")
-      ) {
-        throw new BadRequestError(
-          `Receipt upload is disabled while purchase order status is ${currentMeta.status.replace(
-            "_",
-            " "
-          )}. Receipts can only be attached once the purchase order is approved.`
-        );
       }
 
       const nextReceiptUrl =
         body.receiptUrl !== undefined
           ? body.receiptUrl
           : (lot.receiptUrl || currentMeta.receiptUrl || null);
+
+      if (body.receiptUrl !== undefined) {
+        await assertPoReceiptUploadAllowed({
+          poNumber: derivePONumber(
+            lot.lotCode,
+            body.poNumber !== undefined
+              ? body.poNumber
+              : body.reference !== undefined
+                ? body.reference
+                : lot.reference
+          ),
+          previousReceipt: lot.receiptUrl || currentMeta.receiptUrl,
+          nextReceipt: nextReceiptUrl,
+          tenantId: actor.tenantId,
+          actor,
+          session,
+        });
+      }
 
       const updatedNotes = serializeNotesMetadata({
         notes: body.notes !== undefined ? body.notes : currentMeta.cleanNotes,
@@ -1953,6 +2071,7 @@ export class PurchaseLotService {
         let itemCode = "";
         let itemName = item.name.trim();
         let draftItem: DraftItemSpecs | null = null;
+        let linkedConsumableClassification: string | null = null;
 
         const targetProjectId = item.projectId || anchor.projectId || null;
         const targetProjectName = item.projectName || anchor.projectName || null;
@@ -2008,6 +2127,9 @@ export class PurchaseLotService {
                   )
                 );
             }
+            linkedConsumableClassification = targetProjectId
+              ? "material"
+              : existing.classification;
           } else {
             itemCode = generateOperationalCode("ITM");
             consumableId = null;
@@ -2073,6 +2195,16 @@ export class PurchaseLotService {
           orderedAt: null,
           deliveredAt: null,
           draftItem,
+        });
+
+        lineSupplierId = supplierLinkForMaterialLot({
+          supplierId: lineSupplierId,
+          classification:
+            item.itemType === "consumable"
+              ? item.classification || draftItem?.classification || null
+              : null,
+          consumableClassification: linkedConsumableClassification,
+          projectId: targetProjectId,
         });
 
         const row = await this.repo.create(

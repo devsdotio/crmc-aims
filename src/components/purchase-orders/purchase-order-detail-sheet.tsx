@@ -122,7 +122,6 @@ export function PurchaseOrderDetailSheet({
   const [statusNote, setStatusNote] = useState("");
   /** Per-line-item received qty keyed by lot id (consumables only). */
   const [receivedQuantities, setReceivedQuantities] = useState<Record<string, string>>({});
-  const [deliveryReceiptUrl, setDeliveryReceiptUrl] = useState<string | null>(null);
   const [showStatusModal, setShowStatusModal] = useState<PurchaseOrderStatus | null>(null);
   const [isEditingPoNumber, setIsEditingPoNumber] = useState(false);
   const [editablePoNumber, setEditablePoNumber] = useState("");
@@ -277,7 +276,6 @@ export function PurchaseOrderDetailSheet({
       initial[li.id] = String(li.orderedQuantity ?? li.quantity);
     }
     setReceivedQuantities(initial);
-    setDeliveryReceiptUrl(lot.receiptUrl ?? null);
     setShowStatusModal("delivered");
   };
 
@@ -285,7 +283,6 @@ export function PurchaseOrderDetailSheet({
     setShowStatusModal(null);
     setStatusNote("");
     setReceivedQuantities({});
-    setDeliveryReceiptUrl(null);
   };
 
   const handleCopyCode = () => {
@@ -332,10 +329,12 @@ export function PurchaseOrderDetailSheet({
       : `Multiple Dealers (${uniqueDealers.length})`;
 
   const currentStepIdx = WORKFLOW_STEPS.findIndex((s) => s.status === effectiveStatus);
-  const isApproved =
-    effectiveStatus === "approved" ||
-    effectiveStatus === "ordered" ||
-    effectiveStatus === "delivered";
+  const receiptUnlocked =
+    lot.disbursement?.status === "disbursed" ||
+    lot.disbursement?.status === "completed";
+  const receiptLockReason = lot.disbursement
+    ? `Receipt upload is locked until ${lot.disbursement.code} is disbursed.`
+    : "Receipt upload is locked until this purchase order is disbursed on a voucher or petty cash record.";
 
   const matchedUser =
     users.find(
@@ -467,7 +466,6 @@ export function PurchaseOrderDetailSheet({
               nextStatus === "cancelled" ? statusNote.trim() : undefined,
             receivedQuantity:
               nextStatus === "delivered" ? parsedByLotId.get(li.id) : undefined,
-            receiptUrl: deliveryReceiptUrl || undefined,
           },
         });
       }
@@ -1706,9 +1704,9 @@ export function PurchaseOrderDetailSheet({
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                       Receipt Attached
                     </span>
-                  ) : !isApproved ? (
+                  ) : !receiptUnlocked ? (
                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                      Upload Disabled ({lot.status === "cancelled" ? "Cancelled" : "Pending Approval"})
+                      Upload after disbursement
                     </span>
                   ) : (
                     <span className="text-[10px] text-text-secondary bg-bg-subtle px-2 py-0.5 rounded-full border border-border">
@@ -1717,13 +1715,13 @@ export function PurchaseOrderDetailSheet({
                   )}
                 </div>
 
-                {!isApproved && (
+                {!receiptUnlocked && (
                   <div className="flex items-start gap-2.5 p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300 text-xs">
                     <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                     <div className="space-y-0.5">
                       <p className="font-semibold">Receipt Upload Disabled</p>
                       <p className="text-[11px] text-amber-700 dark:text-amber-400/90 leading-relaxed">
-                        Receipt upload is disabled while this Purchase Order is {lot.status === "cancelled" ? "cancelled" : "pending approval"}. Official vendor receipts and sales invoices can only be uploaded once the purchase order is approved.
+                        {receiptLockReason} Cash is released on the voucher or petty cash record first.
                       </p>
                     </div>
                   </div>
@@ -1738,14 +1736,8 @@ export function PurchaseOrderDetailSheet({
                   poNumber={lot.poNumber || lot.lotCode}
                   lotId={lot.id}
                   canOperate={canOperate}
-                  disabled={!isApproved}
-                  disabledReason={
-                    !isApproved
-                      ? lot.status === "cancelled"
-                        ? "Receipt upload is disabled because this Purchase Order is cancelled."
-                        : "Receipt upload is disabled until this Purchase Order is approved."
-                      : undefined
-                  }
+                  disabled={!receiptUnlocked}
+                  disabledReason={!receiptUnlocked ? receiptLockReason : undefined}
                   onUploadSuccess={async (url) => {
                     await updatePOMutation.mutateAsync({
                       id: lot.id,
@@ -2138,25 +2130,6 @@ export function PurchaseOrderDetailSheet({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-text flex items-center justify-between">
-                    <span>Attach Receipt Picture (Optional)</span>
-                    {(deliveryReceiptUrl || lot.receiptUrl) && (
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-                        Attached ✓
-                      </span>
-                    )}
-                  </label>
-                  <POReceiptUploader
-                    receiptUrl={deliveryReceiptUrl || lot.receiptUrl}
-                    poNumber={lot.poNumber || lot.lotCode}
-                    lotId={lot.id}
-                    canOperate={canOperate}
-                    compact
-                    onUploadSuccess={(url) => setDeliveryReceiptUrl(url)}
-                    onRemove={() => setDeliveryReceiptUrl(null)}
-                  />
-                </div>
               </>
             );
           })()}

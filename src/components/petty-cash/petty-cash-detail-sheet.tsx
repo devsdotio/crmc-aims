@@ -41,9 +41,11 @@ import { formatPhp } from "@/components/projects/format-money";
 import { useToast } from "@/components/providers/toast-context";
 import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
-import { filterMoneyInput } from "@/lib/numeric-input";
 import {
+  blankParticular,
   parseParticulars,
+  particularLineAmount,
+  patchParticularLine,
   serializeParticulars,
   sumParticularAmounts,
   type ParticularLineItem,
@@ -61,9 +63,15 @@ function getStatusBadge(status: PettyCashStatus) {
   switch (status) {
     case "completed":
       return {
-        label: "Disbursed / Done",
+        label: "Closed",
         className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
         icon: CheckCircle2,
+      };
+    case "disbursed":
+      return {
+        label: "Awaiting receipt",
+        className: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20",
+        icon: Receipt,
       };
     case "approved":
       return {
@@ -133,7 +141,7 @@ export function PettyCashDetailSheet({
   const [editSupplierName, setEditSupplierName] = useState("");
   const [editPurpose, setEditPurpose] = useState("");
   const [editListItems, setEditListItems] = useState<ParticularLineItem[]>([
-    { description: "", amount: "" },
+    blankParticular(),
   ]);
 
   const updateMutation = useUpdatePettyCashMutation();
@@ -161,7 +169,7 @@ export function PettyCashDetailSheet({
       setEditPurpose(voucher.purpose || "");
       const parsed = parseParticulars(voucher.particulars);
       setEditListItems(
-        parsed.length > 0 ? parsed : [{ description: "", amount: "" }]
+        parsed.length > 0 ? parsed : [blankParticular()]
       );
       setIsEditing(false);
     }
@@ -179,11 +187,11 @@ export function PettyCashDetailSheet({
     val: string
   ) => {
     setEditListItems((prev) => {
+      const nextRow = patchParticularLine(prev[index], field, val);
+      if (!nextRow) return prev;
       const updated = [...prev];
-      const nextVal =
-        field === "amount" ? (filterMoneyInput(val) ?? prev[index].amount) : val;
-      updated[index] = { ...updated[index], [field]: nextVal };
-      if (field === "amount") {
+      updated[index] = nextRow;
+      if (field !== "description") {
         const total = sumParticularAmounts(updated);
         if (total > 0) setEditAmount(total.toFixed(2));
       }
@@ -192,12 +200,12 @@ export function PettyCashDetailSheet({
   };
 
   const handleAddEditItem = () => {
-    setEditListItems((prev) => [...prev, { description: "", amount: "" }]);
+    setEditListItems((prev) => [...prev, blankParticular()]);
   };
 
   const handleRemoveEditItem = (index: number) => {
     setEditListItems((prev) => {
-      if (prev.length <= 1) return [{ description: "", amount: "" }];
+      if (prev.length <= 1) return [blankParticular()];
       const next = prev.filter((_, i) => i !== index);
       const total = sumParticularAmounts(next);
       if (total > 0) setEditAmount(total.toFixed(2));
@@ -248,11 +256,13 @@ export function PettyCashDetailSheet({
 
   const handleStatusTransition = async (nextStatus: PettyCashStatus) => {
     try {
-      await statusMutation.mutateAsync({
+      const updated = await statusMutation.mutateAsync({
         id: voucher.id,
         payload: { status: nextStatus },
       });
-      toast.success(`Voucher status updated to "${nextStatus.replace("_", " ")}".`);
+      toast.success(
+        `Voucher status updated to "${updated.status.replace(/_/g, " ")}".`
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to update status.";
       toast.error(msg);
@@ -337,7 +347,9 @@ export function PettyCashDetailSheet({
               </div>
 
               <div className="flex items-center gap-2">
-                {voucher.status !== "completed" && voucher.status !== "cancelled" && (
+                {voucher.status !== "completed" &&
+                  voucher.status !== "disbursed" &&
+                  voucher.status !== "cancelled" && (
                   <button
                     type="button"
                     onClick={() => setIsEditing(!isEditing)}
@@ -419,16 +431,28 @@ export function PettyCashDetailSheet({
               </div>
             )}
 
+            {voucher.status === "disbursed" && (
+              <div className="px-6 py-3 bg-orange-500/10 border-b border-orange-500/20 flex items-center gap-2 text-xs text-orange-800 dark:text-orange-300 font-medium shrink-0">
+                <Receipt className="w-4 h-4 shrink-0 text-orange-500" />
+                <span>
+                  Cash released.
+                  {voucher.purchaseOrderNumber
+                    ? ` Upload the receipt on ${voucher.purchaseOrderNumber} to close this record.`
+                    : " Upload the purchase order receipt to close this record."}
+                </span>
+              </div>
+            )}
+
             {voucher.status === "approved" && (
               <div className="px-6 py-3 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-2 text-xs text-emerald-700 dark:text-emerald-300 font-medium">
                   <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
-                  <span>Approved for cash disbursement.</span>
+                  <span>Approved for cash disbursement. The receipt is uploaded after payment.</span>
                 </div>
                 <button
                   type="button"
                   disabled={statusMutation.isPending}
-                  onClick={() => handleStatusTransition("completed")}
+                  onClick={() => handleStatusTransition("disbursed")}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors shadow-2xs disabled:opacity-50"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -692,16 +716,18 @@ export function PettyCashDetailSheet({
                             Particulars
                           </label>
                           <div className="rounded-md border border-border bg-bg-subtle/30 p-2 space-y-2">
-                            <div className="grid grid-cols-[auto_minmax(0,1fr)_5.5rem_auto] gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-                              <span className="w-6 text-center">#</span>
+                            <div className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_4.5rem_4.5rem_1.5rem] gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                              <span className="text-center">#</span>
                               <span>Description</span>
-                              <span className="text-right">Cost</span>
-                              <span className="w-7" />
+                              <span className="text-right">Qty</span>
+                              <span className="text-right">Unit</span>
+                              <span className="text-right">Total</span>
+                              <span />
                             </div>
                             {editListItems.map((item, idx) => (
                               <div
                                 key={idx}
-                                className="grid grid-cols-[auto_minmax(0,1fr)_5.5rem_auto] gap-1.5 items-center"
+                                className="grid grid-cols-[1.5rem_minmax(0,1fr)_2.75rem_4.5rem_4.5rem_1.5rem] gap-1.5 items-center"
                               >
                                 <span className="flex h-6 w-6 items-center justify-center rounded bg-bg border border-border text-[10px] font-mono text-text-muted">
                                   {idx + 1}
@@ -721,18 +747,35 @@ export function PettyCashDetailSheet({
                                 />
                                 <input
                                   type="text"
-                                  inputMode="decimal"
-                                  value={item.amount}
+                                  inputMode="numeric"
+                                  value={item.quantity}
                                   onChange={(e) =>
                                     handleEditItemChange(
                                       idx,
-                                      "amount",
+                                      "quantity",
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="1"
+                                  className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text"
+                                />
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={item.unitCost}
+                                  onChange={(e) =>
+                                    handleEditItemChange(
+                                      idx,
+                                      "unitCost",
                                       e.target.value
                                     )
                                   }
                                   placeholder="0.00"
                                   className="w-full text-xs font-mono text-right rounded-md border border-border bg-bg px-2 py-1.5 text-text"
                                 />
+                                <span className="px-1 text-xs font-mono font-semibold text-right text-text tabular-nums">
+                                  {formatPhp(particularLineAmount(item))}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveEditItem(idx)}
@@ -742,7 +785,7 @@ export function PettyCashDetailSheet({
                                 </button>
                               </div>
                             ))}
-                            <div className="flex justify-end pt-1 border-t border-border/50">
+                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
                               <button
                                 type="button"
                                 onClick={handleAddEditItem}
@@ -751,6 +794,14 @@ export function PettyCashDetailSheet({
                                 <Plus className="h-3 w-3" />
                                 Add Item
                               </button>
+                              <span className="text-right">
+                                <span className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                                  Overall total
+                                </span>
+                                <span className="font-mono text-xs font-bold text-text tabular-nums">
+                                  {formatPhp(sumParticularAmounts(editListItems))}
+                                </span>
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -871,21 +922,24 @@ export function PettyCashDetailSheet({
                             <span className="flex-1 font-medium text-text leading-relaxed">
                               {item.description}
                             </span>
-                            {item.amount ? (
+                            {item.quantity && item.unitCost ? (
+                              <span className="shrink-0 font-mono text-[11px] text-text-secondary">
+                                {item.quantity} × {formatPhp(item.unitCost)}
+                              </span>
+                            ) : null}
+                            {particularLineAmount(item) > 0 ? (
                               <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                {formatPhp(item.amount)}
+                                {formatPhp(particularLineAmount(item))}
                               </span>
                             ) : null}
                           </div>
                         ))}
-                        {sumParticularAmounts(particularItems) > 0 ? (
-                          <div className="flex justify-between text-[11px] text-text-muted px-1 pt-0.5">
-                            <span>Line items total</span>
-                            <span className="font-mono font-bold text-text">
-                              {formatPhp(sumParticularAmounts(particularItems))}
-                            </span>
-                          </div>
-                        ) : null}
+                        <div className="flex justify-between text-[11px] text-text-muted px-1 pt-0.5">
+                          <span>Overall total</span>
+                          <span className="font-mono font-bold text-text">
+                            {formatPhp(sumParticularAmounts(particularItems))}
+                          </span>
+                        </div>
                       </div>
                     ) : !voucher.purpose?.trim() ? (
                       <p className="text-xs text-text-muted italic">
@@ -996,9 +1050,10 @@ export function PettyCashDetailSheet({
                                   log.action === "created" && "bg-blue-500/10 text-blue-600 border-blue-500/20",
                                   log.action === "updated" && "bg-amber-500/10 text-amber-600 border-amber-500/20",
                                   log.action === "approved" && "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                                  log.action === "disbursed" && "bg-orange-500/10 text-orange-600 border-orange-500/20",
                                   log.action === "completed" && "bg-primary/10 text-primary border-primary/20",
                                   log.action === "cancelled" && "bg-rose-500/10 text-rose-600 border-rose-500/20",
-                                  !["created", "updated", "approved", "completed", "cancelled"].includes(log.action) && "bg-bg-subtle text-text-secondary border-border"
+                                  !["created", "updated", "approved", "disbursed", "completed", "cancelled"].includes(log.action) && "bg-bg-subtle text-text-secondary border-border"
                                 )}>
                                   {log.action.replace("_", " ")}
                                 </span>

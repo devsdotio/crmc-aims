@@ -4,7 +4,11 @@ import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 import type { VoucherType } from "@/types/vouchers";
 
-import { assertPoAvailableForDisbursement } from "@/server/modules/purchase-lots/po-disbursement";
+import {
+  assertCashReleaseTransition,
+  assertPoAvailableForDisbursement,
+  resolveCashReleaseStatus,
+} from "@/server/modules/purchase-lots/po-disbursement";
 import {
   fallbackDepartments,
   listVoucherDepartmentLinks,
@@ -372,15 +376,25 @@ export class VoucherService {
     const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Voucher", id);
 
+    assertCashReleaseTransition(existing.status, input.status);
+
+    let nextStatus = input.status;
+    if (input.status === "disbursed") {
+      nextStatus = await resolveCashReleaseStatus(
+        existing.purchaseOrderNumber,
+        actor.tenantId
+      );
+    }
+
     const updatePayload: Partial<VoucherRow> = {
-      status: input.status,
+      status: nextStatus,
     };
 
     if (input.status === "approved") {
       updatePayload.approvedByUserId = actor.userId;
       updatePayload.approvedByName = actor.displayName;
       updatePayload.approvedAt = new Date();
-    } else if (input.status === "completed") {
+    } else if (input.status === "disbursed") {
       updatePayload.completedByUserId = actor.userId;
       updatePayload.completedByName = actor.displayName;
       updatePayload.completedAt = new Date();
@@ -392,13 +406,13 @@ export class VoucherService {
     await this.auditLogs.log({
       entityType: "voucher",
       entityId: id,
-      action: input.status,
+      action: nextStatus,
       actorName: actor.displayName,
       actorUserId: actor.userId,
-      notes: `Status changed from ${existing.status.replace("_", " ")} to ${input.status.replace("_", " ")}`,
+      notes: `Status changed from ${existing.status.replace(/_/g, " ")} to ${nextStatus.replace(/_/g, " ")}`,
       metadata: {
         previousStatus: existing.status,
-        newStatus: input.status,
+        newStatus: nextStatus,
       },
     });
 
