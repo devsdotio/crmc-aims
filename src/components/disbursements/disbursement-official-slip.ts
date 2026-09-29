@@ -203,7 +203,7 @@ function buildLineRows(data: DisbursementSlipData): string {
         <td class="col-desc">${escapeHtml(line.description)}</td>
         ${dealerCell}
         ${purposeCell}
-        <td class="col-amount">${formatMoney(line.amount)}</td>
+        <td class="col-amount">${line.amount === 0 ? "" : formatMoney(line.amount)}</td>
       </tr>`;
     })
     .join("");
