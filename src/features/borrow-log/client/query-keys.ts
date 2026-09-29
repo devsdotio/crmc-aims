@@ -8,6 +8,7 @@ export const borrowLogQueryKeys = {
     department?: string;
     search?: string;
     custodyKind?: "borrow" | "assignment" | "all";
+    assetId?: string;
     includeSandbox?: boolean;
     scope?: "department";
     page?: number;

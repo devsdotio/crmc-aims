@@ -250,13 +250,30 @@ export function BorrowLogDetailSheet({
           <div className="p-4 rounded-xl border border-border bg-bg space-y-3 text-xs">
             <h4 className="font-bold uppercase tracking-wider text-text-secondary flex items-center gap-1.5">
               <User className="h-3.5 w-3.5 text-accent" />
-              Borrower & Department Details
+              {record.custodyKind === "assignment"
+                ? "Assignment & Department Details"
+                : "Borrower & Department Details"}
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <span className="text-text-secondary text-[11px] block">Primary Borrower</span>
-                <p className="font-bold text-text">{record.borrowerName}</p>
+              <div className="space-y-1 rounded-md border border-border/60 bg-bg-subtle/40 px-2.5 py-2">
+                <span className="text-text-secondary text-[11px] block uppercase tracking-wide">
+                  Requested by
+                </span>
+                <p className="font-bold text-text">
+                  {record.requestedByName?.trim() || "—"}
+                </p>
+              </div>
+
+              <div className="space-y-1 rounded-md border border-amber-500/25 bg-amber-500/5 px-2.5 py-2">
+                <span className="text-text-secondary text-[11px] block uppercase tracking-wide">
+                  {record.custodyKind === "assignment"
+                    ? "Assign to"
+                    : "Received by"}
+                </span>
+                <p className="font-bold text-text">
+                  {record.borrowerName || "—"}
+                </p>
               </div>
 
               <div className="space-y-1">

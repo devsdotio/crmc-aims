@@ -25,6 +25,8 @@ export const listBorrowLogQuerySchema = z.object({
   borrowerUserId: z.string().uuid().optional(),
   borrowerEmail: z.string().trim().max(320).optional(),
   custodyKind: z.enum(["borrow", "assignment", "all"]).optional(),
+  /** Filter to a single asset's custody rows. */
+  assetId: z.string().uuid().optional(),
   /** Borrower department inventory: open holds for their department (excludes projects). */
   scope: z.enum(["department"]).optional(),
   page: z.coerce.number().int().min(1).optional(),

@@ -32,6 +32,7 @@ export type BorrowLogListParams = {
   department?: string;
   search?: string;
   custodyKind?: "borrow" | "assignment" | "all";
+  assetId?: string;
   scope?: "department";
   page?: number;
   limit?: number;
@@ -45,6 +46,7 @@ export const borrowLogApi = {
     if (params?.department) sp.set("department", params.department);
     if (params?.search) sp.set("search", params.search);
     if (params?.custodyKind) sp.set("custodyKind", params.custodyKind);
+    if (params?.assetId) sp.set("assetId", params.assetId);
     if (params?.scope) sp.set("scope", params.scope);
     const qs = sp.toString();
     const res = await fetchJson<ApiResponse<BorrowLogRecord[]>>(
@@ -62,6 +64,7 @@ export const borrowLogApi = {
     if (params?.department) sp.set("department", params.department);
     if (params?.search) sp.set("search", params.search);
     if (params?.custodyKind) sp.set("custodyKind", params.custodyKind);
+    if (params?.assetId) sp.set("assetId", params.assetId);
     if (params?.scope) sp.set("scope", params.scope);
     sp.set("page", String(params?.page ?? 1));
     sp.set("limit", String(params?.limit ?? 25));

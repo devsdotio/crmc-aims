@@ -40,6 +40,8 @@ export type ListBorrowLogFilters = {
   borrowerUserId?: string;
   borrowerEmail?: string;
   custodyKind?: "borrow" | "assignment" | "all";
+  /** Limit to one asset's custody ledger. */
+  assetId?: string;
   /** Currently held rows (DB status=active), including overdue. */
   heldOnly?: boolean;
   /** Exclude project-destination rows. */

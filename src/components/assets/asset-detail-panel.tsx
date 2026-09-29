@@ -59,6 +59,7 @@ import {
 } from "@/features/assets/client";
 import { QRCodeDisplay } from "./qr-code-display";
 import { useBorrowRequests } from "@/features/borrow-requests/client";
+import { useBorrowLogQuery } from "@/features/borrow-log/client";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { LoadingState } from "@/components/providers/loading-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
@@ -511,6 +512,24 @@ function LifecycleDetailsSection({ item }: { item: Extract<UnifiedTimelineItem, 
               {String(event.payload.requestCode)}
             </p>
           )}
+          {event.payload.requestedByName != null &&
+            String(event.payload.requestedByName).trim() !== "" && (
+              <p className="text-text leading-relaxed text-[11px]">
+                <strong className="text-text-secondary font-sans">Requested by:</strong>{" "}
+                {String(event.payload.requestedByName)}
+              </p>
+            )}
+          {event.payload.borrowerName != null &&
+            String(event.payload.borrowerName).trim() !== "" && (
+              <p className="text-text leading-relaxed text-[11px]">
+                <strong className="text-text-secondary font-sans">
+                  {String(event.payload.custodyKind) === "assignment"
+                    ? "Assign to:"
+                    : "Received by:"}
+                </strong>{" "}
+                {String(event.payload.borrowerName)}
+              </p>
+            )}
           {event.payload.technician != null && (
             <p className="text-text leading-relaxed text-[11px]">
               <strong className="text-text-secondary font-sans">Technician:</strong>{" "}
@@ -712,7 +731,10 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
       kind: "request",
       date: new Date(req.requestedAt),
       title: req.requestCode,
-      subtitle: `By ${req.requesterName}`,
+      subtitle:
+        req.requestType === "assignable" && req.assignedToName?.trim()
+          ? `Requested by ${req.requestedByName || req.requesterName} · Assign to ${req.assignedToName}`
+          : `Requested by ${req.requestedByName || req.requesterName}`,
       department: req.department,
       status: req.status,
       iconType: req.status,
@@ -892,6 +914,8 @@ function AssetHistoryTimeline({ asset }: { asset: Asset }) {
                       item.event.payload.logCode ||
                       item.event.payload.maintenanceLogCode ||
                       item.event.payload.requestCode ||
+                      item.event.payload.borrowerName ||
+                      item.event.payload.requestedByName ||
                       item.event.payload.source ||
                       item.event.payload.repairCost != null ||
                       item.event.payload.technician ||
@@ -1098,6 +1122,14 @@ export function AssetDetailPanel({
   const { data: suppliers = [] } = useSuppliersQuery({
     enabled: Boolean(isOpen && asset?.supplierId),
   });
+  const { data: openCustodyLogs = [] } = useBorrowLogQuery({
+    assetId: asset?.id,
+    custodyKind: "all",
+    enabled: Boolean(isOpen && asset?.id && asset.currentHolder),
+  });
+  const openCustody = openCustodyLogs.find(
+    (row) => row.status === "active" || row.status === "overdue"
+  );
   const drilldownAssetId =
     isOpen && !isBorrower && asset?.id ? asset.id : "";
   const { data: drilldown } = useAssetDrilldownReportQuery(drilldownAssetId);
@@ -1532,6 +1564,30 @@ export function AssetDetailPanel({
                           </span>
                         )}
                       </p>
+                      {openCustody && (
+                        <div className="mt-2 space-y-1.5 border-t border-border/50 pt-2">
+                          {openCustody.requestedByName?.trim() && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+                                Requested by
+                              </p>
+                              <p className="text-xs font-semibold text-text truncate">
+                                {openCustody.requestedByName}
+                              </p>
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-[10px] uppercase tracking-wide text-text-secondary">
+                              {openCustody.custodyKind === "assignment"
+                                ? "Assign to"
+                                : "Received by"}
+                            </p>
+                            <p className="text-xs font-semibold text-text truncate">
+                              {openCustody.borrowerName || "—"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">

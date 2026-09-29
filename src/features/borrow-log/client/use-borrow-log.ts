@@ -32,6 +32,7 @@ export function useBorrowLogQuery(filters?: {
   department?: string;
   search?: string;
   custodyKind?: "borrow" | "assignment" | "all";
+  assetId?: string;
   scope?: "department";
   enabled?: boolean;
   refetchInterval?: number | false;

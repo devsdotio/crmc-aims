@@ -24,6 +24,7 @@ export class BorrowLogController {
               url.searchParams.get("custody") ||
               url.searchParams.get("type") ||
               undefined,
+            assetId: url.searchParams.get("assetId") ?? undefined,
             scope:
               url.searchParams.get("scope") === "department"
                 ? "department"
