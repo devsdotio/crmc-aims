@@ -25,9 +25,9 @@ Assertions target real DTO fields (codes, status, qty, holders, ledger reasons, 
 | Inventory | done | opening lot `Initial stock`, adjust/issue ledger qty+reason |
 | Requests (admin) | done | qty edit on approve, rejectionReason; **approve→release** in `approve-release.test.ts` |
 | Requests (requester) | done | assignable assignee, cancel reason, `quantityRequested` |
-| Purchase orders | done | delivery intake fields, multi-dept, approve→ordered→cancel + audit |
+| Purchase orders | done | delivery intake (asset/supply), project materials dual-credit, multi-dept, status flows |
 | Custody / issue history | done | holder/borrow log fields, void restores lot remaining |
-| Vouchers / petty cash | done | draft status, amount decimals, DRR/PCV codes |
+| Vouchers / petty cash | done | legacy CRUD + **PO-linked exclusive claim** in `disbursements/po-linked-vouchers.test.ts` |
 | Projects | done | milestones, material refund restock qty, asset assign/return status |
 | Maintenance | done | resolve → active, technician, openOnly |
 | Audit | done | actor/entity/action/notes/entityId (PO number) |
