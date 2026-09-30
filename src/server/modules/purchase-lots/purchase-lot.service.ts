@@ -422,14 +422,12 @@ async function withConsumableClassifications(
     .from(consumables)
     .where(and(...conditions));
 
-  const byId = new Map(
-    linked.map((row) => [
-      row.id,
-      row.classification === "material" || row.classification === "supply"
-        ? row.classification
-        : null,
-    ])
-  );
+  const byId = new Map<string, "supply" | "material">();
+  for (const row of linked) {
+    if (row.classification === "material" || row.classification === "supply") {
+      byId.set(row.id, row.classification);
+    }
+  }
 
   return dtos.map((dto) => {
     if (
@@ -439,7 +437,7 @@ async function withConsumableClassifications(
     ) {
       return dto;
     }
-    const classification = byId.get(dto.consumableId) ?? null;
+    const classification = byId.get(dto.consumableId);
     return classification ? { ...dto, classification } : dto;
   });
 }
