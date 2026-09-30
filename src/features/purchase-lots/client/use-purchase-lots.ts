@@ -144,6 +144,10 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
           notes: newPO.notes || null,
           projectId: item.projectId || newPO.projectId || null,
           projectName: item.projectName || newPO.projectName || null,
+          classification:
+            item.itemType === "consumable" || !item.itemType
+              ? item.classification ?? null
+              : null,
           recordedByUserId: "current-user",
           recordedByName: newPO.requestedBy || "Current User",
           approvedByName: null,

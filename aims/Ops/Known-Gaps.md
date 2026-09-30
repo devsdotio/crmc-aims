@@ -30,7 +30,7 @@ These are mismatches between wired code paths — not roadmap wishes from docs.
 
 ## Testing
 
-No Jest/Vitest/Playwright product test suite. Only manual/ops scripts under `scripts/`.
+Vitest product suite under `tests/` (`npm run test:unit` / `test:integration` / `check`). Integration suites need a dedicated `DATABASE_URL_TEST`. Remaining domains (categories CRUD, users, vouchers, projects, maintenance, Supabase login e2e) are tracked as todo in `tests/COVERAGE.md`. Ops scripts under `scripts/` remain ad-hoc.
 
 ## Staff vs admin product split
 

@@ -53,25 +53,47 @@ CREATE INDEX IF NOT EXISTS "borrow_transactions_department_id_idx"
 CREATE INDEX IF NOT EXISTS "borrow_transactions_project_id_idx"
   ON "borrow_transactions" ("project_id");
 --> statement-breakpoint
-ALTER TABLE "requests" ADD COLUMN IF NOT EXISTS "request_type" "asset_request_type";
---> statement-breakpoint
-ALTER TABLE "requests" ADD COLUMN IF NOT EXISTS "department_id" uuid;
---> statement-breakpoint
-ALTER TABLE "requests" ADD COLUMN IF NOT EXISTS "requested_by_name" text;
---> statement-breakpoint
-ALTER TABLE "requests" ALTER COLUMN "expected_return_date" DROP NOT NULL;
+-- Fresh DBs use borrow_requests (0004); older prod DBs may still have been named "requests" when this ran.
+DO $$ BEGIN
+  IF to_regclass('public.borrow_requests') IS NOT NULL THEN
+    ALTER TABLE "borrow_requests" ADD COLUMN IF NOT EXISTS "request_type" "asset_request_type";
+    ALTER TABLE "borrow_requests" ADD COLUMN IF NOT EXISTS "department_id" uuid;
+    ALTER TABLE "borrow_requests" ADD COLUMN IF NOT EXISTS "requested_by_name" text;
+    ALTER TABLE "borrow_requests" ALTER COLUMN "expected_return_date" DROP NOT NULL;
+  ELSIF to_regclass('public.requests') IS NOT NULL THEN
+    ALTER TABLE "requests" ADD COLUMN IF NOT EXISTS "request_type" "asset_request_type";
+    ALTER TABLE "requests" ADD COLUMN IF NOT EXISTS "department_id" uuid;
+    ALTER TABLE "requests" ADD COLUMN IF NOT EXISTS "requested_by_name" text;
+    ALTER TABLE "requests" ALTER COLUMN "expected_return_date" DROP NOT NULL;
+  END IF;
+END $$;
 --> statement-breakpoint
 DO $$ BEGIN
-  ALTER TABLE "requests"
-    ADD CONSTRAINT "requests_department_id_departments_id_fk"
-    FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id")
-    ON DELETE restrict ON UPDATE no action;
+  IF to_regclass('public.borrow_requests') IS NOT NULL THEN
+    ALTER TABLE "borrow_requests"
+      ADD CONSTRAINT "borrow_requests_department_id_departments_id_fk"
+      FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id")
+      ON DELETE restrict ON UPDATE no action;
+  ELSIF to_regclass('public.requests') IS NOT NULL THEN
+    ALTER TABLE "requests"
+      ADD CONSTRAINT "requests_department_id_departments_id_fk"
+      FOREIGN KEY ("department_id") REFERENCES "public"."departments"("id")
+      ON DELETE restrict ON UPDATE no action;
+  END IF;
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "requests_department_id_idx"
-  ON "requests" ("department_id");
---> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "requests_request_type_idx"
-  ON "requests" ("request_type");
+DO $$ BEGIN
+  IF to_regclass('public.borrow_requests') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS "borrow_requests_department_id_idx"
+      ON "borrow_requests" ("department_id");
+    CREATE INDEX IF NOT EXISTS "borrow_requests_request_type_idx"
+      ON "borrow_requests" ("request_type");
+  ELSIF to_regclass('public.requests') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS "requests_department_id_idx"
+      ON "requests" ("department_id");
+    CREATE INDEX IF NOT EXISTS "requests_request_type_idx"
+      ON "requests" ("request_type");
+  END IF;
+END $$;

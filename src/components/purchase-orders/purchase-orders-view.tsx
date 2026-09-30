@@ -53,6 +53,7 @@ import type {
 } from "@/app/(private)/purchase-orders/types";
 import {
   DEFAULT_CONSUMABLE_CLASSIFICATION,
+  resolvePurchaseLotClassification,
   type ConsumableClassification,
 } from "@/lib/consumable-classification";
 import { formatPhp } from "@/components/projects/format-money";
@@ -132,17 +133,8 @@ export function PurchaseOrdersView({
   }, [consumablePage?.data]);
 
   const resolveLotClassification = useCallback(
-    (lot: PurchaseLot): ConsumableClassification | null => {
-      if (lot.itemType !== "consumable") return null;
-      if (lot.projectId) return "material";
-      if (lot.consumableId) {
-        return (
-          classificationByConsumableId.get(lot.consumableId) ??
-          DEFAULT_CONSUMABLE_CLASSIFICATION
-        );
-      }
-      return DEFAULT_CONSUMABLE_CLASSIFICATION;
-    },
+    (lot: PurchaseLot): ConsumableClassification | null =>
+      resolvePurchaseLotClassification(lot, classificationByConsumableId),
     [classificationByConsumableId],
   );
 

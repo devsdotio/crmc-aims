@@ -31,13 +31,12 @@
 
 - No separate backend service / PHP (`composer.json` absent)
 - No Prisma
-- No Jest / Vitest / Playwright test suite in `package.json`
-- No formal `*.test.*` / `*.spec.*` product tests
+- No Playwright browser e2e yet (Vitest unit + DB integration under `tests/`)
 
 ## npm scripts (live)
 
 ```
-dev, build, start, lint
+dev, build, start, lint, typecheck, test, test:unit, test:integration, test:watch, check
 preview, deploy, upload, cf:deploy, cf-typegen
 db:generate, db:migrate, db:migrate:verbose, db:inspect, db:repair, db:studio
 seed:superadmin
