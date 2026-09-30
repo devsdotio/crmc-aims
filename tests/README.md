@@ -31,7 +31,29 @@ npm run db:migrate:test
 
 That runs `drizzle-kit push` against `DATABASE_URL_TEST` only. App/prod still uses `npm run db:migrate`.
 
-Integration suites **skip** when `DATABASE_URL_TEST` is unset. Unit suites always run.
+Integration suites **skip** when `DATABASE_URL_TEST` is unset **or** its hostname
+does not resolve from this machine. Unit suites always run.
+
+### Troubleshooting: `getaddrinfo ENOTFOUND db.*.supabase.co`
+
+Direct Supabase DB hosts are often **IPv6-only**. Node on Windows then fails DNS
+even when `nslookup` shows an AAAA record — you get 25 identical TRUNCATE errors.
+
+**Fix:** use the **Session pooler** connection string from Supabase
+(Database settings → Connection string → *Session mode* / pooler). The host looks
+like `aws-0-<region>.pooler.supabase.com` and usually has IPv4.
+
+```env
+# Prefer pooler (IPv4) over db.<ref>.supabase.co
+DATABASE_URL_TEST=postgresql://postgres.<ref>:<PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres
+```
+
+Then re-push schema and re-run:
+
+```bash
+npm run db:migrate:test
+npm run test:integration
+```
 
 ## Scripts
 
