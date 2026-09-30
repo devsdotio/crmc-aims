@@ -23,7 +23,7 @@ Assertions target real DTO fields (codes, status, qty, holders, ledger reasons, 
 | Users | partial | profile list/update/deactivate (no Supabase Auth createUser) |
 | Assets | done | codes, lifecycle oldest=`created`, maintenance flag/resolve, in-custody |
 | Inventory | done | opening lot `Initial stock`, adjust/issue ledger qty+reason |
-| Requests (admin) | done | qty edit on approve, rejectionReason, history actions |
+| Requests (admin) | done | qty edit on approve, rejectionReason; **approve→release** in `approve-release.test.ts` |
 | Requests (requester) | done | assignable assignee, cancel reason, `quantityRequested` |
 | Purchase orders | done | delivery intake fields, multi-dept, approve→ordered→cancel + audit |
 | Custody / issue history | done | holder/borrow log fields, void restores lot remaining |
