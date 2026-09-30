@@ -341,6 +341,10 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     departmentName: row.departmentName ?? null,
     projectId: row.projectId ?? null,
     projectName: row.projectName ?? null,
+    classification:
+      row.itemType === "consumable"
+        ? meta.draftItem?.classification ?? null
+        : null,
     notes: meta.cleanNotes,
     receiptUrl: row.receiptUrl || meta.receiptUrl || null,
     recordedByUserId: row.recordedByUserId,
@@ -376,6 +380,67 @@ async function withDisbursementClaims(
           }
         : null,
     };
+  });
+}
+
+/**
+ * Fill classification from the linked consumable when draftItem was cleared
+ * (e.g. after delivery) so supplies/materials PO indexes stay correct.
+ */
+async function withConsumableClassifications(
+  dtos: PurchaseLotDTO[],
+  tenantId?: string,
+  session?: DbSession
+): Promise<PurchaseLotDTO[]> {
+  if (dtos.length === 0) return dtos;
+
+  const consumableIds = [
+    ...new Set(
+      dtos
+        .filter(
+          (d) =>
+            d.itemType === "consumable" &&
+            !d.classification &&
+            Boolean(d.consumableId)
+        )
+        .map((d) => d.consumableId as string)
+    ),
+  ];
+  if (consumableIds.length === 0) return dtos;
+
+  const db = session ?? getDb();
+  const conditions = [inArray(consumables.id, consumableIds)];
+  if (tenantId) {
+    conditions.push(eq(consumables.tenantId, tenantId));
+  }
+
+  const linked = await db
+    .select({
+      id: consumables.id,
+      classification: consumables.classification,
+    })
+    .from(consumables)
+    .where(and(...conditions));
+
+  const byId = new Map(
+    linked.map((row) => [
+      row.id,
+      row.classification === "material" || row.classification === "supply"
+        ? row.classification
+        : null,
+    ])
+  );
+
+  return dtos.map((dto) => {
+    if (
+      dto.itemType !== "consumable" ||
+      dto.classification ||
+      !dto.consumableId
+    ) {
+      return dto;
+    }
+    const classification = byId.get(dto.consumableId) ?? null;
+    return classification ? { ...dto, classification } : dto;
   });
 }
 
@@ -543,6 +608,7 @@ export class PurchaseLotService {
       dtos = order.flatMap((key) => byPo.get(key) ?? []);
     }
 
+    dtos = await withConsumableClassifications(dtos, actorTenantId);
     dtos = await withPoDepartments(dtos, actorTenantId);
     return withDisbursementClaims(dtos, actorTenantId);
   }
@@ -551,10 +617,11 @@ export class PurchaseLotService {
     const id = purchaseLotIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", id);
-    const withDepts = await withPoDepartments(
+    const classified = await withConsumableClassifications(
       [toPurchaseLotDTO(row)],
       actorTenantId
     );
+    const withDepts = await withPoDepartments(classified, actorTenantId);
     const [dto] = await withDisbursementClaims(withDepts, actorTenantId);
     return dto;
   }
@@ -566,10 +633,11 @@ export class PurchaseLotService {
     }
     const row = await this.repo.findByLotCode(parsed.code, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", parsed.code);
-    const withDepts = await withPoDepartments(
+    const classified = await withConsumableClassifications(
       [toPurchaseLotDTO(row)],
       actorTenantId
     );
+    const withDepts = await withPoDepartments(classified, actorTenantId);
     const [dto] = await withDisbursementClaims(withDepts, actorTenantId);
     return dto;
   }

@@ -33,6 +33,11 @@ export type PurchaseLotDTO = {
   departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;
+  /**
+   * Consumable-only: supply vs material.
+   * From deferred draftItem metadata, or enriched from the linked consumable.
+   */
+  classification?: "supply" | "material" | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;

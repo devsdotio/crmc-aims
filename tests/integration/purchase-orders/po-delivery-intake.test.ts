@@ -87,6 +87,46 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     }
   });
 
+  it("files a new material PO with classification material (not supply)", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-03",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            isNewItem: true,
+            name: "PO Rebar Bundle",
+            category: fx.consumableCategory,
+            classification: "material",
+            unit: "pcs",
+            location: "Materials Yard",
+            quantity: 8,
+            unitCost: 420,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.itemType).toBe("consumable");
+    expect(lot.consumableId).toBeFalsy();
+    expect(lot.classification).toBe("material");
+    // Materials must not stick on supplier history / supplies-adjacent vendor lists.
+    expect(lot.supplierId).toBeNull();
+
+    const listed = await pos.list({}, fx.actor.tenantId);
+    const found = listed.find((row) => row.id === lot.id);
+    expect(found).toBeTruthy();
+    expect(found?.classification).toBe("material");
+    expect(found?.classification).not.toBe("supply");
+  });
+
   it("delivers a new supply PO into consumables with stock movement", async () => {
     const purpose = testPoPurpose(fx.departmentName);
     const [lot] = await pos.createPurchaseOrder(
@@ -118,6 +158,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(lot.quantity).toBe(5);
     expect(lot.status).toBe("pending_approval");
     expect(lot.consumableId).toBeFalsy();
+    expect(lot.classification).toBe("supply");
 
     const delivered = await pos.updatePOStatus(
       lot.id,
@@ -127,6 +168,10 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(delivered.status).toBe("delivered");
     expect(delivered.consumableId).toBeTruthy();
     expect(delivered.quantityRemaining).toBe(5);
+
+    const listedAfter = await pos.list({}, fx.actor.tenantId);
+    const deliveredListed = listedAfter.find((row) => row.id === lot.id);
+    expect(deliveredListed?.classification).toBe("supply");
 
     const db = getDb();
     const [item] = await db

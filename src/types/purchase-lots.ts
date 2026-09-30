@@ -49,6 +49,11 @@ export interface PurchaseLot {
   departments?: Array<{ id: string; name: string }>;
   projectId?: string | null;
   projectName?: string | null;
+  /**
+   * Consumable-only: supply vs material.
+   * Present for deferred new-item drafts and server-enriched linked catalog rows.
+   */
+  classification?: "supply" | "material" | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;
