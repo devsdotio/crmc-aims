@@ -4,7 +4,9 @@ import { eq } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import { assets, consumables, purchaseLots, stockMovements } from "@/server/db/schema";
+import { AssetService } from "@/server/modules/assets/asset.service";
 import { PurchaseLotService } from "@/server/modules/purchase-lots/purchase-lot.service";
+import { resolvePoMintedAssets } from "@/server/modules/purchase-lots/purchase-lot-delete-impact";
 import { hasTestDatabase, resetTestDatabase } from "../../setup/db";
 import {
   seedCoreFixtures,
@@ -18,6 +20,7 @@ const PO_OR_LOT = /^(PO|LOT)-\d{4}-[A-F0-9]{8}$/i;
 
 describeIntegration("purchase orders / delivery intake (integration)", () => {
   const pos = new PurchaseLotService();
+  const assetSvc = new AssetService();
   let fx: TestFixtures;
 
   beforeEach(async () => {
@@ -428,5 +431,180 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(found?.unit).toBe("set");
     expect(found?.receivedQuantity).toBe(2);
     expect(found?.orderedQuantity).toBe(4);
+  });
+
+  it("keeps a pre-existing catalog asset when delivering a PO for more of the same item", async () => {
+    // Regression: existing IE-001 / "10126" must not disappear when a PO for
+    // qty 2 of the same product is marked delivered — mint 2 NEW units instead.
+    const existing = await assetSvc.createAsset(
+      {
+        name: "10126",
+        category: fx.assetCategory,
+        classification: fx.assetClassification,
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    expect(existing.assetCode).toMatch(/^CP-\d{3}$/);
+    const existingCode = existing.assetCode;
+    const existingId = existing.id;
+
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-07",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "asset",
+            assetId: existing.id,
+            name: existing.name,
+            category: fx.assetCategory,
+            classification: fx.assetClassification,
+            assignmentType: "borrowable",
+            location: "Depot",
+            quantity: 2,
+            unitCost: 1500,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.assetId).toBe(existing.id);
+    expect(lot.status).toBe("pending_approval");
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered" },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.quantity).toBe(2);
+    // Lot should link to a newly minted unit, not the pre-existing catalog row.
+    expect(delivered.assetId).toBeTruthy();
+    expect(delivered.assetId).not.toBe(existingId);
+
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.tenantId, fx.actor.tenantId));
+    expect(rows).toHaveLength(3);
+
+    const kept = rows.find((r) => r.id === existingId);
+    expect(kept).toBeTruthy();
+    expect(kept!.assetCode).toBe(existingCode);
+    expect(kept!.name).toBe("10126");
+    expect(kept!.status).toBe("active");
+    // Original must not carry the PO acquisition marker (not minted by this PO).
+    expect(kept!.notes ?? "").not.toMatch(/Acquired via PO/i);
+
+    const minted = rows.filter((r) => r.id !== existingId);
+    expect(minted).toHaveLength(2);
+    for (const row of minted) {
+      expect(row.name).toBe("10126");
+      expect(row.status).toBe("active");
+      expect(row.notes ?? "").toMatch(/Acquired via PO/i);
+      expect(row.assetCode).not.toBe(existingCode);
+    }
+
+    const [lotRow] = await db
+      .select()
+      .from(purchaseLots)
+      .where(eq(purchaseLots.id, lot.id));
+    const mintedResolved = await resolvePoMintedAssets(
+      lotRow,
+      delivered.poNumber
+    );
+    expect(mintedResolved.map((u) => u.id).sort()).toEqual(
+      minted.map((r) => r.id).sort()
+    );
+    expect(mintedResolved.some((u) => u.id === existingId)).toBe(false);
+
+    // Deleting the PO must reverse only minted units — never the original catalog asset.
+    await pos.deleteByPoNumberWithRevert(delivered.poNumber, fx.actor);
+    const afterDelete = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.tenantId, fx.actor.tenantId));
+    expect(afterDelete).toHaveLength(1);
+    expect(afterDelete[0].id).toBe(existingId);
+    expect(afterDelete[0].assetCode).toBe(existingCode);
+  });
+
+  it("mints additional units when a new-item asset PO name already exists (never deletes the original)", async () => {
+    const existing = await assetSvc.createAsset(
+      {
+        name: "10126 Dup Name",
+        category: fx.assetCategory,
+        classification: fx.assetClassification,
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    const existingId = existing.id;
+    const existingCode = existing.assetCode;
+
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-08",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "asset",
+            isNewItem: true,
+            name: "10126 Dup Name",
+            category: fx.assetCategory,
+            classification: fx.assetClassification,
+            assignmentType: "borrowable",
+            location: "Depot",
+            quantity: 2,
+            unitCost: 1800,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.assetId).toBeFalsy();
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered" },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.assetId).not.toBe(existingId);
+
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.tenantId, fx.actor.tenantId));
+    expect(rows).toHaveLength(3);
+
+    const kept = rows.find((r) => r.id === existingId);
+    expect(kept).toBeTruthy();
+    expect(kept!.assetCode).toBe(existingCode);
+    expect(kept!.notes ?? "").not.toMatch(/Acquired via PO/i);
+
+    const minted = rows.filter((r) => r.id !== existingId);
+    expect(minted).toHaveLength(2);
+    for (const row of minted) {
+      expect(row.name).toBe("10126 Dup Name");
+      expect(row.notes ?? "").toMatch(/Acquired via PO/i);
+    }
   });
 });

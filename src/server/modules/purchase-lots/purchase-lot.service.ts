@@ -1216,50 +1216,52 @@ export class PurchaseLotService {
             itemName = existing.name;
 
             if (initialStatus === "delivered") {
+              // Catalog reference only — mint brand-new units; keep existing row intact.
               const unitsToEnsure = Math.max(1, item.quantity);
-              await db
-                .update(assets)
-                .set({
-                  status: "active",
-                  purchaseDate: existing.purchaseDate || body.poDate,
-                  value: existing.value || formatMoney(item.unitCost),
-                  supplierId: existing.supplierId || lineSupplierId || undefined,
-                  lastUpdated: new Date(),
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(assets.id, assetId),
-                    byTenantId(assets.tenantId, actor.tenantId)
-                  )
-                );
-              for (let i = 1; i < unitsToEnsure; i++) {
+              let firstId: string | null = null;
+              let firstCode = "";
+              for (let i = 0; i < unitsToEnsure; i++) {
                 const assetCode = await this.nextCategoryAssetCode(
                   existing.category || item.category || "Equipment",
                   session,
                   actor.tenantId
                 );
-                await db.insert(assets).values({
-                  tenantId: actor.tenantId,
-                  assetCode,
-                  name: existing.name,
-                  category: existing.category,
-                  classification: existing.classification,
-                  unit: existing.unit || item.unit?.trim() || "unit",
-                  status: "active",
-                  assignmentType: existing.assignmentType,
-                  modelId: existing.modelId,
-                  location: existing.location,
-                  purchaseDate: body.poDate,
-                  value: formatMoney(item.unitCost),
-                  supplierId: lineSupplierId || undefined,
-                  notes: `Acquired via PO ${poNumber} (unit ${i + 1}/${unitsToEnsure})`,
-                });
+                const [created] = await db
+                  .insert(assets)
+                  .values({
+                    tenantId: actor.tenantId,
+                    assetCode,
+                    name: existing.name,
+                    category: existing.category,
+                    classification: existing.classification,
+                    unit: existing.unit || item.unit?.trim() || "unit",
+                    status: "active",
+                    assignmentType: existing.assignmentType,
+                    modelId: existing.modelId,
+                    location: existing.location,
+                    purchaseDate: body.poDate,
+                    value: formatMoney(item.unitCost),
+                    supplierId: lineSupplierId || undefined,
+                    notes: `Acquired via PO ${poNumber}${
+                      unitsToEnsure > 1
+                        ? ` (unit ${i + 1}/${unitsToEnsure})`
+                        : ""
+                    }`,
+                  })
+                  .returning();
+                if (!firstId) {
+                  firstId = created.id;
+                  firstCode = created.assetCode;
+                }
               }
+              assetId = firstId;
+              itemCode = firstCode;
             }
           } else if (initialStatus === "delivered") {
-            // New asset(s) minted immediately only when PO is filed as delivered
-            const [nameClash] = await db
+            // New asset(s) minted immediately only when PO is filed as delivered.
+            // If the same product name already exists, mint additional units from it
+            // instead of deleting/replacing the registry row.
+            const [nameMatch] = await db
               .select()
               .from(assets)
               .where(
@@ -1271,11 +1273,6 @@ export class PurchaseLotService {
                 )
               )
               .limit(1);
-            if (nameClash) {
-              throw new ConflictError(
-                `Asset "${itemName}" already exists as ${nameClash.assetCode}. Select it from the catalog instead of creating a new item.`
-              );
-            }
 
             const unitsToCreate = Math.max(1, item.quantity);
             let firstCode = "";
@@ -1285,10 +1282,33 @@ export class PurchaseLotService {
               item.classification,
               actor.tenantId
             );
+            const template = nameMatch
+              ? {
+                  name: nameMatch.name,
+                  category: nameMatch.category || item.category || "Equipment",
+                  classification:
+                    nameMatch.classification || assetClassification,
+                  unit: nameMatch.unit || item.unit?.trim() || "unit",
+                  assignmentType: nameMatch.assignmentType,
+                  modelId: nameMatch.modelId,
+                  location:
+                    nameMatch.location ||
+                    item.location ||
+                    "Property Custodian Depot",
+                }
+              : {
+                  name: itemName,
+                  category: item.category || "Equipment",
+                  classification: assetClassification,
+                  unit: item.unit?.trim() || "unit",
+                  assignmentType: item.assignmentType || "borrowable",
+                  modelId: null as string | null,
+                  location: item.location || "Property Custodian Depot",
+                };
 
             for (let i = 0; i < unitsToCreate; i++) {
               const code = await this.nextCategoryAssetCode(
-                item.category || "Equipment",
+                template.category,
                 session,
                 actor.tenantId
               );
@@ -1297,13 +1317,14 @@ export class PurchaseLotService {
                 .values({
                   tenantId: actor.tenantId,
                   assetCode: code,
-                  name: itemName,
-                  category: item.category || "Equipment",
-                  classification: assetClassification,
-                  unit: item.unit?.trim() || "unit",
+                  name: template.name,
+                  category: template.category,
+                  classification: template.classification,
+                  unit: template.unit,
                   status: "active",
-                  assignmentType: item.assignmentType || "borrowable",
-                  location: item.location || "Property Custodian Depot",
+                  assignmentType: template.assignmentType,
+                  modelId: template.modelId,
+                  location: template.location,
                   purchaseDate: body.poDate,
                   value: formatMoney(item.unitCost),
                   supplierId: lineSupplierId || undefined,
@@ -1751,6 +1772,18 @@ export class PurchaseLotService {
             ));
           const draftUnit = (draft?.unit || "").trim() || "unit";
 
+          // Catalog `assetId` is a product reference only. Never absorb/replace a
+          // pre-existing unit — always mint `receivedQty` brand-new physical rows.
+          let template: {
+            name: string;
+            category: string;
+            classification: string;
+            unit: string;
+            assignmentType: "borrowable" | "assignable";
+            modelId: string | null;
+            location: string;
+          } | null = null;
+
           if (primaryAssetId) {
             const [existingAsset] = await db
               .select()
@@ -1768,51 +1801,18 @@ export class PurchaseLotService {
               throw new NotFoundError("Asset", primaryAssetId);
             }
 
-            await db
-              .update(assets)
-              .set({
-                status: "active",
-                purchaseDate: existingAsset.purchaseDate || lot.purchasedOn,
-                value: existingAsset.value || lot.unitCost,
-                supplierId: existingAsset.supplierId || lot.supplierId,
-                lastUpdated: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(assets.id, primaryAssetId),
-                  byTenantId(assets.tenantId, lot.tenantId ?? actor.tenantId)
-                )
-              );
-
-            // Mint remaining units when PO ordered/received more than one physical asset
-            for (let i = 1; i < unitsToEnsure; i++) {
-              const assetCode = await this.nextCategoryAssetCode(
-                existingAsset.category || draftCategory,
-                session,
-                lot.tenantId
-              );
-              await db.insert(assets).values({
-                tenantId: lot.tenantId,
-                assetCode,
-                name: existingAsset.name,
-                category: existingAsset.category,
-                classification:
-                  existingAsset.classification || draftClassification,
-                unit: existingAsset.unit || draftUnit,
-                status: "active",
-                assignmentType: existingAsset.assignmentType,
-                modelId: existingAsset.modelId,
-                location: existingAsset.location,
-                purchaseDate: lot.purchasedOn,
-                value: lot.unitCost,
-                supplierId: lot.supplierId,
-                notes: `Acquired via PO ${poNumber} (unit ${i + 1}/${unitsToEnsure})`,
-              });
-            }
+            template = {
+              name: existingAsset.name,
+              category: existingAsset.category || draftCategory,
+              classification:
+                existingAsset.classification || draftClassification,
+              unit: existingAsset.unit || draftUnit,
+              assignmentType: existingAsset.assignmentType,
+              modelId: existingAsset.modelId,
+              location: existingAsset.location || draftLocation,
+            };
           } else {
-            // No linked asset yet — register received physical units from draft specs
-            const [nameClash] = await db
+            const [nameMatch] = await db
               .select()
               .from(assets)
               .where(
@@ -1824,48 +1824,78 @@ export class PurchaseLotService {
                 )
               )
               .limit(1);
-            if (nameClash) {
-              throw new ConflictError(
-                `Asset "${lot.itemName}" already exists as ${nameClash.assetCode}. Select it from the catalog instead of creating a new item.`
-              );
-            }
 
-            for (let i = 0; i < unitsToEnsure; i++) {
-              const assetCode = await this.nextCategoryAssetCode(
-                draftCategory,
-                session,
-                lot.tenantId
-              );
-              const [created] = await db
-                .insert(assets)
-                .values({
-                  tenantId: lot.tenantId,
-                  assetCode,
-                  name: lot.itemName,
-                  category: draftCategory,
-                  classification: draftClassification,
-                  unit: draftUnit,
-                  status: "active",
-                  assignmentType: draftAssignment,
-                  location: draftLocation,
-                  purchaseDate: lot.purchasedOn,
-                  value: lot.unitCost,
-                  supplierId: lot.supplierId,
-                  notes: `Acquired via PO ${poNumber}${
-                    unitsToEnsure > 1 ? ` (unit ${i + 1}/${unitsToEnsure})` : ""
-                  }`,
-                })
-                .returning();
-
-              if (i === 0) {
-                primaryAssetId = created.id;
-                nextAssetId = created.id;
-                nextItemCode = created.assetCode;
-              }
+            if (nameMatch) {
+              // Same product already in registry — mint additional units from it.
+              // Do not delete/replace the existing row.
+              template = {
+                name: nameMatch.name,
+                category: nameMatch.category || draftCategory,
+                classification:
+                  nameMatch.classification || draftClassification,
+                unit: nameMatch.unit || draftUnit,
+                assignmentType: nameMatch.assignmentType,
+                modelId: nameMatch.modelId,
+                location: nameMatch.location || draftLocation,
+              };
+            } else {
+              template = {
+                name: lot.itemName,
+                category: draftCategory,
+                classification: draftClassification,
+                unit: draftUnit,
+                assignmentType: draftAssignment,
+                modelId: null,
+                location: draftLocation,
+              };
             }
           }
 
-          // Asset lots track one primary unit link; remaining qty stays available for write-off math
+          let firstNewId: string | null = null;
+          let firstNewCode: string | null = null;
+          for (let i = 0; i < unitsToEnsure; i++) {
+            const assetCode = await this.nextCategoryAssetCode(
+              template.category,
+              session,
+              lot.tenantId
+            );
+            const [created] = await db
+              .insert(assets)
+              .values({
+                tenantId: lot.tenantId,
+                assetCode,
+                name: template.name,
+                category: template.category,
+                classification: template.classification,
+                unit: template.unit,
+                status: "active",
+                assignmentType: template.assignmentType,
+                modelId: template.modelId,
+                location: template.location,
+                purchaseDate: lot.purchasedOn,
+                value: lot.unitCost,
+                supplierId: lot.supplierId,
+                notes: `Acquired via PO ${poNumber}${
+                  unitsToEnsure > 1 ? ` (unit ${i + 1}/${unitsToEnsure})` : ""
+                }`,
+              })
+              .returning();
+
+            if (i === 0) {
+              firstNewId = created.id;
+              firstNewCode = created.assetCode;
+            }
+          }
+
+          if (!firstNewId || !firstNewCode) {
+            throw new BadRequestError(
+              "Failed to mint asset units for this purchase order delivery."
+            );
+          }
+
+          // Lot links to the first newly minted unit (never the pre-existing catalog row).
+          nextAssetId = firstNewId;
+          nextItemCode = firstNewCode;
           nextRemaining = unitsToEnsure;
         }
       }
