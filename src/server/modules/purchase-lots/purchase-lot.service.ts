@@ -460,7 +460,8 @@ async function withConsumableClassifications(
 }
 
 /**
- * Fill asset classification from the linked asset when draftItem was cleared after delivery.
+ * Fill asset classification / unit from the linked asset when draftItem was
+ * cleared after delivery so PO indexes and print slips keep the filed UoM.
  */
 async function withAssetClassifications(
   dtos: PurchaseLotDTO[],
@@ -472,12 +473,7 @@ async function withAssetClassifications(
   const assetIds = [
     ...new Set(
       dtos
-        .filter(
-          (d) =>
-            d.itemType === "asset" &&
-            Boolean(d.assetId) &&
-            !d.classification?.trim()
-        )
+        .filter((d) => d.itemType === "asset" && Boolean(d.assetId))
         .map((d) => d.assetId as string)
     ),
   ];
@@ -493,18 +489,33 @@ async function withAssetClassifications(
     .select({
       id: assets.id,
       classification: assets.classification,
+      unit: assets.unit,
     })
     .from(assets)
     .where(and(...conditions));
 
-  const byId = new Map(linked.map((row) => [row.id, row.classification || ""]));
+  const byId = new Map(
+    linked.map((row) => [
+      row.id,
+      {
+        classification: row.classification || "",
+        unit: row.unit?.trim() || null,
+      },
+    ])
+  );
 
   return dtos.map((dto) => {
     if (dto.itemType !== "asset" || !dto.assetId) return dto;
-    if (dto.classification?.trim()) return dto;
-    const classification = byId.get(dto.assetId);
-    if (!classification) return dto;
-    return { ...dto, classification };
+    const linkedRow = byId.get(dto.assetId);
+    if (!linkedRow) return dto;
+    return {
+      ...dto,
+      classification: dto.classification?.trim()
+        ? dto.classification
+        : linkedRow.classification || dto.classification,
+      // Prefer catalog UoM after delivery (draft cleared); keep draft when present.
+      unit: linkedRow.unit || dto.unit || resolvePurchaseUnit("asset", null),
+    };
   });
 }
 
@@ -925,8 +936,49 @@ export class PurchaseLotService {
 
             // If created directly in "delivered" state
             if (initialStatus === "delivered") {
+              const lineTotal = formatMoney(Number(item.unitCost) * item.quantity);
+              const unitCostMoney = formatMoney(item.unitCost);
               if (targetProjectId) {
-                // Auto-issue movement for direct project material delivery (currentQty unchanged)
+                // Dual credit: intake then auto-issue (net on-hand unchanged).
+                await db
+                  .update(consumables)
+                  .set({
+                    currentQty: sql`${consumables.currentQty} + ${item.quantity}`,
+                    lastRestocked: new Date(),
+                    updatedAt: new Date(),
+                    ...(lineSupplierName ? { supplier: lineSupplierName } : {}),
+                  })
+                  .where(
+                    and(
+                      eq(consumables.id, consumableId),
+                      byTenantId(consumables.tenantId, actor.tenantId)
+                    )
+                  );
+                await db.insert(stockMovements).values({
+                  tenantId: actor.tenantId,
+                  movementCode: generateOperationalCode("MOV"),
+                  consumableId,
+                  qty: item.quantity,
+                  direction: "in",
+                  reason: "restock",
+                  unitCost: unitCostMoney,
+                  lineTotal,
+                  notes: `PO ${poNumber} received into materials before project issue`,
+                  actorUserId: actor.userId,
+                  actorName: actor.displayName,
+                });
+                await db
+                  .update(consumables)
+                  .set({
+                    currentQty: sql`${consumables.currentQty} - ${item.quantity}`,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(consumables.id, consumableId),
+                      byTenantId(consumables.tenantId, actor.tenantId)
+                    )
+                  );
                 await db.insert(stockMovements).values({
                   tenantId: actor.tenantId,
                   movementCode: generateOperationalCode("MOV"),
@@ -935,8 +987,8 @@ export class PurchaseLotService {
                   qty: item.quantity,
                   direction: "out",
                   reason: "issue",
-                  unitCost: formatMoney(item.unitCost),
-                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                  unitCost: unitCostMoney,
+                  lineTotal,
                   notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
                   actorUserId: actor.userId,
                   actorName: actor.displayName,
@@ -947,7 +999,7 @@ export class PurchaseLotService {
                   lineType: "material",
                   category: "miscellaneous",
                   description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
-                  amount: formatMoney(Number(item.unitCost) * item.quantity),
+                  amount: lineTotal,
                   quantity: String(item.quantity),
                   unitCost: String(Number(item.unitCost).toFixed(2)),
                   consumableId,
@@ -985,8 +1037,8 @@ export class PurchaseLotService {
                   qty: item.quantity,
                   direction: "in",
                   reason: "restock",
-                  unitCost: formatMoney(item.unitCost),
-                  lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                  unitCost: unitCostMoney,
+                  lineTotal,
                   notes: `PO Received: ${poNumber}`,
                   actorUserId: actor.userId,
                   actorName: actor.displayName,
@@ -1016,7 +1068,11 @@ export class PurchaseLotService {
             itemCode = generateOperationalCode("ITM");
             const itemClassification =
               item.classification || (targetProjectId ? "material" : "supply");
+            // Project deliveries dual-credit (restock then issue) so start at 0;
+            // warehouse deliveries land directly on-hand.
             const initialQty = !targetProjectId ? item.quantity : 0;
+            const lineTotal = formatMoney(Number(item.unitCost) * item.quantity);
+            const unitCostMoney = formatMoney(item.unitCost);
 
             const [newConsumable] = await db
               .insert(consumables)
@@ -1038,7 +1094,44 @@ export class PurchaseLotService {
             consumableId = newConsumable.id;
 
             if (targetProjectId) {
-              // Auto-issue movement for direct project material delivery
+              await db
+                .update(consumables)
+                .set({
+                  currentQty: sql`${consumables.currentQty} + ${item.quantity}`,
+                  lastRestocked: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(consumables.id, consumableId),
+                    byTenantId(consumables.tenantId, actor.tenantId)
+                  )
+                );
+              await db.insert(stockMovements).values({
+                tenantId: actor.tenantId,
+                movementCode: generateOperationalCode("MOV"),
+                consumableId,
+                qty: item.quantity,
+                direction: "in",
+                reason: "restock",
+                unitCost: unitCostMoney,
+                lineTotal,
+                notes: `PO ${poNumber} received into materials before project issue`,
+                actorUserId: actor.userId,
+                actorName: actor.displayName,
+              });
+              await db
+                .update(consumables)
+                .set({
+                  currentQty: sql`${consumables.currentQty} - ${item.quantity}`,
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(consumables.id, consumableId),
+                    byTenantId(consumables.tenantId, actor.tenantId)
+                  )
+                );
               await db.insert(stockMovements).values({
                 tenantId: actor.tenantId,
                 movementCode: generateOperationalCode("MOV"),
@@ -1047,8 +1140,8 @@ export class PurchaseLotService {
                 qty: item.quantity,
                 direction: "out",
                 reason: "issue",
-                unitCost: formatMoney(item.unitCost),
-                lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                unitCost: unitCostMoney,
+                lineTotal,
                 notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
                 actorUserId: actor.userId,
                 actorName: actor.displayName,
@@ -1059,7 +1152,7 @@ export class PurchaseLotService {
                 lineType: "material",
                 category: "miscellaneous",
                 description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
-                amount: formatMoney(Number(item.unitCost) * item.quantity),
+                amount: lineTotal,
                 quantity: String(item.quantity),
                 unitCost: String(Number(item.unitCost).toFixed(2)),
                 consumableId,
@@ -1081,8 +1174,8 @@ export class PurchaseLotService {
                 qty: item.quantity,
                 direction: "in",
                 reason: "restock",
-                unitCost: formatMoney(item.unitCost),
-                lineTotal: formatMoney(Number(item.unitCost) * item.quantity),
+                unitCost: unitCostMoney,
+                lineTotal,
                 notes: `PO Initial Intake: ${poNumber}`,
                 actorUserId: actor.userId,
                 actorName: actor.displayName,
@@ -1121,6 +1214,49 @@ export class PurchaseLotService {
             }
             itemCode = existing.assetCode;
             itemName = existing.name;
+
+            if (initialStatus === "delivered") {
+              const unitsToEnsure = Math.max(1, item.quantity);
+              await db
+                .update(assets)
+                .set({
+                  status: "active",
+                  purchaseDate: existing.purchaseDate || body.poDate,
+                  value: existing.value || formatMoney(item.unitCost),
+                  supplierId: existing.supplierId || lineSupplierId || undefined,
+                  lastUpdated: new Date(),
+                  updatedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(assets.id, assetId),
+                    byTenantId(assets.tenantId, actor.tenantId)
+                  )
+                );
+              for (let i = 1; i < unitsToEnsure; i++) {
+                const assetCode = await this.nextCategoryAssetCode(
+                  existing.category || item.category || "Equipment",
+                  session,
+                  actor.tenantId
+                );
+                await db.insert(assets).values({
+                  tenantId: actor.tenantId,
+                  assetCode,
+                  name: existing.name,
+                  category: existing.category,
+                  classification: existing.classification,
+                  unit: existing.unit || item.unit?.trim() || "unit",
+                  status: "active",
+                  assignmentType: existing.assignmentType,
+                  modelId: existing.modelId,
+                  location: existing.location,
+                  purchaseDate: body.poDate,
+                  value: formatMoney(item.unitCost),
+                  supplierId: lineSupplierId || undefined,
+                  notes: `Acquired via PO ${poNumber} (unit ${i + 1}/${unitsToEnsure})`,
+                });
+              }
+            }
           } else if (initialStatus === "delivered") {
             // New asset(s) minted immediately only when PO is filed as delivered
             const [nameClash] = await db
@@ -1862,7 +1998,16 @@ export class PurchaseLotService {
         session
       );
 
-      return toPurchaseLotDTO(updated ?? lot);
+      const [dto] = await withAssetClassifications(
+        await withConsumableClassifications(
+          [toPurchaseLotDTO(updated ?? lot)],
+          actor.tenantId,
+          session
+        ),
+        actor.tenantId,
+        session
+      );
+      return dto;
     });
   }
 

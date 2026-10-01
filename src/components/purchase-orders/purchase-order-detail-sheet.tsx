@@ -34,6 +34,7 @@ import {
   FolderKanban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { resolvePurchaseUnit } from "@/lib/purchase-unit";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
 import { formatPhp } from "@/components/projects/format-money";
 import {
@@ -1358,11 +1359,7 @@ export function PurchaseOrderDetailSheet({
                       ) : (
                       <p className="font-mono font-bold text-text text-sm">
                         {lot.quantity}{" "}
-                        {lot.itemType === "asset"
-                          ? lot.quantity === 1
-                            ? "unit"
-                            : "units"
-                          : "pcs"}
+                        {resolvePurchaseUnit(lot.itemType, lot.unit)}
                       </p>
                       )}
                       {lot.status === "delivered" &&
@@ -2086,11 +2083,11 @@ export function PurchaseOrderDetailSheet({
                   const deliverTargets =
                     receivableLots.length > 0 ? receivableLots : lotsToUpdate;
                   if (deliverTargets.length > 1) {
-                    return `Receive ${deliverTargets.length} line items at their ordered quantities. Supplies/materials are stocked into inventory; assets are activated as physical units.`;
+                    return `Enter the actual quantity received for each line. Supplies/materials are stocked into inventory; assets are activated as physical units.`;
                   }
                   return deliverTargets[0]?.itemType === "consumable"
-                    ? "Receive this line at the ordered quantity into inventory."
-                    : "Receive and activate this asset at the ordered quantity.";
+                    ? "Enter the actual quantity received into inventory (defaults to ordered qty)."
+                    : "Enter how many asset units were actually received (defaults to ordered qty).";
                 })()
               : showStatusModal === "approved"
               ? "Approve this purchase order to authorize supplier issuance and procurement."
@@ -2102,10 +2099,14 @@ export function PurchaseOrderDetailSheet({
           {showStatusModal === "delivered" && (() => {
             const deliverTargets =
               receivableLots.length > 0 ? receivableLots : lotsToUpdate;
-            const orderedTotal = deliverTargets.reduce(
-              (sum, li) => sum + (li.orderedQuantity ?? li.quantity),
-              0
-            );
+            const receivedTotal = deliverTargets.reduce((sum, li) => {
+              const ordered = li.orderedQuantity ?? li.quantity;
+              const parsed = Number.parseInt(
+                receivedQuantities[li.id] || String(ordered),
+                10
+              );
+              return sum + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+            }, 0);
             return (
               <>
                 <div className="rounded-lg border border-border bg-bg-subtle/50 p-3 space-y-2.5">
@@ -2115,25 +2116,51 @@ export function PurchaseOrderDetailSheet({
                     </p>
                     <p className="text-[10px] text-text-secondary">
                       {deliverTargets.length} line
-                      {deliverTargets.length === 1 ? "" : "s"} · {orderedTotal}{" "}
-                      unit{orderedTotal === 1 ? "" : "s"} to receive
+                      {deliverTargets.length === 1 ? "" : "s"} · receiving{" "}
+                      {receivedTotal} into inventory
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="space-y-2">
                     {deliverTargets.map((li) => {
                       const ordered = li.orderedQuantity ?? li.quantity;
+                      const uom = resolvePurchaseUnit(li.itemType, li.unit);
                       return (
                         <div
                           key={li.id}
-                          className="inline-flex items-center gap-1.5 min-w-0 rounded-full border border-border bg-bg px-2.5 py-1"
-                          title={`${li.itemName} · qty ${ordered}`}
+                          className="flex items-center gap-2 rounded-md border border-border bg-bg px-2.5 py-2"
                         >
-                          <span className="text-[10px] font-medium text-text truncate">
-                            {li.itemName}
-                          </span>
-                          <span className="text-[10px] font-mono font-bold text-text-secondary shrink-0">
-                            ×{ordered}
-                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-medium text-text truncate">
+                              {li.itemName}
+                            </p>
+                            <p className="text-[10px] text-text-secondary">
+                              Ordered {ordered} {uom}
+                            </p>
+                          </div>
+                          <label className="shrink-0 flex flex-col items-end gap-0.5">
+                            <span className="text-[9px] uppercase font-bold text-text-secondary tracking-wide">
+                              Received
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={receivedQuantities[li.id] ?? String(ordered)}
+                                onChange={(e) =>
+                                  setReceivedQuantities((prev) => ({
+                                    ...prev,
+                                    [li.id]: e.target.value,
+                                  }))
+                                }
+                                className="w-16 h-8 px-2 rounded-md border border-border bg-bg text-xs font-mono text-right tabular-nums focus:ring-1 focus:ring-accent focus:outline-hidden"
+                                aria-label={`Received quantity for ${li.itemName}`}
+                              />
+                              <span className="text-[10px] font-semibold text-text-secondary w-8">
+                                {uom}
+                              </span>
+                            </div>
+                          </label>
                         </div>
                       );
                     })}

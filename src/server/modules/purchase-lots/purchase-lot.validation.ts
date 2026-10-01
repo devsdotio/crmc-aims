@@ -161,7 +161,7 @@ export const updatePurchaseOrderStatusSchema = z
     notes: z.string().trim().max(2000).optional(),
     receiptUrl: z.string().trim().nullable().optional(),
     approvedBy: z.string().trim().max(255).optional(),
-    /** Actual qty received on deliver (consumables). Defaults to ordered qty when omitted. */
+    /** Actual qty received on deliver (assets + consumables). Defaults to ordered qty when omitted. */
     receivedQuantity: z.number().int().positive().optional(),
     /** Required when transitioning to cancelled. */
     cancellationReason: z.string().trim().max(500).optional(),

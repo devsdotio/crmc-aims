@@ -243,4 +243,190 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(restock).toBeTruthy();
     expect(restock!.qty).toBe(5);
   });
+
+  it("delivers a warehouse material PO into materials inventory with stock movement", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-04",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            isNewItem: true,
+            name: "PO Cement Bags",
+            category: fx.consumableCategory,
+            classification: "material",
+            unit: "bag",
+            location: "Materials Yard",
+            quantity: 12,
+            unitCost: 310,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.classification).toBe("material");
+    expect(lot.unit).toBe("bag");
+    expect(lot.consumableId).toBeFalsy();
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered" },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.consumableId).toBeTruthy();
+    expect(delivered.quantityRemaining).toBe(12);
+    expect(delivered.unit).toBe("bag");
+    expect(delivered.classification).toBe("material");
+
+    const db = getDb();
+    const [item] = await db
+      .select()
+      .from(consumables)
+      .where(eq(consumables.id, delivered.consumableId!));
+    expect(item).toBeTruthy();
+    expect(item.name).toBe("PO Cement Bags");
+    expect(item.classification).toBe("material");
+    expect(item.unit).toBe("bag");
+    expect(item.currentQty).toBe(12);
+
+    const movements = await db
+      .select()
+      .from(stockMovements)
+      .where(eq(stockMovements.consumableId, item.id));
+    const restock = movements.find(
+      (m) => m.direction === "in" && m.reason === "restock"
+    );
+    expect(restock).toBeTruthy();
+    expect(restock!.qty).toBe(12);
+  });
+
+  it("intakes actual received quantity for a supply PO (partial delivery)", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-05",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            name: "PO Partial Toner",
+            category: fx.consumableCategory,
+            classification: "supply",
+            unit: "cart",
+            location: "Store Room",
+            quantity: 10,
+            unitCost: 900,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.quantity).toBe(10);
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered", receivedQuantity: 7 },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.quantity).toBe(7);
+    expect(delivered.quantityRemaining).toBe(7);
+    expect(delivered.orderedQuantity).toBe(10);
+    expect(delivered.receivedQuantity).toBe(7);
+    expect(delivered.unit).toBe("cart");
+
+    const db = getDb();
+    const [item] = await db
+      .select()
+      .from(consumables)
+      .where(eq(consumables.id, delivered.consumableId!));
+    expect(item.currentQty).toBe(7);
+    expect(item.unit).toBe("cart");
+
+    const movements = await db
+      .select()
+      .from(stockMovements)
+      .where(eq(stockMovements.consumableId, item.id));
+    const restock = movements.find(
+      (m) => m.direction === "in" && m.reason === "restock"
+    );
+    expect(restock).toBeTruthy();
+    expect(restock!.qty).toBe(7);
+    expect(restock!.notes).toMatch(/received 7 of 10/i);
+  });
+
+  it("intakes actual received quantity for an asset PO and keeps free-text UoM", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-06",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "asset",
+            name: "PO Conference Table Set",
+            category: fx.assetCategory,
+            classification: fx.assetClassification,
+            assignmentType: "borrowable",
+            location: "Depot",
+            unit: "set",
+            quantity: 4,
+            unitCost: 22000,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.unit).toBe("set");
+    expect(lot.quantity).toBe(4);
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered", receivedQuantity: 2 },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.quantity).toBe(2);
+    expect(delivered.quantityRemaining).toBe(2);
+    expect(delivered.orderedQuantity).toBe(4);
+    expect(delivered.receivedQuantity).toBe(2);
+    expect(delivered.unit).toBe("set");
+    expect(delivered.assetId).toBeTruthy();
+
+    const db = getDb();
+    const rows = await db
+      .select()
+      .from(assets)
+      .where(eq(assets.tenantId, fx.actor.tenantId));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.name).toBe("PO Conference Table Set");
+      expect(row.unit).toBe("set");
+      expect(row.status).toBe("active");
+    }
+
+    const listed = await pos.list({}, fx.actor.tenantId);
+    const found = listed.find((row) => row.id === lot.id);
+    expect(found?.unit).toBe("set");
+    expect(found?.receivedQuantity).toBe(2);
+    expect(found?.orderedQuantity).toBe(4);
+  });
 });

@@ -10,6 +10,7 @@ import {
   buildPoSlipFullHtml,
   downloadPoSlipPdf,
   getPoSlipPurposeGroups,
+  resolvePoSlipUnit,
   type PoSlipRenderData,
 } from "@/components/purchase-orders/po-official-slip";
 
@@ -369,10 +370,14 @@ export function POPrintSlipDialog({
                           group.lines.map((item, index) => {
                             const iUnit = parseFloat(item.unitCost) || 0;
                             const iTotal = parseFloat(item.totalCost) || 0;
+                            const uom = resolvePoSlipUnit(item.itemType, item.unit);
                             return (
                               <tr key={item.id}>
                                 <td className="px-2.5 py-2 text-center font-bold text-text border-r border-border text-sm">
-                                  {item.quantity}
+                                  {item.quantity}{" "}
+                                  <span className="text-[9px] font-semibold text-text-secondary">
+                                    {uom}
+                                  </span>
                                 </td>
                                 <td className="px-2.5 py-2 border-r border-border">
                                   <strong className="text-text block text-sm">
