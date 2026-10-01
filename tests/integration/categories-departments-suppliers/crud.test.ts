@@ -68,6 +68,141 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     expect(after).toBeNull();
   });
 
+  it("creates asset classifications and links specific asset categories", async () => {
+    const db = getDb();
+    const [assetClass] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Lab Instruments",
+        type: "asset_class",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    expect(assetClass.type).toBe("asset_class");
+
+    const [specific] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Microscopes",
+        type: "asset",
+        parentId: assetClass.id,
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    expect(specific.parentId).toBe(assetClass.id);
+
+    const listedClasses = await categoryRepo.listWithCounts(
+      "asset_class",
+      undefined,
+      fx.actor.tenantId
+    );
+    const foundClass = listedClasses.find((c) => c.id === assetClass.id);
+    expect(foundClass).toBeTruthy();
+    expect(foundClass!.itemCount).toBeGreaterThanOrEqual(1);
+
+    const listedAssets = await categoryRepo.listWithCounts(
+      "asset",
+      undefined,
+      fx.actor.tenantId
+    );
+    const foundSpecific = listedAssets.find((c) => c.id === specific.id);
+    expect(foundSpecific?.parentId).toBe(assetClass.id);
+    expect(foundSpecific?.parentName).toBe("Lab Instruments");
+
+    const resolved =
+      await categoryRepo.resolveAssetClassificationForCategoryName(
+        "Microscopes",
+        undefined,
+        fx.actor.tenantId
+      );
+    expect(resolved).toBe("Lab Instruments");
+
+    const renamedClass = await categoryRepo.updateAndCascade(
+      assetClass.id,
+      { name: "Laboratory Instruments", type: "asset_class" },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(renamedClass?.name).toBe("Laboratory Instruments");
+
+    const resolvedAfterRename =
+      await categoryRepo.resolveAssetClassificationForCategoryName(
+        "Microscopes",
+        undefined,
+        fx.actor.tenantId
+      );
+    expect(resolvedAfterRename).toBe("Laboratory Instruments");
+  });
+
+  it("assigns an existing asset category under a classification and restamps assets", async () => {
+    const db = getDb();
+    const { AssetService } = await import(
+      "@/server/modules/assets/asset.service"
+    );
+    const assets = new AssetService();
+
+    const [orphanCategory] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Monitors",
+        type: "asset",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+    expect(orphanCategory.parentId).toBeNull();
+
+    const [assetClass] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Display Hardware",
+        type: "asset_class",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    const createdAsset = await assets.createAsset(
+      {
+        name: "Dell Monitor",
+        category: "Monitors",
+        location: "IT Store",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    expect(createdAsset.classification ?? "").toBe("");
+
+    const linked = await categoryRepo.updateAndCascade(
+      orphanCategory.id,
+      {
+        name: orphanCategory.name,
+        type: "asset",
+        parentId: assetClass.id,
+      },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(linked?.parentId).toBe(assetClass.id);
+    expect(linked?.parentName).toBe("Display Hardware");
+
+    const refreshed = await assets.getAssetById(
+      createdAsset.id,
+      fx.actor.tenantId
+    );
+    expect(refreshed.classification).toBe("Display Hardware");
+
+    const listed = await assets.listAssets(
+      { classification: "Display Hardware" },
+      fx.actor.tenantId
+    );
+    expect(listed.some((a) => a.id === createdAsset.id)).toBe(true);
+  });
+
   it("creates, updates, lists, and deletes a department", async () => {
     const created = await departments.create(
       { code: "REG", name: "Registrar" },

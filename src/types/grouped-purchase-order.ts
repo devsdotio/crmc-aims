@@ -1,3 +1,4 @@
+import { resolvePurchaseUnit } from "@/lib/purchase-unit";
 import type { PurchaseLot } from "@/types/purchase-lots";
 
 export interface GroupedPurchaseOrder {
@@ -107,9 +108,7 @@ export function groupLotsByPO(
         itemCode: li.itemCode,
         itemName: li.itemName,
         quantity: li.quantity,
-        unit:
-          li.unit?.trim() ||
-          (li.itemType === "asset" ? "unit" : null),
+        unit: resolvePurchaseUnit(li.itemType, li.unit),
         unitCost: li.unitCost,
         totalCost: li.totalCost,
         purpose: li.purpose,

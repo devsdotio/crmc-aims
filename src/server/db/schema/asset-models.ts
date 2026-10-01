@@ -31,6 +31,8 @@ export const assetModels = pgTable(
     modelCode: text("model_code").notNull(),
     name: text("name").notNull(),
     category: text("category").notNull(),
+    /** General asset classification name (Settings → Categories type=asset_class). */
+    classification: text("classification").notNull().default(""),
     description: text("description"),
     manufacturer: text("manufacturer"),
 
@@ -59,6 +61,7 @@ export const assetModels = pgTable(
   },
   (table) => [
     index("asset_models_category_idx").on(table.category),
+    index("asset_models_classification_idx").on(table.classification),
     index("asset_models_name_idx").on(table.name),
     index("asset_models_is_sandbox_idx").on(table.isSandbox),
   ]

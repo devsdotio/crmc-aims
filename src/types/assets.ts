@@ -24,6 +24,13 @@ export interface Asset {
   assetCode: string;
   name: string;
   category: AssetCategory;
+  /**
+   * General asset classification (Settings → Categories type=asset_class).
+   * Empty when the specific category has no parent class.
+   */
+  classification?: string;
+  /** Unit of measure (e.g. unit, set, pair, pcs). Defaults to "unit". */
+  unit?: string;
   status: AssetStatus;
   assignmentType: AssetAssignmentType;
   /** Parent product model when unit belongs to a multi-copy catalog entry. */
@@ -50,6 +57,8 @@ export interface Asset {
 
 export interface AssetFilterState extends BaseFilterState {
   categories: AssetCategory[];
+  /** General asset classifications (Settings → Categories type=asset_class). */
+  classifications: string[];
   statuses: AssetStatus[];
   /** When "available", only units not in custody and not reserved. */
   availability: "all" | "available";
@@ -70,6 +79,8 @@ export type CreateAssetInput = Pick<
       Asset,
       | "assetCode"
       | "modelId"
+      | "classification"
+      | "unit"
       | "serialNumber"
       | "department"
       | "purchaseDate"

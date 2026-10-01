@@ -27,6 +27,8 @@ export interface ListAssetsFilters extends PaginationParams {
   status?: AssetStatus;
   modelId?: string;
   category?: string;
+  /** General asset classification label (denormalized on assets.classification). */
+  classification?: string;
   search?: string;
   assignmentType?: "borrowable" | "assignable";
   /** When true, only units with no current holder and no approved reservation. */

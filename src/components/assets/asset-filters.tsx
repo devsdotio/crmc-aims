@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Search, FilterX, ArrowUpDown, Tag, AlertCircle, PackageCheck } from "lucide-react";
+import {
+  Search,
+  FilterX,
+  ArrowUpDown,
+  Tag,
+  AlertCircle,
+  PackageCheck,
+  Layers,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AssetFilterState, AssetStatus } from "@/types/assets";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
@@ -36,12 +44,18 @@ export function AssetFilters({
   // so list /api/assets is not competing with another DB round-trip on paint.
   const [wantCategories, setWantCategories] = useState(false);
   const { data: allCategories } = useCategoriesQuery({
-    enabled: wantCategories || filters.categories.length > 0,
+    enabled:
+      wantCategories ||
+      filters.categories.length > 0 ||
+      filters.classifications.length > 0,
   });
   const assetCategories = allCategories?.filter((c) => c.type === "asset") || [];
+  const assetClasses =
+    allCategories?.filter((c) => c.type === "asset_class") || [];
   const activeCount =
     (filters.searchQuery ? 1 : 0) +
     filters.categories.length +
+    filters.classifications.length +
     filters.statuses.length +
     (filters.availability === "available" ? 1 : 0) +
     (filters.assignmentType !== "all" ? 1 : 0);
@@ -52,6 +66,14 @@ export function AssetFilters({
       ? filters.categories.filter((c) => c !== catId)
       : [...filters.categories, catId];
     onFilterChange({ categories: updated });
+  };
+
+  const toggleClassification = (className: string) => {
+    const exists = filters.classifications.includes(className);
+    const updated = exists
+      ? filters.classifications.filter((c) => c !== className)
+      : [...filters.classifications, className];
+    onFilterChange({ classifications: updated });
   };
 
   const toggleStatus = (statusId: AssetStatus) => {
@@ -74,7 +96,7 @@ export function AssetFilters({
             type="text"
             value={filters.searchQuery}
             onChange={(e) => onFilterChange({ searchQuery: e.target.value })}
-            placeholder="Search by asset name, code, or serial number…"
+            placeholder="Search by name, code, serial, category, or class…"
             className={cn(
               "w-full h-9 pl-9 pr-3 text-xs bg-bg-subtle border border-border rounded-lg text-text placeholder:text-text-secondary/60",
               "focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
@@ -87,13 +109,37 @@ export function AssetFilters({
           {/* Dropdown Filters */}
           <div className="flex items-center gap-2">
             <MultiSelectDropdown
+              label="Class"
+              icon={Layers}
+              options={assetClasses.map((c) => {
+                const categoryStyle = getCategoryStyle(
+                  c.name,
+                  c.name,
+                  c.colorToken
+                );
+                return {
+                  id: c.name,
+                  label: c.name,
+                  renderDot: () => (
+                    <span
+                      className={cn("h-2.5 w-2.5 rounded-full", categoryStyle.bg)}
+                    />
+                  ),
+                };
+              })}
+              selectedIds={filters.classifications}
+              onToggle={(id) => toggleClassification(id)}
+              onOpen={() => setWantCategories(true)}
+            />
+
+            <MultiSelectDropdown
               label="Categories"
               icon={Tag}
               options={assetCategories.map((c) => {
                 const categoryStyle = getCategoryStyle(c.name, c.name, c.colorToken);
                 return {
                   id: c.name,
-                  label: c.name,
+                  label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
                   renderDot: () => (
                     <span className={cn("h-2.5 w-2.5 rounded-full", categoryStyle.bg)} />
                   ),

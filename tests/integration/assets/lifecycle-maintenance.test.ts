@@ -39,15 +39,34 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
     expect(created.status).toBe("active");
     expect(created.assignmentType).toBe("borrowable");
     expect(created.category).toBe(fx.assetCategory);
+    expect(created.classification).toBe(fx.assetClassification);
+    expect(created.unit).toBe("unit");
+
+    const byClass = await assets.listAssets(
+      { classification: fx.assetClassification },
+      fx.actor.tenantId
+    );
+    expect(byClass.some((a) => a.id === created.id)).toBe(true);
+
+    const byWrongClass = await assets.listAssets(
+      { classification: "Furniture" },
+      fx.actor.tenantId
+    );
+    expect(byWrongClass.some((a) => a.id === created.id)).toBe(false);
 
     const updated = await assets.updateAsset(
       created.id,
-      { location: "IT Storeroom", notes: "Moved for inventory" },
+      {
+        location: "IT Storeroom",
+        notes: "Moved for inventory",
+        unit: "set",
+      },
       fx.actor
     );
     expect(updated.location).toBe("IT Storeroom");
     expect(updated.notes).toBe("Moved for inventory");
     expect(updated.name).toBe("Scanner Unit");
+    expect(updated.unit).toBe("set");
 
     const lifecycleBeforeFlag = await assets.listLifecycle(
       created.id,

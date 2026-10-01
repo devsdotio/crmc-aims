@@ -3,13 +3,22 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
 import { requireActor } from "@/server/shared/auth";
-import { CategoryRepository } from "@/server/modules/categories/category.repository";
+import {
+  CategoryRepository,
+  type CategoryType,
+} from "@/server/modules/categories/category.repository";
 import { handleError, okWithEtag } from "@/server/shared/http";
 import { serverCache } from "@/server/shared/cache";
 
+const VALID_TYPES: CategoryType[] = ["asset", "consumable", "asset_class"];
+
+function isCategoryType(value: unknown): value is CategoryType {
+  return typeof value === "string" && (VALID_TYPES as string[]).includes(value);
+}
+
 /**
  * Institutional category taxonomy (Settings).
- * Lists all asset + consumable categories for the org with real item counts.
+ * Lists asset classes, asset categories, and consumable categories with counts.
  */
 export async function GET(request: Request) {
   try {
@@ -23,7 +32,7 @@ export async function GET(request: Request) {
       10 * 60 * 1000,
       () =>
         categoryRepo.listWithCounts(
-          type === "asset" || type === "consumable" ? type : undefined,
+          isCategoryType(type) ? type : undefined,
           undefined,
           actor.tenantId
         ),
@@ -51,14 +60,54 @@ export async function POST(request: Request) {
       );
     }
 
-    if (body.type !== "asset" && body.type !== "consumable") {
+    if (!isCategoryType(body.type)) {
       return NextResponse.json(
-        { error: "type must be asset or consumable" },
+        { error: "type must be asset, consumable, or asset_class" },
         { status: 400 }
       );
     }
 
     const name = String(body.name).trim();
+    let parentId: string | null =
+      typeof body.parentId === "string" && body.parentId.trim()
+        ? body.parentId.trim()
+        : null;
+
+    if (body.type === "asset_class" && parentId) {
+      return NextResponse.json(
+        { error: "Asset classifications cannot have a parent category." },
+        { status: 400 }
+      );
+    }
+
+    if (body.type === "consumable" && parentId) {
+      return NextResponse.json(
+        { error: "Consumable categories cannot have a parent category." },
+        { status: 400 }
+      );
+    }
+
+    if (body.type === "asset" && parentId) {
+      const categoryRepo = new CategoryRepository();
+      const parent = await categoryRepo.findById(
+        parentId,
+        undefined,
+        actor.tenantId
+      );
+      if (!parent || parent.type !== "asset_class") {
+        return NextResponse.json(
+          {
+            error:
+              "parentId must reference an existing Asset Classification (type=asset_class).",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (body.type !== "asset") {
+      parentId = null;
+    }
 
     const [existing] = await db
       .select({ id: categories.id })
@@ -87,9 +136,21 @@ export async function POST(request: Request) {
         description: body.description || null,
         type: body.type,
         colorToken: body.colorToken || null,
+        parentId,
         createdByUserId: actor.userId,
       })
       .returning();
+
+    let parentName: string | null = null;
+    if (newCategory.parentId) {
+      const categoryRepo = new CategoryRepository();
+      const parent = await categoryRepo.findById(
+        newCategory.parentId,
+        undefined,
+        actor.tenantId
+      );
+      parentName = parent?.name ?? null;
+    }
 
     serverCache.invalidateTag(`tenant:${actor.tenantId}:categories`);
     serverCache.invalidateTag("categories");
@@ -101,6 +162,8 @@ export async function POST(request: Request) {
           name: newCategory.name,
           type: newCategory.type,
           colorToken: newCategory.colorToken || undefined,
+          parentId: newCategory.parentId ?? null,
+          parentName,
           itemCount: 0,
         },
       },

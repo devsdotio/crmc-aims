@@ -20,3 +20,13 @@
 | GET, PATCH, DELETE | `/api/departments/:id` |
 
 Categories support cascade update (`updateAndCascade` in repository).
+
+## Asset taxonomy (general → specific)
+
+| Type | Role | Example |
+|------|------|---------|
+| `asset_class` | General classification (addable in Categories) | Computer Equipments |
+| `asset` | Specific category; optional `parentId` → `asset_class` | Monitors, Keyboards |
+| `consumable` | Consumable category (unchanged) | Office Supplies |
+
+Assets store denormalized `classification` (general class name) alongside `category` (specific). PO draft/delivery and asset create/update resolve classification from the category’s parent class.

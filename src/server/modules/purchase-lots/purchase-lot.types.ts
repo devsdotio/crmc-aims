@@ -34,12 +34,13 @@ export type PurchaseLotDTO = {
   projectId?: string | null;
   projectName?: string | null;
   /**
-   * Consumable-only: supply vs material.
-   * From deferred draftItem metadata, or enriched from the linked consumable.
+   * Consumables: supply vs material.
+   * Assets: general classification name from Settings (asset_class).
+   * From deferred draftItem metadata, or enriched from the linked catalog row.
    */
-  classification?: "supply" | "material" | null;
+  classification?: string | null;
   /**
-   * Unit of measure (pcs, ream, carton, …). Assets default to "unit".
+   * Unit of measure (pcs, set, pair, ream, …). Assets default to "unit" when unset.
    * From deferred draftItem or enriched from the linked consumable.
    */
   unit?: string | null;
@@ -113,7 +114,8 @@ export type CreatePurchaseOrderItemInput = {
   isNewItem?: boolean;
   name: string;
   category: string;
-  classification?: "supply" | "material";
+  /** Consumables: supply|material. Assets: general class name. */
+  classification?: string;
   unit?: string;
   minThreshold?: number;
   location?: string;

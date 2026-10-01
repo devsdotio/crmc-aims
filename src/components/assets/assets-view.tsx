@@ -40,6 +40,7 @@ function AssetsViewContent() {
   const [filters, setFilters] = useState<AssetFilterState>({
     searchQuery: "",
     categories: [],
+    classifications: [],
     statuses: [],
     availability: "all",
     assignmentType: "all",
@@ -51,6 +52,10 @@ function AssetsViewContent() {
     filters.statuses.length === 1 ? filters.statuses[0] : undefined;
   const serverCategory =
     filters.categories.length === 1 ? filters.categories[0] : undefined;
+  const serverClassification =
+    filters.classifications.length === 1
+      ? filters.classifications[0]
+      : undefined;
 
   const {
     data: assets = [],
@@ -61,6 +66,7 @@ function AssetsViewContent() {
   } = useAssetsQuery(serverStatus, {
     search: filters.searchQuery?.trim() || undefined,
     category: serverCategory,
+    classification: serverClassification,
     availableOnly: filters.availability === "available" ? true : undefined,
     assignmentType:
       filters.assignmentType !== "all" ? filters.assignmentType : undefined,
@@ -100,11 +106,22 @@ function AssetsViewContent() {
 
   const filteredAssets = useMemo(() => {
     const result = assets.filter((asset) => {
-      // Multi-select category/status still need client filtering; single values
-      // and search / availableOnly / assignmentType are applied server-side.
+      // Multi-select category/status/class still need client filtering; single
+      // values and search / availableOnly / assignmentType are applied server-side.
       if (
         filters.categories.length > 1 &&
         !filters.categories.includes(asset.category)
+      ) {
+        return false;
+      }
+
+      if (
+        filters.classifications.length > 1 &&
+        !filters.classifications.some(
+          (c) =>
+            c.trim().toLowerCase() ===
+            (asset.classification || "").trim().toLowerCase()
+        )
       ) {
         return false;
       }
@@ -154,6 +171,7 @@ function AssetsViewContent() {
     setFilters({
       searchQuery: "",
       categories: [],
+      classifications: [],
       statuses: [],
       availability: "all",
       assignmentType: "all",
@@ -179,6 +197,7 @@ function AssetsViewContent() {
           payload: {
             name: assetData.name,
             category: assetData.category,
+            unit: assetData.unit,
             status: assetData.status,
             assignmentType: assetData.assignmentType as
               | "borrowable"
@@ -205,6 +224,7 @@ function AssetsViewContent() {
           assetCode: assetData.assetCode || `ASSET-${Date.now()}`,
           name: assetData.name || "New Asset",
           category: (assetData.category as string) || "",
+          unit: assetData.unit || "unit",
           status: (assetData.status as AssetStatus) || "active",
           assignmentType:
             (assetData.assignmentType as "borrowable" | "assignable") ||

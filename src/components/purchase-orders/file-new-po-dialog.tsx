@@ -85,7 +85,8 @@ interface POLineItemForm {
   assetId?: string;
   name: string;
   category: string;
-  classification: ConsumableClassification;
+  /** Consumables: supply|material. Assets: general classification name. */
+  classification: string;
   unit: string;
   minThreshold: number;
   location: string;
@@ -177,7 +178,7 @@ function createPoLineRowId(): string {
 function generateInitialRow(
   poType: POType = "consumable",
   isNew = false,
-  classification: ConsumableClassification = DEFAULT_CONSUMABLE_CLASSIFICATION
+  classification: string = DEFAULT_CONSUMABLE_CLASSIFICATION
 ): POLineItemForm {
   return {
     id: createPoLineRowId(),
@@ -289,10 +290,23 @@ export function FileNewPODialog({
     () =>
       assetCategories.map((c) => ({
         value: c.name,
-        label: c.name,
+        label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
       })),
     [assetCategories]
   );
+
+  const assetClassByCategoryName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of assetCategories) {
+      if (c.parentName?.trim()) {
+        map.set(c.name.trim().toLowerCase(), c.parentName.trim());
+      }
+    }
+    return map;
+  }, [assetCategories]);
+
+  const resolveAssetClassForCategory = (categoryName: string) =>
+    assetClassByCategoryName.get(categoryName.trim().toLowerCase()) || "";
 
   const supplierOptions = useMemo(
     () =>
@@ -314,6 +328,7 @@ export function FileNewPODialog({
 
   const defaultConsumableCategory = consumableCategories[0]?.name ?? "General Supply";
   const defaultAssetCategory = assetCategories[0]?.name ?? "Equipment";
+  const defaultAssetClassification = resolveAssetClassForCategory(defaultAssetCategory);
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>("routing");
@@ -555,9 +570,15 @@ export function FileNewPODialog({
   };
 
   const handleAddItem = (isNew = false) => {
-    const newRow = generateInitialRow(poType, isNew, effectiveClassification);
+    const seedClass =
+      poType === "asset" ? defaultAssetClassification : effectiveClassification;
+    const newRow = generateInitialRow(poType, isNew, seedClass);
     if (isNew) {
-      newRow.category = poType === "asset" ? defaultAssetCategory : defaultConsumableCategory;
+      newRow.category =
+        poType === "asset" ? defaultAssetCategory : defaultConsumableCategory;
+      if (poType === "asset") {
+        newRow.classification = defaultAssetClassification;
+      }
     }
     setItems((prev) => [...prev, newRow]);
   };
@@ -595,7 +616,12 @@ export function FileNewPODialog({
               ? defaultAssetCategory
               : defaultConsumableCategory
             : "",
-          classification: effectiveClassification,
+          classification:
+            poType === "asset"
+              ? isNew
+                ? defaultAssetClassification
+                : ""
+              : effectiveClassification,
           unit: poType === "asset" ? "unit" : "pcs",
         };
       })
@@ -648,6 +674,9 @@ export function FileNewPODialog({
                 consumableId: undefined,
                 name: matched.name,
                 category: matched.category,
+                classification:
+                  matched.classification ||
+                  resolveAssetClassForCategory(matched.category),
                 assignmentType: matched.assignmentType || "borrowable",
                 location: matched.location || "Property Custodian Depot",
                 unit: "unit",
@@ -781,8 +810,9 @@ export function FileNewPODialog({
       assetId: a.id,
       name: a.name,
       category: a.category,
-      classification: effectiveClassification,
-      unit: "unit",
+      classification:
+        a.classification || resolveAssetClassForCategory(a.category),
+      unit: a.unit?.trim() || "unit",
       minThreshold: 5,
       location: a.location || "Main Property Storage",
       assignmentType: a.assignmentType || "borrowable",
@@ -1233,8 +1263,14 @@ export function FileNewPODialog({
           isNewItem: item.isNew,
           name: item.name.trim(),
           category: item.category.trim() || (isAsset ? defaultAssetCategory : defaultConsumableCategory),
-          classification: !isAsset ? effectiveClassification : undefined,
-          unit: item.unit || (isAsset ? "unit" : "pcs"),
+          classification: isAsset
+            ? item.classification.trim() ||
+              resolveAssetClassForCategory(
+                item.category.trim() || defaultAssetCategory
+              ) ||
+              undefined
+            : effectiveClassification,
+          unit: (item.unit || "").trim() || (isAsset ? "unit" : "pcs"),
           minThreshold: item.minThreshold || 5,
           location: item.location || "Main Property Storage",
           assignmentType: item.assignmentType || "borrowable",
@@ -2368,7 +2404,7 @@ export function FileNewPODialog({
                             "grid grid-cols-2 gap-3 pt-1 border-t border-border/40",
                             poType === "consumable"
                               ? "sm:grid-cols-3 lg:grid-cols-5"
-                              : "sm:grid-cols-4"
+                              : "sm:grid-cols-3 lg:grid-cols-5"
                           )}
                         >
                           {/* 1. Quantity */}
@@ -2408,7 +2444,7 @@ export function FileNewPODialog({
                             />
                           </div>
 
-                          {/* Classification (locked to PO) / Category */}
+                          {/* Classification (locked to PO for consumables; derived for assets) */}
                           {poType === "consumable" && (
                             <div className="space-y-1">
                               <label className="font-semibold text-text">
@@ -2436,14 +2472,43 @@ export function FileNewPODialog({
                             </div>
                           )}
 
+                          {poType === "asset" && (
+                            <div className="space-y-1">
+                              <label className="font-semibold text-text">
+                                Classification
+                              </label>
+                              <div className="h-8.5 px-2 rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-800 dark:text-violet-300 font-semibold text-xs flex items-center gap-1.5 select-none">
+                                <Tag className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">
+                                  {item.classification.trim() ||
+                                    resolveAssetClassForCategory(item.category) ||
+                                    "Unclassified"}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
                           <div className="space-y-1">
                             <label className="font-semibold text-text">Category</label>
                             {item.isNew ? (
                               <SearchableSelect
                                 value={item.category}
-                                onValueChange={(val) =>
-                                  handleItemFieldChange(item.id, "category", val)
-                                }
+                                onValueChange={(val) => {
+                                  setItems((prev) =>
+                                    prev.map((row) =>
+                                      row.id === item.id
+                                        ? {
+                                            ...row,
+                                            category: val,
+                                            classification:
+                                              poType === "asset"
+                                                ? resolveAssetClassForCategory(val)
+                                                : row.classification,
+                                          }
+                                        : row
+                                    )
+                                  );
+                                }}
                                 options={itemCategoryOptions}
                                 placeholder="Select category…"
                                 emptyMessage="No categories available"
@@ -2459,48 +2524,69 @@ export function FileNewPODialog({
                             )}
                           </div>
 
-                          {/* 4. Unit of Measure / Assignment Type */}
+                          {/* 4. Unit of Measure (assets + consumables) */}
                           <div className="space-y-1">
                             <label className="font-semibold text-text">
-                              {poType === "consumable" ? "Unit of Measure" : "Assignment Type"}
+                              Unit of Measure
                             </label>
-                            {item.isNew ? (
-                              poType === "consumable" ? (
-                                <input
-                                  type="text"
-                                  value={item.unit}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(item.id, "unit", e.target.value)
-                                  }
-                                  placeholder="pcs, reams..."
-                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-primary focus:outline-hidden"
-                                />
-                              ) : (
-                                <SearchableSelect
-                                  value={item.assignmentType}
-                                  onValueChange={(val) =>
-                                    handleItemFieldChange(item.id, "assignmentType", val)
-                                  }
-                                  options={assignmentTypeOptions}
-                                  placeholder="Select assignment type…"
-                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-primary"
-                                />
-                              )
+                            {item.isNew || poType === "asset" ? (
+                              <input
+                                type="text"
+                                value={item.unit}
+                                onChange={(e) =>
+                                  handleItemFieldChange(item.id, "unit", e.target.value)
+                                }
+                                placeholder={
+                                  poType === "asset"
+                                    ? "unit, set, pair…"
+                                    : "pcs, reams…"
+                                }
+                                className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-primary focus:outline-hidden"
+                              />
                             ) : (
                               <input
                                 type="text"
-                                value={
-                                  poType === "consumable"
-                                    ? item.unit || "pcs"
-                                    : item.assignmentType === "assignable"
-                                    ? "Assignable"
-                                    : "Borrowable"
-                                }
+                                value={item.unit || "pcs"}
                                 readOnly
                                 className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"
                               />
                             )}
                           </div>
+
+                          {/* 5. Assignment Type (assets only) */}
+                          {poType === "asset" ? (
+                            <div className="space-y-1">
+                              <label className="font-semibold text-text">
+                                Assignment Type
+                              </label>
+                              {item.isNew ? (
+                                <SearchableSelect
+                                  value={item.assignmentType}
+                                  onValueChange={(val) =>
+                                    handleItemFieldChange(
+                                      item.id,
+                                      "assignmentType",
+                                      val
+                                    )
+                                  }
+                                  options={assignmentTypeOptions}
+                                  placeholder="Select assignment type…"
+                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-primary"
+                                />
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={
+                                    item.assignmentType === "assignable"
+                                      ? "Assignable"
+                                      : "Borrowable"
+                                  }
+                                  readOnly
+                                  className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"
+                                />
+                              )}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>

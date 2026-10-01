@@ -233,16 +233,19 @@ function buildLineRows(data: DisbursementSlipData): string {
       <td colspan="6" class="sign-cell">
         <div class="signatories-row">
           <div class="sign-block">
-            <span class="sign-label">Requested by:</span>
-            <input class="sign-space" data-slip-field="requestedBy" value="${escapeHtml(data.requestedBy)}" aria-label="Requested by" autocomplete="off" />
+            <span class="sign-label">Received by:</span>
+            <input class="sign-space" data-slip-field="requestedBy" value="${escapeHtml(data.requestedBy)}" aria-label="Payee" autocomplete="off" />
+            <span class="sign-title">Payee</span>
           </div>
           <div class="sign-block">
             <span class="sign-label">Verified by:</span>
-            <input class="sign-space" data-slip-field="verifiedBy" value="${escapeHtml(data.verifiedBy)}" aria-label="Verified by" autocomplete="off" />
+            <input class="sign-space" data-slip-field="verifiedBy" value="${escapeHtml(data.verifiedBy)}" aria-label="Property Custodian Staff" autocomplete="off" />
+            <span class="sign-title">Property Custodian Staff</span>
           </div>
           <div class="sign-block">
             <span class="sign-label">Prepared by:</span>
-            <input class="sign-space" data-slip-field="preparedBy" value="${escapeHtml(data.preparedBy)}" aria-label="Prepared by" autocomplete="off" />
+            <input class="sign-space" data-slip-field="preparedBy" value="${escapeHtml(data.preparedBy)}" aria-label="Materials Control and Work Progress Staff" autocomplete="off" />
+            <span class="sign-title">Materials Control and Work Progress Staff</span>
           </div>
         </div>
         <div class="forwarded-bar">
@@ -390,7 +393,7 @@ export function buildDisbursementSlipStyles(): string {
     }
     .total-row .col-amount { font-size: 13px; }
     .sign-row td {
-      height: 90px;
+      height: 108px;
       padding: 10px 14px 8px;
     }
     .sign-cell {
@@ -405,8 +408,8 @@ export function buildDisbursementSlipStyles(): string {
     .sign-block {
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      min-height: 56px;
+      justify-content: flex-start;
+      min-height: 72px;
     }
     .sign-label {
       font-size: 10.5px;
@@ -414,7 +417,7 @@ export function buildDisbursementSlipStyles(): string {
       text-transform: uppercase;
       color: #4b5563;
       letter-spacing: 0.2px;
-      margin-bottom: 26px;
+      margin-bottom: 18px;
     }
     .sign-space {
       width: 100%;
@@ -434,6 +437,16 @@ export function buildDisbursementSlipStyles(): string {
     .sign-space:focus {
       outline: none;
       border-bottom-color: #2563eb;
+    }
+    .sign-title {
+      margin-top: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.15px;
+      color: #374151;
+      line-height: 1.25;
     }
     .forwarded-bar {
       display: flex;

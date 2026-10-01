@@ -55,6 +55,24 @@ describe("purchase order notes metadata", () => {
     expect(parsed.draftItem?.category).toBe("Office Supplies");
   });
 
+  it("preserves free-text asset classification in draftItem metadata", () => {
+    const serialized = serializeNotesMetadata({
+      notes: null,
+      status: "pending_approval",
+      purpose: "[IT] Monitors",
+      draftItem: {
+        category: "Monitors",
+        classification: "Computer Equipments",
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+    });
+    const parsed = parseNotesMetadata(serialized);
+    expect(parsed.draftItem?.category).toBe("Monitors");
+    expect(parsed.draftItem?.classification).toBe("Computer Equipments");
+    expect(parsed.draftItem?.assignmentType).toBe("borrowable");
+  });
+
   it("parses legacy bracket status tags", () => {
     const parsed = parseNotesMetadata(
       "[STATUS: approved] [PURPOSE: Restock] hello"
@@ -149,6 +167,30 @@ describe("toPurchaseLotDTO classification", () => {
       })
     );
     expect(dto.unit).toBe("unit");
+  });
+
+  it("preserves free-text asset UoM from deferred draft metadata", () => {
+    const notes = serializeNotesMetadata({
+      notes: null,
+      status: "pending_approval",
+      purpose: "[Ops] Equipment",
+      draftItem: {
+        category: "Furniture",
+        unit: "set",
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+    });
+    const dto = toPurchaseLotDTO(
+      baseRow({
+        notes,
+        itemType: "asset",
+        itemName: "Conference Table",
+        itemCode: "AST-2",
+      })
+    );
+    expect(dto.unit).toBe("set");
+    expect(dto.unit).not.toBe("unit");
   });
 });
 

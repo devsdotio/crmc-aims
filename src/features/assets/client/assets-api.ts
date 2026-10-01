@@ -98,6 +98,7 @@ export const assetsApi = {
     filters?: {
       modelId?: string;
       category?: string;
+      classification?: string;
       search?: string;
       availableOnly?: boolean;
       assignmentType?: "borrowable" | "assignable";
@@ -112,6 +113,9 @@ export const assetsApi = {
     }
     if (filters?.modelId) searchParams.set("modelId", filters.modelId);
     if (filters?.category) searchParams.set("category", filters.category);
+    if (filters?.classification) {
+      searchParams.set("classification", filters.classification);
+    }
     if (filters?.search) searchParams.set("search", filters.search);
     if (filters?.availableOnly) searchParams.set("availableOnly", "true");
     if (filters?.assignmentType) searchParams.set("assignmentType", filters.assignmentType);

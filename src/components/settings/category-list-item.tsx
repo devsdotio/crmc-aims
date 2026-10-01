@@ -1,6 +1,6 @@
 "use client";
 
-import { Edit3, Trash2, Tag, Box, Package } from "lucide-react";
+import { Edit3, Trash2, Tag, Box, Package, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCategoryStyle } from "@/constants/categories";
 import type { CategoryItem } from "@/types/settings";
@@ -20,6 +20,33 @@ export function getSwatchForName(name: string, colorToken?: string) {
   };
 }
 
+function typeBadge(category: CategoryItem) {
+  if (category.type === "asset_class") {
+    return {
+      label: "Class",
+      className: "bg-violet-50 text-violet-700 border border-violet-200/60",
+      blurb: "General asset classification",
+      Icon: Layers,
+    };
+  }
+  if (category.type === "asset") {
+    return {
+      label: "Asset",
+      className: "bg-blue-50 text-blue-700 border border-blue-200/60",
+      blurb: category.parentName
+        ? `Under ${category.parentName}`
+        : "Unclassified — edit to assign a class",
+      Icon: Package,
+    };
+  }
+  return {
+    label: "Consumable",
+    className: "bg-emerald-50 text-emerald-700 border border-emerald-200/60",
+    blurb: "Consumable inventory classification",
+    Icon: Box,
+  };
+}
+
 export function CategoryListItem({
   category,
   onEdit,
@@ -31,7 +58,8 @@ export function CategoryListItem({
     category.name,
     category.colorToken,
   );
-  const isAsset = category.type === "asset";
+  const badge = typeBadge(category);
+  const Icon = badge.Icon;
 
   return (
     <div className="group relative flex flex-col justify-between gap-3 p-4 bg-bg rounded-xl border border-border transition-colors hover:border-primary/40 hover:shadow-xs">
@@ -44,11 +72,7 @@ export function CategoryListItem({
               categoryStyle.text,
             )}
           >
-            {isAsset ? (
-              <Package className="h-4.5 w-4.5" />
-            ) : (
-              <Box className="h-4.5 w-4.5" />
-            )}
+            <Icon className="h-4.5 w-4.5" />
           </span>
 
           <div className="min-w-0">
@@ -59,23 +83,18 @@ export function CategoryListItem({
               <span
                 className={cn(
                   "inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider",
-                  isAsset
-                    ? "bg-blue-50 text-blue-700 border border-blue-200/60"
-                    : "bg-emerald-50 text-emerald-700 border border-emerald-200/60",
+                  badge.className,
                 )}
               >
-                {isAsset ? "Asset" : "Consumable"}
+                {badge.label}
               </span>
             </div>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {isAsset
-                ? "Fixed equipment classification"
-                : "Consumable inventory classification"}
+            <p className="text-xs text-text-secondary mt-0.5 truncate">
+              {badge.blurb}
             </p>
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex items-center gap-1.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
           <button
             type="button"
@@ -110,10 +129,11 @@ export function CategoryListItem({
         </div>
       </div>
 
-      {/* Footer item counter chip */}
       <div className="flex items-center justify-between pt-2 border-t border-border/60 text-xs">
         <span className="text-text-secondary text-[11px] font-medium">
-          Associated Items
+          {category.type === "asset_class"
+            ? "Linked categories / assets"
+            : "Associated Items"}
         </span>
         <span
           className={cn(
@@ -126,13 +146,15 @@ export function CategoryListItem({
           <Tag className="h-3 w-3 text-text-secondary" />
           <span>
             {category.itemCount}{" "}
-            {isAsset
+            {category.type === "asset"
               ? category.itemCount === 1
                 ? "asset"
                 : "assets"
-              : category.itemCount === 1
-                ? "item"
-                : "items"}
+              : category.type === "asset_class"
+                ? "linked"
+                : category.itemCount === 1
+                  ? "item"
+                  : "items"}
           </span>
         </span>
       </div>

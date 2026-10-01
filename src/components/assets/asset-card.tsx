@@ -98,8 +98,8 @@ export function AssetCard({ asset, onSelect, getCategoryStyle }: AssetCardProps)
 
       {/* Card Content Body */}
       <div className="p-4 flex flex-col gap-3 flex-1">
-        {/* Category Pill */}
-        <div>
+        {/* Category + general classification */}
+        <div className="space-y-1">
           <span
             className={cn(
               "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-2xs",
@@ -110,6 +110,11 @@ export function AssetCard({ asset, onSelect, getCategoryStyle }: AssetCardProps)
             <Tag className="h-2.5 w-2.5 shrink-0" />
             {categoryMeta.label}
           </span>
+          {asset.classification ? (
+            <p className="text-[10px] text-text-secondary truncate" title={asset.classification}>
+              {asset.classification}
+            </p>
+          ) : null}
         </div>
 
         {/* Asset Name */}

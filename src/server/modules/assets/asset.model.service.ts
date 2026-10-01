@@ -33,6 +33,7 @@ export type AssetModelDTO = {
   modelCode: string;
   name: string;
   category: string;
+  classification?: string;
   description?: string;
   manufacturer?: string;
   defaultAssignmentType: "borrowable" | "assignable";
@@ -65,6 +66,7 @@ export function toAssetModelDTO(
     modelCode: row.modelCode,
     name: row.name,
     category: row.category,
+    classification: row.classification || undefined,
     description: row.description ?? undefined,
     manufacturer: row.manufacturer ?? undefined,
     defaultAssignmentType: row.defaultAssignmentType,
@@ -126,6 +128,29 @@ export class AssetModelService {
       );
     }
 
+    let classification = "";
+    if (input.classification?.trim()) {
+      const classRow = await this.taxonomy.findByTypeAndName(
+        "asset_class",
+        input.classification,
+        undefined,
+        actor.tenantId
+      );
+      if (!classRow) {
+        throw new BadRequestError(
+          `Unknown asset classification “${input.classification}”. Add it under Settings → Categories first.`
+        );
+      }
+      classification = classRow.name;
+    } else {
+      classification =
+        await this.taxonomy.resolveAssetClassificationForCategoryName(
+          found.name,
+          undefined,
+          actor.tenantId
+        );
+    }
+
     const existing = await this.modelRepo.findByModelCode(input.modelCode, undefined, actor.tenantId);
     if (existing) {
       throw new ConflictError(`Model code ${input.modelCode} already exists.`);
@@ -136,6 +161,7 @@ export class AssetModelService {
       modelCode: input.modelCode,
       name: input.name,
       category: found.name,
+      classification,
       description: input.description ?? null,
       manufacturer: input.manufacturer ?? null,
       defaultAssignmentType: input.defaultAssignmentType ?? "borrowable",
@@ -169,25 +195,50 @@ export class AssetModelService {
     }
 
     let categoryName: string | undefined;
-    if (input.category !== undefined) {
+    let classification: string | undefined;
+    if (input.category !== undefined || input.classification !== undefined) {
+      const catSource = input.category ?? existing.category;
       const found = await this.taxonomy.findByTypeAndName(
         "asset",
-        input.category,
+        catSource,
         undefined,
         tenantId
       );
       if (!found) {
         throw new BadRequestError(
-          `Unknown asset category “${input.category}”. Add it under Settings → Categories first.`
+          `Unknown asset category “${catSource}”. Add it under Settings → Categories first.`
         );
       }
       categoryName = found.name;
+
+      if (input.classification?.trim()) {
+        const classRow = await this.taxonomy.findByTypeAndName(
+          "asset_class",
+          input.classification,
+          undefined,
+          tenantId
+        );
+        if (!classRow) {
+          throw new BadRequestError(
+            `Unknown asset classification “${input.classification}”. Add it under Settings → Categories first.`
+          );
+        }
+        classification = classRow.name;
+      } else if (input.category !== undefined) {
+        classification =
+          await this.taxonomy.resolveAssetClassificationForCategoryName(
+            found.name,
+            undefined,
+            tenantId
+          );
+      }
     }
 
     const updated = await this.modelRepo.update(id, {
       ...(input.modelCode !== undefined ? { modelCode: input.modelCode } : {}),
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(categoryName !== undefined ? { category: categoryName } : {}),
+      ...(classification !== undefined ? { classification } : {}),
       ...(input.description !== undefined
         ? { description: input.description }
         : {}),
@@ -260,6 +311,7 @@ export class AssetModelService {
       modelCode: code,
       name: input.name,
       category: categoryName,
+      classification: input.classification?.trim() || "",
       description: input.description ?? null,
       manufacturer: input.manufacturer ?? null,
       defaultAssignmentType: input.defaultAssignmentType ?? "borrowable",

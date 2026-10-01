@@ -64,6 +64,16 @@ export const assets = pgTable(
     assetCode: text("asset_code").notNull(),
     name: text("name").notNull(),
     category: text("category").notNull(),
+    /**
+     * General asset classification name (Settings → Categories type=asset_class).
+     * Empty string when the specific category has no parent class yet.
+     */
+    classification: text("classification").notNull().default(""),
+    /**
+     * Unit of measure for this asset record (e.g. unit, set, pair, pcs).
+     * Editable in Assets → Add/Edit; defaults to "unit".
+     */
+    unit: text("unit").notNull().default("unit"),
     status: assetStatusEnum("status").notNull().default("active"),
     assignmentType: assetAssignmentTypeEnum("assignment_type").notNull().default("borrowable"),
 
@@ -110,6 +120,7 @@ export const assets = pgTable(
     unique("assets_tenant_code_idx").on(table.tenantId, table.assetCode),
     index("assets_status_idx").on(table.status),
     index("assets_category_idx").on(table.category),
+    index("assets_classification_idx").on(table.classification),
     index("assets_location_idx").on(table.location),
     index("assets_supplier_id_idx").on(table.supplierId),
     index("assets_model_id_idx").on(table.modelId),

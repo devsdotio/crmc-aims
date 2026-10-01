@@ -22,6 +22,8 @@ const assetListColumns = {
   assetCode: assets.assetCode,
   name: assets.name,
   category: assets.category,
+  classification: assets.classification,
+  unit: assets.unit,
   status: assets.status,
   assignmentType: assets.assignmentType,
   modelId: assets.modelId,
@@ -149,6 +151,11 @@ export class AssetRepository implements IAssetRepository {
     if (filters?.category?.trim()) {
       conditions.push(eq(assets.category, filters.category.trim()));
     }
+    if (filters?.classification?.trim()) {
+      conditions.push(
+        sql`lower(${assets.classification}) = ${filters.classification.trim().toLowerCase()}`
+      );
+    }
     if (filters?.assignmentType) {
       conditions.push(eq(assets.assignmentType, filters.assignmentType));
     }
@@ -190,7 +197,9 @@ export class AssetRepository implements IAssetRepository {
           ilike(assets.name, q),
           ilike(assets.serialNumber, q),
           ilike(assets.location, q),
-          ilike(assets.currentHolder, q)
+          ilike(assets.currentHolder, q),
+          ilike(assets.category, q),
+          ilike(assets.classification, q)
         )!
       );
     }

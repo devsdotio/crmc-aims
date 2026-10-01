@@ -2,6 +2,7 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import type { PurchaseLot, POLineItemDetail } from "@/types/purchase-lots";
 import { stripPoPurposePrefix } from "@/lib/po-purpose";
+import { resolvePurchaseUnit } from "@/lib/purchase-unit";
 import { groupByPurpose } from "@/lib/request-purpose";
 
 const SLIP_PURPOSE_FALLBACK = "Institutional Inventory & Operations";
@@ -68,10 +69,19 @@ function resolveLinePurpose(
 
 type SlipLine = POLineItemDetail & { purposeLabel: string };
 
+/** Resolve display UoM for a PO slip line (print + preview). */
+export function resolvePoSlipUnit(
+  itemType: "asset" | "consumable",
+  unit?: string | null
+): string {
+  return resolvePurchaseUnit(itemType, unit);
+}
+
 function getSlipLines(lot: PurchaseLot): SlipLine[] {
   if (lot.items && lot.items.length > 0) {
     return lot.items.map((item) => ({
       ...item,
+      unit: resolvePoSlipUnit(item.itemType, item.unit),
       purposeLabel: resolveLinePurpose(item, lot),
     }));
   }
@@ -84,9 +94,7 @@ function getSlipLines(lot: PurchaseLot): SlipLine[] {
       itemCode: lot.itemCode,
       itemName: lot.itemName,
       quantity: lot.quantity,
-      unit:
-        lot.unit?.trim() ||
-        (lot.itemType === "asset" ? "unit" : null),
+      unit: resolvePoSlipUnit(lot.itemType, lot.unit),
       unitCost: lot.unitCost,
       totalCost: lot.totalCost,
       purpose: lot.purpose,
@@ -126,9 +134,7 @@ function buildItemCellsHtml(
 ): string {
   const iUnit = parseFloat(item.unitCost) || 0;
   const iTotal = parseFloat(item.totalCost) || 0;
-  const uom =
-    item.unit?.trim() ||
-    (item.itemType === "asset" ? "unit" : "pcs");
+  const uom = resolvePoSlipUnit(item.itemType, item.unit);
   return `<tr>
             <td class="col-qty">${item.quantity} <span style="font-size: 9px; color: #666;">${escapeHtml(uom)}</span></td>
             <td class="col-desc">

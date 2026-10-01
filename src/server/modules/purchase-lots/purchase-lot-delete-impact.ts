@@ -120,7 +120,12 @@ function isGhostWarehouseLot(
   return !lot.consumableId && movs.length === 0;
 }
 
-/** Resolve primary + sibling units minted for this PO line. */
+/**
+ * Resolve physical units minted by this PO line.
+ * Only rows whose notes mark `Acquired via PO {poNumber}` are included —
+ * never delete a pre-existing catalog asset that was only used as a product
+ * reference on the lot (`lot.assetId` before/without intake).
+ */
 export async function resolvePoMintedAssets(
   lot: PurchaseLotRow,
   poNumber: string,
@@ -147,32 +152,23 @@ export async function resolvePoMintedAssets(
     });
   };
 
-  if (lot.assetId) {
-    const [primary] = await db
-      .select({
-        id: assets.id,
-        assetCode: assets.assetCode,
-        name: assets.name,
-        status: assets.status,
-        currentHolder: assets.currentHolder,
-        reservedForRequestId: assets.reservedForRequestId,
-      })
-      .from(assets)
-      .where(eq(assets.id, lot.assetId))
-      .limit(1);
-    if (primary) add(primary);
-  }
-
   const noteNeedle = `%Acquired via PO ${poNumber}%`;
-  const siblingConditions = [
-    ilike(assets.notes, noteNeedle),
-    eq(assets.name, lot.itemName),
-  ];
+  const mintedConditions = [ilike(assets.notes, noteNeedle)];
   if (lot.tenantId) {
-    siblingConditions.push(eq(assets.tenantId, lot.tenantId));
+    mintedConditions.push(eq(assets.tenantId, lot.tenantId));
+  }
+  // Prefer name match when present, but still catch minted units if the lot
+  // label drifted slightly after filing.
+  if (lot.itemName?.trim()) {
+    mintedConditions.push(
+      or(
+        eq(assets.name, lot.itemName),
+        sql`lower(${assets.name}) = ${lot.itemName.toLowerCase()}`
+      )!
+    );
   }
 
-  const siblings = await db
+  const minted = await db
     .select({
       id: assets.id,
       assetCode: assets.assetCode,
@@ -182,9 +178,12 @@ export async function resolvePoMintedAssets(
       reservedForRequestId: assets.reservedForRequestId,
     })
     .from(assets)
-    .where(and(...siblingConditions));
+    .where(and(...mintedConditions));
 
-  for (const s of siblings) add(s);
+  for (const row of minted) add(row);
+
+  // If the lot points at a unit that was itself minted by this PO (notes match),
+  // it is already included. Pre-existing catalog refs without the marker are skipped.
 
   return [...byId.values()];
 }

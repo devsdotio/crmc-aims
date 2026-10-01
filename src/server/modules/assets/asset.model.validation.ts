@@ -22,6 +22,8 @@ export const createAssetModelSchema = z.object({
     ),
   name: z.string().trim().min(1, "name is required.").max(255),
   category: categoryLabelSchema,
+  /** Optional general classification; otherwise derived from the category's parent class. */
+  classification: z.string().trim().max(120).optional(),
   description: z.string().trim().max(4000).optional(),
   manufacturer: z.string().trim().max(255).optional(),
   defaultAssignmentType: assetAssignmentTypeSchema.optional(),
