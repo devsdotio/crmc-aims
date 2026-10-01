@@ -2,14 +2,19 @@ import type { UserRole } from "./users";
 
 export type SettingsSection = "account" | "categories" | "departments";
 
-export type CategoryType = "asset" | "consumable";
+/** Taxonomy row kinds managed under Category Management. */
+export type CategoryType = "asset" | "consumable" | "asset_class";
 
 export interface CategoryItem {
   id: string;
   name: string;
   type: CategoryType;
   colorToken?: string;
-  itemCount: number; 
+  /** Parent asset class id when type=asset. */
+  parentId?: string | null;
+  /** Resolved parent asset class name (list enrichment). */
+  parentName?: string | null;
+  itemCount: number;
 }
 
 export interface UserProfile {

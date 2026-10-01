@@ -24,6 +24,11 @@ export interface Asset {
   assetCode: string;
   name: string;
   category: AssetCategory;
+  /**
+   * General asset classification (Settings → Categories type=asset_class).
+   * Empty when the specific category has no parent class.
+   */
+  classification?: string;
   status: AssetStatus;
   assignmentType: AssetAssignmentType;
   /** Parent product model when unit belongs to a multi-copy catalog entry. */

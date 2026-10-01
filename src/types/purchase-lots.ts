@@ -55,7 +55,7 @@ export interface PurchaseLot {
    * Consumable-only: supply vs material.
    * Present for deferred new-item drafts and server-enriched linked catalog rows.
    */
-  classification?: "supply" | "material" | null;
+  classification?: string | null;
   /**
    * Unit of measure for quantity (e.g. pcs, ream, carton).
    * From deferred draftItem, linked consumable catalog, or "unit" for assets.

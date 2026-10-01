@@ -25,6 +25,7 @@ import { SupplierRepository } from "@/server/modules/suppliers/supplier.reposito
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { AssetModelRepository } from "@/server/modules/assets/asset.model.repository";
+import { CategoryRepository } from "@/server/modules/categories/category.repository";
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
 import { hasPoJustification } from "@/lib/po-purpose";
 
@@ -127,7 +128,11 @@ export function deriveLotCode(lotCode: string): string {
 /** Specs for a catalog item deferred until PO delivery. */
 export type DraftItemSpecs = {
   category?: string | null;
-  classification?: "supply" | "material" | null;
+  /**
+   * Consumables: `supply` | `material`.
+   * Assets: general classification name (Settings asset_class), or empty.
+   */
+  classification?: string | null;
   unit?: string | null;
   minThreshold?: number | null;
   location?: string | null;
@@ -137,10 +142,10 @@ export type DraftItemSpecs = {
 function parseDraftItem(raw: unknown): DraftItemSpecs | null {
   if (!raw || typeof raw !== "object") return null;
   const d = raw as Record<string, unknown>;
-  const classification =
-    d.classification === "supply" || d.classification === "material"
-      ? d.classification
-      : null;
+  let classification: string | null = null;
+  if (typeof d.classification === "string" && d.classification.trim()) {
+    classification = d.classification.trim();
+  }
   const assignmentType =
     d.assignmentType === "borrowable" || d.assignmentType === "assignable"
       ? d.assignmentType
@@ -167,7 +172,7 @@ function parseDraftItem(raw: unknown): DraftItemSpecs | null {
  */
 export function supplierLinkForMaterialLot(input: {
   supplierId: string | null | undefined;
-  classification?: "supply" | "material" | null;
+  classification?: string | null;
   consumableClassification?: string | null;
   projectId?: string | null;
 }): string | null {
@@ -341,10 +346,7 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     departmentName: row.departmentName ?? null,
     projectId: row.projectId ?? null,
     projectName: row.projectName ?? null,
-    classification:
-      row.itemType === "consumable"
-        ? meta.draftItem?.classification ?? null
-        : null,
+    classification: meta.draftItem?.classification ?? null,
     unit:
       meta.draftItem?.unit?.trim() ||
       (row.itemType === "asset" ? "unit" : null),
@@ -455,6 +457,55 @@ async function withConsumableClassifications(
 }
 
 /**
+ * Fill asset classification from the linked asset when draftItem was cleared after delivery.
+ */
+async function withAssetClassifications(
+  dtos: PurchaseLotDTO[],
+  tenantId?: string,
+  session?: DbSession
+): Promise<PurchaseLotDTO[]> {
+  if (dtos.length === 0) return dtos;
+
+  const assetIds = [
+    ...new Set(
+      dtos
+        .filter(
+          (d) =>
+            d.itemType === "asset" &&
+            Boolean(d.assetId) &&
+            !d.classification?.trim()
+        )
+        .map((d) => d.assetId as string)
+    ),
+  ];
+  if (assetIds.length === 0) return dtos;
+
+  const db = session ?? getDb();
+  const conditions = [inArray(assets.id, assetIds)];
+  if (tenantId) {
+    conditions.push(eq(assets.tenantId, tenantId));
+  }
+
+  const linked = await db
+    .select({
+      id: assets.id,
+      classification: assets.classification,
+    })
+    .from(assets)
+    .where(and(...conditions));
+
+  const byId = new Map(linked.map((row) => [row.id, row.classification || ""]));
+
+  return dtos.map((dto) => {
+    if (dto.itemType !== "asset" || !dto.assetId) return dto;
+    if (dto.classification?.trim()) return dto;
+    const classification = byId.get(dto.assetId);
+    if (!classification) return dto;
+    return { ...dto, classification };
+  });
+}
+
+/**
  * Attach sponsoring departments from purchase_order_departments.
  * Falls back to the scalar departmentId/Name on the lot when no join rows exist.
  */
@@ -523,11 +574,27 @@ async function withPoDepartments(
 export class PurchaseLotService {
   private readonly auditLogs = new AuditLogService();
   private readonly assetModels = new AssetModelRepository();
+  private readonly taxonomy = new CategoryRepository();
 
   constructor(
     private readonly repo = new PurchaseLotRepository(),
     private readonly suppliers = new SupplierRepository()
   ) {}
+
+  private async resolveAssetLineClassification(
+    category: string | null | undefined,
+    explicit: string | null | undefined,
+    tenantId?: string | null
+  ): Promise<string> {
+    const trimmed = (explicit ?? "").trim();
+    if (trimmed) return trimmed;
+    if (!category?.trim()) return "";
+    return this.taxonomy.resolveAssetClassificationForCategoryName(
+      category,
+      undefined,
+      tenantId ?? undefined
+    );
+  }
 
   private async nextCategoryAssetCode(
     category: string,
@@ -619,6 +686,7 @@ export class PurchaseLotService {
     }
 
     dtos = await withConsumableClassifications(dtos, actorTenantId);
+    dtos = await withAssetClassifications(dtos, actorTenantId);
     dtos = await withPoDepartments(dtos, actorTenantId);
     return withDisbursementClaims(dtos, actorTenantId);
   }
@@ -627,8 +695,11 @@ export class PurchaseLotService {
     const id = purchaseLotIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", id);
-    const classified = await withConsumableClassifications(
-      [toPurchaseLotDTO(row)],
+    const classified = await withAssetClassifications(
+      await withConsumableClassifications(
+        [toPurchaseLotDTO(row)],
+        actorTenantId
+      ),
       actorTenantId
     );
     const withDepts = await withPoDepartments(classified, actorTenantId);
@@ -643,8 +714,11 @@ export class PurchaseLotService {
     }
     const row = await this.repo.findByLotCode(parsed.code, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", parsed.code);
-    const classified = await withConsumableClassifications(
-      [toPurchaseLotDTO(row)],
+    const classified = await withAssetClassifications(
+      await withConsumableClassifications(
+        [toPurchaseLotDTO(row)],
+        actorTenantId
+      ),
       actorTenantId
     );
     const withDepts = await withPoDepartments(classified, actorTenantId);
@@ -1067,6 +1141,11 @@ export class PurchaseLotService {
             const unitsToCreate = Math.max(1, item.quantity);
             let firstCode = "";
             let firstId: string | null = null;
+            const assetClassification = await this.resolveAssetLineClassification(
+              item.category || "Equipment",
+              item.classification,
+              actor.tenantId
+            );
 
             for (let i = 0; i < unitsToCreate; i++) {
               const code = await this.nextCategoryAssetCode(
@@ -1081,6 +1160,7 @@ export class PurchaseLotService {
                   assetCode: code,
                   name: itemName,
                   category: item.category || "Equipment",
+                  classification: assetClassification,
                   status: "active",
                   assignmentType: item.assignmentType || "borrowable",
                   location: item.location || "Property Custodian Depot",
@@ -1105,8 +1185,14 @@ export class PurchaseLotService {
             // Defer catalog insert until delivery — lot holds draft specs only
             itemCode = generateOperationalCode("ITM");
             assetId = null;
+            const assetClassification = await this.resolveAssetLineClassification(
+              item.category || "Equipment",
+              item.classification,
+              actor.tenantId
+            );
             draftItem = {
               category: item.category || "Equipment",
+              classification: assetClassification || null,
               location: item.location || "Property Custodian Depot",
               assignmentType: item.assignmentType || "borrowable",
             };
@@ -1513,6 +1599,13 @@ export class PurchaseLotService {
             draft?.location || "Property Custodian Depot";
           const draftAssignment =
             draft?.assignmentType || "borrowable";
+          const draftClassification =
+            (draft?.classification || "").trim() ||
+            (await this.resolveAssetLineClassification(
+              draftCategory,
+              null,
+              lot.tenantId
+            ));
 
           if (primaryAssetId) {
             const [existingAsset] = await db
@@ -1560,6 +1653,8 @@ export class PurchaseLotService {
                 assetCode,
                 name: existingAsset.name,
                 category: existingAsset.category,
+                classification:
+                  existingAsset.classification || draftClassification,
                 status: "active",
                 assignmentType: existingAsset.assignmentType,
                 modelId: existingAsset.modelId,
@@ -1603,6 +1698,7 @@ export class PurchaseLotService {
                   assetCode,
                   name: lot.itemName,
                   category: draftCategory,
+                  classification: draftClassification,
                   status: "active",
                   assignmentType: draftAssignment,
                   location: draftLocation,
@@ -2252,8 +2348,14 @@ export class PurchaseLotService {
           } else {
             itemCode = generateOperationalCode("ITM");
             assetId = null;
+            const assetClassification = await this.resolveAssetLineClassification(
+              item.category || "Equipment",
+              item.classification,
+              actor.tenantId
+            );
             draftItem = {
               category: item.category || "Equipment",
+              classification: assetClassification || null,
               location: item.location || "Property Custodian Depot",
               assignmentType: item.assignmentType || "borrowable",
             };

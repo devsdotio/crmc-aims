@@ -80,11 +80,43 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       expect(row.assetCode).toMatch(/^CP-\d{3}$/);
       expect(row.name).toBe("PO Projector Unit");
       expect(row.category).toBe(fx.assetCategory);
+      expect(row.classification).toBe(fx.assetClassification);
       expect(row.assignmentType).toBe("borrowable");
       expect(row.status).toBe("active");
       expect(row.location).toBe("Depot");
       expect(row.currentHolder).toBeNull();
     }
+  });
+
+  it("stores asset classification on undelivered draft PO lines", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-02",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "asset",
+            name: "PO Monitor Draft",
+            category: fx.assetCategory,
+            classification: fx.assetClassification,
+            assignmentType: "borrowable",
+            location: "Depot",
+            quantity: 1,
+            unitCost: 9000,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.itemType).toBe("asset");
+    expect(lot.classification).toBe(fx.assetClassification);
+    expect(lot.assetId).toBeFalsy();
   });
 
   it("files a new material PO with classification material (not supply)", async () => {

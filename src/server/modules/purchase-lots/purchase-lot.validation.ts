@@ -72,8 +72,11 @@ export const createPurchaseOrderItemSchema = z.object({
   isNewItem: z.boolean().optional(),
   name: z.string().trim().min(1, "Item name is required."),
   category: z.string().trim().min(1, "Category is required."),
-  /** Required when creating a new consumable from a PO line. */
-  classification: z.enum(["supply", "material"]).optional(),
+  /**
+   * Consumables: `supply` | `material`.
+   * Assets: general classification name (Settings asset_class).
+   */
+  classification: z.string().trim().min(1).max(120).optional(),
   unit: z.string().trim().optional(),
   minThreshold: z.number().int().min(0).optional(),
   location: z.string().trim().optional(),
@@ -110,6 +113,19 @@ export const createPurchaseOrderSchema = z
       .min(1, "Please provide at least one line item."),
   })
   .superRefine((data, ctx) => {
+    data.items.forEach((item, index) => {
+      if (item.itemType === "consumable") {
+        const cls = item.classification;
+        if (cls && cls !== "supply" && cls !== "material") {
+          ctx.addIssue({
+            code: "custom",
+            message: 'Consumable classification must be "supply" or "material".',
+            path: ["items", index, "classification"],
+          });
+        }
+      }
+    });
+
     if (data.projectId) {
       const ids =
         data.departmentIds && data.departmentIds.length > 0

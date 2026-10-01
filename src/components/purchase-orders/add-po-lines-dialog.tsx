@@ -54,7 +54,8 @@ interface LineDraft {
   assetId?: string;
   name: string;
   category: string;
-  classification: ConsumableClassification;
+  /** Consumables: supply|material. Assets: general classification name. */
+  classification: string;
   unit: string;
   minThreshold: number;
   location: string;
@@ -81,7 +82,7 @@ function createRowId(): string {
 
 function emptyRow(
   poType: POType,
-  classification: ConsumableClassification
+  classification: string
 ): LineDraft {
   return {
     id: createRowId(),
@@ -167,19 +168,6 @@ export function AddPoLinesDialog({
     return "";
   }, [lot, existingLots]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    setItems([emptyRow(poType, classification)]);
-    setCatalogSearch("");
-    setErrorMessage(null);
-    const first =
-      existingJustifications[0] || stripPoPurposePrefix(lot.purpose) || "";
-    setPurposeChoice(first || "__new__");
-    setNewPurposeText("");
-    // Reset on open only — avoid depending on justification array identity.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open-gate
-  }, [isOpen, poType, classification, lot.purpose]);
-
   const consumableCategories = useMemo(
     () => allCategories.filter((c) => c.type === "consumable"),
     [allCategories]
@@ -188,15 +176,38 @@ export function AddPoLinesDialog({
     () => allCategories.filter((c) => c.type === "asset"),
     [allCategories]
   );
+  const resolveAssetClassForCategory = (categoryName: string) => {
+    const match = assetCategories.find(
+      (c) => c.name.trim().toLowerCase() === categoryName.trim().toLowerCase()
+    );
+    return match?.parentName?.trim() || "";
+  };
   const defaultConsumableCategory =
     consumableCategories[0]?.name ?? "General Supply";
   const defaultAssetCategory = assetCategories[0]?.name ?? "Equipment";
+  const defaultAssetClassification =
+    resolveAssetClassForCategory(defaultAssetCategory);
+  const lineSeedClassification =
+    poType === "asset" ? defaultAssetClassification : classification;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setItems([emptyRow(poType, lineSeedClassification)]);
+    setCatalogSearch("");
+    setErrorMessage(null);
+    const first =
+      existingJustifications[0] || stripPoPurposePrefix(lot.purpose) || "";
+    setPurposeChoice(first || "__new__");
+    setNewPurposeText("");
+    // Reset on open only — avoid depending on justification array identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional open-gate
+  }, [isOpen, poType, lineSeedClassification, lot.purpose]);
 
   const itemCategoryOptions = useMemo(
     () =>
       (poType === "asset" ? assetCategories : consumableCategories).map((c) => ({
         value: c.name,
-        label: c.name,
+        label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
       })),
     [poType, assetCategories, consumableCategories]
   );
@@ -261,10 +272,13 @@ export function AddPoLinesDialog({
   };
 
   const addCustomRow = () => {
-    const row = emptyRow(poType, classification);
+    const row = emptyRow(poType, lineSeedClassification);
     row.isNew = true;
     row.category =
       poType === "asset" ? defaultAssetCategory : defaultConsumableCategory;
+    if (poType === "asset") {
+      row.classification = defaultAssetClassification;
+    }
     setItems((prev) => [...prev, row]);
   };
 
@@ -311,11 +325,13 @@ export function AddPoLinesDialog({
       return;
     }
     const row: LineDraft = {
-      ...emptyRow(poType, classification),
+      ...emptyRow(poType, lineSeedClassification),
       isNew: false,
       assetId: a.id,
       name: a.name,
       category: a.category,
+      classification:
+        a.classification || resolveAssetClassForCategory(a.category),
       unit: "unit",
       location: a.location || "Property Custodian Depot",
       assignmentType: a.assignmentType || "borrowable",
@@ -390,7 +406,14 @@ export function AddPoLinesDialog({
       category:
         item.category.trim() ||
         (poType === "asset" ? defaultAssetCategory : defaultConsumableCategory),
-      classification: poType === "consumable" ? item.classification : undefined,
+      classification:
+        poType === "consumable"
+          ? item.classification
+          : item.classification.trim() ||
+            resolveAssetClassForCategory(
+              item.category.trim() || defaultAssetCategory
+            ) ||
+            undefined,
       unit: item.unit,
       minThreshold: item.minThreshold,
       location: item.location,
@@ -661,7 +684,7 @@ export function AddPoLinesDialog({
                       setItems((prev) =>
                         prev.length > 1
                           ? prev.filter((it) => it.id !== item.id)
-                          : [emptyRow(poType, classification)]
+                          : [emptyRow(poType, lineSeedClassification)]
                       )
                     }
                     className="p-1 rounded-md text-text-secondary hover:text-rose-600 cursor-pointer"
@@ -749,7 +772,17 @@ export function AddPoLinesDialog({
                       <label className="text-[11px] font-semibold text-text">Category</label>
                       <SearchableSelect
                         value={item.category}
-                        onValueChange={(val) => updateItem(item.id, { category: val })}
+                        onValueChange={(val) =>
+                          updateItem(item.id, {
+                            category: val,
+                            ...(poType === "asset"
+                              ? {
+                                  classification:
+                                    resolveAssetClassForCategory(val),
+                                }
+                              : {}),
+                          })
+                        }
                         options={itemCategoryOptions}
                         placeholder="Select category…"
                         emptyMessage="No categories available"
@@ -761,7 +794,21 @@ export function AddPoLinesDialog({
                     <div className="space-y-1">
                       <label className="text-[11px] font-semibold text-text">Class</label>
                       <div className="h-8.5 px-2 rounded-lg border border-border bg-bg-subtle/60 text-xs font-semibold flex items-center">
-                        {CONSUMABLE_CLASSIFICATION_LABELS[item.classification]}
+                        {CONSUMABLE_CLASSIFICATION_LABELS[
+                          (item.classification === "material"
+                            ? "material"
+                            : "supply") as ConsumableClassification
+                        ]}
+                      </div>
+                    </div>
+                  )}
+                  {poType === "asset" && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-text">Class</label>
+                      <div className="h-8.5 px-2 rounded-lg border border-border bg-bg-subtle/60 text-xs font-semibold flex items-center truncate">
+                        {item.classification.trim() ||
+                          resolveAssetClassForCategory(item.category) ||
+                          "Unclassified"}
                       </div>
                     </div>
                   )}

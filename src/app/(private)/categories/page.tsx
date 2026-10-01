@@ -26,6 +26,8 @@ export default function CategoriesPage() {
   const deleteCategoryMutation = useDeleteCategoryMutation();
   const toast = useToast();
 
+  const assetClasses =
+    allCategories?.filter((c) => c.type === "asset_class") || [];
   const assetCategories =
     allCategories?.filter((c) => c.type === "asset") || [];
   const consumableCategories =
@@ -76,7 +78,7 @@ export default function CategoriesPage() {
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-0.5">
-              Configure asset and consumable supply categories.
+              Configure asset classifications, specific asset categories, and consumable groups.
             </p>
           </div>
         </div>
@@ -98,6 +100,7 @@ export default function CategoriesPage() {
             </div>
           ) : (
             <CategoriesSection
+              assetClasses={assetClasses}
               assetCategories={assetCategories}
               consumableCategories={consumableCategories}
               onSaveCategory={handleSaveCategory}

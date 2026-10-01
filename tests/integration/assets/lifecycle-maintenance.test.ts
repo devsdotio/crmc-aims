@@ -39,6 +39,7 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
     expect(created.status).toBe("active");
     expect(created.assignmentType).toBe("borrowable");
     expect(created.category).toBe(fx.assetCategory);
+    expect(created.classification).toBe(fx.assetClassification);
 
     const updated = await assets.updateAsset(
       created.id,

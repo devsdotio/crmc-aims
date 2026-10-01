@@ -28,7 +28,7 @@ export type CreatePurchaseOrderItemPayload = {
   name: string;
   category: string;
   /** Consumable-only: supply vs material when registering a new item. */
-  classification?: "supply" | "material";
+  classification?: string;
   unit?: string;
   minThreshold?: number;
   location?: string;

@@ -17,6 +17,8 @@ export const createAssetSchema = z.object({
   assetCode: z.string().trim().min(1).max(64).optional(),
   name: z.string().trim().min(1, "name is required.").max(255),
   category: categoryLabelSchema,
+  /** Optional general classification; otherwise derived from the category's parent class. */
+  classification: z.string().trim().max(120).optional(),
   /** Omitted status defaults to `active` in the service (not via Zod default),
    * so update schemas can safely `.partial()` without forcing status. */
   status: assetStatusSchema.optional(),

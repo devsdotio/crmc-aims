@@ -55,6 +55,24 @@ describe("purchase order notes metadata", () => {
     expect(parsed.draftItem?.category).toBe("Office Supplies");
   });
 
+  it("preserves free-text asset classification in draftItem metadata", () => {
+    const serialized = serializeNotesMetadata({
+      notes: null,
+      status: "pending_approval",
+      purpose: "[IT] Monitors",
+      draftItem: {
+        category: "Monitors",
+        classification: "Computer Equipments",
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+    });
+    const parsed = parseNotesMetadata(serialized);
+    expect(parsed.draftItem?.category).toBe("Monitors");
+    expect(parsed.draftItem?.classification).toBe("Computer Equipments");
+    expect(parsed.draftItem?.assignmentType).toBe("borrowable");
+  });
+
   it("parses legacy bracket status tags", () => {
     const parsed = parseNotesMetadata(
       "[STATUS: approved] [PURPOSE: Restock] hello"

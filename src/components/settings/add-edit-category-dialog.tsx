@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Tag, Check, Palette, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { X, Tag, Check, Palette, Loader2, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CategoryItem, CategoryType } from "@/types/settings";
 import {
@@ -13,33 +13,57 @@ export interface AddEditCategoryDialogProps {
   isOpen: boolean;
   type: CategoryType;
   initialCategory?: CategoryItem | null;
+  /** Available asset classes when editing/creating a specific asset category. */
+  assetClasses?: CategoryItem[];
   onClose: () => void;
   onSave: (categoryData: Partial<CategoryItem>) => void | Promise<void>;
+}
+
+function typeLabel(type: CategoryType): string {
+  if (type === "asset_class") return "Asset Classification";
+  if (type === "asset") return "Asset Category";
+  return "Consumable Category";
 }
 
 export function AddEditCategoryDialog({
   isOpen,
   type,
   initialCategory,
+  assetClasses = [],
   onClose,
   onSave,
 }: AddEditCategoryDialogProps) {
   const isEditing = Boolean(initialCategory);
   const [name, setName] = useState("");
   const [colorToken, setColorToken] = useState("blue");
+  const [parentId, setParentId] = useState<string>("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const [prevOpenKey, setPrevOpenKey] = useState({ isOpen: false, id: initialCategory?.id });
+  const classOptions = useMemo(
+    () =>
+      assetClasses
+        .filter((c) => c.type === "asset_class")
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [assetClasses],
+  );
+
+  const [prevOpenKey, setPrevOpenKey] = useState({
+    isOpen: false,
+    id: initialCategory?.id,
+  });
   if (isOpen !== prevOpenKey.isOpen || initialCategory?.id !== prevOpenKey.id) {
     setPrevOpenKey({ isOpen, id: initialCategory?.id });
     if (isOpen) {
       if (initialCategory) {
         setName(initialCategory.name);
         setColorToken(initialCategory.colorToken || "blue");
+        setParentId(initialCategory.parentId || "");
       } else {
         setName("");
         setColorToken("blue");
+        setParentId("");
       }
       setError("");
     }
@@ -57,13 +81,21 @@ export function AddEditCategoryDialog({
 
   if (!isOpen) return null;
 
-  const previewStyle = getCategoryStyle(name.trim() || "Category Preview", undefined, colorToken);
+  const previewStyle = getCategoryStyle(
+    name.trim() || "Category Preview",
+    undefined,
+    colorToken,
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSaving) return;
     if (!name.trim()) {
       setError("Please enter the category name.");
+      return;
+    }
+    if (type === "asset" && !parentId) {
+      setError("Please select a general asset classification.");
       return;
     }
 
@@ -74,6 +106,7 @@ export function AddEditCategoryDialog({
         name: name.trim(),
         type,
         colorToken,
+        parentId: type === "asset" ? parentId : null,
         itemCount: initialCategory ? initialCategory.itemCount : 0,
       });
       onClose();
@@ -86,28 +119,36 @@ export function AddEditCategoryDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs transition-opacity">
-      {/* Backdrop */}
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      {/* Dialog Window */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="cat-dialog-title"
         className="relative w-full max-w-lg rounded-2xl border border-border bg-bg p-6 shadow-2xl z-10 animate-in fade-in zoom-in-95 duration-150 space-y-5"
       >
-        {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15 text-accent shrink-0">
-              <Tag className="h-5 w-5" />
+              {type === "asset_class" ? (
+                <Layers className="h-5 w-5" />
+              ) : (
+                <Tag className="h-5 w-5" />
+              )}
             </div>
             <div>
-              <h3 id="cat-dialog-title" className="text-base font-bold text-text leading-tight">
-                {isEditing ? `Edit ${type === "asset" ? "Asset" : "Consumable"} Category` : `Add New ${type === "asset" ? "Asset" : "Consumable"} Category`}
+              <h3
+                id="cat-dialog-title"
+                className="text-base font-bold text-text leading-tight"
+              >
+                {isEditing ? `Edit ${typeLabel(type)}` : `Add New ${typeLabel(type)}`}
               </h3>
               <p className="text-xs text-text-secondary mt-0.5">
-                Configure category label & badge palette styling
+                {type === "asset_class"
+                  ? "Broad group for specific asset categories (e.g. Computer Equipments)"
+                  : type === "asset"
+                    ? "Specific category under a general classification (e.g. Monitors)"
+                    : "Configure category label & badge palette styling"}
               </p>
             </div>
           </div>
@@ -122,12 +163,46 @@ export function AddEditCategoryDialog({
           </button>
         </div>
 
-        {/* Form Body */}
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          {/* Category Name */}
+          {type === "asset" ? (
+            <div className="space-y-1.5">
+              <label
+                htmlFor="cat-parent-select"
+                className="block text-xs font-semibold text-text"
+              >
+                General Classification <span className="text-accent">*</span>
+              </label>
+              <select
+                id="cat-parent-select"
+                value={parentId}
+                onChange={(e) => {
+                  setParentId(e.target.value);
+                  if (error) setError("");
+                }}
+                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              >
+                <option value="">Select classification…</option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {classOptions.length === 0 ? (
+                <p className="text-[11px] text-text-secondary">
+                  Create an Asset Classification first, then add specific categories under it.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="space-y-1.5">
-            <label htmlFor="cat-name-input" className="block text-xs font-semibold text-text">
-              Category Name <span className="text-accent">*</span>
+            <label
+              htmlFor="cat-name-input"
+              className="block text-xs font-semibold text-text"
+            >
+              {type === "asset_class" ? "Classification Name" : "Category Name"}{" "}
+              <span className="text-accent">*</span>
             </label>
             <input
               id="cat-name-input"
@@ -137,19 +212,26 @@ export function AddEditCategoryDialog({
                 setName(e.target.value);
                 if (error) setError("");
               }}
-              placeholder="e.g. Computing, Medical, Laboratory, Tools"
+              placeholder={
+                type === "asset_class"
+                  ? "e.g. Computer Equipments, Furniture, Lab Instruments"
+                  : type === "asset"
+                    ? "e.g. Monitors, Keyboards, Desks"
+                    : "e.g. Computing, Medical, Laboratory, Tools"
+              }
               className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </div>
 
-          {/* Live Badge Preview */}
           <div className="p-3 bg-bg-subtle/70 rounded-xl border border-border flex items-center justify-between gap-2">
-            <span className="text-[11px] font-semibold text-text-secondary">Badge Preview:</span>
+            <span className="text-[11px] font-semibold text-text-secondary">
+              Badge Preview:
+            </span>
             <span
               className={cn(
                 "inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-2xs",
                 previewStyle.bg,
-                previewStyle.text
+                previewStyle.text,
               )}
             >
               <Tag className="h-3 w-3 shrink-0" />
@@ -157,7 +239,6 @@ export function AddEditCategoryDialog({
             </span>
           </div>
 
-          {/* Color Swatch Picker */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-text flex items-center gap-1.5">
@@ -181,17 +262,19 @@ export function AddEditCategoryDialog({
                       "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer select-none",
                       isSelected
                         ? "border-primary ring-2 ring-primary/30 bg-bg shadow-xs font-bold"
-                        : "border-border/60 hover:border-border hover:bg-bg-subtle/50"
+                        : "border-border/60 hover:border-border hover:bg-bg-subtle/50",
                     )}
                   >
                     <span
                       className={cn(
                         "h-6 w-6 rounded-full flex items-center justify-center shadow-2xs transition-transform",
                         color.bg,
-                        isSelected && "scale-105"
+                        isSelected && "scale-105",
                       )}
                     >
-                      {isSelected && <Check className="h-3.5 w-3.5 text-white stroke-3" />}
+                      {isSelected && (
+                        <Check className="h-3.5 w-3.5 text-white stroke-3" />
+                      )}
                     </span>
                     <span className="text-[10px] text-text-secondary mt-1 truncate">
                       {color.name}
@@ -202,9 +285,12 @@ export function AddEditCategoryDialog({
             </div>
           </div>
 
-          {error && <p className="text-xs font-bold text-status-outofservice-text">{error}</p>}
+          {error && (
+            <p className="text-xs font-bold text-status-outofservice-text">
+              {error}
+            </p>
+          )}
 
-          {/* Footer Actions */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
             <button
               type="button"
@@ -216,7 +302,7 @@ export function AddEditCategoryDialog({
             </button>
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || (type === "asset" && classOptions.length === 0)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? (
@@ -227,8 +313,10 @@ export function AddEditCategoryDialog({
               {isSaving
                 ? "Saving…"
                 : isEditing
-                  ? "Save Category Changes"
-                  : "Create Category"}
+                  ? "Save Changes"
+                  : type === "asset_class"
+                    ? "Create Classification"
+                    : "Create Category"}
             </button>
           </div>
         </form>

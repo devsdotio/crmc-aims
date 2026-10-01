@@ -117,6 +117,7 @@ export function toAssetDTO(
     assetCode: row.assetCode,
     name: row.name,
     category: row.category,
+    classification: row.classification || undefined,
     status: row.status,
     assignmentType: row.assignmentType,
     modelId: row.modelId ?? undefined,
@@ -166,6 +167,7 @@ const TRACKED_UPDATE_FIELDS: (keyof AssetRow)[] = [
   "assetCode",
   "name",
   "category",
+  "classification",
   "status",
   "assignmentType",
   "modelId",
@@ -212,6 +214,49 @@ export class AssetService {
       );
     }
     return found.name;
+  }
+
+  /** Resolve specific category + denormalized general classification label. */
+  private async resolveAssetCategoryAndClassification(
+    rawName: string,
+    tenantId?: string,
+    explicitClassification?: string | null
+  ): Promise<{ categoryName: string; classification: string }> {
+    const found = await this.taxonomy.findByTypeAndName(
+      "asset",
+      rawName,
+      undefined,
+      tenantId
+    );
+    if (!found) {
+      throw new BadRequestError(
+        `Unknown asset category “${rawName}”. Add it under Settings → Categories first.`
+      );
+    }
+
+    const explicit = (explicitClassification ?? "").trim();
+    if (explicit) {
+      const classRow = await this.taxonomy.findByTypeAndName(
+        "asset_class",
+        explicit,
+        undefined,
+        tenantId
+      );
+      if (!classRow) {
+        throw new BadRequestError(
+          `Unknown asset classification “${explicit}”. Add it under Settings → Categories first.`
+        );
+      }
+      return { categoryName: found.name, classification: classRow.name };
+    }
+
+    const fromParent =
+      await this.taxonomy.resolveAssetClassificationForCategoryName(
+        found.name,
+        undefined,
+        tenantId
+      );
+    return { categoryName: found.name, classification: fromParent };
   }
 
   /** Next `{PREFIX}-{NNN}` — first free slot from 001 upward. */
@@ -435,10 +480,12 @@ export class AssetService {
     actor: ActorContext
   ): Promise<AssetDTOWithMeta> {
     const input: CreateAssetBody = createAssetSchema.parse(rawInput);
-    const categoryName = await this.resolveAssetCategoryName(
-      input.category,
-      actor.tenantId
-    );
+    const { categoryName, classification } =
+      await this.resolveAssetCategoryAndClassification(
+        input.category,
+        actor.tenantId,
+        input.classification
+      );
     const codePrefix = assetCategoryCodePrefix(categoryName);
     const preferredCode = input.assetCode?.trim().toUpperCase() || null;
 
@@ -473,6 +520,7 @@ export class AssetService {
               assetCode,
               name: input.name,
               category: categoryName,
+              classification,
               status: input.status ?? "active",
               assignmentType: input.assignmentType ?? "borrowable",
               modelId: input.modelId ?? null,
@@ -594,10 +642,12 @@ export class AssetService {
     actor: ActorContext
   ): Promise<BulkUnitsResult> {
     const input: BulkCreateAssetsBody = bulkCreateAssetsSchema.parse(rawInput);
-    const categoryName = await this.resolveAssetCategoryName(
-      input.category,
-      actor.tenantId
-    );
+    const { categoryName, classification } =
+      await this.resolveAssetCategoryAndClassification(
+        input.category,
+        actor.tenantId,
+        input.classification
+      );
 
     if (input.supplierId) {
       const supplier = await this.suppliers.findById(
@@ -616,6 +666,7 @@ export class AssetService {
         modelCode: input.modelCode,
         name: input.name,
         category: categoryName,
+        classification,
         description: input.description ?? null,
         manufacturer: input.manufacturer ?? null,
         defaultAssignmentType: input.assignmentType ?? "borrowable",
@@ -764,6 +815,7 @@ export class AssetService {
             assetCode,
             name: args.model.name,
             category: args.model.category,
+            classification: args.model.classification || "",
             status: "active",
             assignmentType: args.assignmentType,
             modelId: args.model.id,
@@ -870,11 +922,19 @@ export class AssetService {
     }
 
     let categoryName: string | undefined;
-    if (input.category !== undefined) {
-      categoryName = await this.resolveAssetCategoryName(
-        input.category,
-        actor.tenantId
+    let classification: string | undefined;
+    if (input.category !== undefined || input.classification !== undefined) {
+      const resolved = await this.resolveAssetCategoryAndClassification(
+        input.category ?? existing.category,
+        actor.tenantId,
+        input.classification !== undefined
+          ? input.classification
+          : input.category !== undefined
+            ? undefined
+            : existing.classification
       );
+      categoryName = resolved.categoryName;
+      classification = resolved.classification;
     }
 
     if (input.status !== undefined && input.status !== existing.status) {
@@ -910,6 +970,7 @@ export class AssetService {
         ...(input.assetCode !== undefined ? { assetCode: input.assetCode } : {}),
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(categoryName !== undefined ? { category: categoryName } : {}),
+        ...(classification !== undefined ? { classification } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.assignmentType !== undefined ? { assignmentType: input.assignmentType } : {}),
         ...(input.modelId !== undefined ? { modelId: input.modelId } : {}),

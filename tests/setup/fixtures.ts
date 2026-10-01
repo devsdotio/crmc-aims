@@ -15,6 +15,7 @@ export type TestFixtures = {
   departmentId: string;
   departmentName: string;
   assetCategory: string;
+  assetClassification: string;
   consumableCategory: string;
   supplierId: string;
   supplierName: string;
@@ -68,13 +69,25 @@ export async function seedCoreFixtures(
   borrower.departmentName = dept.name;
 
   const assetCategory = "Computing";
+  const assetClassification = "Computer Equipments";
   const consumableCategory = "Office Supplies";
+
+  const [assetClassRow] = await db
+    .insert(categories)
+    .values({
+      tenantId: actor.tenantId ?? DEFAULT_TENANT_ID,
+      name: assetClassification,
+      type: "asset_class",
+      createdByUserId: actor.userId,
+    })
+    .returning();
 
   await db.insert(categories).values([
     {
       tenantId: actor.tenantId ?? DEFAULT_TENANT_ID,
       name: assetCategory,
       type: "asset",
+      parentId: assetClassRow.id,
       createdByUserId: actor.userId,
     },
     {
@@ -108,6 +121,7 @@ export async function seedCoreFixtures(
     departmentId: dept.id,
     departmentName: dept.name,
     assetCategory,
+    assetClassification,
     consumableCategory,
     supplierId: supplier.id,
     supplierName,
