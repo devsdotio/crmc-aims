@@ -148,6 +148,10 @@ export function useCreatePurchaseOrderMutation(): UseMutationResult<
             item.itemType === "consumable" || !item.itemType
               ? item.classification ?? null
               : null,
+          unit:
+            item.itemType === "asset"
+              ? item.unit?.trim() || "unit"
+              : item.unit?.trim() || "pcs",
           recordedByUserId: "current-user",
           recordedByName: newPO.requestedBy || "Current User",
           approvedByName: null,

@@ -4,6 +4,10 @@ import { PurchaseLotService } from "@/server/modules/purchase-lots/purchase-lot.
 import { VoucherService } from "@/server/modules/vouchers/voucher.service";
 import { PettyCashService } from "@/server/modules/petty-cash/petty-cash.service";
 import { ConflictError } from "@/server/shared/errors";
+import {
+  particularsFromPurchaseOrderLines,
+  serializeParticulars,
+} from "@/lib/voucher-particulars";
 import { hasTestDatabase, resetTestDatabase } from "../../setup/db";
 import {
   seedCoreFixtures,
@@ -55,6 +59,16 @@ describeIntegration("disbursements / PO-linked voucher + PCV", () => {
   it("links a disbursement voucher to a PO and blocks a second claim on the same PO", async () => {
     const lot = await createOpenSupplyPo();
     expect(lot.poNumber).toBeTruthy();
+    expect(lot.unit).toBe("carton");
+
+    const listed = await pos.list({}, fx.actor.tenantId);
+    const found = listed.find((row) => row.id === lot.id);
+    expect(found?.unit).toBe("carton");
+
+    // Same mapping the create-voucher / create-PCV dialogs use when a PO is selected.
+    const particulars = particularsFromPurchaseOrderLines([found ?? lot]);
+    expect(particulars[0].unitOfMeasure).toBe("carton");
+    expect(particulars[0].unitOfMeasure).not.toBe("pcs");
 
     const voucher = await vouchers.create(
       {
@@ -65,7 +79,7 @@ describeIntegration("disbursements / PO-linked voucher + PCV", () => {
         purchaseOrderNumber: lot.poNumber,
         supplierId: fx.supplierId,
         supplierName: fx.supplierName,
-        particulars: `PO ${lot.poNumber} — Linked Toner Cartons × 2`,
+        particulars: serializeParticulars(particulars),
         purpose: testPoPurpose(fx.departmentName),
       },
       fx.actor
@@ -76,6 +90,8 @@ describeIntegration("disbursements / PO-linked voucher + PCV", () => {
     expect(voucher.amount).toBe("3000.00");
     expect(voucher.departmentId).toBe(fx.departmentId);
     expect(voucher.status).toBe("draft");
+    expect(voucher.particulars).toContain("carton");
+    expect(voucher.particulars).not.toMatch(/"unitOfMeasure"\s*:\s*"pcs"/);
 
     await expect(
       vouchers.create(

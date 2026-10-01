@@ -112,6 +112,7 @@ describe("toPurchaseLotDTO classification", () => {
     });
     const dto = toPurchaseLotDTO(baseRow({ notes }));
     expect(dto.classification).toBe("material");
+    expect(dto.unit).toBe("pcs");
     expect(dto.consumableId).toBeNull();
   });
 
@@ -130,6 +131,24 @@ describe("toPurchaseLotDTO classification", () => {
       baseRow({ notes, itemName: "Bond Paper", itemCode: "ITM-1" })
     );
     expect(dto.classification).toBe("supply");
+    expect(dto.unit).toBe("ream");
+  });
+
+  it("defaults asset lots to unit UoM when draft has no unit", () => {
+    const notes = serializeNotesMetadata({
+      notes: null,
+      status: "pending_approval",
+      purpose: "[Ops] Equipment",
+    });
+    const dto = toPurchaseLotDTO(
+      baseRow({
+        notes,
+        itemType: "asset",
+        itemName: "Projector",
+        itemCode: "AST-1",
+      })
+    );
+    expect(dto.unit).toBe("unit");
   });
 });
 

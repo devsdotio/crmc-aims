@@ -38,6 +38,11 @@ export type PurchaseLotDTO = {
    * From deferred draftItem metadata, or enriched from the linked consumable.
    */
   classification?: "supply" | "material" | null;
+  /**
+   * Unit of measure (pcs, ream, carton, …). Assets default to "unit".
+   * From deferred draftItem or enriched from the linked consumable.
+   */
+  unit?: string | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;
