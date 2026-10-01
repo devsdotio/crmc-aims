@@ -175,6 +175,7 @@ const FIELD_LABELS: Record<string, string> = {
   assetCode: "Asset Code",
   name: "Asset Name",
   category: "Category",
+  classification: "Classification",
   status: "Status",
   assignmentType: "Assignment Type",
   modelId: "Product Model",
@@ -1544,6 +1545,14 @@ export function AssetDetailPanel({
                       mono: true,
                     },
                     {
+                      label: "Category",
+                      value: asset.category || "—",
+                    },
+                    {
+                      label: "Classification",
+                      value: asset.classification || "—",
+                    },
+                    {
                       label: "Type",
                       value:
                         asset.assignmentType === "assignable"
@@ -1670,6 +1679,27 @@ export function AssetDetailPanel({
                   )}
 
                   <div className="p-5 grid grid-cols-2 gap-4 text-xs">
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                        Category
+                      </p>
+                      <p className="text-sm font-medium text-text truncate" title={asset.category}>
+                        {asset.category || "—"}
+                      </p>
+                    </div>
+
+                    <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
+                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                        Classification
+                      </p>
+                      <p
+                        className="text-sm font-medium text-text truncate"
+                        title={asset.classification || undefined}
+                      >
+                        {asset.classification || "—"}
+                      </p>
+                    </div>
+
                     <div className="p-2.5 rounded-lg bg-bg-subtle/50 border border-border/50">
                       <p className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
                         Serial Number

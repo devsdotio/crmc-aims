@@ -41,6 +41,18 @@ describeIntegration("assets expand (CRUD / history / maintenance)", () => {
     expect(created.category).toBe(fx.assetCategory);
     expect(created.classification).toBe(fx.assetClassification);
 
+    const byClass = await assets.listAssets(
+      { classification: fx.assetClassification },
+      fx.actor.tenantId
+    );
+    expect(byClass.some((a) => a.id === created.id)).toBe(true);
+
+    const byWrongClass = await assets.listAssets(
+      { classification: "Furniture" },
+      fx.actor.tenantId
+    );
+    expect(byWrongClass.some((a) => a.id === created.id)).toBe(false);
+
     const updated = await assets.updateAsset(
       created.id,
       { location: "IT Storeroom", notes: "Moved for inventory" },

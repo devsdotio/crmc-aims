@@ -71,11 +71,61 @@ export async function resetTestDatabase(): Promise<void> {
   requireTestDatabase();
   const db = getDb();
 
-  await db.execute(
-    sql.raw(
-      `TRUNCATE TABLE ${TRUNCATE_TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`
-    )
-  );
+  const truncateSql = `TRUNCATE TABLE ${TRUNCATE_TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`;
+
+  const collectErrorText = (error: unknown): string => {
+    if (!error || typeof error !== "object") return String(error ?? "");
+    const parts: string[] = [];
+    const walk = (value: unknown, depth: number) => {
+      if (!value || depth > 4) return;
+      if (typeof value === "string") {
+        parts.push(value);
+        return;
+      }
+      if (typeof value !== "object") return;
+      const rec = value as {
+        message?: unknown;
+        code?: unknown;
+        cause?: unknown;
+        errors?: unknown;
+      };
+      if (typeof rec.message === "string") parts.push(rec.message);
+      if (typeof rec.code === "string" || typeof rec.code === "number") {
+        parts.push(String(rec.code));
+      }
+      if (Array.isArray(rec.errors)) {
+        for (const nested of rec.errors) walk(nested, depth + 1);
+      }
+      if (rec.cause) walk(rec.cause, depth + 1);
+    };
+    walk(error, 0);
+    return parts.join(" ");
+  };
+
+  // Remote poolers can drop or time out mid-TRUNCATE (~21s). Retry and raise
+  // statement_timeout inside a transaction so SET LOCAL applies on that connection.
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql.raw(`SET LOCAL statement_timeout = '120s'`));
+        await tx.execute(sql.raw(`SET LOCAL lock_timeout = '60s'`));
+        await tx.execute(sql.raw(truncateSql));
+      });
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      const message = collectErrorText(error);
+      const retryable =
+        /ETIMEDOUT|ECONNRESET|ECONNREFUSED|CONNECT_TIMEOUT|connection|timeout|canceling statement|deadlock|40P01|57014/i.test(
+          message
+        ) || message.trim().length === 0;
+      if (!retryable || attempt === 5) throw error;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+  if (lastError) throw lastError;
 
   await db.execute(sql`
     INSERT INTO tenants (id, slug, name)

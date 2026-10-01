@@ -28,4 +28,14 @@ describe("asset classification helpers", () => {
     expect(resolveAssetClassificationLabel("", "Furniture")).toBe("Furniture");
     expect(resolveAssetClassificationLabel(null, null)).toBe("");
   });
+
+  it("treats specific categories and general classes as distinct labels", () => {
+    expect(
+      resolveAssetClassificationLabel(undefined, "Computer Equipments")
+    ).toBe("Computer Equipments");
+    expect(normalizeAssetClassification("Monitors")).toBe("Monitors");
+    expect(normalizeAssetClassification("Monitors")).not.toBe(
+      "Computer Equipments"
+    );
+  });
 });

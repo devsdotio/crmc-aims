@@ -145,6 +145,8 @@ export const listAssetsQuerySchema = z.object({
   status: assetStatusSchema.optional(),
   modelId: z.string().uuid().optional(),
   category: categoryLabelSchema.optional(),
+  /** General asset classification (Settings → Categories type=asset_class). */
+  classification: z.string().trim().max(120).optional(),
   search: z.string().trim().max(200).optional(),
   assignmentType: assetAssignmentTypeSchema.optional(),
   availableOnly: z

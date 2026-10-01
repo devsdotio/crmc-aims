@@ -138,6 +138,71 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     expect(resolvedAfterRename).toBe("Laboratory Instruments");
   });
 
+  it("assigns an existing asset category under a classification and restamps assets", async () => {
+    const db = getDb();
+    const { AssetService } = await import(
+      "@/server/modules/assets/asset.service"
+    );
+    const assets = new AssetService();
+
+    const [orphanCategory] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Monitors",
+        type: "asset",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+    expect(orphanCategory.parentId).toBeNull();
+
+    const [assetClass] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Display Hardware",
+        type: "asset_class",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    const createdAsset = await assets.createAsset(
+      {
+        name: "Dell Monitor",
+        category: "Monitors",
+        location: "IT Store",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    expect(createdAsset.classification ?? "").toBe("");
+
+    const linked = await categoryRepo.updateAndCascade(
+      orphanCategory.id,
+      {
+        name: orphanCategory.name,
+        type: "asset",
+        parentId: assetClass.id,
+      },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(linked?.parentId).toBe(assetClass.id);
+    expect(linked?.parentName).toBe("Display Hardware");
+
+    const refreshed = await assets.getAssetById(
+      createdAsset.id,
+      fx.actor.tenantId
+    );
+    expect(refreshed.classification).toBe("Display Hardware");
+
+    const listed = await assets.listAssets(
+      { classification: "Display Hardware" },
+      fx.actor.tenantId
+    );
+    expect(listed.some((a) => a.id === createdAsset.id)).toBe(true);
+  });
+
   it("creates, updates, lists, and deletes a department", async () => {
     const created = await departments.create(
       { code: "REG", name: "Registrar" },

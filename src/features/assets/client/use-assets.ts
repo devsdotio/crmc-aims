@@ -85,6 +85,7 @@ export type AssetsListFilters = {
   enabled?: boolean;
   search?: string;
   category?: string;
+  classification?: string;
   availableOnly?: boolean;
   assignmentType?: "borrowable" | "assignable";
   modelId?: string;

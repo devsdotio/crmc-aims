@@ -66,7 +66,14 @@ function AddEditAssetDialogForm({
   }, [allCategories, initialAsset?.category]);
 
   const categoryOptions = useMemo(
-    () => assetCategories.map((c) => ({ value: c.name, label: c.name })),
+    () =>
+      assetCategories.map((c) => ({
+        value: c.name,
+        label:
+          "parentName" in c && (c as { parentName?: string | null }).parentName
+            ? `${c.name} (${(c as { parentName?: string | null }).parentName})`
+            : c.name,
+      })),
     [assetCategories]
   );
 
@@ -92,6 +99,16 @@ function AddEditAssetDialogForm({
   const [category, setCategory] = useState(
     () => initialAsset?.category ?? ""
   );
+  const selectedClassification = useMemo(() => {
+    const match = assetCategories.find(
+      (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+    );
+    const parentName =
+      match && "parentName" in match
+        ? (match as { parentName?: string | null }).parentName
+        : undefined;
+    return parentName || initialAsset?.classification || "";
+  }, [assetCategories, category, initialAsset?.classification]);
   const [status, setStatus] = useState<AssetStatus | "">(
     () => initialAsset?.status ?? "active"
   );
@@ -322,6 +339,11 @@ function AddEditAssetDialogForm({
                     }
                     emptyMessage="No categories — add in Settings"
                   />
+                  {selectedClassification ? (
+                    <p className="text-[11px] text-text-secondary">
+                      Class: {selectedClassification}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-1">

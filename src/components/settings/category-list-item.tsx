@@ -35,7 +35,7 @@ function typeBadge(category: CategoryItem) {
       className: "bg-blue-50 text-blue-700 border border-blue-200/60",
       blurb: category.parentName
         ? `Under ${category.parentName}`
-        : "Specific asset category",
+        : "Unclassified — edit to assign a class",
       Icon: Package,
     };
   }

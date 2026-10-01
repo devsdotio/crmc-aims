@@ -96,18 +96,28 @@ export function AssetTableRow({ asset, onSelect, getCategoryStyle }: AssetTableR
         </span>
       </td>
 
-      {/* Category Tag */}
+      {/* Category Tag + general classification */}
       <td className="px-3 py-3.5 whitespace-nowrap">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider",
-            categoryMeta.bg,
-            categoryMeta.text,
-          )}
-        >
-          <Tag className="h-2.5 w-2.5" />
-          {categoryMeta.label}
-        </span>
+        <div className="flex flex-col gap-0.5">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider w-fit",
+              categoryMeta.bg,
+              categoryMeta.text,
+            )}
+          >
+            <Tag className="h-2.5 w-2.5" />
+            {categoryMeta.label}
+          </span>
+          {asset.classification ? (
+            <span
+              className="text-[10px] text-text-secondary truncate max-w-40"
+              title={asset.classification}
+            >
+              {asset.classification}
+            </span>
+          ) : null}
+        </div>
       </td>
 
       {/* Assignment Type */}

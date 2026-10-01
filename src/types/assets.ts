@@ -55,6 +55,8 @@ export interface Asset {
 
 export interface AssetFilterState extends BaseFilterState {
   categories: AssetCategory[];
+  /** General asset classifications (Settings → Categories type=asset_class). */
+  classifications: string[];
   statuses: AssetStatus[];
   /** When "available", only units not in custody and not reserved. */
   availability: "all" | "available";
