@@ -23,6 +23,7 @@ const assetListColumns = {
   name: assets.name,
   category: assets.category,
   classification: assets.classification,
+  unit: assets.unit,
   status: assets.status,
   assignmentType: assets.assignmentType,
   modelId: assets.modelId,

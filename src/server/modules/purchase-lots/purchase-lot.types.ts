@@ -40,7 +40,7 @@ export type PurchaseLotDTO = {
    */
   classification?: string | null;
   /**
-   * Unit of measure (pcs, ream, carton, …). Assets default to "unit".
+   * Unit of measure (pcs, set, pair, ream, …). Assets default to "unit" when unset.
    * From deferred draftItem or enriched from the linked consumable.
    */
   unit?: string | null;

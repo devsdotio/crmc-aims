@@ -109,6 +109,9 @@ function AddEditAssetDialogForm({
         : undefined;
     return parentName || initialAsset?.classification || "";
   }, [assetCategories, category, initialAsset?.classification]);
+  const [unit, setUnit] = useState(
+    () => initialAsset?.unit?.trim() || "unit"
+  );
   const [status, setStatus] = useState<AssetStatus | "">(
     () => initialAsset?.status ?? "active"
   );
@@ -221,6 +224,7 @@ function AddEditAssetDialogForm({
             : {}),
         name: name.trim(),
         category: category as AssetCategory,
+        unit: unit.trim() || "unit",
         status: status as AssetStatus,
         assignmentType,
         serialNumber: serialNumber.trim() || undefined,
@@ -373,41 +377,64 @@ function AddEditAssetDialogForm({
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <span className="block text-xs font-semibold text-text">
-                  Assignment Type <span className="text-accent">*</span>
-                </span>
-                <div className="flex flex-wrap gap-4 items-center min-h-9">
-                  <label className="flex items-center gap-2 text-xs text-text cursor-pointer">
-                    <input
-                      type="radio"
-                      name="assignmentType"
-                      value="borrowable"
-                      checked={assignmentType === "borrowable"}
-                      onChange={(e) =>
-                        setAssignmentType(
-                          e.target.value as AssetAssignmentType
-                        )
-                      }
-                      disabled={isSubmitting}
-                    />
-                    Borrowable
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="unit-input"
+                    className="block text-xs font-semibold text-text"
+                  >
+                    Unit of Measure
                   </label>
-                  <label className="flex items-center gap-2 text-xs text-text cursor-pointer">
-                    <input
-                      type="radio"
-                      name="assignmentType"
-                      value="assignable"
-                      checked={assignmentType === "assignable"}
-                      onChange={(e) =>
-                        setAssignmentType(
-                          e.target.value as AssetAssignmentType
-                        )
-                      }
-                      disabled={isSubmitting}
-                    />
-                    Assignable (projects)
-                  </label>
+                  <input
+                    id="unit-input"
+                    type="text"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="unit, set, pair, pcs…"
+                    className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                  <p className="text-[11px] text-text-secondary">
+                    How this asset is counted on POs and records.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="block text-xs font-semibold text-text">
+                    Assignment Type <span className="text-accent">*</span>
+                  </span>
+                  <div className="flex flex-wrap gap-4 items-center min-h-9">
+                    <label className="flex items-center gap-2 text-xs text-text cursor-pointer">
+                      <input
+                        type="radio"
+                        name="assignmentType"
+                        value="borrowable"
+                        checked={assignmentType === "borrowable"}
+                        onChange={(e) =>
+                          setAssignmentType(
+                            e.target.value as AssetAssignmentType
+                          )
+                        }
+                        disabled={isSubmitting}
+                      />
+                      Borrowable
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-text cursor-pointer">
+                      <input
+                        type="radio"
+                        name="assignmentType"
+                        value="assignable"
+                        checked={assignmentType === "assignable"}
+                        onChange={(e) =>
+                          setAssignmentType(
+                            e.target.value as AssetAssignmentType
+                          )
+                        }
+                        disabled={isSubmitting}
+                      />
+                      Assignable (projects)
+                    </label>
+                  </div>
                 </div>
               </div>
 

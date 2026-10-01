@@ -141,6 +141,7 @@ export function useCreateAssetMutation(): UseMutationResult<Asset, Error, Create
         assetCode: newAsset.assetCode || `TEMP-${Date.now()}`,
         name: newAsset.name || "New Asset",
         category: newAsset.category || "",
+        unit: newAsset.unit || "unit",
         status: newAsset.status || "active",
         assignmentType: newAsset.assignmentType || "borrowable",
         serialNumber: newAsset.serialNumber,

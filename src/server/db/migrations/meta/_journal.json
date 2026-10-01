@@ -330,6 +330,13 @@
       "when": 1786381000000,
       "tag": "0046_asset_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1786382000000,
+      "tag": "0047_asset_unit",
+      "breakpoints": true
     }
   ]
 }

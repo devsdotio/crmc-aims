@@ -812,7 +812,7 @@ export function FileNewPODialog({
       category: a.category,
       classification:
         a.classification || resolveAssetClassForCategory(a.category),
-      unit: "unit",
+      unit: a.unit?.trim() || "unit",
       minThreshold: 5,
       location: a.location || "Main Property Storage",
       assignmentType: a.assignmentType || "borrowable",
@@ -1270,7 +1270,7 @@ export function FileNewPODialog({
               ) ||
               undefined
             : effectiveClassification,
-          unit: item.unit || (isAsset ? "unit" : "pcs"),
+          unit: (item.unit || "").trim() || (isAsset ? "unit" : "pcs"),
           minThreshold: item.minThreshold || 5,
           location: item.location || "Main Property Storage",
           assignmentType: item.assignmentType || "borrowable",
@@ -2404,7 +2404,7 @@ export function FileNewPODialog({
                             "grid grid-cols-2 gap-3 pt-1 border-t border-border/40",
                             poType === "consumable"
                               ? "sm:grid-cols-3 lg:grid-cols-5"
-                              : "sm:grid-cols-4"
+                              : "sm:grid-cols-3 lg:grid-cols-5"
                           )}
                         >
                           {/* 1. Quantity */}
@@ -2524,48 +2524,69 @@ export function FileNewPODialog({
                             )}
                           </div>
 
-                          {/* 4. Unit of Measure / Assignment Type */}
+                          {/* 4. Unit of Measure (assets + consumables) */}
                           <div className="space-y-1">
                             <label className="font-semibold text-text">
-                              {poType === "consumable" ? "Unit of Measure" : "Assignment Type"}
+                              Unit of Measure
                             </label>
-                            {item.isNew ? (
-                              poType === "consumable" ? (
-                                <input
-                                  type="text"
-                                  value={item.unit}
-                                  onChange={(e) =>
-                                    handleItemFieldChange(item.id, "unit", e.target.value)
-                                  }
-                                  placeholder="pcs, reams..."
-                                  className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-primary focus:outline-hidden"
-                                />
-                              ) : (
-                                <SearchableSelect
-                                  value={item.assignmentType}
-                                  onValueChange={(val) =>
-                                    handleItemFieldChange(item.id, "assignmentType", val)
-                                  }
-                                  options={assignmentTypeOptions}
-                                  placeholder="Select assignment type…"
-                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-primary"
-                                />
-                              )
+                            {item.isNew || poType === "asset" ? (
+                              <input
+                                type="text"
+                                value={item.unit}
+                                onChange={(e) =>
+                                  handleItemFieldChange(item.id, "unit", e.target.value)
+                                }
+                                placeholder={
+                                  poType === "asset"
+                                    ? "unit, set, pair…"
+                                    : "pcs, reams…"
+                                }
+                                className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-text text-xs focus:ring-1 focus:ring-primary focus:outline-hidden"
+                              />
                             ) : (
                               <input
                                 type="text"
-                                value={
-                                  poType === "consumable"
-                                    ? item.unit || "pcs"
-                                    : item.assignmentType === "assignable"
-                                    ? "Assignable"
-                                    : "Borrowable"
-                                }
+                                value={item.unit || "pcs"}
                                 readOnly
                                 className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"
                               />
                             )}
                           </div>
+
+                          {/* 5. Assignment Type (assets only) */}
+                          {poType === "asset" ? (
+                            <div className="space-y-1">
+                              <label className="font-semibold text-text">
+                                Assignment Type
+                              </label>
+                              {item.isNew ? (
+                                <SearchableSelect
+                                  value={item.assignmentType}
+                                  onValueChange={(val) =>
+                                    handleItemFieldChange(
+                                      item.id,
+                                      "assignmentType",
+                                      val
+                                    )
+                                  }
+                                  options={assignmentTypeOptions}
+                                  placeholder="Select assignment type…"
+                                  inputClassName="h-8.5 px-2 focus:ring-1 focus:ring-primary"
+                                />
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={
+                                    item.assignmentType === "assignable"
+                                      ? "Assignable"
+                                      : "Borrowable"
+                                  }
+                                  readOnly
+                                  className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"
+                                />
+                              )}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     </div>

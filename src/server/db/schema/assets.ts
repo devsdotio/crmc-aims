@@ -69,6 +69,11 @@ export const assets = pgTable(
      * Empty string when the specific category has no parent class yet.
      */
     classification: text("classification").notNull().default(""),
+    /**
+     * Unit of measure for this asset record (e.g. unit, set, pair, pcs).
+     * Editable in Assets → Add/Edit; defaults to "unit".
+     */
+    unit: text("unit").notNull().default("unit"),
     status: assetStatusEnum("status").notNull().default("active"),
     assignmentType: assetAssignmentTypeEnum("assignment_type").notNull().default("borrowable"),
 

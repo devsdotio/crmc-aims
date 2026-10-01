@@ -28,6 +28,7 @@ import { AssetModelRepository } from "@/server/modules/assets/asset.model.reposi
 import { CategoryRepository } from "@/server/modules/categories/category.repository";
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
 import { hasPoJustification } from "@/lib/po-purpose";
+import { resolvePurchaseUnit } from "@/lib/purchase-unit";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import {
@@ -347,9 +348,11 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     projectId: row.projectId ?? null,
     projectName: row.projectName ?? null,
     classification: meta.draftItem?.classification ?? null,
-    unit:
-      meta.draftItem?.unit?.trim() ||
-      (row.itemType === "asset" ? "unit" : null),
+    unit: meta.draftItem?.unit?.trim()
+      ? meta.draftItem.unit.trim()
+      : row.itemType === "asset"
+        ? resolvePurchaseUnit("asset", null)
+        : null,
     notes: meta.cleanNotes,
     receiptUrl: row.receiptUrl || meta.receiptUrl || null,
     recordedByUserId: row.recordedByUserId,
@@ -1161,6 +1164,7 @@ export class PurchaseLotService {
                   name: itemName,
                   category: item.category || "Equipment",
                   classification: assetClassification,
+                  unit: item.unit?.trim() || "unit",
                   status: "active",
                   assignmentType: item.assignmentType || "borrowable",
                   location: item.location || "Property Custodian Depot",
@@ -1193,6 +1197,7 @@ export class PurchaseLotService {
             draftItem = {
               category: item.category || "Equipment",
               classification: assetClassification || null,
+              unit: item.unit?.trim() || "unit",
               location: item.location || "Property Custodian Depot",
               assignmentType: item.assignmentType || "borrowable",
             };
@@ -1272,7 +1277,9 @@ export class PurchaseLotService {
           dto.unit =
             item.unit?.trim() ||
             linkedConsumableUnit ||
-            (item.itemType === "asset" ? "unit" : null);
+            (item.itemType === "asset"
+              ? resolvePurchaseUnit("asset", null)
+              : null);
         }
         results.push(dto);
       }
@@ -1606,6 +1613,7 @@ export class PurchaseLotService {
               null,
               lot.tenantId
             ));
+          const draftUnit = (draft?.unit || "").trim() || "unit";
 
           if (primaryAssetId) {
             const [existingAsset] = await db
@@ -1655,6 +1663,7 @@ export class PurchaseLotService {
                 category: existingAsset.category,
                 classification:
                   existingAsset.classification || draftClassification,
+                unit: existingAsset.unit || draftUnit,
                 status: "active",
                 assignmentType: existingAsset.assignmentType,
                 modelId: existingAsset.modelId,
@@ -1699,6 +1708,7 @@ export class PurchaseLotService {
                   name: lot.itemName,
                   category: draftCategory,
                   classification: draftClassification,
+                  unit: draftUnit,
                   status: "active",
                   assignmentType: draftAssignment,
                   location: draftLocation,
@@ -2356,6 +2366,7 @@ export class PurchaseLotService {
             draftItem = {
               category: item.category || "Equipment",
               classification: assetClassification || null,
+              unit: item.unit?.trim() || "unit",
               location: item.location || "Property Custodian Depot",
               assignmentType: item.assignmentType || "borrowable",
             };
@@ -2431,7 +2442,9 @@ export class PurchaseLotService {
           dto.unit =
             item.unit?.trim() ||
             linkedConsumableUnit ||
-            (item.itemType === "asset" ? "unit" : null);
+            (item.itemType === "asset"
+              ? resolvePurchaseUnit("asset", null)
+              : null);
         }
         results.push(dto);
       }

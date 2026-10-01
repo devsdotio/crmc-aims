@@ -11,6 +11,7 @@ import type { ActorContext } from "@/server/shared/auth";
 import { generateOperationalCode, todayDateString } from "@/server/shared/codes";
 import { parseScanPayload } from "@/server/shared/qr";
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
+import { resolvePurchaseUnit } from "@/lib/purchase-unit";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
 import { BorrowLogService } from "@/server/modules/borrow-log/borrow-log.service";
 import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repository";
@@ -118,6 +119,7 @@ export function toAssetDTO(
     name: row.name,
     category: row.category,
     classification: row.classification || undefined,
+    unit: row.unit || undefined,
     status: row.status,
     assignmentType: row.assignmentType,
     modelId: row.modelId ?? undefined,
@@ -168,6 +170,7 @@ const TRACKED_UPDATE_FIELDS: (keyof AssetRow)[] = [
   "name",
   "category",
   "classification",
+  "unit",
   "status",
   "assignmentType",
   "modelId",
@@ -521,6 +524,7 @@ export class AssetService {
               name: input.name,
               category: categoryName,
               classification,
+              unit: resolvePurchaseUnit("asset", input.unit),
               status: input.status ?? "active",
               assignmentType: input.assignmentType ?? "borrowable",
               modelId: input.modelId ?? null,
@@ -816,6 +820,7 @@ export class AssetService {
             name: args.model.name,
             category: args.model.category,
             classification: args.model.classification || "",
+            unit: resolvePurchaseUnit("asset", null),
             status: "active",
             assignmentType: args.assignmentType,
             modelId: args.model.id,
@@ -971,6 +976,9 @@ export class AssetService {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(categoryName !== undefined ? { category: categoryName } : {}),
         ...(classification !== undefined ? { classification } : {}),
+        ...(input.unit !== undefined
+          ? { unit: resolvePurchaseUnit("asset", input.unit) }
+          : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.assignmentType !== undefined ? { assignmentType: input.assignmentType } : {}),
         ...(input.modelId !== undefined ? { modelId: input.modelId } : {}),

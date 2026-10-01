@@ -39,3 +39,11 @@ describe("asset classification helpers", () => {
     );
   });
 });
+
+describe("asset UoM defaults via purchase-unit helpers", () => {
+  it("accepts free-text asset units on registry records", async () => {
+    const { resolvePurchaseUnit } = await import("@/lib/purchase-unit");
+    expect(resolvePurchaseUnit("asset", "set")).toBe("set");
+    expect(resolvePurchaseUnit("asset", "")).toBe("unit");
+  });
+});

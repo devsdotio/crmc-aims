@@ -29,6 +29,8 @@ export interface Asset {
    * Empty when the specific category has no parent class.
    */
   classification?: string;
+  /** Unit of measure (e.g. unit, set, pair, pcs). Defaults to "unit". */
+  unit?: string;
   status: AssetStatus;
   assignmentType: AssetAssignmentType;
   /** Parent product model when unit belongs to a multi-copy catalog entry. */
@@ -77,6 +79,8 @@ export type CreateAssetInput = Pick<
       Asset,
       | "assetCode"
       | "modelId"
+      | "classification"
+      | "unit"
       | "serialNumber"
       | "department"
       | "purchaseDate"

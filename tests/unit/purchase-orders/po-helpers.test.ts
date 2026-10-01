@@ -168,6 +168,30 @@ describe("toPurchaseLotDTO classification", () => {
     );
     expect(dto.unit).toBe("unit");
   });
+
+  it("preserves free-text asset UoM from deferred draft metadata", () => {
+    const notes = serializeNotesMetadata({
+      notes: null,
+      status: "pending_approval",
+      purpose: "[Ops] Equipment",
+      draftItem: {
+        category: "Furniture",
+        unit: "set",
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+    });
+    const dto = toPurchaseLotDTO(
+      baseRow({
+        notes,
+        itemType: "asset",
+        itemName: "Conference Table",
+        itemCode: "AST-2",
+      })
+    );
+    expect(dto.unit).toBe("set");
+    expect(dto.unit).not.toBe("unit");
+  });
 });
 
 describe("supplierLinkForMaterialLot", () => {

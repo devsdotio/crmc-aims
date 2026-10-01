@@ -84,9 +84,7 @@ function getSlipLines(lot: PurchaseLot): SlipLine[] {
       itemCode: lot.itemCode,
       itemName: lot.itemName,
       quantity: lot.quantity,
-      unit:
-        lot.unit?.trim() ||
-        (lot.itemType === "asset" ? "unit" : null),
+      unit: lot.unit?.trim() || (lot.itemType === "asset" ? "unit" : null),
       unitCost: lot.unitCost,
       totalCost: lot.totalCost,
       purpose: lot.purpose,
@@ -126,9 +124,7 @@ function buildItemCellsHtml(
 ): string {
   const iUnit = parseFloat(item.unitCost) || 0;
   const iTotal = parseFloat(item.totalCost) || 0;
-  const uom =
-    item.unit?.trim() ||
-    (item.itemType === "asset" ? "unit" : "pcs");
+  const uom = item.unit?.trim() || (item.itemType === "asset" ? "unit" : "pcs");
   return `<tr>
             <td class="col-qty">${item.quantity} <span style="font-size: 9px; color: #666;">${escapeHtml(uom)}</span></td>
             <td class="col-desc">

@@ -19,6 +19,8 @@ export const createAssetSchema = z.object({
   category: categoryLabelSchema,
   /** Optional general classification; otherwise derived from the category's parent class. */
   classification: z.string().trim().max(120).optional(),
+  /** Unit of measure (unit, set, pair, pcs, …). Defaults to "unit" when omitted. */
+  unit: z.string().trim().max(40).optional(),
   /** Omitted status defaults to `active` in the service (not via Zod default),
    * so update schemas can safely `.partial()` without forcing status. */
   status: assetStatusSchema.optional(),

@@ -332,7 +332,7 @@ export function AddPoLinesDialog({
       category: a.category,
       classification:
         a.classification || resolveAssetClassForCategory(a.category),
-      unit: "unit",
+      unit: a.unit?.trim() || "unit",
       location: a.location || "Property Custodian Depot",
       assignmentType: a.assignmentType || "borrowable",
     };
@@ -812,6 +812,22 @@ export function AddPoLinesDialog({
                       </div>
                     </div>
                   )}
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-text">
+                      Unit of Measure
+                    </label>
+                    <input
+                      type="text"
+                      value={item.unit}
+                      onChange={(e) =>
+                        updateItem(item.id, { unit: e.target.value })
+                      }
+                      placeholder={
+                        poType === "asset" ? "unit, set, pair…" : "pcs, reams…"
+                      }
+                      className="w-full h-8.5 px-2 rounded-lg border border-border bg-bg text-xs"
+                    />
+                  </div>
                 </div>
               </div>
             ))}
