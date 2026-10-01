@@ -377,12 +377,23 @@ export function resolveDepartmentIdFromPo(
   return null;
 }
 
+/** Resolve UoM from a PO lot (`unit`) or an already-mapped particular field. */
+export function resolveParticularUnitOfMeasure(line: {
+  unitOfMeasure?: string | null;
+  unit?: string | null;
+}): string {
+  return (line.unitOfMeasure ?? line.unit)?.trim() ?? "";
+}
+
 /** Build voucher/petty-cash particulars from PO line items. */
 export function particularsFromPurchaseOrderLines(
   lineItems: Array<{
     itemName?: string | null;
     quantity?: number | null;
+    /** Disbursement field name. */
     unitOfMeasure?: string | null;
+    /** Purchase-lot field name — mapped into unitOfMeasure. */
+    unit?: string | null;
     unitCost?: string | number | null;
     totalCost?: string | number | null;
     purpose?: string | null;
@@ -403,7 +414,7 @@ export function particularsFromPurchaseOrderLines(
             ? tCost.toFixed(2)
             : "";
       const purpose = stripPoPurposePrefix(li.purpose);
-      const unitOfMeasure = li.unitOfMeasure?.trim() ?? "";
+      const unitOfMeasure = resolveParticularUnitOfMeasure(li);
       return {
         description: (li.itemName || "").trim(),
         quantity: qtyNum > 0 ? String(Math.trunc(qtyNum)) : "",
@@ -494,6 +505,7 @@ export function draftFromPurchaseOrderLines(
     itemName?: string | null;
     quantity?: number | null;
     unitOfMeasure?: string | null;
+    unit?: string | null;
     unitCost?: string | number | null;
     totalCost?: string | number | null;
     purpose?: string | null;

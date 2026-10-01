@@ -742,7 +742,10 @@ export function PurchaseOrderDetailSheet({
                 <span className="font-bold text-text block text-xs truncate">
                   {aggregateTotalQuantity}{" "}
                   <span className="font-normal text-text-secondary text-[10px]">
-                    {isMultiItem ? `(${totalLineItems} items)` : lot.itemType === "asset" ? "units" : "pcs"}
+                    {isMultiItem
+                      ? `(${totalLineItems} items)`
+                      : lot.unit?.trim() ||
+                        (lot.itemType === "asset" ? "unit" : "pcs")}
                   </span>
                 </span>
               </div>
@@ -1853,6 +1856,9 @@ export function PurchaseOrderDetailSheet({
                     itemCode: item.itemCode,
                     itemName: item.itemName,
                     quantity: item.quantity,
+                    unit:
+                      item.unit?.trim() ||
+                      (item.itemType === "asset" ? "unit" : null),
                     unitCost: item.unitCost,
                     totalCost: item.totalCost,
                     lotCode: item.lotCode || lot.lotCode,
@@ -1866,6 +1872,9 @@ export function PurchaseOrderDetailSheet({
                       itemCode: lot.itemCode,
                       itemName: lot.itemName,
                       quantity: lot.quantity,
+                      unit:
+                        lot.unit?.trim() ||
+                        (lot.itemType === "asset" ? "unit" : null),
                       unitCost: lot.unitCost,
                       totalCost: lot.totalCost,
                       lotCode: lot.lotCode,
@@ -2012,7 +2021,8 @@ export function PurchaseOrderDetailSheet({
                                 Batch Qty:{" "}
                                 <strong className="text-slate-800 font-mono">
                                   {item.quantity}{" "}
-                                  {item.itemType === "asset" ? "units" : "pcs"}
+                                  {item.unit?.trim() ||
+                                    (item.itemType === "asset" ? "unit" : "pcs")}
                                 </strong>
                               </div>
                               <div className="col-span-2 truncate">

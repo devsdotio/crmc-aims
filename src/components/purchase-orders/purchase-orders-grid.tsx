@@ -334,11 +334,12 @@ export function PurchaseOrdersGrid({
                     {group.totalQuantity}{" "}
                     {isMultiItem
                       ? `(${group.itemCount} items)`
-                      : lot.itemType === "asset"
-                      ? lot.quantity === 1
-                        ? "unit"
-                        : "units"
-                      : "pcs"}
+                      : lot.unit?.trim() ||
+                        (lot.itemType === "asset"
+                          ? lot.quantity === 1
+                            ? "unit"
+                            : "units"
+                          : "pcs")}
                   </span>
                 </div>
 

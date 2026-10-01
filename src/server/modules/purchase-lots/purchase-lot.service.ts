@@ -345,6 +345,9 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
       row.itemType === "consumable"
         ? meta.draftItem?.classification ?? null
         : null,
+    unit:
+      meta.draftItem?.unit?.trim() ||
+      (row.itemType === "asset" ? "unit" : null),
     notes: meta.cleanNotes,
     receiptUrl: row.receiptUrl || meta.receiptUrl || null,
     recordedByUserId: row.recordedByUserId,
@@ -384,8 +387,8 @@ async function withDisbursementClaims(
 }
 
 /**
- * Fill classification from the linked consumable when draftItem was cleared
- * (e.g. after delivery) so supplies/materials PO indexes stay correct.
+ * Fill classification / unit from the linked consumable when draftItem was
+ * cleared (e.g. after delivery) so PO indexes and disbursement UoM stay correct.
  */
 async function withConsumableClassifications(
   dtos: PurchaseLotDTO[],
@@ -400,8 +403,8 @@ async function withConsumableClassifications(
         .filter(
           (d) =>
             d.itemType === "consumable" &&
-            !d.classification &&
-            Boolean(d.consumableId)
+            Boolean(d.consumableId) &&
+            (!d.classification || !d.unit?.trim())
         )
         .map((d) => d.consumableId as string)
     ),
@@ -418,27 +421,36 @@ async function withConsumableClassifications(
     .select({
       id: consumables.id,
       classification: consumables.classification,
+      unit: consumables.unit,
     })
     .from(consumables)
     .where(and(...conditions));
 
-  const byId = new Map<string, "supply" | "material">();
+  const byId = new Map<
+    string,
+    { classification: "supply" | "material" | null; unit: string | null }
+  >();
   for (const row of linked) {
-    if (row.classification === "material" || row.classification === "supply") {
-      byId.set(row.id, row.classification);
-    }
+    byId.set(row.id, {
+      classification:
+        row.classification === "material" || row.classification === "supply"
+          ? row.classification
+          : null,
+      unit: row.unit?.trim() || null,
+    });
   }
 
   return dtos.map((dto) => {
-    if (
-      dto.itemType !== "consumable" ||
-      dto.classification ||
-      !dto.consumableId
-    ) {
+    if (dto.itemType !== "consumable" || !dto.consumableId) {
       return dto;
     }
-    const classification = byId.get(dto.consumableId);
-    return classification ? { ...dto, classification } : dto;
+    const linkedRow = byId.get(dto.consumableId);
+    if (!linkedRow) return dto;
+    return {
+      ...dto,
+      classification: dto.classification ?? linkedRow.classification,
+      unit: dto.unit?.trim() || linkedRow.unit,
+    };
   });
 }
 
@@ -772,6 +784,7 @@ export class PurchaseLotService {
         /** Deferred catalog specs when filing a new item before delivery. */
         let draftItem: DraftItemSpecs | null = null;
         let linkedConsumableClassification: string | null = null;
+        let linkedConsumableUnit: string | null = null;
 
         const targetProjectId = item.projectId || body.projectId || null;
         const targetProjectName = item.projectName || body.projectName || null;
@@ -815,6 +828,7 @@ export class PurchaseLotService {
             }
             itemCode = existing.itemCode;
             itemName = existing.name;
+            linkedConsumableUnit = existing.unit?.trim() || null;
 
             // Auto-classify as material if destined for a project
             if (targetProjectId && existing.classification !== "material") {
@@ -1167,6 +1181,12 @@ export class PurchaseLotService {
         const dto = toPurchaseLotDTO(row);
         if (poDepartments.length > 0) {
           dto.departments = poDepartments;
+        }
+        if (!dto.unit?.trim()) {
+          dto.unit =
+            item.unit?.trim() ||
+            linkedConsumableUnit ||
+            (item.itemType === "asset" ? "unit" : null);
         }
         results.push(dto);
       }
@@ -2138,6 +2158,7 @@ export class PurchaseLotService {
         let itemName = item.name.trim();
         let draftItem: DraftItemSpecs | null = null;
         let linkedConsumableClassification: string | null = null;
+        let linkedConsumableUnit: string | null = null;
 
         const targetProjectId = item.projectId || anchor.projectId || null;
         const targetProjectName = item.projectName || anchor.projectName || null;
@@ -2181,6 +2202,7 @@ export class PurchaseLotService {
             }
             itemCode = existing.itemCode;
             itemName = existing.name;
+            linkedConsumableUnit = existing.unit?.trim() || null;
 
             if (targetProjectId && existing.classification !== "material") {
               await db
@@ -2302,7 +2324,14 @@ export class PurchaseLotService {
           session
         );
 
-        results.push(toPurchaseLotDTO(row));
+        const dto = toPurchaseLotDTO(row);
+        if (!dto.unit?.trim()) {
+          dto.unit =
+            item.unit?.trim() ||
+            linkedConsumableUnit ||
+            (item.itemType === "asset" ? "unit" : null);
+        }
+        results.push(dto);
       }
 
       await this.auditLogs.log(

@@ -117,6 +117,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(lot.itemType).toBe("consumable");
     expect(lot.consumableId).toBeFalsy();
     expect(lot.classification).toBe("material");
+    expect(lot.unit).toBe("pcs");
     // Materials must not stick on supplier history / supplies-adjacent vendor lists.
     expect(lot.supplierId).toBeNull();
 
@@ -125,6 +126,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(found).toBeTruthy();
     expect(found?.classification).toBe("material");
     expect(found?.classification).not.toBe("supply");
+    expect(found?.unit).toBe("pcs");
   });
 
   it("delivers a new supply PO into consumables with stock movement", async () => {
@@ -159,6 +161,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(lot.status).toBe("pending_approval");
     expect(lot.consumableId).toBeFalsy();
     expect(lot.classification).toBe("supply");
+    expect(lot.unit).toBe("ream");
 
     const delivered = await pos.updatePOStatus(
       lot.id,
@@ -172,6 +175,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     const listedAfter = await pos.list({}, fx.actor.tenantId);
     const deliveredListed = listedAfter.find((row) => row.id === lot.id);
     expect(deliveredListed?.classification).toBe("supply");
+    expect(deliveredListed?.unit).toBe("ream");
 
     const db = getDb();
     const [item] = await db

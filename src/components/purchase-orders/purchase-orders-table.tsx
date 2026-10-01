@@ -499,7 +499,14 @@ export function PurchaseOrdersTable({
                   <div className="sm:hidden mt-1 font-mono text-[11px] text-text-secondary font-medium">
                     {group.totalQuantity}{" "}
                     <span className="font-normal">
-                      {isMultiItem ? "total" : lot.itemType === "asset" ? (lot.quantity === 1 ? "unit" : "units") : "pcs"}
+                      {isMultiItem
+                        ? "total"
+                        : lot.unit?.trim() ||
+                          (lot.itemType === "asset"
+                            ? lot.quantity === 1
+                              ? "unit"
+                              : "units"
+                            : "pcs")}
                     </span>
                   </div>
                 </td>
@@ -586,11 +593,12 @@ export function PurchaseOrdersTable({
                     <span className="text-[10px] font-normal text-text-secondary">
                       {isMultiItem
                         ? `(${group.itemCount})`
-                        : lot.itemType === "asset"
-                        ? lot.quantity === 1
-                          ? "unit"
-                          : "units"
-                        : "pcs"}
+                        : lot.unit?.trim() ||
+                          (lot.itemType === "asset"
+                            ? lot.quantity === 1
+                              ? "unit"
+                              : "units"
+                            : "pcs")}
                     </span>
                   </div>
                 </td>
@@ -616,7 +624,9 @@ export function PurchaseOrdersTable({
                   </span>
                   {!isMultiItem && (
                     <span className="font-mono text-[10px] text-text-secondary block">
-                      @ ₱{Number(lot.unitCost).toFixed(2)} / unit
+                      @ ₱{Number(lot.unitCost).toFixed(2)} /{" "}
+                      {lot.unit?.trim() ||
+                        (lot.itemType === "asset" ? "unit" : "pcs")}
                     </span>
                   )}
                 </td>

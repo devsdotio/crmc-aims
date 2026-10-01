@@ -15,6 +15,8 @@ export interface POLineItemDetail {
   itemCode: string;
   itemName: string;
   quantity: number;
+  /** Unit of measure (e.g. pcs, ream, carton). Assets use "unit". */
+  unit?: string | null;
   unitCost: string;
   totalCost: string;
   purpose?: string | null;
@@ -54,6 +56,11 @@ export interface PurchaseLot {
    * Present for deferred new-item drafts and server-enriched linked catalog rows.
    */
   classification?: "supply" | "material" | null;
+  /**
+   * Unit of measure for quantity (e.g. pcs, ream, carton).
+   * From deferred draftItem, linked consumable catalog, or "unit" for assets.
+   */
+  unit?: string | null;
   notes: string | null;
   receiptUrl?: string | null;
   recordedByUserId: string;
