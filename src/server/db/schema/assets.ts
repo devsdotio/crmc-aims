@@ -31,6 +31,7 @@ export const assetCategoryEnum = pgEnum("asset_category", [
 export const assetAssignmentTypeEnum = pgEnum("asset_assignment_type", [
   "borrowable",
   "assignable",
+  "fixed",
 ]);
 
 export const assetStatusEnum = pgEnum("asset_status", [

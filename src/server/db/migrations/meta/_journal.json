@@ -372,6 +372,13 @@
       "when": 1786387000000,
       "tag": "0052_category_icon_token_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1786388000000,
+      "tag": "0053_fixed_asset_assignment_type",
+      "breakpoints": true
     }
   ]
 }

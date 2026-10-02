@@ -1,4 +1,4 @@
-import { and, asc, count, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -110,7 +110,7 @@ export class AssetRepository implements IAssetRepository {
   }
 
   async countByType(
-    type: "borrowable" | "assignable",
+    type: "borrowable" | "assignable" | "fixed",
     session?: DbSession,
     tenantId?: string
   ): Promise<number> {
@@ -161,6 +161,7 @@ export class AssetRepository implements IAssetRepository {
     }
     if (filters?.availableOnly) {
       conditions.push(eq(assets.status, "active"));
+      conditions.push(ne(assets.assignmentType, "fixed"));
       conditions.push(isNull(assets.currentHolder));
       // Must match release checks: open project or borrow custody blocks issue/assign.
       conditions.push(

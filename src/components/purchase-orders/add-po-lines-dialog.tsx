@@ -59,7 +59,7 @@ interface LineDraft {
   unit: string;
   minThreshold: number;
   location: string;
-  assignmentType: "borrowable" | "assignable";
+  assignmentType: "borrowable" | "assignable" | "fixed";
   quantity: string;
   unitCost: string;
   suggestedDealer: string;

@@ -8,7 +8,7 @@ export type AssetStatus =
   | "out_of_service"
   | "retired"
   | "missing";
-export type AssetAssignmentType = "borrowable" | "assignable";
+export type AssetAssignmentType = "borrowable" | "assignable" | "fixed";
 
 export interface MaintenanceLogEntry {
   id: string;
@@ -62,7 +62,7 @@ export interface AssetFilterState extends BaseFilterState {
   statuses: AssetStatus[];
   /** When "available", only units not in custody and not reserved. */
   availability: "all" | "available";
-  /** Filter by borrowable vs assignable custody model. */
+  /** Filter by borrowable, assignable, or fixed. */
   assignmentType: "all" | AssetAssignmentType;
   sortBy: "name" | "code" | "date";
   sortOrder: "asc" | "desc";

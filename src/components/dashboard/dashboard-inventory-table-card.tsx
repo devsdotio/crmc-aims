@@ -13,12 +13,13 @@ interface DashboardInventoryTableCardProps {
   loading?: boolean;
 }
 
-type FilterTag = "all" | "assignable" | "borrowable" | "custody" | "low-stock";
+type FilterTag = "all" | "assignable" | "borrowable" | "fixed" | "custody" | "low-stock";
 
 const FILTER_TAGS: Array<{ id: FilterTag; label: string }> = [
   { id: "all", label: "All Items" },
   { id: "assignable", label: "Assignable Assets" },
   { id: "borrowable", label: "Borrowable Units" },
+  { id: "fixed", label: "Fixed Assets" },
   { id: "custody", label: "Active Custody" },
   { id: "low-stock", label: "Low Stock Items" },
 ];

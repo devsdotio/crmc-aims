@@ -113,6 +113,11 @@ export function IssueAssetDialog({
     e.preventDefault();
     setError("");
 
+    if (asset.assignmentType === "fixed") {
+      setError("Fixed assets cannot be borrowed or assigned.");
+      return;
+    }
+
     if (destinationKind === "department" && !departmentId) {
       setError("Select a department.");
       return;
@@ -181,6 +186,14 @@ export function IssueAssetDialog({
         </div>
 
         <div className="p-5 space-y-4">
+          {asset.assignmentType === "fixed" ? (
+            <p className="text-xs text-text-secondary">
+              Fixed assets such as buildings, gyms, and warehouses stay on site.
+              They cannot be borrowed or assigned.
+            </p>
+          ) : null}
+          {asset.assignmentType !== "fixed" ? (
+          <>
           <p className="text-xs text-text-secondary">
             Manual issue from on-hand stock. Destination is exactly one department or
             project
@@ -323,6 +336,8 @@ export function IssueAssetDialog({
           </label>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
+          </>
+          ) : null}
         </div>
 
         <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
@@ -336,6 +351,7 @@ export function IssueAssetDialog({
           </button>
           <button
             type="submit"
+            hidden={asset.assignmentType === "fixed"}
             disabled={
               releaseMutation.isPending ||
               asset.status !== "active" ||

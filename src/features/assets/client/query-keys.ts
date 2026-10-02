@@ -11,7 +11,7 @@ export const assetQueryKeys = {
     category?: string;
     classification?: string;
     availableOnly?: boolean;
-    assignmentType?: "borrowable" | "assignable";
+    assignmentType?: "borrowable" | "assignable" | "fixed";
     modelId?: string;
   }) => [...assetQueryKeys.lists(), filters ?? {}] as const,
   detail: (id: string) => [...assetQueryKeys.all, "detail", id] as const,

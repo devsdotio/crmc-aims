@@ -185,6 +185,7 @@ function AssetsViewContent() {
       all: assets.length,
       borrowable: assets.filter((a) => a.assignmentType === "borrowable").length,
       assignable: assets.filter((a) => a.assignmentType === "assignable").length,
+      fixed: assets.filter((a) => a.assignmentType === "fixed").length,
     }),
     [assets]
   );
@@ -202,6 +203,7 @@ function AssetsViewContent() {
             assignmentType: assetData.assignmentType as
               | "borrowable"
               | "assignable"
+              | "fixed"
               | undefined,
             serialNumber: assetData.serialNumber,
             location: assetData.location,
@@ -227,7 +229,10 @@ function AssetsViewContent() {
           unit: assetData.unit || "unit",
           status: (assetData.status as AssetStatus) || "active",
           assignmentType:
-            (assetData.assignmentType as "borrowable" | "assignable") ||
+            (assetData.assignmentType as
+              | "borrowable"
+              | "assignable"
+              | "fixed") ||
             "borrowable",
           serialNumber: assetData.serialNumber,
           location: assetData.location || "Central Storage",

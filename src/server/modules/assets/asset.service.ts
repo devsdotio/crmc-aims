@@ -445,6 +445,17 @@ export class AssetService {
       };
     }
 
+    if (asset.assignmentType === "fixed" && !openBorrow && !openProject && !asset.currentHolder) {
+      return {
+        kind: "asset",
+        code: asset.assetCode,
+        qrPayload: asset.qrPayload,
+        asset,
+        suggestedAction: "blocked",
+        reason: "Fixed assets cannot be borrowed or assigned.",
+      };
+    }
+
     if (asset.assignmentType === "assignable") {
       return {
         kind: "asset",
@@ -786,7 +797,7 @@ export class AssetService {
       quantity: number;
       codePrefix: string;
       location: string;
-      assignmentType: "borrowable" | "assignable";
+      assignmentType: "borrowable" | "assignable" | "fixed";
       department?: string;
       purchaseDate?: string;
       unitValue?: number;
@@ -1157,6 +1168,12 @@ export class AssetService {
 
     if (!existing) {
       throw new NotFoundError("Asset", id);
+    }
+
+    if (existing.assignmentType === "fixed") {
+      throw new BadRequestError(
+        "Fixed assets such as buildings cannot be borrowed or assigned."
+      );
     }
 
     const custodyKind =

@@ -34,7 +34,7 @@ export type CreatePurchaseOrderItemPayload = {
   unit?: string;
   minThreshold?: number;
   location?: string;
-  assignmentType?: "borrowable" | "assignable";
+  assignmentType?: "borrowable" | "assignable" | "fixed";
   model?: string;
   quantity: number;
   unitCost: string | number;

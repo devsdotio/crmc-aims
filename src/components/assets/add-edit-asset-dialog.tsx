@@ -434,6 +434,21 @@ function AddEditAssetDialogForm({
                       />
                       Assignable (projects)
                     </label>
+                    <label className="flex items-center gap-2 text-xs text-text cursor-pointer">
+                      <input
+                        type="radio"
+                        name="assignmentType"
+                        value="fixed"
+                        checked={assignmentType === "fixed"}
+                        onChange={(e) =>
+                          setAssignmentType(
+                            e.target.value as AssetAssignmentType
+                          )
+                        }
+                        disabled={isSubmitting}
+                      />
+                      Fixed asset (buildings, gym, warehouse)
+                    </label>
                   </div>
                 </div>
               </div>

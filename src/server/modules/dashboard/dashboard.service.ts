@@ -100,7 +100,7 @@ export type DashboardAssetRowDTO = {
   name: string;
   sku: string;
   category: string;
-  type: "Assignable" | "Borrowable" | "Consumable";
+  type: "Assignable" | "Borrowable" | "Fixed" | "Consumable";
   custodyHolder: string;
   department: string;
   custody: {
@@ -1233,6 +1233,8 @@ export class DashboardService {
           conditions.push(eq(assets.assignmentType, "assignable"));
         } else if (params?.tag === "borrowable") {
           conditions.push(eq(assets.assignmentType, "borrowable"));
+        } else if (params?.tag === "fixed") {
+          conditions.push(eq(assets.assignmentType, "fixed"));
         } else if (params?.tag === "custody") {
           conditions.push(sql`${assets.currentHolder} IS NOT NULL`);
         } else if (params?.tag === "low-stock" || params?.tag === "maintenance") {
@@ -1297,12 +1299,15 @@ export class DashboardService {
 
         return rows.map((a) => {
           const activeBorrow = activeBorrowMap.get(a.id);
+          const isFixed = a.assignmentType === "fixed";
 
           // Custody precedence: borrow > assigned > unassigned
           const isBorrowed = Boolean(activeBorrow);
           const isAssigned = Boolean(a.currentHolder && !activeBorrow);
 
-          const custodyHolder = isBorrowed
+          const custodyHolder = isFixed
+            ? a.location || "On site"
+            : isBorrowed
             ? (activeBorrow!.borrowerName ?? "Unknown Borrower")
             : isAssigned
             ? a.currentHolder!
@@ -1329,6 +1334,9 @@ export class DashboardService {
             statusLabel =
               a.status === "missing" ? "Missing" : a.status === "retired" ? "Retired" : "Out of Service";
             statusType = "danger";
+          } else if (isFixed) {
+            statusLabel = "On site";
+            statusType = "info";
           } else if (isBorrowed || isAssigned) {
             statusLabel = "In Custody";
             statusType = "info";
@@ -1341,7 +1349,12 @@ export class DashboardService {
             name: a.name,
             sku: a.assetCode,
             category: a.category ?? "equipment",
-            type: a.assignmentType === "assignable" ? "Assignable" : "Borrowable",
+            type:
+              a.assignmentType === "assignable"
+                ? "Assignable"
+                : a.assignmentType === "fixed"
+                  ? "Fixed"
+                  : "Borrowable",
             custodyHolder,
             department: custodyDepartment,
             custody: {

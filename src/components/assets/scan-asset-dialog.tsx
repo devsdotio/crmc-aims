@@ -133,6 +133,10 @@ export function ScanAssetDialog({
   const handleRelease = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resolved) return;
+    if (resolved.asset.assignmentType === "fixed") {
+      setError("Fixed assets cannot be borrowed or assigned.");
+      return;
+    }
     if (destinationKind === "department" && !departmentId) {
       setError("Select a department.");
       return;
