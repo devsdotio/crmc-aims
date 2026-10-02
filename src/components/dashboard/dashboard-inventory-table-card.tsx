@@ -1,18 +1,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Search,
-  Laptop,
-  Printer,
-  Headphones,
-  Armchair,
-  HardDrive,
-  Monitor,
-  ExternalLink,
-  Package,
-} from "lucide-react";
+import { Search, ExternalLink } from "lucide-react";
+import { CategoryIcon } from "@/components/ui/category-icon";
 import { cn } from "@/lib/utils";
+import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { useDashboardAssetsQuery } from "@/features/dashboard/client/use-dashboard";
 import type { DashboardAssetRow } from "@/features/dashboard/client/dashboard-api";
 import { getAssetStatusBadge } from "@/constants/asset-statuses";
@@ -31,33 +23,11 @@ const FILTER_TAGS: Array<{ id: FilterTag; label: string }> = [
   { id: "low-stock", label: "Low Stock Items" },
 ];
 
-function getCategoryIcon(category: string) {
-  const cat = (category || "").toLowerCase();
-  if (cat.includes("comp") || cat.includes("it") || cat.includes("laptop")) {
-    return { icon: Laptop, bg: "bg-blue-50 dark:bg-blue-950/40", color: "text-blue-600 dark:text-blue-400" };
-  }
-  if (cat.includes("monitor") || cat.includes("display")) {
-    return { icon: Monitor, bg: "bg-indigo-50 dark:bg-indigo-950/40", color: "text-indigo-600 dark:text-indigo-400" };
-  }
-  if (cat.includes("furn") || cat.includes("chair") || cat.includes("desk")) {
-    return { icon: Armchair, bg: "bg-amber-50 dark:bg-amber-950/40", color: "text-amber-600 dark:text-amber-400" };
-  }
-  if (cat.includes("audio") || cat.includes("video") || cat.includes("av") || cat.includes("headphone")) {
-    return { icon: Headphones, bg: "bg-emerald-50 dark:bg-emerald-950/40", color: "text-emerald-600 dark:text-emerald-400" };
-  }
-  if (cat.includes("print") || cat.includes("ink") || cat.includes("paper")) {
-    return { icon: Printer, bg: "bg-cyan-50 dark:bg-cyan-950/40", color: "text-cyan-600 dark:text-cyan-400" };
-  }
-  if (cat.includes("storage") || cat.includes("consumable")) {
-    return { icon: HardDrive, bg: "bg-purple-50 dark:bg-purple-950/40", color: "text-purple-600 dark:text-purple-400" };
-  }
-  return { icon: Package, bg: "bg-slate-50 dark:bg-slate-800/60", color: "text-slate-600 dark:text-slate-300" };
-}
-
 export function DashboardInventoryTableCard({
   loading: parentLoading = false,
 }: DashboardInventoryTableCardProps) {
   const router = useRouter();
+  const resolveCategoryStyle = useCategoryStyleResolver();
   const [activeTag, setActiveTag] = useState<FilterTag>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -178,7 +148,7 @@ export function DashboardInventoryTableCard({
               </tr>
             ) : (
               rows.map((row) => {
-                const { icon: Icon, bg: iconBg, color: iconColor } = getCategoryIcon(row.category);
+                const categoryStyle = resolveCategoryStyle(row.category);
                 const formattedValuation =
                   row.valuation > 0 ? `₱${row.valuation.toLocaleString()}` : "—";
 
@@ -194,11 +164,14 @@ export function DashboardInventoryTableCard({
                         <div
                           className={cn(
                             "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-                            iconBg,
-                            iconColor
+                            categoryStyle.bg,
+                            categoryStyle.text
                           )}
                         >
-                          <Icon className="h-4.5 w-4.5" />
+                          <CategoryIcon
+                            iconToken={categoryStyle.iconToken}
+                            className="h-4.5 w-4.5"
+                          />
                         </div>
                         <div className="min-w-0">
                           <Link

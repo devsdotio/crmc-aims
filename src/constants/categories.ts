@@ -49,29 +49,10 @@ export const AVAILABLE_CATEGORY_COLORS: CategoryColorOption[] = [
   { id: "slate",     name: "Slate",     bg: "bg-slate-700",   text: "text-white font-bold", hex: "#334155" },
 ];
 
-export interface CategoryIconOption {
-  id: string;
-  name: string;
-}
-
-export const AVAILABLE_CATEGORY_ICONS: CategoryIconOption[] = [
-  { id: "monitor", name: "Monitor" },
-  { id: "truck", name: "Truck" },
-  { id: "car", name: "Car" },
-  { id: "armchair", name: "Armchair" },
-  { id: "cpu", name: "CPU" },
-  { id: "printer", name: "Printer" },
-  { id: "camera", name: "Camera" },
-  { id: "speaker", name: "Speaker" },
-  { id: "wrench", name: "Wrench" },
-  { id: "stethoscope", name: "Medical" },
-  { id: "flask-conical", name: "Laboratory" },
-  { id: "shield", name: "Security" },
-  { id: "building", name: "Building" },
-  { id: "package", name: "Package" },
-  { id: "archive", name: "Archive" },
-  { id: "boxes", name: "Boxes" },
-];
+export {
+  CATEGORY_ICON_DEFS as AVAILABLE_CATEGORY_ICONS,
+  type CategoryIconId,
+} from "@/lib/category-icon-tokens";
 
 function hashString(str: string): number {
   let hash = 0;

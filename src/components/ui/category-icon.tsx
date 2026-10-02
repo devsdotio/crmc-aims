@@ -1,64 +1,188 @@
 import React from "react";
 import {
-  Monitor,
-  Truck,
-  Car,
-  Armchair,
-  Cpu,
-  Printer,
-  Camera,
-  Speaker,
-  Wrench,
-  Stethoscope,
-  FlaskConical,
-  Shield,
-  Building,
-  Package,
+  Ambulance,
+  Apple,
   Archive,
+  Armchair,
+  Bandage,
+  Battery,
+  Beaker,
+  Bed,
+  Bike,
+  Book,
   Boxes,
+  Briefcase,
+  Building,
+  Bus,
+  Calculator,
+  Calendar,
+  Camera,
+  Car,
+  Clipboard,
+  Clock,
+  Cog,
+  Cpu,
+  DoorOpen,
+  Droplet,
+  Eye,
+  Fan,
+  FileText,
+  FlaskConical,
+  Folder,
+  Glasses,
+  GraduationCap,
+  Hammer,
+  HardDrive,
+  Headphones,
+  HeartPulse,
   HelpCircle,
+  Hospital,
+  Inbox,
+  Keyboard,
+  Key,
+  Lamp,
+  Laptop,
+  Layers,
+  Leaf,
+  Lightbulb,
+  Lock,
+  MapPin,
+  Microscope,
+  Monitor,
+  Mouse,
+  Package,
+  Pencil,
+  Phone,
+  Pill,
+  Plane,
+  Plug,
+  Printer,
+  Radio,
+  Recycle,
+  Ruler,
+  Scissors,
+  Server,
+  Shield,
+  Shirt,
+  ShoppingCart,
+  Smartphone,
+  Sofa,
+  Speaker,
+  Stethoscope,
+  Syringe,
+  Tablet,
+  Tag,
+  Thermometer,
+  Truck,
+  Tv,
+  Utensils,
+  Video,
+  Warehouse,
+  Wifi,
+  Wrench,
+  Zap,
 } from "lucide-react";
-import type { LucideProps } from "lucide-react";
+import type { LucideIcon, LucideProps } from "lucide-react";
+
+import {
+  type CategoryIconId,
+  isCategoryIconId,
+} from "@/lib/category-icon-tokens";
+
+const CATEGORY_ICON_COMPONENTS = {
+  monitor: Monitor,
+  laptop: Laptop,
+  tablet: Tablet,
+  smartphone: Smartphone,
+  keyboard: Keyboard,
+  mouse: Mouse,
+  cpu: Cpu,
+  "hard-drive": HardDrive,
+  server: Server,
+  printer: Printer,
+  camera: Camera,
+  video: Video,
+  speaker: Speaker,
+  headphones: Headphones,
+  tv: Tv,
+  truck: Truck,
+  car: Car,
+  bus: Bus,
+  bike: Bike,
+  ambulance: Ambulance,
+  armchair: Armchair,
+  sofa: Sofa,
+  lamp: Lamp,
+  building: Building,
+  warehouse: Warehouse,
+  key: Key,
+  shield: Shield,
+  package: Package,
+  archive: Archive,
+  boxes: Boxes,
+  clipboard: Clipboard,
+  "file-text": FileText,
+  book: Book,
+  scissors: Scissors,
+  wrench: Wrench,
+  hammer: Hammer,
+  ruler: Ruler,
+  stethoscope: Stethoscope,
+  syringe: Syringe,
+  pill: Pill,
+  "heart-pulse": HeartPulse,
+  thermometer: Thermometer,
+  "flask-conical": FlaskConical,
+  microscope: Microscope,
+  droplet: Droplet,
+  utensils: Utensils,
+  plug: Plug,
+  zap: Zap,
+  bed: Bed,
+  "door-open": DoorOpen,
+  lock: Lock,
+  folder: Folder,
+  inbox: Inbox,
+  tag: Tag,
+  layers: Layers,
+  pencil: Pencil,
+  calculator: Calculator,
+  "graduation-cap": GraduationCap,
+  briefcase: Briefcase,
+  phone: Phone,
+  radio: Radio,
+  wifi: Wifi,
+  battery: Battery,
+  fan: Fan,
+  lightbulb: Lightbulb,
+  cog: Cog,
+  recycle: Recycle,
+  leaf: Leaf,
+  apple: Apple,
+  shirt: Shirt,
+  glasses: Glasses,
+  eye: Eye,
+  bandage: Bandage,
+  beaker: Beaker,
+  "shopping-cart": ShoppingCart,
+  clock: Clock,
+  calendar: Calendar,
+  "map-pin": MapPin,
+  hospital: Hospital,
+  plane: Plane,
+} satisfies Record<CategoryIconId, LucideIcon>;
+
+export function categoryIconComponent(iconToken?: string | null): LucideIcon {
+  if (iconToken && isCategoryIconId(iconToken)) {
+    return CATEGORY_ICON_COMPONENTS[iconToken];
+  }
+  return HelpCircle;
+}
 
 export interface CategoryIconProps extends Omit<LucideProps, "ref"> {
   iconToken?: string | null;
 }
 
 export function CategoryIcon({ iconToken, ...props }: CategoryIconProps) {
-  switch (iconToken) {
-    case "monitor":
-      return <Monitor {...props} />;
-    case "truck":
-      return <Truck {...props} />;
-    case "car":
-      return <Car {...props} />;
-    case "armchair":
-      return <Armchair {...props} />;
-    case "cpu":
-      return <Cpu {...props} />;
-    case "printer":
-      return <Printer {...props} />;
-    case "camera":
-      return <Camera {...props} />;
-    case "speaker":
-      return <Speaker {...props} />;
-    case "wrench":
-      return <Wrench {...props} />;
-    case "stethoscope":
-      return <Stethoscope {...props} />;
-    case "flask-conical":
-      return <FlaskConical {...props} />;
-    case "shield":
-      return <Shield {...props} />;
-    case "building":
-      return <Building {...props} />;
-    case "package":
-      return <Package {...props} />;
-    case "archive":
-      return <Archive {...props} />;
-    case "boxes":
-      return <Boxes {...props} />;
-    default:
-      return <HelpCircle {...props} />;
-  }
+  return React.createElement(categoryIconComponent(iconToken), props);
 }

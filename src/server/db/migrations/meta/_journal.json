@@ -365,6 +365,13 @@
       "when": 1786386000000,
       "tag": "0051_category_icon_token",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1786387000000,
+      "tag": "0052_category_icon_token_unique",
+      "breakpoints": true
     }
   ]
 }

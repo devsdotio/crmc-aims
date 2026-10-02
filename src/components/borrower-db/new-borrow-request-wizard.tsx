@@ -34,6 +34,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { categoryIconComponent } from "@/components/ui/category-icon";
 import { getCategoryStyle } from "@/constants/categories";
 import type {
   BrowseItem,
@@ -549,20 +550,6 @@ const ASSET_CATEGORIES: AssetCategoryCardMeta[] = [
   },
 ];
 
-function getCategoryIcon(catKeyOrName: string): React.ElementType {
-  const norm = (catKeyOrName || "").toLowerCase();
-  if (norm.includes("comput") || norm.includes("it") || norm.includes("tech") || norm.includes("laptop")) return Laptop;
-  if (norm.includes("av") || norm.includes("audio") || norm.includes("video") || norm.includes("camera") || norm.includes("projector")) return Video;
-  if (norm.includes("transport") || norm.includes("vehicle") || norm.includes("mobility") || norm.includes("car") || norm.includes("truck")) return Truck;
-  if (norm.includes("furnit") || norm.includes("chair") || norm.includes("table") || norm.includes("desk")) return Armchair;
-  if (norm.includes("medic") || norm.includes("clinic") || norm.includes("health") || norm.includes("care") || norm.includes("pharma")) return HeartPulse;
-  if (norm.includes("print") || norm.includes("office") || norm.includes("scan") || norm.includes("copi")) return Printer;
-  if (norm.includes("electr") || norm.includes("power") || norm.includes("ups") || norm.includes("generat")) return Zap;
-  if (norm.includes("lab") || norm.includes("scien") || norm.includes("research") || norm.includes("chem")) return FlaskConical;
-  if (norm.includes("tool") || norm.includes("maint") || norm.includes("machin") || norm.includes("repair")) return Wrench;
-  return Tag;
-}
-
 function StepSelect({
   value,
   onChange,
@@ -581,8 +568,8 @@ function StepSelect({
     const adminAssetCats = dbCategories.filter((c) => c.type === "asset" || !c.type);
     if (adminAssetCats.length > 0) {
       return adminAssetCats.map((c) => {
-        const style = getCategoryStyle(c.name, c.name, c.colorToken);
-        const Icon = getCategoryIcon(c.name);
+        const style = getCategoryStyle(c.name, c.name, c.colorToken, c.iconToken);
+        const Icon = categoryIconComponent(c.iconToken);
         return {
           id: c.id,
           title: c.name,

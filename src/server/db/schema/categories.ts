@@ -56,6 +56,9 @@ export const categories = pgTable(
       table.type,
       sql`lower(${table.name})`
     ),
+    uniqueIndex("categories_tenant_icon_token_uidx")
+      .on(table.tenantId, table.iconToken)
+      .where(sql`${table.iconToken} is not null`),
   ]
 );
 

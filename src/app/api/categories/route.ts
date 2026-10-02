@@ -151,6 +151,12 @@ export async function POST(request: Request) {
       );
     }
 
+    const categoryRepo = new CategoryRepository();
+    const iconToken = await categoryRepo.resolveIconTokenForCreate(
+      actor.tenantId,
+      typeof body.iconToken === "string" ? body.iconToken : null
+    );
+
     let newCategory;
     try {
       [newCategory] = await db
@@ -161,13 +167,19 @@ export async function POST(request: Request) {
           description: body.description || null,
           type: body.type,
           colorToken: body.colorToken || null,
-          iconToken: body.iconToken || null,
+          iconToken,
           parentId,
           createdByUserId: actor.userId,
         })
         .returning();
     } catch (error) {
       const mapped = appErrorFromUnknown(error);
+      if (
+        mapped instanceof ConflictError &&
+        mapped.message.includes("already used")
+      ) {
+        throw mapped;
+      }
       if (mapped instanceof ConflictError) {
         throw new ConflictError(
           `Category “${name}” already exists for this type.`

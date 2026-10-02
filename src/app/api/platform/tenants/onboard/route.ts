@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
             type: "asset",
             description: "Computers, projectors, networking gear, and lab electronics",
             colorToken: "blue",
+            iconToken: "laptop",
           },
           {
             tenantId: newTenant.id,
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
             type: "asset",
             description: "Heavy machinery, lab tools, and instructional apparatus",
             colorToken: "emerald",
+            iconToken: "wrench",
           },
           {
             tenantId: newTenant.id,
@@ -155,6 +157,7 @@ export async function POST(request: NextRequest) {
             type: "asset",
             description: "Desks, executive chairs, conference tables, and cabinets",
             colorToken: "amber",
+            iconToken: "armchair",
           },
           {
             tenantId: newTenant.id,
@@ -162,6 +165,7 @@ export async function POST(request: NextRequest) {
             type: "consumable",
             description: "Paper, ink cartridges, markers, and stationery",
             colorToken: "purple",
+            iconToken: "package",
           },
         ]);
       } catch (seedErr) {

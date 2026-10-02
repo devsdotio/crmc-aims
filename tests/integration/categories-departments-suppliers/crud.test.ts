@@ -516,4 +516,57 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
       )
     ).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it("rejects a duplicate icon and allows a row to keep its own icon", async () => {
+    const db = getDb();
+    const [first] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Monitors",
+        type: "asset",
+        iconToken: "monitor",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    const [second] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Keyboards",
+        type: "asset",
+        iconToken: "keyboard",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    const kept = await categoryRepo.updateAndCascade(
+      second.id,
+      { name: "Keyboards", type: "asset", iconToken: "keyboard" },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(kept?.iconToken).toBe("keyboard");
+
+    await expect(
+      categoryRepo.updateAndCascade(
+        second.id,
+        { name: "Keyboards", type: "asset", iconToken: "monitor" },
+        undefined,
+        fx.actor.tenantId
+      )
+    ).rejects.toBeInstanceOf(ConflictError);
+
+    await expect(
+      categoryRepo.updateAndCascade(
+        second.id,
+        { name: "Keyboards", type: "asset", iconToken: "not-an-icon" },
+        undefined,
+        fx.actor.tenantId
+      )
+    ).rejects.toThrow(/icon set/i);
+
+    expect(first.iconToken).toBe("monitor");
+  });
 });

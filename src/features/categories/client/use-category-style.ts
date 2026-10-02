@@ -33,7 +33,12 @@ export function useCategoryStyleResolver(): CategoryStyleResolver {
         (c) => c.id === raw || c.name.toLowerCase() === raw.toLowerCase()
       );
       if (match) {
-        return getCategoryStyle(match.id, match.name, match.colorToken);
+        return getCategoryStyle(
+          match.id,
+          match.name,
+          match.colorToken,
+          match.iconToken
+        );
       }
 
       // An id that no longer matches a category must never reach the screen.

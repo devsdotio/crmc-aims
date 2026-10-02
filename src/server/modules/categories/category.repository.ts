@@ -1,7 +1,13 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 
+import {
+  isCategoryIconId,
+  nextFreeIconToken,
+  takenIconTokens,
+} from "@/lib/category-icon-tokens";
 import { getDb } from "@/server/db";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
+import { ConflictError, ValidationError } from "@/server/shared/errors";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   categories,
@@ -200,6 +206,59 @@ export class CategoryRepository {
     });
   }
 
+  async assertIconTokenAvailable(
+    tenantId: string,
+    iconToken: string,
+    exceptId?: string,
+    session?: DbSession
+  ) {
+    const token = iconToken.trim();
+    if (!isCategoryIconId(token)) {
+      throw new ValidationError("Choose an icon from the category icon set.");
+    }
+
+    const db = this.db(session);
+    const conditions = [
+      eq(categories.tenantId, tenantId),
+      eq(categories.iconToken, token),
+    ];
+    if (exceptId) conditions.push(ne(categories.id, exceptId));
+
+    const [taken] = await db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (taken) {
+      throw new ConflictError(
+        `That icon is already used by “${taken.name}”. Pick a different icon.`
+      );
+    }
+  }
+
+  /** Keeps a requested icon when it is free, otherwise assigns the next unused palette id. */
+  async resolveIconTokenForCreate(
+    tenantId: string,
+    requested: string | null | undefined,
+    session?: DbSession
+  ): Promise<string> {
+    const token = requested?.trim() ?? "";
+    if (token) {
+      await this.assertIconTokenAvailable(tenantId, token, undefined, session);
+      return token;
+    }
+
+    const rows = await this.listByType(undefined, session, tenantId);
+    const free = nextFreeIconToken(takenIconTokens(rows));
+    if (!free) {
+      throw new ConflictError(
+        "Every category icon is already in use. Remove a category before adding another."
+      );
+    }
+    return free;
+  }
+
   async findById(id: string, session?: DbSession, tenantId?: string) {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
@@ -379,6 +438,15 @@ export class CategoryRepository {
 
       if (!existing) {
         return null;
+      }
+
+      if (payload.iconToken) {
+        await this.assertIconTokenAvailable(
+          existing.tenantId,
+          payload.iconToken,
+          id,
+          tx
+        );
       }
 
       const oldName = existing.name.trim();
