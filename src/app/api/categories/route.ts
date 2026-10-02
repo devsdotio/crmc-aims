@@ -136,6 +136,7 @@ export async function POST(request: Request) {
         description: body.description || null,
         type: body.type,
         colorToken: body.colorToken || null,
+        iconToken: body.iconToken || null,
         parentId,
         createdByUserId: actor.userId,
       })
@@ -162,6 +163,7 @@ export async function POST(request: Request) {
           name: newCategory.name,
           type: newCategory.type,
           colorToken: newCategory.colorToken || undefined,
+          iconToken: newCategory.iconToken || undefined,
           parentId: newCategory.parentId ?? null,
           parentName,
           itemCount: 0,

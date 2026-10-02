@@ -243,6 +243,7 @@ export function ConsumablesPrintableReport({
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black min-w-44">Stock / Item Description</th>
+                <th className="py-2 px-2 text-center border-r border-black whitespace-nowrap">Class</th>
                 <th className="py-2 px-2 text-center border-r border-black w-16">Unit of Measure</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Beginning Balance</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Received</th>
@@ -259,7 +260,7 @@ export function ConsumablesPrintableReport({
                   <Fragment key={group.categoryName}>
                     {/* Category Group Header */}
                     <tr className="bg-white font-bold border-t-2 border-black text-black category-header-row avoid-orphan-header">
-                      <td colSpan={10} className="py-1 px-2 text-[9px] uppercase tracking-wider font-black">
+                      <td colSpan={11} className="py-1 px-2 text-[9px] uppercase tracking-wider font-black">
                         Category: {group.categoryName} ({group.groupCount} {group.groupCount === 1 ? "stock item" : "stock items"})
                       </td>
                     </tr>
@@ -293,6 +294,9 @@ export function ConsumablesPrintableReport({
                               SKU / Stock No: {row.itemCode}
                             </div>
                           </td>
+                          <td className="py-1 px-2 border-r border-black text-center font-bold text-[8px] uppercase">
+                            {row.classification || "—"}
+                          </td>
                           <td className="py-1 px-2 text-center border-r border-black uppercase text-[8px]">
                             {row.unit || "unit"}
                           </td>
@@ -323,7 +327,7 @@ export function ConsumablesPrintableReport({
 
                     {/* Category Subtotal */}
                     <tr className="bg-white font-bold border-t border-b-2 border-black text-black text-[9px]">
-                      <td colSpan={5} className="py-1 px-2 text-right uppercase tracking-wider border-r border-black">
+                      <td colSpan={6} className="py-1 px-2 text-right uppercase tracking-wider border-r border-black">
                         Subtotal for {group.categoryName}:
                       </td>
                       <td className="py-1 px-2 text-right font-mono border-r border-black">
@@ -348,7 +352,7 @@ export function ConsumablesPrintableReport({
 
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-6 text-center italic text-[10px]">
+                  <td colSpan={11} className="py-6 text-center italic text-[10px]">
                     No inventory supplies or materials found matching specified filter criteria.
                   </td>
                 </tr>
@@ -359,7 +363,7 @@ export function ConsumablesPrintableReport({
             {data.length > 0 && (
               <tfoot>
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
-                  <td colSpan={5} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                  <td colSpan={6} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
                     Grand Total Supplies Count:
                   </td>
                   <td className="py-1.5 px-2 text-right font-mono border-r border-black">

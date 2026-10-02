@@ -22,6 +22,7 @@ export const categories = pgTable(
     description: text("description"),
     type: text("type").notNull().default("asset"),
     colorToken: text("color_token"),
+    iconToken: text("icon_token"),
     /** Parent general class when type=asset (FK → categories.id of type asset_class). */
     parentId: uuid("parent_id"),
 

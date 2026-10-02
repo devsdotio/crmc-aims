@@ -14,6 +14,7 @@ interface ReportFilterBarProps {
   onFilterChange: (updated: Partial<BaseReportFilters>) => void;
   onReset: () => void;
   categories?: FilterOption[];
+  classifications?: FilterOption[];
   statuses?: FilterOption[];
   showDatePresets?: boolean;
   searchPlaceholder?: string;
@@ -25,6 +26,7 @@ export function ReportFilterBar({
   onFilterChange,
   onReset,
   categories,
+  classifications,
   statuses,
   showDatePresets = false,
   searchPlaceholder = "Search records…",
@@ -53,6 +55,7 @@ export function ReportFilterBar({
   const hasActiveFilters = Boolean(
     filters.search ||
       filters.category ||
+      filters.classification ||
       filters.status ||
       filters.startDate ||
       filters.endDate
@@ -111,6 +114,23 @@ export function ReportFilterBar({
           >
             <option value="">All Categories</option>
             {categories.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {/* Classification selector */}
+        {classifications && classifications.length > 0 && (
+          <select
+            value={filters.classification || ""}
+            onChange={(e) => onFilterChange({ classification: e.target.value || undefined, page: 1 })}
+            aria-label="Filter by classification"
+            className="h-8.5 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-accent focus:bg-card focus:outline-hidden cursor-pointer"
+          >
+            <option value="">All Classifications</option>
+            {classifications.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>

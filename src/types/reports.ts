@@ -18,6 +18,7 @@ export interface BaseReportFilters extends DateRangeFilter {
   search?: string;
   departmentId?: string;
   category?: string;
+  classification?: string;
   status?: string;
   page?: number;
   pageSize?: number;
@@ -82,6 +83,7 @@ export interface AssetRegisterRow {
   assetCode: string;
   name: string;
   category: string;
+  classification?: string | null;
   status: string;
   assignmentType: string;
   location: string;
@@ -193,6 +195,7 @@ export interface ConsumableStockRow {
   itemCode: string;
   name: string;
   category: string;
+  classification?: string | null;
   unit: string;
   currentQty: number;
   reservedQty: number;

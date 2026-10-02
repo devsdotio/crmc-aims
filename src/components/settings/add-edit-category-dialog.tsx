@@ -6,8 +6,10 @@ import { cn } from "@/lib/utils";
 import type { CategoryItem, CategoryType } from "@/types/settings";
 import {
   AVAILABLE_CATEGORY_COLORS,
+  AVAILABLE_CATEGORY_ICONS,
   getCategoryStyle,
 } from "@/constants/categories";
+import { CategoryIcon } from "@/components/ui/category-icon";
 
 export interface AddEditCategoryDialogProps {
   isOpen: boolean;
@@ -36,6 +38,7 @@ export function AddEditCategoryDialog({
   const isEditing = Boolean(initialCategory);
   const [name, setName] = useState("");
   const [colorToken, setColorToken] = useState("blue");
+  const [iconToken, setIconToken] = useState("monitor");
   const [parentId, setParentId] = useState<string>("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -59,10 +62,12 @@ export function AddEditCategoryDialog({
       if (initialCategory) {
         setName(initialCategory.name);
         setColorToken(initialCategory.colorToken || "blue");
+        setIconToken(initialCategory.iconToken || "monitor");
         setParentId(initialCategory.parentId || "");
       } else {
         setName("");
         setColorToken("blue");
+        setIconToken("monitor");
         setParentId("");
       }
       setError("");
@@ -85,6 +90,7 @@ export function AddEditCategoryDialog({
     name.trim() || "Category Preview",
     undefined,
     colorToken,
+    iconToken
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -106,6 +112,7 @@ export function AddEditCategoryDialog({
         name: name.trim(),
         type,
         colorToken,
+        iconToken,
         parentId: type === "asset" ? parentId : null,
         itemCount: initialCategory ? initialCategory.itemCount : 0,
       });
@@ -234,7 +241,7 @@ export function AddEditCategoryDialog({
                 previewStyle.text,
               )}
             >
-              <Tag className="h-3 w-3 shrink-0" />
+              <CategoryIcon iconToken={previewStyle.iconToken} className="h-3 w-3 shrink-0" />
               {previewStyle.label}
             </span>
           </div>
@@ -279,6 +286,37 @@ export function AddEditCategoryDialog({
                     <span className="text-[10px] text-text-secondary mt-1 truncate">
                       {color.name}
                     </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-text flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-text-secondary" />
+                Category Icon
+              </label>
+            </div>
+
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 max-h-40 overflow-y-auto p-1">
+              {AVAILABLE_CATEGORY_ICONS.map((icon) => {
+                const isSelected = iconToken === icon.id;
+                return (
+                  <button
+                    key={icon.id}
+                    type="button"
+                    onClick={() => setIconToken(icon.id)}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2 rounded-xl border transition-all cursor-pointer select-none",
+                      isSelected
+                        ? "border-primary ring-2 ring-primary/30 bg-bg shadow-xs font-bold text-primary"
+                        : "border-border/60 hover:border-border hover:bg-bg-subtle/50 text-text-secondary",
+                    )}
+                    title={icon.name}
+                  >
+                    <CategoryIcon iconToken={icon.id} className="h-5 w-5" />
                   </button>
                 );
               })}

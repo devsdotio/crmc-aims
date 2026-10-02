@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { useAssetRegisterReportQuery } from "@/features/reports/client/use-reports";
+import { useCategoriesQuery, useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import type { AssetRegisterRow, BaseReportFilters } from "@/types/reports";
 import { StatCardGrid } from "@/components/ui/stat-card";
 import { KpiCard } from "@/components/reports/kpi-card";
@@ -49,6 +50,7 @@ export default function AssetRegisterReportPage() {
     pageSize: 20,
     search: "",
     category: "",
+    classification: "",
     status: "",
   });
 
@@ -62,6 +64,13 @@ export default function AssetRegisterReportPage() {
   );
 
   const { data, isLoading } = useAssetRegisterReportQuery(effectiveFilters);
+  const { data: categoriesData = [] } = useCategoriesQuery();
+
+  const CLASSIFICATION_OPTIONS = useMemo(() => {
+    return categoriesData
+      .filter((c) => c.type === "asset_class")
+      .map((c) => ({ label: c.name, value: c.name.toLowerCase() }));
+  }, [categoriesData]);
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
@@ -77,24 +86,67 @@ export default function AssetRegisterReportPage() {
   }, [summary]);
 
   const reportRows = data?.data;
+  const { getCategoryStyle } = useCategoryStyleMap();
 
-  const categoryTrendData = useMemo(() => {
-    if (!reportRows || reportRows.length === 0) return [];
-    const map: Record<string, { count: number; value: number; active: number }> = {};
+  const classificationTrendData = useMemo(() => {
+    if (!reportRows || reportRows.length === 0) return { data: [], categories: [] };
+    
+    const map: Record<string, Record<string, number>> = {};
+    const allCategories = new Set<string>();
+
     for (const row of reportRows) {
-      const cat = row.category || "Unassigned";
-      if (!map[cat]) map[cat] = { count: 0, value: 0, active: 0 };
-      map[cat].count += 1;
-      map[cat].value += row.currentValue || 0;
-      if (row.status === "active") map[cat].active += 1;
+      const classification = row.classification || "Unassigned";
+      const category = row.category || "General";
+      
+      const classKey = classification.charAt(0).toUpperCase() + classification.slice(1);
+      const catKey = category.charAt(0).toUpperCase() + category.slice(1);
+      
+      if (!map[classKey]) map[classKey] = {};
+      if (!map[classKey][catKey]) map[classKey][catKey] = 0;
+      
+      map[classKey][catKey] += 1;
+      allCategories.add(catKey);
     }
-    return Object.entries(map).map(([name, stats]) => ({
-      name: name.charAt(0).toUpperCase() + name.slice(1),
-      totalCount: stats.count,
-      activeCount: stats.active,
-      valuation: stats.value,
-    }));
-  }, [reportRows]);
+    
+    const sortedClassNames = Object.keys(map).sort();
+    const sortedCategories = Array.from(allCategories).sort();
+
+    let maxBars = 0;
+    const finalData = sortedClassNames.map((className) => {
+      // Get all categories in this classification and sort by count descending
+      const catsInClass = Object.keys(map[className]).map(cat => ({
+        name: cat,
+        count: map[className][cat]
+      })).sort((a, b) => b.count - a.count);
+      
+      maxBars = Math.max(maxBars, catsInClass.length);
+      
+      const row: Record<string, string | number | undefined> = { name: className };
+      catsInClass.forEach((cat, idx) => {
+        const style = getCategoryStyle(cat.name);
+        row[`bar${idx}`] = cat.count;
+        row[`bar${idx}_name`] = cat.name;
+        row[`bar${idx}_color`] = style.cssVar;
+      });
+      return row;
+    });
+
+    const barKeys = Array.from({ length: maxBars }, (_, i) => `bar${i}`);
+
+    return {
+      data: finalData,
+      barKeys,
+      categories: sortedCategories.map((cat) => {
+        const style = getCategoryStyle(cat);
+        return {
+          key: cat,
+          name: cat,
+          color: style.cssVar,
+          iconToken: style.iconToken
+        };
+      })
+    };
+  }, [reportRows, getCategoryStyle]);
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {
     if ("startDate" in updated || "endDate" in updated) {
@@ -112,6 +164,7 @@ export default function AssetRegisterReportPage() {
       pageSize: 20,
       search: "",
       category: "",
+      classification: "",
       status: "",
     });
   };
@@ -153,9 +206,16 @@ export default function AssetRegisterReportPage() {
       key: "category",
       header: "Category",
       render: (row) => (
-        <span className="inline-flex rounded-full bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-bold text-text capitalize">
-          {row.category}
-        </span>
+        <div>
+          <span className="inline-flex rounded-full bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-bold text-text capitalize">
+            {row.category}
+          </span>
+          {row.classification && (
+            <div className="text-[10px] text-text-secondary mt-0.5 capitalize">
+              {row.classification}
+            </div>
+          )}
+        </div>
       ),
     },
     {
@@ -357,7 +417,7 @@ export default function AssetRegisterReportPage() {
 
       {/* ── Visual Analytics Row: Status Donut + Category Breakdown ──── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
-        <div className="lg:col-span-5">
+        <div className="lg:col-span-4">
           <BreakdownDonutChart
             title="Asset Status Distribution"
             sublabel="LIFECYCLE // STATUS"
@@ -366,26 +426,26 @@ export default function AssetRegisterReportPage() {
             data={statusDonutData}
             loading={isLoading}
             unitLabel="units"
-            className="h-full"
+            className="h-88"
           />
         </div>
 
-        <div className="lg:col-span-7">
+        <div className="lg:col-span-8">
           <TrendBarChart
-            title="Asset Distribution by Category"
-            sublabel="CATEGORY // ASSETS"
-            description="Comparing total registered units and active deployed equipment across categories."
+            title="Asset Distribution by Classification"
+            sublabel="CLASSIFICATION // ASSETS"
+            description="Comparing total registered units across asset classifications, segmented by category."
             icon={BarChart3}
-            data={categoryTrendData}
+            data={classificationTrendData.data}
             xAxisKey="name"
-            series={[
-              { key: "totalCount", name: "Total Units", color: "#2A3260" },
-              { key: "activeCount", name: "Active Units", color: "#5E6DB0" },
-            ]}
+            stacked={false}
+            layout="horizontal"
+            series={classificationTrendData.categories}
+            barKeys={classificationTrendData.barKeys}
             loading={isLoading}
             canViewCosts={true}
             valueFormatter={(v) => `${v.toLocaleString()} units`}
-            className="h-full"
+            className="h-88"
           />
         </div>
       </div>
@@ -397,6 +457,7 @@ export default function AssetRegisterReportPage() {
           onFilterChange={handleFilterChange}
           onReset={handleReset}
           categories={CATEGORY_OPTIONS}
+          classifications={CLASSIFICATION_OPTIONS}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search by code, name, serial number, location…"
         />

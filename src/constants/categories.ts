@@ -3,6 +3,7 @@ export interface CategoryStyleMeta {
   text: string;
   label: string;
   cssVar?: string;
+  iconToken?: string;
 }
 
 export const CATEGORY_STYLES: Record<string, CategoryStyleMeta> = {
@@ -48,6 +49,30 @@ export const AVAILABLE_CATEGORY_COLORS: CategoryColorOption[] = [
   { id: "slate",     name: "Slate",     bg: "bg-slate-700",   text: "text-white font-bold", hex: "#334155" },
 ];
 
+export interface CategoryIconOption {
+  id: string;
+  name: string;
+}
+
+export const AVAILABLE_CATEGORY_ICONS: CategoryIconOption[] = [
+  { id: "monitor", name: "Monitor" },
+  { id: "truck", name: "Truck" },
+  { id: "car", name: "Car" },
+  { id: "armchair", name: "Armchair" },
+  { id: "cpu", name: "CPU" },
+  { id: "printer", name: "Printer" },
+  { id: "camera", name: "Camera" },
+  { id: "speaker", name: "Speaker" },
+  { id: "wrench", name: "Wrench" },
+  { id: "stethoscope", name: "Medical" },
+  { id: "flask-conical", name: "Laboratory" },
+  { id: "shield", name: "Security" },
+  { id: "building", name: "Building" },
+  { id: "package", name: "Package" },
+  { id: "archive", name: "Archive" },
+  { id: "boxes", name: "Boxes" },
+];
+
 function hashString(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -60,7 +85,8 @@ function hashString(str: string): number {
 export function getCategoryStyle(
   category: string,
   fallbackLabel?: string,
-  colorToken?: string
+  colorToken?: string,
+  iconToken?: string
 ): CategoryStyleMeta {
   const displayLabel = fallbackLabel ?? (category ? category.charAt(0).toUpperCase() + category.slice(1) : "General");
 
@@ -76,12 +102,14 @@ export function getCategoryStyle(
         text: matchedColor.text,
         label: displayLabel,
         cssVar: matchedColor.hex,
+        iconToken,
       };
     }
     if (CATEGORY_STYLES[normalizedToken]) {
       return {
         ...CATEGORY_STYLES[normalizedToken],
         label: displayLabel,
+        iconToken,
       };
     }
   }
@@ -92,13 +120,14 @@ export function getCategoryStyle(
       text: "text-white font-bold",
       label: "General",
       cssVar: "var(--color-text-secondary)",
+      iconToken,
     };
   }
 
   const normalizedCategory = category.trim().toLowerCase();
   
   if (CATEGORY_STYLES[normalizedCategory]) {
-    return CATEGORY_STYLES[normalizedCategory];
+    return { ...CATEGORY_STYLES[normalizedCategory], iconToken };
   }
 
   // Check prefix / partial matching (e.g. "computing equipment" -> computing)
@@ -107,6 +136,7 @@ export function getCategoryStyle(
       return {
         ...meta,
         label: displayLabel,
+        iconToken,
       };
     }
   }
@@ -120,5 +150,6 @@ export function getCategoryStyle(
     text: pickedColor.text,
     label: displayLabel,
     cssVar: pickedColor.hex,
+    iconToken,
   };
 }

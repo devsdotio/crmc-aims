@@ -19,6 +19,7 @@ export type CategoryListRow = {
   name: string;
   type: CategoryType;
   colorToken?: string;
+  iconToken?: string;
   parentId?: string | null;
   parentName?: string | null;
   itemCount: number;
@@ -157,6 +158,7 @@ export class CategoryRepository {
         name: c.name,
         type: c.type as CategoryType,
         colorToken: c.colorToken || undefined,
+        iconToken: c.iconToken || undefined,
         parentId: c.parentId ?? null,
         parentName: c.parentId ? parentNameById.get(c.parentId) ?? null : null,
         itemCount,
@@ -290,6 +292,7 @@ export class CategoryRepository {
       name: string;
       type: CategoryType;
       colorToken?: string | null;
+      iconToken?: string | null;
       parentId?: string | null;
     },
     session?: DbSession,
@@ -321,6 +324,9 @@ export class CategoryRepository {
           type: payload.type,
           ...(payload.colorToken !== undefined
             ? { colorToken: payload.colorToken || null }
+            : {}),
+          ...(payload.iconToken !== undefined
+            ? { iconToken: payload.iconToken || null }
             : {}),
           ...(payload.parentId !== undefined
             ? { parentId: payload.parentId || null }
@@ -504,6 +510,7 @@ export class CategoryRepository {
         name: updated.name,
         type: updated.type as CategoryType,
         colorToken: updated.colorToken || undefined,
+        iconToken: updated.iconToken || undefined,
         parentId: updated.parentId ?? null,
         parentName,
         itemCount: count,

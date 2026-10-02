@@ -208,6 +208,9 @@ export class ReportRepository {
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(assets.category, filters.category));
     }
+    if (filters.classification && filters.classification !== "all") {
+      conditions.push(eq(assets.classification, filters.classification));
+    }
     if (filters.status && filters.status !== "all") {
       conditions.push(
         eq(
@@ -265,6 +268,7 @@ export class ReportRepository {
         assetCode: assets.assetCode,
         name: assets.name,
         category: assets.category,
+        classification: assets.classification,
         status: assets.status,
         assignmentType: assets.assignmentType,
         location: assets.location,
@@ -466,6 +470,9 @@ export class ReportRepository {
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(consumables.category, filters.category));
     }
+    if (filters.classification && filters.classification !== "all") {
+      conditions.push(eq(consumables.classification, filters.classification));
+    }
     if (filters.status === "low_stock") {
       conditions.push(sql`${consumables.currentQty} <= ${consumables.minThreshold}`);
     }
@@ -566,6 +573,7 @@ export class ReportRepository {
         itemCode: consumables.itemCode,
         name: consumables.name,
         category: consumables.category,
+        classification: consumables.classification,
         unit: consumables.unit,
         currentQty: consumables.currentQty,
         reservedQty: consumables.reservedQty,
@@ -614,6 +622,7 @@ export class ReportRepository {
           itemCode: r.itemCode,
           name: r.name,
           category: r.category,
+          classification: r.classification,
           unit: r.unit,
           currentQty: r.currentQty,
           reservedQty: r.reservedQty,

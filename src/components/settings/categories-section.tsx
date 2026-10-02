@@ -72,14 +72,17 @@ export function CategoriesSection({
 
   const filteredCategories = useMemo(() => {
     return allCategories.filter((cat) => {
-      if (activeTab === "asset_class" && cat.type !== "asset_class") return false;
+      if (activeTab === "asset_class" && cat.type !== "asset_class")
+        return false;
       if (activeTab === "asset" && cat.type !== "asset") return false;
       if (activeTab === "consumable" && cat.type !== "consumable") return false;
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchName = cat.name.toLowerCase().includes(query);
-        const matchParent = (cat.parentName || "").toLowerCase().includes(query);
+        const matchParent = (cat.parentName || "")
+          .toLowerCase()
+          .includes(query);
         if (!matchName && !matchParent) return false;
       }
 
@@ -88,8 +91,8 @@ export function CategoriesSection({
   }, [allCategories, activeTab, searchQuery]);
 
   return (
-    <div className="w-full space-y-6">
-      <StatCardGrid>
+    <div className="w-full space-y-4">
+      <StatCardGrid columns={5} className="gap-3 -mt-1.5">
         <StatCard
           title="Total Categories"
           sublabel="CATALOG // TAXONOMY"
@@ -157,10 +160,11 @@ export function CategoriesSection({
         />
       </StatCardGrid>
 
-      <div className="p-4 rounded-2xl border border-border bg-bg shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
+      <div className="p-2 rounded-2xl border border-border bg-bg shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="relative w-full md:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
           <input
+            id="category-search"
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -170,7 +174,10 @@ export function CategoriesSection({
           {searchQuery && (
             <button
               type="button"
-              onClick={() => setSearchQuery("")}
+              onClick={() => {
+                setSearchQuery("");
+                document.getElementById("category-search")?.focus();
+              }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-bg-subtle text-text-secondary cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
@@ -179,7 +186,10 @@ export function CategoriesSection({
         </div>
 
         <div className="flex items-center gap-2.5 w-full md:w-auto justify-between md:justify-end shrink-0 flex-wrap">
-          <div className="flex items-center p-1 rounded-xl bg-bg-subtle border border-border text-xs font-medium overflow-x-auto">
+          <div
+            role="tablist"
+            className="flex items-center p-1 rounded-xl bg-bg-subtle border border-border text-xs font-medium overflow-x-auto"
+          >
             {(
               [
                 ["all", `All (${totalCount})`],
@@ -191,6 +201,8 @@ export function CategoriesSection({
               <button
                 key={tab}
                 type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   "px-3 py-1.5 rounded-lg transition-colors duration-150 cursor-pointer text-xs font-semibold whitespace-nowrap",
@@ -252,15 +264,27 @@ export function CategoriesSection({
           </p>
           <button
             type="button"
-            onClick={() => handleAddCategory("asset_class")}
+            onClick={() =>
+              handleAddCategory(
+                activeTab === "consumable"
+                  ? "consumable"
+                  : activeTab === "asset_class"
+                    ? "asset_class"
+                    : "asset",
+              )
+            }
             className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
-            Create Classification
+            {activeTab === "consumable"
+              ? "Create Consumable"
+              : activeTab === "asset_class"
+                ? "Create Classification"
+                : "Create Category"}
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {filteredCategories.map((cat) => (
             <CategoryListItem
               key={cat.id}

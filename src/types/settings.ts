@@ -10,6 +10,7 @@ export interface CategoryItem {
   name: string;
   type: CategoryType;
   colorToken?: string;
+  iconToken?: string;
   /** Parent asset class id when type=asset. */
   parentId?: string | null;
   /** Resolved parent asset class name (list enrichment). */
