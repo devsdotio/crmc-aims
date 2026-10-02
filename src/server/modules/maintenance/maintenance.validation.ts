@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { effectiveRepairAmount, formatRepairAmount } from "@/lib/repair-cost";
 
 const assetCategorySchema = z
   .string()
@@ -38,22 +39,11 @@ export const repairPartSchema = z.object({
   cost: optionalMoneySchema,
 });
 
-function sumPartCosts(
-  parts: Array<{ cost: string | null }>
-): string | null {
-  const partCosts = parts
-    .map((p) => p.cost)
-    .filter((c): c is string => c != null && c !== "");
-  if (partCosts.length === 0) return null;
-  return partCosts.reduce((acc, c) => acc + Number(c), 0).toFixed(2);
-}
-
 function resolveRepairCost(
   explicit: string | null | undefined,
   parts: Array<{ cost: string | null }>
 ): string | null {
-  if (explicit != null && explicit !== "") return explicit;
-  return sumPartCosts(parts);
+  return formatRepairAmount(effectiveRepairAmount(explicit, parts));
 }
 
 export const listMaintenanceQuerySchema = z.object({

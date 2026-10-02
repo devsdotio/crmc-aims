@@ -115,6 +115,8 @@ export interface AssetDrilldownReport {
     assetCode: string;
     name: string;
     category: string;
+    classification?: string | null;
+    unit?: string | null;
     status: string;
     assignmentType: string;
     location: string;

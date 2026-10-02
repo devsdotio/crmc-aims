@@ -1861,8 +1861,12 @@ export function AssetDetailPanel({
     {!isBorrower && (
       <div className="hidden print:block">
         <IndividualAssetPrintableReport
-          asset={asset}
+          asset={{
+            ...asset,
+            supplierName,
+          }}
           maintenanceHistory={printMaintenanceHistory}
+          tco={drilldown?.tco}
           canViewCosts={printCanViewCosts}
         />
       </div>

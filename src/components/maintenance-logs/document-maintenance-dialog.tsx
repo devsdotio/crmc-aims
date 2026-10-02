@@ -53,11 +53,11 @@ function DocumentMaintenanceDialogForm({
     const repairParts = serializePartLines(parts);
     const { hasAnyPartCost, partsSum } = partsCostSummary(parts);
     const overallBlank = !overallCost.trim();
-    const repairCost = overallBlank
-      ? hasAnyPartCost
-        ? partsSum.toFixed(2)
-        : null
-      : overallCost.trim();
+    const repairCost = hasAnyPartCost
+      ? partsSum.toFixed(2)
+      : overallBlank
+        ? null
+        : overallCost.trim();
 
     setError("");
     try {

@@ -982,6 +982,7 @@ export function AssetDetailDialog({
         <IndividualAssetPrintableReport
           asset={asset}
           maintenanceHistory={mapMaintenanceHistoryToPrintEntries(maintenanceHistory)}
+          tco={tco}
           canViewCosts={canViewCosts}
         />
       </div>

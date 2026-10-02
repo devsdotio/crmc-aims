@@ -113,11 +113,11 @@ function ResolveMaintenanceDialogForm({
       ? overallBlank
         ? null
         : overallCost.trim()
-      : overallBlank
-        ? hasAnyPartCost
-          ? partsSum.toFixed(2)
-          : null
-        : overallCost.trim();
+      : hasAnyPartCost
+        ? partsSum.toFixed(2)
+        : overallBlank
+          ? null
+          : overallCost.trim();
 
     setIsSubmitting(true);
     setError("");

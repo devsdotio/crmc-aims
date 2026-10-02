@@ -22,6 +22,7 @@ import {
   stockMovements,
   suppliers,
 } from "@/server/db/schema";
+import { effectiveRepairAmount } from "@/lib/repair-cost";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import type {
   AssignedAssetItem,
@@ -32,6 +33,20 @@ import type {
   ProjectReportSummary,
 } from "@/types/reports";
 import type { BaseReportQuery } from "./report.validation";
+
+/** Part-line sum when any line has a cost; otherwise the stored overall cost. */
+function effectiveRepairCostSql() {
+  return sql`
+    coalesce(
+      (
+        select sum((elem->>'cost')::numeric)
+        from jsonb_array_elements(coalesce(${maintenanceLogs.repairParts}, '[]'::jsonb)) as elem
+        where nullif(btrim(elem->>'cost'), '') is not null
+      ),
+      ${maintenanceLogs.repairCost}::numeric
+    )
+  `;
+}
 
 export class ReportRepository {
   private db() {
@@ -127,7 +142,7 @@ export class ReportRepository {
         .select({
           activeCount: sql<number>`count(case when ${maintenanceLogs.isResolved} = false then 1 end)::int`,
           resolvedMonth: sql<number>`count(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} >= ${thirtyDaysAgoStr} then 1 end)::int`,
-          totalRepairSpend30d: sql<number>`coalesce(sum(case when ${maintenanceLogs.dateLogged} >= ${thirtyDaysAgoStr} then ${maintenanceLogs.repairCost}::numeric else 0 end), 0)::float`,
+          totalRepairSpend30d: sql<number>`coalesce(sum(case when ${maintenanceLogs.dateLogged} >= ${thirtyDaysAgoStr} then ${effectiveRepairCostSql()} else 0 end), 0)::float`,
           avgMttrDays: sql<number>`coalesce(avg(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} is not null then (${maintenanceLogs.resolutionDate}::date - ${maintenanceLogs.dateLogged}::date) end), 0)::float`,
         })
         .from(maintenanceLogs)
@@ -324,6 +339,8 @@ export class ReportRepository {
         assetCode: assets.assetCode,
         name: assets.name,
         category: assets.category,
+        classification: assets.classification,
+        unit: assets.unit,
         status: assets.status,
         assignmentType: assets.assignmentType,
         location: assets.location,
@@ -419,9 +436,11 @@ export class ReportRepository {
       )
       .orderBy(desc(borrowTransactions.releasedAt));
 
-    // Calculate TCO
+    // Calculate TCO. Part lines define the service cost when they have amounts.
     const purchaseCost = poLot?.unitCost ?? assetRow.value ?? 0;
-    const maintenanceCost = maintRows.reduce((sum, m) => sum + (m.repairCost || 0), 0);
+    const maintenanceCost = maintRows.reduce((sum, m) => {
+      return sum + (effectiveRepairAmount(m.repairCost, m.repairParts) ?? 0);
+    }, 0);
     const consumablesCost = 0; // future link via asset work orders
     const totalCostOfOwnership = purchaseCost + maintenanceCost + consumablesCost;
 
@@ -437,7 +456,8 @@ export class ReportRepository {
         workNotes: m.workNotes ?? null,
         resolutionNotes: m.resolutionNotes ?? null,
         repairParts: Array.isArray(m.repairParts) ? m.repairParts : [],
-        totalCost: m.repairCost,
+        repairCost: effectiveRepairAmount(m.repairCost, m.repairParts),
+        totalCost: effectiveRepairAmount(m.repairCost, m.repairParts),
         serviceProvider: m.resolvedByName ?? "—",
       })),
       custodyHistory: custodyRows.map((c) => ({
@@ -912,7 +932,7 @@ export class ReportRepository {
         totalWorkOrders: sql<number>`count(*)::int`,
         openWorkOrders: sql<number>`count(case when ${maintenanceLogs.isResolved} = false then 1 end)::int`,
         resolvedWorkOrders: sql<number>`count(case when ${maintenanceLogs.isResolved} = true then 1 end)::int`,
-        totalRepairSpend: sql<number>`coalesce(sum(${maintenanceLogs.repairCost}::numeric), 0)::float`,
+        totalRepairSpend: sql<number>`coalesce(sum(${effectiveRepairCostSql()}), 0)::float`,
         avgMttrDays: sql<number>`coalesce(avg(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} is not null then (${maintenanceLogs.resolutionDate}::date - ${maintenanceLogs.dateLogged}::date) end), 0)::float`,
       })
       .from(maintenanceLogs)
@@ -954,7 +974,7 @@ export class ReportRepository {
         assetCode: maintenanceLogs.assetCode,
         name: maintenanceLogs.assetName,
         count: sql<number>`count(*)::int`,
-        totalCost: sql<number>`coalesce(sum(${maintenanceLogs.repairCost}::numeric), 0)::float`,
+        totalCost: sql<number>`coalesce(sum(${effectiveRepairCostSql()}), 0)::float`,
       })
       .from(maintenanceLogs)
       .where(tenantId ? eq(maintenanceLogs.tenantId, tenantId) : undefined)
@@ -978,6 +998,7 @@ export class ReportRepository {
           workNotes: r.workNotes ?? null,
           resolutionNotes: r.resolutionNotes ?? null,
           repairParts: Array.isArray(r.repairParts) ? r.repairParts : [],
+          repairCost: effectiveRepairAmount(r.repairCost, r.repairParts),
           mttrDays,
         };
       }),
