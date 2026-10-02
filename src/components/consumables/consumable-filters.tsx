@@ -133,6 +133,7 @@ export function ConsumableFilters({
             selectedIds={filters.categoryClasses}
             onToggle={(id) => toggleCategoryClass(id)}
             onOpen={() => setWantCategories(true)}
+            searchable
           />
 
           <div className="flex items-center gap-1.5">

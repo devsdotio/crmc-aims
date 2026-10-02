@@ -10,6 +10,7 @@ import {
   getCategoryStyle,
 } from "@/constants/categories";
 import { CategoryIcon } from "@/components/ui/category-icon";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { nextFreeIconToken, takenIconTokens } from "@/lib/category-icon-tokens";
 
 export interface AddEditCategoryDialogProps {
@@ -207,22 +208,26 @@ export function AddEditCategoryDialog({
               >
                 General Classification <span className="text-accent">*</span>
               </label>
-              <select
+              <SearchableSelect
                 id="cat-parent-select"
                 value={parentId}
-                onChange={(e) => {
-                  setParentId(e.target.value);
+                onValueChange={(next) => {
+                  setParentId(next);
                   if (error) setError("");
                 }}
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="">Select classification…</option>
-                {classOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                options={classOptions.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+                disabled={isSaving}
+                placeholder={
+                  classOptions.length === 0
+                    ? "No classifications yet"
+                    : "Type to find a classification…"
+                }
+                emptyMessage="No classifications match"
+                aria-required="true"
+              />
               {classOptions.length === 0 ? (
                 <p className="text-[11px] text-text-secondary">
                   {type === "consumable"

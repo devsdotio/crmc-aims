@@ -47,6 +47,11 @@ function AddEditAssetDialogForm({
     useCategoriesQuery();
   const { data: suppliers = [], isLoading: suppliersLoading } =
     useSuppliersQuery({ activeOnly: true });
+  const assetClasses = useMemo(
+    () => allCategories.filter((c) => c.type === "asset_class"),
+    [allCategories]
+  );
+
   const assetCategories = useMemo(() => {
     const fromSettings = allCategories.filter((c) => c.type === "asset");
     // Keep edit form usable if asset has a label not currently in Settings.
@@ -58,23 +63,25 @@ function AddEditAssetDialogForm({
       )
     ) {
       return [
-        { id: `legacy-${current}`, name: current, type: "asset" as const },
+        {
+          id: `legacy-${current}`,
+          name: current,
+          type: "asset" as const,
+          parentName: null,
+        },
         ...fromSettings,
       ];
     }
     return fromSettings;
   }, [allCategories, initialAsset?.category]);
 
-  const categoryOptions = useMemo(
+  const classOptions = useMemo(
     () =>
-      assetCategories.map((c) => ({
-        value: c.name,
-        label:
-          "parentName" in c && (c as { parentName?: string | null }).parentName
-            ? `${c.name} (${(c as { parentName?: string | null }).parentName})`
-            : c.name,
-      })),
-    [assetCategories]
+      assetClasses
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => ({ value: c.name, label: c.name })),
+    [assetClasses]
   );
 
   const statusOptions = useMemo(
@@ -99,16 +106,32 @@ function AddEditAssetDialogForm({
   const [category, setCategory] = useState(
     () => initialAsset?.category ?? ""
   );
-  const selectedClassification = useMemo(() => {
+  const [classification, setClassification] = useState(
+    () => initialAsset?.classification ?? ""
+  );
+
+  const parentNameForCategory = (categoryName: string) => {
     const match = assetCategories.find(
-      (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+      (c) => c.name.trim().toLowerCase() === categoryName.trim().toLowerCase()
     );
-    const parentName =
-      match && "parentName" in match
-        ? (match as { parentName?: string | null }).parentName
-        : undefined;
-    return parentName || initialAsset?.classification || "";
-  }, [assetCategories, category, initialAsset?.classification]);
+    return match?.parentName?.trim() || "";
+  };
+
+  const categoryOptions = useMemo(() => {
+    const selectedClass = classification.trim().toLowerCase();
+    const currentCategory = category.trim().toLowerCase();
+    return assetCategories
+      .filter((c) => {
+        if (c.name.trim().toLowerCase() === currentCategory) return true;
+        if (!selectedClass) return true;
+        const parent = c.parentName?.trim().toLowerCase() || "";
+        return !parent || parent === selectedClass;
+      })
+      .map((c) => ({
+        value: c.name,
+        label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
+      }));
+  }, [assetCategories, category, classification]);
   const [unit, setUnit] = useState(
     () => initialAsset?.unit?.trim() || "unit"
   );
@@ -164,6 +187,15 @@ function AddEditAssetDialogForm({
   }, [category, isEditing]);
 
   useEffect(() => {
+    if (classification.trim() || !category) return;
+    const match = assetCategories.find(
+      (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+    );
+    const parent = match?.parentName?.trim() || "";
+    if (parent) setClassification(parent);
+  }, [assetCategories, category, classification]);
+
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && !isSubmitting) onClose();
     }
@@ -173,13 +205,28 @@ function AddEditAssetDialogForm({
 
   const handleCategoryChange = (next: string) => {
     setCategory(next);
+    const parent = parentNameForCategory(next);
+    if (parent) setClassification(parent);
     if (!isEditing) setAssetCode("");
+  };
+
+  const handleClassChange = (next: string) => {
+    setClassification(next);
+    const parent = parentNameForCategory(category);
+    if (category && parent && parent.toLowerCase() !== next.trim().toLowerCase()) {
+      setCategory("");
+      if (!isEditing) setAssetCode("");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError("Please enter the asset name.");
+      return;
+    }
+    if (assetClasses.length > 0 && !classification.trim()) {
+      setError("Please select an asset class.");
       return;
     }
     if (!category) {
@@ -224,6 +271,7 @@ function AddEditAssetDialogForm({
             : {}),
         name: name.trim(),
         category: category as AssetCategory,
+        classification: classification.trim(),
         unit: unit.trim() || "unit",
         status: status as AssetStatus,
         assignmentType,
@@ -323,6 +371,30 @@ function AddEditAssetDialogForm({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label
+                    htmlFor="class-input"
+                    className="block text-xs font-semibold text-text"
+                  >
+                    Asset Class <span className="text-accent">*</span>
+                  </label>
+                  <SearchableSelect
+                    id="class-input"
+                    value={classification}
+                    onValueChange={handleClassChange}
+                    options={classOptions}
+                    disabled={isSubmitting || categoriesLoading}
+                    placeholder={
+                      categoriesLoading
+                        ? "Loading…"
+                        : assetClasses.length === 0
+                          ? "No classes — add in Categories"
+                          : "Type to find a class…"
+                    }
+                    emptyMessage="No classes match"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label
                     htmlFor="category-input"
                     className="block text-xs font-semibold text-text"
                   >
@@ -343,13 +415,10 @@ function AddEditAssetDialogForm({
                     }
                     emptyMessage="No categories — add in Settings"
                   />
-                  {selectedClassification ? (
-                    <p className="text-[11px] text-text-secondary">
-                      Class: {selectedClassification}
-                    </p>
-                  ) : null}
                 </div>
+              </div>
 
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label
                     htmlFor="status-input"

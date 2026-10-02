@@ -135,6 +135,17 @@ export function useCreateCategoryMutation(): UseMutationResult<
         );
       }
     },
+    onSuccess: (created) => {
+      queryClient.setQueryData<CategoryItem[]>(categoryQueryKeys.list(), (prev) => {
+        const withoutPending = (prev ?? []).filter(
+          (row) =>
+            row.id !== created.id &&
+            !row.id.startsWith("cat-") &&
+            !row.id.startsWith("temp-")
+        );
+        return [...withoutPending, created];
+      });
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: categoryQueryKeys.all });
     },

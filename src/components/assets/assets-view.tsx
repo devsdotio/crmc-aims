@@ -198,6 +198,7 @@ function AssetsViewContent() {
           payload: {
             name: assetData.name,
             category: assetData.category,
+            classification: assetData.classification,
             unit: assetData.unit,
             status: assetData.status,
             assignmentType: assetData.assignmentType as
@@ -226,6 +227,7 @@ function AssetsViewContent() {
           assetCode: assetData.assetCode || `ASSET-${Date.now()}`,
           name: assetData.name || "New Asset",
           category: (assetData.category as string) || "",
+          classification: assetData.classification,
           unit: assetData.unit || "unit",
           status: (assetData.status as AssetStatus) || "active",
           assignmentType:
