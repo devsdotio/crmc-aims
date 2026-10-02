@@ -105,6 +105,10 @@ export const borrowTransactions = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("borrow_transactions_tenant_log_code_uidx").on(
+      table.tenantId,
+      table.logCode
+    ),
     index("borrow_transactions_status_idx").on(table.status),
     index("borrow_transactions_due_date_idx").on(table.dueDate),
     index("borrow_transactions_asset_id_idx").on(table.assetId),

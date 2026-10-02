@@ -1,4 +1,12 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
 import { profiles } from "./profiles";
@@ -40,7 +48,14 @@ export const categories = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("categories_parent_id_idx").on(table.parentId)]
+  (table) => [
+    index("categories_parent_id_idx").on(table.parentId),
+    uniqueIndex("categories_tenant_type_name_lower_uidx").on(
+      table.tenantId,
+      table.type,
+      sql`lower(${table.name})`
+    ),
+  ]
 );
 
 export type Category = typeof categories.$inferSelect;

@@ -96,6 +96,10 @@ export const maintenanceLogs = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("maintenance_logs_tenant_log_code_uidx").on(
+      table.tenantId,
+      table.logCode
+    ),
     index("maintenance_logs_asset_id_idx").on(table.assetId),
     index("maintenance_logs_is_resolved_idx").on(table.isResolved),
     index("maintenance_logs_date_logged_idx").on(table.dateLogged),

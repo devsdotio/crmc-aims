@@ -2,7 +2,12 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { ZodError, type ZodIssue } from "zod";
 
-import { isAppError, isConnectivityError, ServiceUnavailableError } from "./errors";
+import {
+  appErrorFromUnknown,
+  isAppError,
+  isConnectivityError,
+  ServiceUnavailableError,
+} from "./errors";
 
 export interface CacheControlOptions {
   maxAge?: number;
@@ -130,6 +135,15 @@ export function handleError(error: unknown) {
 
   if (isAppError(error)) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode });
+  }
+
+  const mapped = appErrorFromUnknown(error);
+  if (mapped) {
+    console.error("Mapped database error:", error);
+    return NextResponse.json(
+      { error: mapped.message },
+      { status: mapped.statusCode }
+    );
   }
 
   if (isConnectivityError(error)) {

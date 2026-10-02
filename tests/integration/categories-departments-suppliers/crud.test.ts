@@ -1,14 +1,34 @@
+import { randomUUID } from "node:crypto";
+
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
-import { categories } from "@/server/db/schema";
+import { categories, locations, profiles, tenants } from "@/server/db/schema";
 import { CategoryRepository } from "@/server/modules/categories/category.repository";
 import { DepartmentService } from "@/server/modules/departments/department.service";
 import { SupplierService } from "@/server/modules/suppliers/supplier.service";
+import { ConflictError } from "@/server/shared/errors";
+import { makeActor } from "../../setup/actor";
 import { hasTestDatabase } from "../../setup/env";
 import { resetTestDatabase } from "../../setup/db";
 import { seedCoreFixtures, type TestFixtures } from "../../setup/fixtures";
+
+function isUniqueViolation(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current; depth++) {
+    if (typeof current !== "object" || current === null) break;
+    if (
+      "code" in current &&
+      typeof current.code === "string" &&
+      current.code === "23505"
+    ) {
+      return true;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return false;
+}
 
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
@@ -391,5 +411,109 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     );
     expect(deactivated.status).toBe("inactive");
     expect(deactivated.id).toBe(created.id);
+  });
+
+  it("allows the same category / department / location labels in another tenant", async () => {
+    const db = getDb();
+    const otherTenantId = randomUUID();
+    await db.insert(tenants).values({
+      id: otherTenantId,
+      slug: `tenant-${otherTenantId.slice(0, 8)}`,
+      name: "Other Tenant Campus",
+    });
+    const otherActor = makeActor({
+      role: "admin",
+      tenantId: otherTenantId,
+      tenantSlug: `tenant-${otherTenantId.slice(0, 8)}`,
+      tenantName: "Other Tenant Campus",
+      email: `admin-${otherTenantId.slice(0, 8)}@test.local`,
+    });
+    await db.insert(profiles).values({
+      userId: otherActor.userId,
+      tenantId: otherTenantId,
+      email: otherActor.email ?? `admin-${otherTenantId.slice(0, 8)}@test.local`,
+      fullName: otherActor.displayName,
+      role: "admin",
+      status: "active",
+    });
+
+    const sharedName = "Bond Paper";
+    await db.insert(categories).values({
+      tenantId: fx.actor.tenantId,
+      name: sharedName,
+      type: "consumable",
+      createdByUserId: fx.actor.userId,
+    });
+    const [otherCategory] = await db
+      .insert(categories)
+      .values({
+        tenantId: otherTenantId,
+        name: sharedName,
+        type: "consumable",
+        createdByUserId: otherActor.userId,
+      })
+      .returning();
+    expect(otherCategory.name).toBe(sharedName);
+    expect(otherCategory.tenantId).toBe(otherTenantId);
+
+    await departments.create(
+      { code: "REG", name: "Registrar" },
+      fx.actor.tenantId
+    );
+    const otherDept = await departments.create(
+      { code: "REG", name: "Registrar" },
+      otherTenantId
+    );
+    expect(otherDept.code).toBe("REG");
+    expect(otherDept.name).toBe("Registrar");
+
+    await db.insert(locations).values({
+      tenantId: fx.actor.tenantId,
+      code: "WH-A",
+      name: "Warehouse A",
+    });
+    const [otherLoc] = await db
+      .insert(locations)
+      .values({
+        tenantId: otherTenantId,
+        code: "WH-A",
+        name: "Warehouse A",
+      })
+      .returning();
+    expect(otherLoc.code).toBe("WH-A");
+    expect(otherLoc.tenantId).toBe(otherTenantId);
+  });
+
+  it("still rejects duplicate category / department names inside one tenant", async () => {
+    const db = getDb();
+    await db.insert(categories).values({
+      tenantId: fx.actor.tenantId,
+      name: "Bond Paper",
+      type: "consumable",
+      createdByUserId: fx.actor.userId,
+    });
+
+    try {
+      await db.insert(categories).values({
+        tenantId: fx.actor.tenantId,
+        name: "bond paper",
+        type: "consumable",
+        createdByUserId: fx.actor.userId,
+      });
+      expect.fail("expected unique violation");
+    } catch (error) {
+      expect(isUniqueViolation(error)).toBe(true);
+    }
+
+    await departments.create(
+      { code: "REG", name: "Registrar" },
+      fx.actor.tenantId
+    );
+    await expect(
+      departments.create(
+        { code: "REG2", name: "Registrar" },
+        fx.actor.tenantId
+      )
+    ).rejects.toBeInstanceOf(ConflictError);
   });
 });

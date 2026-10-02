@@ -7,6 +7,7 @@ import {
   CategoryRepository,
   type CategoryType,
 } from "@/server/modules/categories/category.repository";
+import { appErrorFromUnknown, ConflictError } from "@/server/shared/errors";
 import { handleError, okWithEtag } from "@/server/shared/http";
 import { serverCache } from "@/server/shared/cache";
 
@@ -150,18 +151,29 @@ export async function POST(request: Request) {
       );
     }
 
-    const [newCategory] = await db
-      .insert(categories)
-      .values({
-        tenantId: actor.tenantId,
-        name,
-        description: body.description || null,
-        type: body.type,
-        colorToken: body.colorToken || null,
-        parentId,
-        createdByUserId: actor.userId,
-      })
-      .returning();
+    let newCategory;
+    try {
+      [newCategory] = await db
+        .insert(categories)
+        .values({
+          tenantId: actor.tenantId,
+          name,
+          description: body.description || null,
+          type: body.type,
+          colorToken: body.colorToken || null,
+          parentId,
+          createdByUserId: actor.userId,
+        })
+        .returning();
+    } catch (error) {
+      const mapped = appErrorFromUnknown(error);
+      if (mapped instanceof ConflictError) {
+        throw new ConflictError(
+          `Category “${name}” already exists for this type.`
+        );
+      }
+      throw error;
+    }
 
     let parentName: string | null = null;
     if (newCategory.parentId) {

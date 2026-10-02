@@ -60,6 +60,10 @@ export const assetModels = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("asset_models_tenant_model_code_uidx").on(
+      table.tenantId,
+      table.modelCode
+    ),
     index("asset_models_category_idx").on(table.category),
     index("asset_models_classification_idx").on(table.classification),
     index("asset_models_name_idx").on(table.name),
