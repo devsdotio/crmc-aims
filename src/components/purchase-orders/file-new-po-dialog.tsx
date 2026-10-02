@@ -90,7 +90,7 @@ interface POLineItemForm {
   unit: string;
   minThreshold: number;
   location: string;
-  assignmentType: "borrowable" | "assignable";
+  assignmentType: "borrowable" | "assignable" | "fixed";
   model: string;
   quantity: string;
   unitCost: string;
@@ -335,6 +335,7 @@ export function FileNewPODialog({
     () => [
       { value: "borrowable", label: "Borrowable" },
       { value: "assignable", label: "Assignable" },
+      { value: "fixed", label: "Fixed" },
     ],
     []
   );
@@ -2597,7 +2598,9 @@ export function FileNewPODialog({
                                   value={
                                     item.assignmentType === "assignable"
                                       ? "Assignable"
-                                      : "Borrowable"
+                                      : item.assignmentType === "fixed"
+                                        ? "Fixed"
+                                        : "Borrowable"
                                   }
                                   readOnly
                                   className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-bg-subtle/60 text-text-secondary text-xs focus:outline-hidden select-none cursor-default"

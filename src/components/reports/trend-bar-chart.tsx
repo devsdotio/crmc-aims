@@ -11,14 +11,17 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  Cell,
 } from "recharts";
 import { BarChart3 as DefaultBarIcon, BarChart2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/ui/category-icon";
 
 export interface TrendBarSeries {
   key: string;
   name: string;
   color?: string;
+  iconToken?: string;
 }
 
 export interface TrendBarChartProps {
@@ -34,6 +37,8 @@ export interface TrendBarChartProps {
   valueFormatter?: (value: number) => string;
   loading?: boolean;
   canViewCosts?: boolean;
+  layout?: "horizontal" | "vertical";
+  barKeys?: string[];
   className?: string;
 }
 
@@ -49,6 +54,8 @@ export function TrendBarChart({
   valueFormatter = (v) => v.toLocaleString(),
   loading = false,
   canViewCosts = true,
+  layout = "horizontal",
+  barKeys,
   className,
 }: TrendBarChartProps) {
   if (!canViewCosts) {
@@ -64,6 +71,7 @@ export function TrendBarChart({
     );
   }
 
+  const renderBarKeys = barKeys || series.map(s => s.key);
   const hasData = data && data.length > 0;
 
   // Default colors: Deep tone vs lighter shade of harmonious color
@@ -137,88 +145,146 @@ export function TrendBarChart({
           </p>
         </div>
       ) : (
-        <div className="h-56 w-full mt-2">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={data}
-              margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="var(--border, #E5E7EB)"
-                vertical={false}
-                opacity={0.6}
-              />
-              <XAxis
-                dataKey={xAxisKey}
-                tickLine={false}
-                axisLine={false}
-                tick={{ fontSize: 10, fill: "#5A5F73", fontWeight: 600 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tick={{ fontSize: 10, fill: "#5A5F73", fontFamily: "monospace" }}
-                tickFormatter={(v) =>
-                  v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+        <div className="flex flex-col md:flex-row gap-4 mt-2 flex-1 min-h-[200px]">
+          <div className="flex-1 w-full min-h-[200px] md:min-h-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={data}
+                layout={layout}
+                margin={
+                  layout === "vertical"
+                    ? { top: 10, right: 10, left: 30, bottom: 0 }
+                    : { top: 10, right: 10, left: -20, bottom: 0 }
                 }
-              />
-              <Tooltip
-                content={({ active, payload, label }) => {
-                  if (!active || !payload || !payload.length) return null;
-                  return (
-                    <div className="rounded-xl border border-border bg-card p-2.5 shadow-lg text-xs min-w-36">
-                      <div className="font-bold text-text mb-1.5 capitalize">
-                        {String(label).replace(/_/g, " ")}
-                      </div>
-                      <div className="space-y-1">
-                        {payload.map((entry, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between gap-2 text-[11px]"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span
-                                className="h-2 w-2 rounded-full"
-                                style={{ backgroundColor: entry.color }}
-                              />
-                              <span className="text-text-secondary">
-                                {entry.name}:
-                              </span>
-                            </div>
-                            <span className="font-mono font-bold text-text">
-                              {valueFormatter(Number(entry.value || 0))}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }}
-              />
-              <Legend
-                verticalAlign="top"
-                align="right"
-                iconType="circle"
-                wrapperStyle={{
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  paddingBottom: "8px",
-                }}
-              />
-              {series.map((s, idx) => (
-                <Bar
-                  key={s.key}
-                  dataKey={s.key}
-                  name={s.name}
-                  fill={s.color || defaultColors[idx % defaultColors.length]}
-                  stackId={stacked ? "a" : undefined}
-                  radius={stacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
-                  maxBarSize={32}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="var(--border, #E5E7EB)"
+                  vertical={layout === "vertical"}
+                  horizontal={layout !== "vertical"}
+                  opacity={0.6}
                 />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+                <XAxis
+                  dataKey={layout === "horizontal" ? xAxisKey : undefined}
+                  type={layout === "vertical" ? "number" : "category"}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 10, fill: "#5A5F73", fontWeight: layout === "horizontal" ? 600 : 400 }}
+                  tickFormatter={
+                    layout === "vertical"
+                      ? (v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))
+                      : undefined
+                  }
+                />
+                <YAxis
+                  dataKey={layout === "vertical" ? xAxisKey : undefined}
+                  type={layout === "vertical" ? "category" : "number"}
+                  tickLine={false}
+                  axisLine={false}
+                  width={layout === "vertical" ? 80 : undefined}
+                  tick={{ fontSize: 10, fill: "#5A5F73", fontFamily: layout === "horizontal" ? "monospace" : undefined, fontWeight: layout === "vertical" ? 600 : 400 }}
+                  tickFormatter={
+                    layout === "horizontal"
+                      ? (v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))
+                      : undefined
+                  }
+                />
+                <Tooltip
+                  cursor={{ fill: "var(--bg-subtle, #F8FAFC)", opacity: 0.4 }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload || !payload.length) return null;
+                    return (
+                      <div className="rounded-xl border border-border bg-card p-2.5 shadow-lg text-xs min-w-44 z-50">
+                        <div className="font-bold text-text mb-1.5 capitalize pb-1 border-b border-border/50">
+                          {String(label).replace(/_/g, " ")}
+                        </div>
+                        <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                          {payload
+                            .filter((entry) => entry.value !== undefined && entry.value !== null && Number(entry.value) > 0)
+                            .map((entry, idx) => {
+                              const dataKey = entry.dataKey as string;
+                              const realName = entry.payload[`${dataKey}_name`] || entry.name;
+                              const realColor = entry.payload[`${dataKey}_color`] || entry.color;
+                              const seriesItem = series.find((s) => s.name === realName);
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between gap-4 text-[11px]"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span
+                                      className="flex items-center justify-center shrink-0 h-4 w-4 rounded shadow-2xs"
+                                      style={{ backgroundColor: realColor, color: "white" }}
+                                    >
+                                      {seriesItem?.iconToken ? (
+                                        <CategoryIcon
+                                          iconToken={seriesItem.iconToken}
+                                          className="h-2.5 w-2.5 stroke-3"
+                                        />
+                                      ) : (
+                                        <span className="h-1.5 w-1.5 bg-white rounded-full" />
+                                      )}
+                                    </span>
+                                    <span className="text-text-secondary font-medium truncate max-w-[100px]">
+                                      {realName}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono font-bold text-text">
+                                    {valueFormatter(Number(entry.value || 0))}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+                {renderBarKeys.map((key, idx) => {
+                  const s = series.find(sItem => sItem.key === key);
+                  const fallbackColor = s?.color || defaultColors[idx % defaultColors.length];
+                  const fallbackName = s?.name || key;
+                  return (
+                    <Bar
+                      key={key}
+                      dataKey={key}
+                      name={fallbackName}
+                      fill={fallbackColor}
+                      stackId={stacked ? "a" : undefined}
+                      radius={stacked ? [0, 0, 0, 0] : [4, 4, 0, 0]}
+                      maxBarSize={48}
+                    >
+                      {data.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry[`${key}_color`] || fallbackColor} 
+                        />
+                      ))}
+                    </Bar>
+                  );
+                })}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="md:w-48 shrink-0 flex flex-col gap-1.5 bg-bg-subtle/30 rounded-lg border border-border p-2 max-h-[120px] md:max-h-full overflow-y-auto">
+            <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest px-1 mb-1">Legend</span>
+            {series.map((s, idx) => (
+              <div key={s.key} className="flex items-center gap-2 text-[11px] px-1 py-0.5">
+                <span
+                  className="flex items-center justify-center shrink-0 h-5 w-5 rounded-md shadow-2xs"
+                  style={{ backgroundColor: s.color || defaultColors[idx % defaultColors.length], color: "white" }}
+                >
+                  {s.iconToken ? (
+                    <CategoryIcon iconToken={s.iconToken} className="h-3 w-3 stroke-3" />
+                  ) : (
+                    <span className="h-1.5 w-1.5 bg-white rounded-full" />
+                  )}
+                </span>
+                <span className="text-text font-medium truncate flex-1" title={s.name}>{s.name}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

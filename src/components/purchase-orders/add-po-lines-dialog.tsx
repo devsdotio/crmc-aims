@@ -59,7 +59,7 @@ interface LineDraft {
   unit: string;
   minThreshold: number;
   location: string;
-  assignmentType: "borrowable" | "assignable";
+  assignmentType: "borrowable" | "assignable" | "fixed";
   quantity: string;
   unitCost: string;
   suggestedDealer: string;
@@ -459,7 +459,7 @@ export function AddPoLinesDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-110 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
       <div className="absolute inset-0" aria-hidden="true" />
       <div
         role="dialog"

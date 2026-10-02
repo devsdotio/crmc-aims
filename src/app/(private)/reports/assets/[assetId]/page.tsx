@@ -478,6 +478,7 @@ export default function AssetDrilldownReportPage({
       <IndividualAssetPrintableReport
         asset={asset}
         maintenanceHistory={mapMaintenanceHistoryToPrintEntries(maintenanceHistory)}
+        tco={tco}
         canViewCosts={canViewCosts}
       />
     </div>

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { useConsumablesReportQuery } from "@/features/reports/client/use-reports";
+import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import type { BaseReportFilters, ConsumableStockRow } from "@/types/reports";
 import { StatCardGrid } from "@/components/ui/stat-card";
 import { KpiCard } from "@/components/reports/kpi-card";
@@ -47,6 +48,7 @@ export default function ConsumablesReportPage() {
     pageSize: 20,
     search: "",
     category: "",
+    classification: "",
     status: "",
   });
 
@@ -60,6 +62,13 @@ export default function ConsumablesReportPage() {
   );
 
   const { data, isLoading } = useConsumablesReportQuery(effectiveFilters);
+  const { data: categoriesData = [] } = useCategoriesQuery();
+
+  const CLASSIFICATION_OPTIONS = useMemo(() => {
+    return categoriesData
+      .filter((c) => c.type === "asset_class")
+      .map((c) => ({ label: c.name, value: c.name.toLowerCase() }));
+  }, [categoriesData]);
 
   const canViewCosts = data?.canViewCosts ?? true;
   const summary = data?.summary;
@@ -111,6 +120,7 @@ export default function ConsumablesReportPage() {
       pageSize: 20,
       search: "",
       category: "",
+      classification: "",
       status: "",
     });
   };
@@ -131,6 +141,7 @@ export default function ConsumablesReportPage() {
           <div className="font-semibold text-text">{row.name}</div>
           <div className="text-[10px] text-text-secondary capitalize font-medium">
             {row.category.replace(/_/g, " ")}
+            {row.classification && ` • ${row.classification}`}
           </div>
         </div>
       ),
@@ -428,6 +439,7 @@ export default function ConsumablesReportPage() {
           onFilterChange={handleFilterChange}
           onReset={handleReset}
           categories={CATEGORY_OPTIONS}
+          classifications={CLASSIFICATION_OPTIONS}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search consumables by code, name, category…"
         />

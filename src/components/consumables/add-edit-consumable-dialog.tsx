@@ -44,6 +44,7 @@ interface AddEditConsumableDialogFormProps {
 type ErrorField =
   | "name"
   | "category"
+  | "categoryClass"
   | "minThreshold"
   | "supplier"
   | "unitCost";
@@ -74,6 +75,11 @@ function AddEditConsumableDialogForm({
   const { data: suppliers = [], isLoading: suppliersLoading } =
     useSuppliersQuery({ activeOnly: true });
 
+  const consumableClasses = useMemo(
+    () => allCategories.filter((c) => c.type === "consumable_class"),
+    [allCategories]
+  );
+
   const consumableCategories = useMemo(() => {
     const fromSettings = allCategories.filter((c) => c.type === "consumable");
     const current = initialItem?.category?.trim();
@@ -88,6 +94,7 @@ function AddEditConsumableDialogForm({
           id: `legacy-${current}`,
           name: current,
           type: "consumable" as const,
+          parentName: null,
         },
         ...fromSettings,
       ];
@@ -104,16 +111,13 @@ function AddEditConsumableDialogForm({
     []
   );
 
-  const categoryOptions = useMemo(
+  const classOptions = useMemo(
     () =>
-      consumableCategories.map((c) => ({
-        value: c.name,
-        label:
-          "parentName" in c && c.parentName
-            ? `${c.name} (${c.parentName})`
-            : c.name,
-      })),
-    [consumableCategories]
+      consumableClasses
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => ({ value: c.name, label: c.name })),
+    [consumableClasses]
   );
 
   const supplierOptions = useMemo(
@@ -130,16 +134,32 @@ function AddEditConsumableDialogForm({
   const [category, setCategory] = useState(
     () => initialItem?.category ?? ""
   );
-  const resolvedCategoryClass = useMemo(() => {
+  const [categoryClass, setCategoryClass] = useState(
+    () => initialItem?.categoryClass ?? ""
+  );
+
+  const parentNameForCategory = (categoryName: string) => {
     const match = consumableCategories.find(
-      (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+      (c) => c.name.trim().toLowerCase() === categoryName.trim().toLowerCase()
     );
-    const parentName =
-      match && "parentName" in match
-        ? (match as { parentName?: string | null }).parentName
-        : null;
-    return parentName?.trim() || initialItem?.categoryClass || "";
-  }, [consumableCategories, category, initialItem?.categoryClass]);
+    return match?.parentName?.trim() || "";
+  };
+
+  const categoryOptions = useMemo(() => {
+    const selectedClass = categoryClass.trim().toLowerCase();
+    const currentCategory = category.trim().toLowerCase();
+    return consumableCategories
+      .filter((c) => {
+        if (c.name.trim().toLowerCase() === currentCategory) return true;
+        if (!selectedClass) return true;
+        const parent = c.parentName?.trim().toLowerCase() || "";
+        return !parent || parent === selectedClass;
+      })
+      .map((c) => ({
+        value: c.name,
+        label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
+      }));
+  }, [consumableCategories, category, categoryClass]);
   const [classification, setClassification] = useState<ConsumableClassification>(
     () => initialItem?.classification ?? defaultClassification ?? DEFAULT_CONSUMABLE_CLASSIFICATION
   );
@@ -188,8 +208,19 @@ function AddEditConsumableDialogForm({
 
   useEffect(() => {
     if (isEditing || category || consumableCategories.length === 0) return;
-    setCategory(consumableCategories[0].name);
+    const first = consumableCategories[0];
+    setCategory(first.name);
+    if (first.parentName?.trim()) setCategoryClass(first.parentName.trim());
   }, [consumableCategories, category, isEditing]);
+
+  useEffect(() => {
+    if (categoryClass.trim() || !category) return;
+    const match = consumableCategories.find(
+      (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+    );
+    const parent = match?.parentName?.trim() || "";
+    if (parent) setCategoryClass(parent);
+  }, [consumableCategories, category, categoryClass]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -208,6 +239,10 @@ function AddEditConsumableDialogForm({
     e.preventDefault();
     if (!name.trim()) {
       setFieldError("name", "Please enter the consumable item name.");
+      return;
+    }
+    if (consumableClasses.length > 0 && !categoryClass.trim()) {
+      setFieldError("categoryClass", "Please select a consumable class.");
       return;
     }
     if (!category) {
@@ -254,6 +289,7 @@ function AddEditConsumableDialogForm({
         itemCode: initialItem?.itemCode,
         name: name.trim(),
         category: category as ConsumableCategory,
+        categoryClass: categoryClass.trim(),
         classification: isTypeLocked
           ? (defaultClassification as ConsumableClassification)
           : classification,
@@ -433,6 +469,49 @@ function AddEditConsumableDialogForm({
 
               <div className="space-y-1">
                 <label
+                  htmlFor="category-class-input"
+                  className="block text-xs font-semibold text-text"
+                >
+                  Class <span className="text-accent">*</span>
+                </label>
+                <SearchableSelect
+                  id="category-class-input"
+                  value={categoryClass}
+                  onValueChange={(next) => {
+                    setCategoryClass(next);
+                    const parent = parentNameForCategory(category);
+                    if (
+                      category &&
+                      parent &&
+                      parent.toLowerCase() !== next.trim().toLowerCase()
+                    ) {
+                      setCategory("");
+                    }
+                    if (errorField === "categoryClass") {
+                      setError("");
+                      setErrorField(null);
+                    }
+                  }}
+                  options={classOptions}
+                  disabled={isSubmitting || categoriesLoading}
+                  placeholder={
+                    categoriesLoading
+                      ? "Loading…"
+                      : consumableClasses.length === 0
+                        ? "No classes — add in Categories"
+                        : "Type to find a class…"
+                  }
+                  emptyMessage="No classes match"
+                  aria-required="true"
+                  aria-invalid={errorField === "categoryClass"}
+                  aria-describedby={describedBy(
+                    errorField === "categoryClass" && "form-error"
+                  )}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label
                   htmlFor="category-input"
                   className="block text-xs font-semibold text-text"
                 >
@@ -441,7 +520,11 @@ function AddEditConsumableDialogForm({
                 <SearchableSelect
                   id="category-input"
                   value={category}
-                  onValueChange={setCategory}
+                  onValueChange={(next) => {
+                    setCategory(next);
+                    const parent = parentNameForCategory(next);
+                    if (parent) setCategoryClass(parent);
+                  }}
                   options={categoryOptions}
                   disabled={isSubmitting || categoriesLoading}
                   placeholder={
@@ -460,10 +543,7 @@ function AddEditConsumableDialogForm({
                   )}
                 />
                 <p id="category-hint" className="text-[11px] text-text-secondary">
-                  Managed under Settings → Categories
-                  {resolvedCategoryClass
-                    ? ` · Class: ${resolvedCategoryClass}`
-                    : ""}
+                  Categories under the selected class
                 </p>
               </div>
 

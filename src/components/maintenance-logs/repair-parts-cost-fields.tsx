@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { filterMoneyInput } from "@/lib/numeric-input";
+import { sumRepairPartCosts } from "@/lib/repair-cost";
 
 export type RepairPartLine = { id: string; name: string; cost: string };
 
@@ -35,13 +36,12 @@ export function serializePartLines(parts: RepairPartLine[]) {
 
 export function partsCostSummary(parts: RepairPartLine[]) {
   const filled = parts.filter((p) => p.name.trim());
-  const partsSum = filled.reduce((sum, p) => {
-    if (!p.cost.trim()) return sum;
-    const n = Number(p.cost);
-    return Number.isFinite(n) ? sum + n : sum;
-  }, 0);
-  const hasAnyPartCost = filled.some((p) => p.cost.trim() !== "");
-  return { filled, partsSum, hasAnyPartCost };
+  const summed = sumRepairPartCosts(filled);
+  return {
+    filled,
+    partsSum: summed ?? 0,
+    hasAnyPartCost: summed != null,
+  };
 }
 
 export interface RepairPartsCostFieldsProps {
@@ -66,8 +66,7 @@ export function RepairPartsCostFields({
   showNoPartsToggle = false,
 }: RepairPartsCostFieldsProps) {
   const { partsSum, hasAnyPartCost } = partsCostSummary(parts);
-  const overallBlank = !overallCost.trim();
-  const isAutoCalculated = overallBlank && hasAnyPartCost && !noPartsUsed;
+  const partsDefineTotal = hasAnyPartCost && !noPartsUsed;
 
   const updatePart = (id: string, patch: Partial<Omit<RepairPartLine, "id">>) => {
     onPartsChange(parts.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -181,49 +180,45 @@ export function RepairPartsCostFields({
           className="block text-xs font-semibold text-text"
         >
           Overall repair cost{" "}
-          <span className="text-text-secondary font-normal">(optional)</span>
-        </label>
-        <div className="relative">
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-text-secondary">
-            ₱
-          </span>
-          <input
-            id="overall-repair-cost"
-            type="text"
-            inputMode="decimal"
-            value={overallCost}
-            onChange={(e) => {
-              const next = filterMoneyInput(e.target.value);
-              if (next !== null) onOverallCostChange(next);
-            }}
-            placeholder={
-              isAutoCalculated
-                ? partsSum.toLocaleString("en-PH", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })
-                : "0.00"
-            }
-            disabled={disabled}
-            className="w-full h-9 pl-6 pr-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-          />
-        </div>
-        <p className="text-[11px] text-text-secondary">
-          {isAutoCalculated ? (
-            <>
-              Auto-calculated from line items:{" "}
-              <span className="font-mono font-bold text-text">
-                ₱
-                {partsSum.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
-              </span>
-              . Enter a value to override.
-            </>
-          ) : (
-            <>Leave blank to auto-sum costs from parts &amp; materials.</>
+          {!partsDefineTotal && (
+            <span className="text-text-secondary font-normal">(optional)</span>
           )}
+        </label>
+        {partsDefineTotal ? (
+          <div
+            id="overall-repair-cost"
+            className="flex h-9 items-center rounded-lg border border-border bg-bg-subtle px-3 font-mono text-xs font-bold text-text"
+          >
+            ₱
+            {partsSum.toLocaleString("en-PH", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </div>
+        ) : (
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-text-secondary">
+              ₱
+            </span>
+            <input
+              id="overall-repair-cost"
+              type="text"
+              inputMode="decimal"
+              value={overallCost}
+              onChange={(e) => {
+                const next = filterMoneyInput(e.target.value);
+                if (next !== null) onOverallCostChange(next);
+              }}
+              placeholder="0.00"
+              disabled={disabled}
+              className="w-full h-9 pl-6 pr-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        )}
+        <p className="text-[11px] text-text-secondary">
+          {partsDefineTotal
+            ? "Sum of the part and material lines above."
+            : "Used when no part line has a cost, such as labor only."}
         </p>
       </div>
     </div>

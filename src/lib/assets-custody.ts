@@ -24,9 +24,16 @@ export function isDepartmentCustody(holder?: string | null): boolean {
 /** Short badge: Available | Reserved | On project | Assigned | Borrowed */
 export function custodyBadgeLabel(
   holder?: string | null,
-  custodyKind?: "borrow" | "assignment" | "borrowable" | "assignable" | null,
+  custodyKind?:
+    | "borrow"
+    | "assignment"
+    | "borrowable"
+    | "assignable"
+    | "fixed"
+    | null,
   reserved?: boolean
 ): string {
+  if (custodyKind === "fixed") return "On site";
   if (holder) {
     if (isProjectCustody(holder)) return "On project";
     if (custodyKind === "assignment" || custodyKind === "assignable") {
@@ -56,6 +63,8 @@ export function custodyDetailLabel(
 export function isAssetAvailableForRequest(asset: {
   status: string;
   currentHolder?: string | null;
+  assignmentType?: string | null;
 }): boolean {
+  if (asset.assignmentType === "fixed") return false;
   return asset.status === "active" && !asset.currentHolder;
 }

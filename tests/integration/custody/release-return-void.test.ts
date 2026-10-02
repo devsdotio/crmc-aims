@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { BadRequestError } from "@/server/shared/errors";
+
 import { AssetService } from "@/server/modules/assets/asset.service";
 import { BorrowLogService } from "@/server/modules/borrow-log/borrow-log.service";
 import { ConsumableService } from "@/server/modules/consumables/consumable.service";
@@ -22,6 +24,53 @@ describeIntegration("custody / stock void (integration)", () => {
   beforeEach(async () => {
     await resetTestDatabase();
     fx = await seedCoreFixtures();
+  });
+
+  it("rejects release of a fixed asset and still releases a borrowable asset", async () => {
+    const building = await assets.createAsset(
+      {
+        name: "Main Gym",
+        category: fx.assetCategory,
+        location: "Campus",
+        assignmentType: "fixed",
+      },
+      fx.actor
+    );
+
+    await expect(
+      assets.releaseAsset(
+        building.id,
+        {
+          custodyKind: "borrow",
+          departmentId: fx.departmentId,
+          borrowerName: "Jane Doe",
+        },
+        fx.actor
+      )
+    ).rejects.toBeInstanceOf(BadRequestError);
+
+    const borrowable = await assets.createAsset(
+      {
+        name: "Loaner Camera",
+        category: fx.assetCategory,
+        location: "Depot",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    const dueDate = new Date();
+    dueDate.setUTCDate(dueDate.getUTCDate() + 14);
+    const released = await assets.releaseAsset(
+      borrowable.id,
+      {
+        custodyKind: "borrow",
+        departmentId: fx.departmentId,
+        borrowerName: "Jane Doe",
+        expectedReturnDate: dueDate.toISOString().slice(0, 10),
+      },
+      fx.actor
+    );
+    expect(released.currentHolder).toBeTruthy();
   });
 
   it("releases and returns an asset, and can void a mistaken manual issue", async () => {

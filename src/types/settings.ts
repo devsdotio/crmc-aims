@@ -14,6 +14,7 @@ export interface CategoryItem {
   name: string;
   type: CategoryType;
   colorToken?: string;
+  iconToken?: string;
   /** Parent general class id when type=asset or type=consumable. */
   parentId?: string | null;
   /** Resolved parent general class name (list enrichment). */

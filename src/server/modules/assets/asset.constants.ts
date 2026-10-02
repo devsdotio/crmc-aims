@@ -22,6 +22,7 @@ export const ASSET_STATUSES = [
 export const ASSET_ASSIGNMENT_TYPES = [
   "borrowable",
   "assignable",
+  "fixed",
 ] as const;
 
 export const MAINTENANCE_TYPES = [

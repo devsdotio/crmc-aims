@@ -106,29 +106,7 @@ export default function Sidebar({
   const userMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {
-      "/purchase-orders": true,
-      "/consumables": true,
-      "/disbursements/vouchers": true,
-    };
-    if (typeof window !== "undefined") {
-      const path = window.location.pathname;
-      if (path.startsWith("/purchase-orders")) {
-        initial["/purchase-orders"] = true;
-      }
-      if (path.startsWith("/consumables")) {
-        initial["/consumables"] = true;
-      }
-      if (path.startsWith("/borrow-requests")) {
-        initial["/borrow-requests/assign"] = true;
-      }
-      if (path.startsWith("/disbursements")) {
-        initial["/disbursements/vouchers"] = true;
-      }
-    }
-    return initial;
-  });
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
   // Keep known accordion sections open while browsing their subpages.
   useEffect(() => {
@@ -161,15 +139,6 @@ export default function Sidebar({
       }
       return changed ? next : prev;
     });
-  }, [pathname]);
-
-  useEffect(() => {
-    if (pathname.startsWith("/purchase-orders")) {
-      setOpenSubmenus((prev) => ({ ...prev, "/purchase-orders": true }));
-    }
-    if (pathname.startsWith("/consumables")) {
-      setOpenSubmenus((prev) => ({ ...prev, "/consumables": true }));
-    }
   }, [pathname]);
 
   const [isLoggingOut, setIsLoggingOut] = useState(false);

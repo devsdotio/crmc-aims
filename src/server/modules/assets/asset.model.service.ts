@@ -36,7 +36,7 @@ export type AssetModelDTO = {
   classification?: string;
   description?: string;
   manufacturer?: string;
-  defaultAssignmentType: "borrowable" | "assignable";
+  defaultAssignmentType: "borrowable" | "assignable" | "fixed";
   defaultLocation?: string;
   defaultUnitValue?: number;
   imageUrl?: string;

@@ -18,6 +18,7 @@ export const baseReportQuerySchema = z.object({
   search: z.string().optional(),
   departmentId: z.string().optional(),
   category: z.string().optional(),
+  classification: z.string().optional(),
   status: z.string().optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),

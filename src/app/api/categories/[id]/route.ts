@@ -159,6 +159,8 @@ export async function PUT(
         type: body.type,
         colorToken:
           body.colorToken !== undefined ? body.colorToken || null : undefined,
+        iconToken:
+          body.iconToken !== undefined ? body.iconToken || null : undefined,
         ...(parentId !== undefined ? { parentId } : {}),
       },
       undefined,

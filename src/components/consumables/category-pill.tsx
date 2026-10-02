@@ -1,6 +1,7 @@
 "use client";
 
 import { Tag } from "lucide-react";
+import { CategoryIcon } from "@/components/ui/category-icon";
 import { cn } from "@/lib/utils";
 import type { CategoryStyleMeta } from "@/constants/categories";
 
@@ -30,7 +31,15 @@ export function CategoryPill({ category, className, getCategoryStyle }: Category
         className
       )}
     >
-      <Tag className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      {categoryMeta.iconToken ? (
+        <CategoryIcon
+          iconToken={categoryMeta.iconToken}
+          className="h-2.5 w-2.5 shrink-0"
+          aria-hidden="true"
+        />
+      ) : (
+        <Tag className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      )}
       <span className="min-w-0 truncate whitespace-nowrap">{label}</span>
     </span>
   );

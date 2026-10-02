@@ -33,6 +33,7 @@ export const categories = pgTable(
     description: text("description"),
     type: text("type").notNull().default("asset"),
     colorToken: text("color_token"),
+    iconToken: text("icon_token"),
     /**
      * Parent general class when type=asset → asset_class,
      * or type=consumable → consumable_class.
@@ -55,6 +56,9 @@ export const categories = pgTable(
       table.type,
       sql`lower(${table.name})`
     ),
+    uniqueIndex("categories_tenant_icon_token_uidx")
+      .on(table.tenantId, table.iconToken)
+      .where(sql`${table.iconToken} is not null`),
   ]
 );
 

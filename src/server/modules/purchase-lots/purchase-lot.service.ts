@@ -139,7 +139,7 @@ export type DraftItemSpecs = {
   unit?: string | null;
   minThreshold?: number | null;
   location?: string | null;
-  assignmentType?: "borrowable" | "assignable" | null;
+  assignmentType?: "borrowable" | "assignable" | "fixed" | null;
 };
 
 function parseDraftItem(raw: unknown): DraftItemSpecs | null {
@@ -1832,7 +1832,7 @@ export class PurchaseLotService {
             category: string;
             classification: string;
             unit: string;
-            assignmentType: "borrowable" | "assignable";
+            assignmentType: "borrowable" | "assignable" | "fixed";
             modelId: string | null;
             location: string;
           } | null = null;

@@ -358,6 +358,27 @@
       "when": 1786385000000,
       "tag": "0050_tenant_scoped_uniques",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1786386000000,
+      "tag": "0051_category_icon_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1786387000000,
+      "tag": "0052_category_icon_token_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1786388000000,
+      "tag": "0053_fixed_asset_assignment_type",
+      "breakpoints": true
     }
   ]
 }

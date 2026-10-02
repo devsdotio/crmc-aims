@@ -8,6 +8,7 @@ export type CreateConsumablePayload = {
   name: string;
   category: ConsumableItem["category"];
   classification?: ConsumableItem["classification"];
+  categoryClass?: string;
   unit: string;
   currentQty?: number;
   minThreshold?: number;
@@ -24,6 +25,7 @@ export type UpdateConsumablePayload = {
   name?: string;
   category?: ConsumableItem["category"];
   classification?: ConsumableItem["classification"];
+  categoryClass?: string;
   unit?: string;
   minThreshold?: number;
   location?: string;

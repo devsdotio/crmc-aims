@@ -1,11 +1,10 @@
 "use client";
 
-import type { Asset } from "@/types/assets";
 import {
   PrintMetricBar,
   PrintStatusBadge,
-  PrintSignatories,
 } from "../PrintCharts";
+import { printMoney } from "./map-maintenance-print-entries";
 
 export interface IndividualAssetMaintenanceEntry {
   id?: string;
@@ -31,6 +30,9 @@ export interface IndividualAssetPrintableReportProps {
     assetCode?: string | null;
     name: string;
     category?: string | null;
+    classification?: string | null;
+    unit?: string | null;
+    supplierName?: string | null;
     status?: string | null;
     assignmentType?: string | null;
     location?: string | null;
@@ -43,13 +45,30 @@ export interface IndividualAssetPrintableReportProps {
     maintenanceHistory?: IndividualAssetMaintenanceEntry[];
   };
   maintenanceHistory?: IndividualAssetMaintenanceEntry[];
+  /** Same totals the on-screen dossier uses, so print matches the lifecycle cards. */
+  tco?: {
+    purchaseCost?: number | null;
+    maintenanceCost?: number | null;
+    consumablesCost?: number | null;
+    totalCostOfOwnership?: number | null;
+  } | null;
   generatedAt?: Date;
   canViewCosts?: boolean;
+}
+
+function formatPeso(value: unknown): string | null {
+  const amount = printMoney(value);
+  if (amount == null) return null;
+  return `₱${amount.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export function IndividualAssetPrintableReport({
   asset,
   maintenanceHistory: propMaintenance,
+  tco = null,
   generatedAt = new Date(),
   canViewCosts = true,
 }: IndividualAssetPrintableReportProps) {
@@ -63,13 +82,21 @@ export function IndividualAssetPrintableReport({
     minute: "2-digit",
   });
 
-  const maintenanceHistory = propMaintenance || asset.maintenanceHistory || [];
-  const totalRepairSpend = maintenanceHistory.reduce(
-    (sum, m) => sum + (m.cost || 0),
+  const maintenanceHistory =
+    propMaintenance && propMaintenance.length > 0
+      ? propMaintenance
+      : asset.maintenanceHistory || [];
+  const lineRepairSpend = maintenanceHistory.reduce(
+    (sum, m) => sum + (printMoney(m.cost) ?? 0),
     0,
   );
-
-  const purchasePrice = asset.value ?? 0;
+  const totalRepairSpend = printMoney(tco?.maintenanceCost) ?? lineRepairSpend;
+  const recordedPurchase = printMoney(tco?.purchaseCost) ?? printMoney(asset.value);
+  const purchasePrice = recordedPurchase ?? 0;
+  const suppliesSpend = printMoney(tco?.consumablesCost);
+  const ownershipTotal =
+    printMoney(tco?.totalCostOfOwnership) ??
+    purchasePrice + totalRepairSpend + (suppliesSpend ?? 0);
   const hasComparableCost = canViewCosts && purchasePrice > 0;
   const repairVsAcquisitionPct = hasComparableCost
     ? (totalRepairSpend / purchasePrice) * 100
@@ -183,7 +210,10 @@ export function IndividualAssetPrintableReport({
           metrics={[
             {
               label: "Acquisition Value",
-              value: canViewCosts && purchasePrice > 0 ? `₱${purchasePrice.toLocaleString()}` : "—",
+              value:
+                canViewCosts && recordedPurchase != null
+                  ? formatPeso(recordedPurchase) ?? "—"
+                  : "—",
               delta: "Book Value",
               deltaType: "neutral",
               subtext: asset.purchaseDate ? `Acquired ${asset.purchaseDate}` : "Capital asset",
@@ -197,10 +227,10 @@ export function IndividualAssetPrintableReport({
             },
             {
               label: "Lifetime Repairs",
-              value: maintenanceHistory.length.toString(),
-              delta: canViewCosts && totalRepairSpend > 0 ? `₱${totalRepairSpend.toLocaleString()}` : "No Repair Cost",
+              value: canViewCosts ? formatPeso(totalRepairSpend) ?? "₱0.00" : "—",
+              delta: `${maintenanceHistory.length} work orders`,
               deltaType: "neutral",
-              subtext: "Work orders logged",
+              subtext: "Maintenance cost",
             },
             {
               label: "Assigned Custodian",
@@ -220,14 +250,18 @@ export function IndividualAssetPrintableReport({
             </span>
             <span className="font-mono font-bold">
               {purchasePrice > 0
-                ? `₱${totalRepairSpend.toLocaleString()} / ₱${purchasePrice.toLocaleString()}`
-                : `₱${totalRepairSpend.toLocaleString()} / —`}
+                ? `${formatPeso(totalRepairSpend)} / ${formatPeso(purchasePrice)}`
+                : `${formatPeso(totalRepairSpend) ?? "₱0.00"} / —`}
             </span>
           </div>
           <div className="mt-0.5 text-[9px] text-black">
             {repairVsAcquisitionPct != null
               ? `${repairVsAcquisitionPct.toFixed(1)}% of acquisition value has been spent on repairs.`
               : "Acquisition value is not available; percentage comparison is unavailable."}
+            {suppliesSpend != null && suppliesSpend > 0
+              ? ` Supplies used: ${formatPeso(suppliesSpend)}.`
+              : ""}
+            {` Total ownership: ${formatPeso(ownershipTotal) ?? "—"}.`}
           </div>
         </section>
       )}
@@ -247,12 +281,12 @@ export function IndividualAssetPrintableReport({
               <div className="font-bold text-black text-[11.5px]">{asset.name}</div>
             </div>
             <div className="col-span-4 space-y-1">
-              <div className="text-[9.5px] font-bold uppercase text-black">Category / Classification</div>
+              <div className="text-[9.5px] font-bold uppercase text-black">Category</div>
               <div className="font-semibold text-black capitalize">{asset.category || "General Equipment"}</div>
             </div>
             <div className="col-span-4 space-y-1">
-              <div className="text-[9.5px] font-bold uppercase text-black">Assignment Type</div>
-              <div className="font-semibold text-black capitalize">{asset.assignmentType || "Standard"}</div>
+              <div className="text-[9.5px] font-bold uppercase text-black">Classification</div>
+              <div className="font-semibold text-black">{asset.classification?.trim() || "—"}</div>
             </div>
 
             <div className="col-span-4 space-y-1 border-t border-black/30 pt-1.5">
@@ -268,6 +302,18 @@ export function IndividualAssetPrintableReport({
               <div className="font-mono text-black">{asset.currentHolder || "Unassigned / Department Custody"}</div>
             </div>
 
+            <div className="col-span-4 space-y-1 border-t border-black/30 pt-1.5">
+              <div className="text-[9.5px] font-bold uppercase text-black">Assignment Type</div>
+              <div className="font-semibold text-black capitalize">{asset.assignmentType || "Standard"}</div>
+            </div>
+            <div className="col-span-4 space-y-1 border-t border-black/30 pt-1.5">
+              <div className="text-[9.5px] font-bold uppercase text-black">Unit</div>
+              <div className="font-semibold text-black">{asset.unit?.trim() || "unit"}</div>
+            </div>
+            <div className="col-span-4 space-y-1 border-t border-black/30 pt-1.5">
+              <div className="text-[9.5px] font-bold uppercase text-black">Supplier</div>
+              <div className="font-semibold text-black">{asset.supplierName?.trim() || "—"}</div>
+            </div>
             <div className="col-span-4 space-y-1 border-t border-black/30 pt-1.5">
               <div className="text-[9.5px] font-bold uppercase text-black">Assigned Department</div>
               <div className="font-semibold text-black">{asset.department || "Institutional Pool"}</div>
@@ -381,7 +427,7 @@ export function IndividualAssetPrintableReport({
                     </td>
                     {canViewCosts && (
                       <td className="py-1.5 px-3 text-right font-mono font-semibold text-black whitespace-nowrap align-top">
-                        {entry.cost ? `₱${entry.cost.toLocaleString()}` : "—"}
+                        {formatPeso(entry.cost) ?? "—"}
                       </td>
                     )}
                   </tr>

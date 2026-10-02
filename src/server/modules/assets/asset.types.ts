@@ -30,7 +30,7 @@ export interface ListAssetsFilters extends PaginationParams {
   /** General asset classification label (denormalized on assets.classification). */
   classification?: string;
   search?: string;
-  assignmentType?: "borrowable" | "assignable";
+  assignmentType?: "borrowable" | "assignable" | "fixed";
   /** When true, only units with no current holder and no approved reservation. */
   availableOnly?: boolean;
   /** Request-wizard catalog: skip department custody scope for borrowers. */
@@ -74,7 +74,7 @@ export interface IAssetRepository {
     tenantId?: string
   ): Promise<number>;
   countByType(
-    type: "borrowable" | "assignable",
+    type: "borrowable" | "assignable" | "fixed",
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
   ): Promise<number>;

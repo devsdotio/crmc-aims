@@ -130,6 +130,7 @@ export function AssetFilters({
               selectedIds={filters.classifications}
               onToggle={(id) => toggleClassification(id)}
               onOpen={() => setWantCategories(true)}
+              searchable
             />
 
             <MultiSelectDropdown

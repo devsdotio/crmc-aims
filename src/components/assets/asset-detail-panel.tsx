@@ -1461,7 +1461,10 @@ export function AssetDetailPanel({
                   </span>
                 </button>
               ))}
-            {onIssue && !asset.currentHolder && asset.status === "active" && (
+            {onIssue &&
+              asset.assignmentType !== "fixed" &&
+              !asset.currentHolder &&
+              asset.status === "active" && (
               <button
                 type="button"
                 onClick={() => onIssue(asset)}
@@ -1562,7 +1565,9 @@ export function AssetDetailPanel({
                       value:
                         asset.assignmentType === "assignable"
                           ? "Assignable"
-                          : "Borrowable",
+                          : asset.assignmentType === "fixed"
+                            ? "Fixed"
+                            : "Borrowable",
                     },
                     {
                       label: "Serial",
@@ -1577,7 +1582,9 @@ export function AssetDetailPanel({
                       label: "Custody",
                       value: asset.currentHolder
                         ? `${asset.currentHolder}${asset.department ? ` · ${asset.department}` : ""}`
-                        : "Available in stock",
+                        : asset.assignmentType === "fixed"
+                          ? "On site"
+                          : "Available in stock",
                     },
                   ].map((row) => (
                     <div
@@ -1661,12 +1668,16 @@ export function AssetDetailPanel({
                           "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
                           asset.assignmentType === "assignable"
                             ? "bg-amber-600/15 text-amber-700 dark:text-amber-400 border border-amber-500/30"
-                            : "bg-bg-subtle text-text-secondary border border-border"
+                            : asset.assignmentType === "fixed"
+                              ? "bg-sky-500/15 text-sky-800 dark:text-sky-300 border border-sky-500/30"
+                              : "bg-bg-subtle text-text-secondary border border-border"
                         )}
                       >
                         {asset.assignmentType === "assignable"
                           ? "Assignable"
-                          : "General"}
+                          : asset.assignmentType === "fixed"
+                            ? "Fixed"
+                            : "General"}
                       </span>
                     </div>
                   </div>
@@ -1750,13 +1761,15 @@ export function AssetDetailPanel({
                           >
                             {asset.currentHolder}
                           </span>
+                        ) : asset.assignmentType === "fixed" ? (
+                          <span className="font-semibold text-text">On site</span>
                         ) : (
                           <span className="text-status-active-text font-semibold">
                             Available In Stock
                           </span>
                         )}
                       </p>
-                      {openCustody && (
+                      {openCustody && asset.assignmentType !== "fixed" && (
                         <div className="mt-2 space-y-1.5 border-t border-border/50 pt-2">
                           {openCustody.requestedByName?.trim() && (
                             <div>
@@ -1848,8 +1861,12 @@ export function AssetDetailPanel({
     {!isBorrower && (
       <div className="hidden print:block">
         <IndividualAssetPrintableReport
-          asset={asset}
+          asset={{
+            ...asset,
+            supplierName,
+          }}
           maintenanceHistory={printMaintenanceHistory}
+          tco={drilldown?.tco}
           canViewCosts={printCanViewCosts}
         />
       </div>

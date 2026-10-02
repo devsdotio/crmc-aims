@@ -1,7 +1,13 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 
+import {
+  isCategoryIconId,
+  nextFreeIconToken,
+  takenIconTokens,
+} from "@/lib/category-icon-tokens";
 import { getDb } from "@/server/db";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
+import { ConflictError, ValidationError } from "@/server/shared/errors";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
   categories,
@@ -23,6 +29,7 @@ export type CategoryListRow = {
   name: string;
   type: CategoryType;
   colorToken?: string;
+  iconToken?: string;
   parentId?: string | null;
   parentName?: string | null;
   itemCount: number;
@@ -189,6 +196,7 @@ export class CategoryRepository {
         name: c.name,
         type: c.type as CategoryType,
         colorToken: c.colorToken || undefined,
+        iconToken: c.iconToken || undefined,
         parentId: c.parentId ?? null,
         parentName: c.parentId ? parentNameById.get(c.parentId) ?? null : null,
         itemCount,
@@ -196,6 +204,59 @@ export class CategoryRepository {
         updatedAt: c.updatedAt,
       };
     });
+  }
+
+  async assertIconTokenAvailable(
+    tenantId: string,
+    iconToken: string,
+    exceptId?: string,
+    session?: DbSession
+  ) {
+    const token = iconToken.trim();
+    if (!isCategoryIconId(token)) {
+      throw new ValidationError("Choose an icon from the category icon set.");
+    }
+
+    const db = this.db(session);
+    const conditions = [
+      eq(categories.tenantId, tenantId),
+      eq(categories.iconToken, token),
+    ];
+    if (exceptId) conditions.push(ne(categories.id, exceptId));
+
+    const [taken] = await db
+      .select({ id: categories.id, name: categories.name })
+      .from(categories)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (taken) {
+      throw new ConflictError(
+        `That icon is already used by “${taken.name}”. Pick a different icon.`
+      );
+    }
+  }
+
+  /** Keeps a requested icon when it is free, otherwise assigns the next unused palette id. */
+  async resolveIconTokenForCreate(
+    tenantId: string,
+    requested: string | null | undefined,
+    session?: DbSession
+  ): Promise<string> {
+    const token = requested?.trim() ?? "";
+    if (token) {
+      await this.assertIconTokenAvailable(tenantId, token, undefined, session);
+      return token;
+    }
+
+    const rows = await this.listByType(undefined, session, tenantId);
+    const free = nextFreeIconToken(takenIconTokens(rows));
+    if (!free) {
+      throw new ConflictError(
+        "Every category icon is already in use. Remove a category before adding another."
+      );
+    }
+    return free;
   }
 
   async findById(id: string, session?: DbSession, tenantId?: string) {
@@ -358,6 +419,7 @@ export class CategoryRepository {
       name: string;
       type: CategoryType;
       colorToken?: string | null;
+      iconToken?: string | null;
       parentId?: string | null;
     },
     session?: DbSession,
@@ -378,6 +440,15 @@ export class CategoryRepository {
         return null;
       }
 
+      if (payload.iconToken) {
+        await this.assertIconTokenAvailable(
+          existing.tenantId,
+          payload.iconToken,
+          id,
+          tx
+        );
+      }
+
       const oldName = existing.name.trim();
       const newName = payload.name.trim();
       const now = new Date();
@@ -389,6 +460,9 @@ export class CategoryRepository {
           type: payload.type,
           ...(payload.colorToken !== undefined
             ? { colorToken: payload.colorToken || null }
+            : {}),
+          ...(payload.iconToken !== undefined
+            ? { iconToken: payload.iconToken || null }
             : {}),
           ...(payload.parentId !== undefined
             ? { parentId: payload.parentId || null }
@@ -635,6 +709,7 @@ export class CategoryRepository {
         name: updated.name,
         type: updated.type as CategoryType,
         colorToken: updated.colorToken || undefined,
+        iconToken: updated.iconToken || undefined,
         parentId: updated.parentId ?? null,
         parentName,
         itemCount: count,

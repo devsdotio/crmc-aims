@@ -25,6 +25,7 @@ const CATEGORY_CHANGE_DOMAINS = [
   "consumableRequests",
   "dashboard",
   "maintenance",
+  "purchaseLots",
 ] as const satisfies readonly CacheDomain[];
 
 function invalidateCategoryChange(queryClient: ReturnType<typeof useQueryClient>) {
@@ -82,10 +83,13 @@ export function useCategoryStyleMap() {
   const { data: categories = [] } = useCategoriesQuery();
 
   return useMemo(() => {
-    const tokenMap = new Map<string, string>();
+    const tokenMap = new Map<string, { color?: string; icon?: string }>();
     for (const cat of categories) {
-      if (cat.name && cat.colorToken) {
-        tokenMap.set(cat.name.trim().toLowerCase(), cat.colorToken);
+      if (cat.name) {
+        tokenMap.set(cat.name.trim().toLowerCase(), {
+          color: cat.colorToken,
+          icon: cat.iconToken,
+        });
       }
     }
 
@@ -95,8 +99,8 @@ export function useCategoryStyleMap() {
         categoryName: string,
         fallbackLabel?: string
       ): CategoryStyleMeta => {
-        const token = tokenMap.get((categoryName || "").trim().toLowerCase());
-        return getCategoryStyle(categoryName, fallbackLabel, token);
+        const tokens = tokenMap.get((categoryName || "").trim().toLowerCase());
+        return getCategoryStyle(categoryName, fallbackLabel, tokens?.color, tokens?.icon);
       },
     };
   }, [categories]);
@@ -130,6 +134,17 @@ export function useCreateCategoryMutation(): UseMutationResult<
           context.previousCategories
         );
       }
+    },
+    onSuccess: (created) => {
+      queryClient.setQueryData<CategoryItem[]>(categoryQueryKeys.list(), (prev) => {
+        const withoutPending = (prev ?? []).filter(
+          (row) =>
+            row.id !== created.id &&
+            !row.id.startsWith("cat-") &&
+            !row.id.startsWith("temp-")
+        );
+        return [...withoutPending, created];
+      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: categoryQueryKeys.all });

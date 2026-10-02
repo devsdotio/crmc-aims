@@ -91,6 +91,22 @@ export function isAppError(error: unknown): error is AppError {
 const POSTGRES_APP_ERROR_CODES =
   /^(23505|23503|23502|23514|42703|42P01|22P02|22001|22003|22007|23P01)$/i;
 
+function postgresConstraintName(error: unknown): string {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current; depth++) {
+    if (typeof current !== "object" || current === null) break;
+    if (
+      "constraint" in current &&
+      typeof current.constraint === "string" &&
+      current.constraint.length > 0
+    ) {
+      return current.constraint;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return "";
+}
+
 function postgresErrorCode(error: unknown): string {
   let current: unknown = error;
   for (let depth = 0; depth < 6 && current; depth++) {
@@ -154,6 +170,11 @@ export function isConnectivityError(error: unknown): boolean {
 export function appErrorFromUnknown(error: unknown): AppError | null {
   const code = postgresErrorCode(error);
   if (code === "23505") {
+    if (postgresConstraintName(error) === "categories_tenant_icon_token_uidx") {
+      return new ConflictError(
+        "That icon is already used. Pick a different icon."
+      );
+    }
     return new ConflictError(
       "A record with this name already exists. Choose a different name."
     );

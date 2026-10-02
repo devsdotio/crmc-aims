@@ -256,6 +256,7 @@ export function AssetRegisterPrintableReport({
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black min-w-36">Property / Article Description</th>
+                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Class</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Property No. / Tag</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Date Acquired</th>
                 <th className="py-2 px-1 text-center border-r border-black w-10">Unit</th>
@@ -274,7 +275,7 @@ export function AssetRegisterPrintableReport({
                   <Fragment key={group.categoryName}>
                     {/* Category Group Header */}
                     <tr className="bg-white font-bold border-t-2 border-black text-black category-header-row avoid-orphan-header">
-                      <td colSpan={12} className="py-1 px-2 text-[9px] uppercase tracking-wider font-black">
+                      <td colSpan={13} className="py-1 px-2 text-[9px] uppercase tracking-wider font-black">
                         Category: {group.categoryName} ({group.groupQty} {group.groupQty === 1 ? "unit" : "units"})
                       </td>
                     </tr>
@@ -307,6 +308,9 @@ export function AssetRegisterPrintableReport({
                                 SN: {row.serialNumber}
                               </div>
                             )}
+                          </td>
+                          <td className="py-1 px-2 border-r border-black text-center font-bold text-[8px] uppercase">
+                            {row.classification || "—"}
                           </td>
                           <td className="py-1 px-2 border-r border-black font-mono font-bold whitespace-nowrap">
                             {row.assetCode || "[TO BE FILLED]"}
@@ -346,7 +350,7 @@ export function AssetRegisterPrintableReport({
 
                     {/* Category Subtotal */}
                     <tr className="bg-white font-bold border-t border-b-2 border-black text-black text-[9px]">
-                      <td colSpan={5} className="py-1 px-2 text-right uppercase tracking-wider border-r border-black">
+                      <td colSpan={6} className="py-1 px-2 text-right uppercase tracking-wider border-r border-black">
                         Subtotal for {group.categoryName}:
                       </td>
                       <td className="py-1 px-1 text-right font-mono border-r border-black">
@@ -368,7 +372,7 @@ export function AssetRegisterPrintableReport({
 
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="py-6 text-center italic text-[10px]">
+                  <td colSpan={13} className="py-6 text-center italic text-[10px]">
                     No capital assets found matching specified filter criteria.
                   </td>
                 </tr>
@@ -379,7 +383,7 @@ export function AssetRegisterPrintableReport({
             {data.length > 0 && (
               <tfoot>
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
-                  <td colSpan={5} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                  <td colSpan={6} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
                     Grand Total Physical Count:
                   </td>
                   <td className="py-1.5 px-1 text-right font-mono border-r border-black">

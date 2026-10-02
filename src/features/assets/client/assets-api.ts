@@ -101,7 +101,7 @@ export const assetsApi = {
       classification?: string;
       search?: string;
       availableOnly?: boolean;
-      assignmentType?: "borrowable" | "assignable";
+      assignmentType?: "borrowable" | "assignable" | "fixed";
       /** Request-wizard path for borrowers (warehouse catalog). */
       catalog?: boolean;
     }

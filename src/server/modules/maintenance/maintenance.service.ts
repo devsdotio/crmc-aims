@@ -16,6 +16,7 @@ import { BorrowLogRepository } from "@/server/modules/borrow-log/borrow-log.repo
 import { MaintenanceRepository } from "./maintenance.repository";
 import { maintenanceAssigneeSnapshot } from "./maintenance-assignee";
 import type { MaintenanceLogDTO } from "./maintenance.types";
+import { effectiveRepairAmount, formatRepairAmount } from "@/lib/repair-cost";
 import {
   createMaintenanceSchema,
   listMaintenanceQuerySchema,
@@ -42,7 +43,9 @@ function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
     resolutionDate: row.resolutionDate ?? undefined,
     resolutionNotes: row.resolutionNotes ?? undefined,
     resolvedBy: row.resolvedByName ?? undefined,
-    repairCost: row.repairCost ?? null,
+    repairCost: formatRepairAmount(
+      effectiveRepairAmount(row.repairCost, row.repairParts)
+    ),
     repairParts: row.repairParts ?? [],
     relatedBorrowLogCode: row.relatedBorrowLogCode ?? undefined,
     assignedToName: row.assignedToName ?? null,

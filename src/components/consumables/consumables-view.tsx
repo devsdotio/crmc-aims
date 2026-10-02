@@ -198,6 +198,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
     name?: string;
     category?: ConsumableItem["category"];
     classification?: ConsumableItem["classification"];
+    categoryClass?: string;
     unit?: string;
     currentQty?: number;
     minThreshold?: number;
@@ -214,6 +215,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
           payload: {
             name: itemData.name,
             category: itemData.category,
+            categoryClass: itemData.categoryClass,
             classification: itemData.classification || lockedClassification,
             unit: itemData.unit,
             minThreshold: itemData.minThreshold,
@@ -231,6 +233,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
           itemCode: itemData.itemCode,
           name: itemData.name || (lockedClassification === "material" ? "New Material Item" : "New Supply Item"),
           category: itemData.category || "",
+          categoryClass: itemData.categoryClass,
           classification: itemData.classification || lockedClassification || "supply",
           unit: itemData.unit || (lockedClassification === "material" ? "pcs" : "reams"),
           currentQty: Number(itemData.currentQty) || 0,

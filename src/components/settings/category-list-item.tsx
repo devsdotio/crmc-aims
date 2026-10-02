@@ -1,7 +1,8 @@
 "use client";
 
-import { Edit3, Trash2, Tag, Box, Package, Layers } from "lucide-react";
+import { Edit3, Trash2, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CategoryIcon } from "@/components/ui/category-icon";
 import { getCategoryStyle } from "@/constants/categories";
 import type { CategoryItem } from "@/types/settings";
 
@@ -26,7 +27,6 @@ function typeBadge(category: CategoryItem) {
       label: "Asset Class",
       className: "bg-violet-50 text-violet-700 border border-violet-200/60",
       blurb: "General asset classification",
-      Icon: Layers,
     };
   }
   if (category.type === "consumable_class") {
@@ -34,7 +34,6 @@ function typeBadge(category: CategoryItem) {
       label: "Cons. Class",
       className: "bg-teal-50 text-teal-700 border border-teal-200/60",
       blurb: "General consumable classification",
-      Icon: Layers,
     };
   }
   if (category.type === "asset") {
@@ -44,7 +43,6 @@ function typeBadge(category: CategoryItem) {
       blurb: category.parentName
         ? `Under ${category.parentName}`
         : "Unclassified — edit to assign a class",
-      Icon: Package,
     };
   }
   return {
@@ -53,7 +51,6 @@ function typeBadge(category: CategoryItem) {
     blurb: category.parentName
       ? `Under ${category.parentName}`
       : "Unclassified — edit to assign a class",
-    Icon: Box,
   };
 }
 
@@ -67,9 +64,9 @@ export function CategoryListItem({
     category.name,
     category.name,
     category.colorToken,
+    category.iconToken,
   );
   const badge = typeBadge(category);
-  const Icon = badge.Icon;
 
   return (
     <div className="group relative flex flex-col justify-between gap-3 p-4 bg-bg rounded-xl border border-border transition-colors hover:border-primary/40 hover:shadow-xs">
@@ -82,7 +79,7 @@ export function CategoryListItem({
               categoryStyle.text,
             )}
           >
-            <Icon className="h-4.5 w-4.5" />
+            <CategoryIcon iconToken={category.iconToken} className="h-4.5 w-4.5" />
           </span>
 
           <div className="min-w-0">

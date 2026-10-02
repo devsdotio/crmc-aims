@@ -6,8 +6,12 @@ import { cn } from "@/lib/utils";
 import type { CategoryItem, CategoryType } from "@/types/settings";
 import {
   AVAILABLE_CATEGORY_COLORS,
+  AVAILABLE_CATEGORY_ICONS,
   getCategoryStyle,
 } from "@/constants/categories";
+import { CategoryIcon } from "@/components/ui/category-icon";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { nextFreeIconToken, takenIconTokens } from "@/lib/category-icon-tokens";
 
 export interface AddEditCategoryDialogProps {
   isOpen: boolean;
@@ -17,6 +21,8 @@ export interface AddEditCategoryDialogProps {
   assetClasses?: CategoryItem[];
   /** Available consumable classes when editing/creating a specific consumable category. */
   consumableClasses?: CategoryItem[];
+  /** Every category and class in the tenant, used to keep icons exclusive. */
+  existingCategories?: CategoryItem[];
   onClose: () => void;
   onSave: (categoryData: Partial<CategoryItem>) => void | Promise<void>;
 }
@@ -34,12 +40,16 @@ export function AddEditCategoryDialog({
   initialCategory,
   assetClasses = [],
   consumableClasses = [],
+  existingCategories = [],
   onClose,
   onSave,
 }: AddEditCategoryDialogProps) {
   const isEditing = Boolean(initialCategory);
   const [name, setName] = useState("");
   const [colorToken, setColorToken] = useState("blue");
+  const [iconToken, setIconToken] = useState<string>(
+    () => nextFreeIconToken(new Set()) ?? "monitor"
+  );
   const [parentId, setParentId] = useState<string>("");
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -54,6 +64,11 @@ export function AddEditCategoryDialog({
     return source.slice().sort((a, b) => a.name.localeCompare(b.name));
   }, [type, assetClasses, consumableClasses]);
 
+  const takenIcons = useMemo(
+    () => takenIconTokens(existingCategories, initialCategory?.id),
+    [existingCategories, initialCategory?.id]
+  );
+
   const [prevOpenKey, setPrevOpenKey] = useState({
     isOpen: false,
     id: initialCategory?.id,
@@ -61,16 +76,24 @@ export function AddEditCategoryDialog({
   if (isOpen !== prevOpenKey.isOpen || initialCategory?.id !== prevOpenKey.id) {
     setPrevOpenKey({ isOpen, id: initialCategory?.id });
     if (isOpen) {
+      const freeIcon = nextFreeIconToken(takenIcons);
       if (initialCategory) {
         setName(initialCategory.name);
         setColorToken(initialCategory.colorToken || "blue");
+        setIconToken(initialCategory.iconToken || freeIcon || "monitor");
         setParentId(initialCategory.parentId || "");
+        setError("");
       } else {
         setName("");
         setColorToken("blue");
+        setIconToken(freeIcon || "monitor");
         setParentId("");
+        setError(
+          freeIcon
+            ? ""
+            : "Every icon is already used. Remove a category before adding another."
+        );
       }
-      setError("");
     }
   }
 
@@ -90,6 +113,7 @@ export function AddEditCategoryDialog({
     name.trim() || "Category Preview",
     undefined,
     colorToken,
+    iconToken
   );
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -115,6 +139,7 @@ export function AddEditCategoryDialog({
         name: name.trim(),
         type,
         colorToken,
+        iconToken,
         parentId: needsParent ? parentId : null,
         itemCount: initialCategory ? initialCategory.itemCount : 0,
       });
@@ -183,22 +208,26 @@ export function AddEditCategoryDialog({
               >
                 General Classification <span className="text-accent">*</span>
               </label>
-              <select
+              <SearchableSelect
                 id="cat-parent-select"
                 value={parentId}
-                onChange={(e) => {
-                  setParentId(e.target.value);
+                onValueChange={(next) => {
+                  setParentId(next);
                   if (error) setError("");
                 }}
-                className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
-              >
-                <option value="">Select classification…</option>
-                {classOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                options={classOptions.map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+                disabled={isSaving}
+                placeholder={
+                  classOptions.length === 0
+                    ? "No classifications yet"
+                    : "Type to find a classification…"
+                }
+                emptyMessage="No classifications match"
+                aria-required="true"
+              />
               {classOptions.length === 0 ? (
                 <p className="text-[11px] text-text-secondary">
                   {type === "consumable"
@@ -251,7 +280,7 @@ export function AddEditCategoryDialog({
                 previewStyle.text,
               )}
             >
-              <Tag className="h-3 w-3 shrink-0" />
+              <CategoryIcon iconToken={previewStyle.iconToken} className="h-3 w-3 shrink-0" />
               {previewStyle.label}
             </span>
           </div>
@@ -296,6 +325,47 @@ export function AddEditCategoryDialog({
                     <span className="text-[10px] text-text-secondary mt-1 truncate">
                       {color.name}
                     </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-text flex items-center gap-1.5">
+                <Tag className="h-3.5 w-3.5 text-text-secondary" />
+                Category Icon
+              </label>
+            </div>
+
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 max-h-52 overflow-y-auto p-1">
+              {AVAILABLE_CATEGORY_ICONS.map((icon) => {
+                const isSelected = iconToken === icon.id;
+                const isTaken = takenIcons.has(icon.id);
+                return (
+                  <button
+                    key={icon.id}
+                    type="button"
+                    disabled={isTaken}
+                    onClick={() => setIconToken(icon.id)}
+                    className={cn(
+                      "flex flex-col items-center justify-center p-2 rounded-xl border transition-all select-none",
+                      isTaken
+                        ? "cursor-not-allowed border-border/40 bg-bg-subtle/40 text-text-secondary/35"
+                        : "cursor-pointer",
+                      isSelected
+                        ? "border-primary ring-2 ring-primary/30 bg-bg shadow-xs font-bold text-primary"
+                        : !isTaken &&
+                            "border-border/60 hover:border-border hover:bg-bg-subtle/50 text-text-secondary",
+                    )}
+                    title={
+                      isTaken
+                        ? `${icon.name} is already used`
+                        : icon.name
+                    }
+                  >
+                    <CategoryIcon iconToken={icon.id} className="h-5 w-5" />
                   </button>
                 );
               })}
