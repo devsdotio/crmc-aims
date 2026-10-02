@@ -1,4 +1,12 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
 import { profiles } from "./profiles";
@@ -7,7 +15,10 @@ import { profiles } from "./profiles";
  * Institutional taxonomy rows.
  * - `asset_class`: general asset classification (e.g. "Computer Equipments")
  * - `asset`: specific asset category (e.g. "Monitors") — optional parent_id → asset_class
- * - `consumable`: consumable category (e.g. "Office Supplies")
+ * - `consumable_class`: general consumable classification (e.g. "Stationery")
+ * - `consumable`: specific consumable category — optional parent_id → consumable_class
+ *
+ * Inventory still uses supply|material on consumables.classification separately.
  */
 export const categories = pgTable(
   "categories",
@@ -23,7 +34,10 @@ export const categories = pgTable(
     type: text("type").notNull().default("asset"),
     colorToken: text("color_token"),
     iconToken: text("icon_token"),
-    /** Parent general class when type=asset (FK → categories.id of type asset_class). */
+    /**
+     * Parent general class when type=asset → asset_class,
+     * or type=consumable → consumable_class.
+     */
     parentId: uuid("parent_id"),
 
     createdByUserId: uuid("created_by_user_id").references(() => profiles.userId),
@@ -35,7 +49,14 @@ export const categories = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("categories_parent_id_idx").on(table.parentId)]
+  (table) => [
+    index("categories_parent_id_idx").on(table.parentId),
+    uniqueIndex("categories_tenant_type_name_lower_uidx").on(
+      table.tenantId,
+      table.type,
+      sql`lower(${table.name})`
+    ),
+  ]
 );
 
 export type Category = typeof categories.$inferSelect;

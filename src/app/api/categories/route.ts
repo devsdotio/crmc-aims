@@ -7,10 +7,16 @@ import {
   CategoryRepository,
   type CategoryType,
 } from "@/server/modules/categories/category.repository";
+import { appErrorFromUnknown, ConflictError } from "@/server/shared/errors";
 import { handleError, okWithEtag } from "@/server/shared/http";
 import { serverCache } from "@/server/shared/cache";
 
-const VALID_TYPES: CategoryType[] = ["asset", "consumable", "asset_class"];
+const VALID_TYPES: CategoryType[] = [
+  "asset",
+  "consumable",
+  "asset_class",
+  "consumable_class",
+];
 
 function isCategoryType(value: unknown): value is CategoryType {
   return typeof value === "string" && (VALID_TYPES as string[]).includes(value);
@@ -18,7 +24,7 @@ function isCategoryType(value: unknown): value is CategoryType {
 
 /**
  * Institutional category taxonomy (Settings).
- * Lists asset classes, asset categories, and consumable categories with counts.
+ * Lists asset/consumable classes and specific categories with counts.
  */
 export async function GET(request: Request) {
   try {
@@ -62,7 +68,10 @@ export async function POST(request: Request) {
 
     if (!isCategoryType(body.type)) {
       return NextResponse.json(
-        { error: "type must be asset, consumable, or asset_class" },
+        {
+          error:
+            "type must be asset, consumable, asset_class, or consumable_class",
+        },
         { status: 400 }
       );
     }
@@ -73,16 +82,12 @@ export async function POST(request: Request) {
         ? body.parentId.trim()
         : null;
 
-    if (body.type === "asset_class" && parentId) {
+    if (
+      (body.type === "asset_class" || body.type === "consumable_class") &&
+      parentId
+    ) {
       return NextResponse.json(
-        { error: "Asset classifications cannot have a parent category." },
-        { status: 400 }
-      );
-    }
-
-    if (body.type === "consumable" && parentId) {
-      return NextResponse.json(
-        { error: "Consumable categories cannot have a parent category." },
+        { error: "General classifications cannot have a parent category." },
         { status: 400 }
       );
     }
@@ -105,7 +110,25 @@ export async function POST(request: Request) {
       }
     }
 
-    if (body.type !== "asset") {
+    if (body.type === "consumable" && parentId) {
+      const categoryRepo = new CategoryRepository();
+      const parent = await categoryRepo.findById(
+        parentId,
+        undefined,
+        actor.tenantId
+      );
+      if (!parent || parent.type !== "consumable_class") {
+        return NextResponse.json(
+          {
+            error:
+              "parentId must reference an existing Consumable Classification (type=consumable_class).",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (body.type !== "asset" && body.type !== "consumable") {
       parentId = null;
     }
 
@@ -128,19 +151,30 @@ export async function POST(request: Request) {
       );
     }
 
-    const [newCategory] = await db
-      .insert(categories)
-      .values({
-        tenantId: actor.tenantId,
-        name,
-        description: body.description || null,
-        type: body.type,
-        colorToken: body.colorToken || null,
-        iconToken: body.iconToken || null,
-        parentId,
-        createdByUserId: actor.userId,
-      })
-      .returning();
+    let newCategory;
+    try {
+      [newCategory] = await db
+        .insert(categories)
+        .values({
+          tenantId: actor.tenantId,
+          name,
+          description: body.description || null,
+          type: body.type,
+          colorToken: body.colorToken || null,
+          iconToken: body.iconToken || null,
+          parentId,
+          createdByUserId: actor.userId,
+        })
+        .returning();
+    } catch (error) {
+      const mapped = appErrorFromUnknown(error);
+      if (mapped instanceof ConflictError) {
+        throw new ConflictError(
+          `Category “${name}” already exists for this type.`
+        );
+      }
+      throw error;
+    }
 
     let parentName: string | null = null;
     if (newCategory.parentId) {

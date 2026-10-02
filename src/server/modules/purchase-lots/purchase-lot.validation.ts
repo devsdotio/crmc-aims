@@ -77,6 +77,8 @@ export const createPurchaseOrderItemSchema = z.object({
    * Assets: general classification name (Settings asset_class).
    */
   classification: z.string().trim().min(1).max(120).optional(),
+  /** Consumables: general category class (Settings consumable_class). */
+  categoryClass: z.string().trim().max(120).optional(),
   unit: z.string().trim().optional(),
   minThreshold: z.number().int().min(0).optional(),
   location: z.string().trim().optional(),

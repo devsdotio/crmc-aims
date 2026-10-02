@@ -10,7 +10,12 @@ import {
 import { handleError } from "@/server/shared/http";
 import { serverCache } from "@/server/shared/cache";
 
-const VALID_TYPES: CategoryType[] = ["asset", "consumable", "asset_class"];
+const VALID_TYPES: CategoryType[] = [
+  "asset",
+  "consumable",
+  "asset_class",
+  "consumable_class",
+];
 
 function isCategoryType(value: unknown): value is CategoryType {
   return typeof value === "string" && (VALID_TYPES as string[]).includes(value);
@@ -52,7 +57,10 @@ export async function PUT(
 
     if (!isCategoryType(body.type)) {
       return NextResponse.json(
-        { error: "type must be asset, consumable, or asset_class" },
+        {
+          error:
+            "type must be asset, consumable, asset_class, or consumable_class",
+        },
         { status: 400 }
       );
     }
@@ -66,16 +74,12 @@ export async function PUT(
           : null;
     }
 
-    if (body.type === "asset_class" && parentId) {
+    if (
+      (body.type === "asset_class" || body.type === "consumable_class") &&
+      parentId
+    ) {
       return NextResponse.json(
-        { error: "Asset classifications cannot have a parent category." },
-        { status: 400 }
-      );
-    }
-
-    if (body.type === "consumable" && parentId) {
-      return NextResponse.json(
-        { error: "Consumable categories cannot have a parent category." },
+        { error: "General classifications cannot have a parent category." },
         { status: 400 }
       );
     }
@@ -103,7 +107,34 @@ export async function PUT(
       }
     }
 
-    if (body.type !== "asset" && parentId !== undefined) {
+    if (body.type === "consumable" && parentId) {
+      const parent = await categoryRepo.findById(
+        parentId,
+        undefined,
+        actor.tenantId
+      );
+      if (!parent || parent.type !== "consumable_class") {
+        return NextResponse.json(
+          {
+            error:
+              "parentId must reference an existing Consumable Classification (type=consumable_class).",
+          },
+          { status: 400 }
+        );
+      }
+      if (parent.id === id) {
+        return NextResponse.json(
+          { error: "A category cannot be its own parent." },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (
+      body.type !== "asset" &&
+      body.type !== "consumable" &&
+      parentId !== undefined
+    ) {
       parentId = null;
     }
 
@@ -177,16 +208,18 @@ export async function DELETE(
 
     const type = existing.type as CategoryType;
 
-    if (type === "asset_class") {
+    if (type === "asset_class" || type === "consumable_class") {
       const childCount = await categoryRepo.countChildCategories(
         existing.id,
         undefined,
         actor.tenantId
       );
       if (childCount > 0) {
+        const kind =
+          type === "asset_class" ? "specific asset" : "specific consumable";
         return NextResponse.json(
           {
-            error: `Cannot delete classification “${existing.name}” because ${childCount} specific asset categor${
+            error: `Cannot delete classification “${existing.name}” because ${childCount} ${kind} categor${
               childCount === 1 ? "y is" : "ies are"
             } linked to it. Reassign or delete those categories first.`,
           },
@@ -208,7 +241,9 @@ export async function DELETE(
           ? "asset(s)"
           : type === "asset_class"
             ? "asset(s) using this classification"
-            : "supply item(s)";
+            : type === "consumable_class"
+              ? "supply item(s) using this classification"
+              : "supply item(s)";
       return NextResponse.json(
         {
           error: `Cannot delete category “${existing.name}” because it is currently assigned to ${usageCount} ${itemLabel}. Reassign or delete those items first.`,

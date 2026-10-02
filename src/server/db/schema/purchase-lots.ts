@@ -90,6 +90,10 @@ export const purchaseLots = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("purchase_lots_tenant_lot_code_uidx").on(
+      table.tenantId,
+      table.lotCode
+    ),
     index("purchase_lots_item_type_idx").on(table.itemType),
     index("purchase_lots_consumable_id_idx").on(table.consumableId),
     index("purchase_lots_asset_id_idx").on(table.assetId),

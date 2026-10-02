@@ -40,6 +40,11 @@ export type PurchaseLotDTO = {
    */
   classification?: string | null;
   /**
+   * Consumables only: general category class (Settings consumable_class).
+   * Distinct from supply|material `classification`.
+   */
+  categoryClass?: string | null;
+  /**
    * Unit of measure (pcs, set, pair, ream, …). Assets default to "unit" when unset.
    * From deferred draftItem or enriched from the linked consumable.
    */
@@ -116,6 +121,8 @@ export type CreatePurchaseOrderItemInput = {
   category: string;
   /** Consumables: supply|material. Assets: general class name. */
   classification?: string;
+  /** Consumables: general category class (Settings consumable_class). */
+  categoryClass?: string;
   unit?: string;
   minThreshold?: number;
   location?: string;

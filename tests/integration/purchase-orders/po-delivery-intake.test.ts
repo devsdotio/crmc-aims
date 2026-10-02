@@ -196,6 +196,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(lot.status).toBe("pending_approval");
     expect(lot.consumableId).toBeFalsy();
     expect(lot.classification).toBe("supply");
+    expect(lot.categoryClass).toBe(fx.consumableClassification);
     expect(lot.unit).toBe("ream");
 
     const delivered = await pos.updatePOStatus(
@@ -224,6 +225,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(item.classification).toBe("supply");
     expect(item.unit).toBe("ream");
     expect(item.category).toBe(fx.consumableCategory);
+    expect(item.categoryClass).toBe(fx.consumableClassification);
     expect(item.location).toBe("Store Room");
 
     const lots = await db
@@ -606,5 +608,39 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       expect(row.name).toBe("10126 Dup Name");
       expect(row.notes ?? "").toMatch(/Acquired via PO/i);
     }
+  });
+
+  it("stores consumable general classification on undelivered draft PO lines", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-12",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            isNewItem: true,
+            name: "PO Stapler Box",
+            category: fx.consumableCategory,
+            classification: "supply",
+            categoryClass: fx.consumableClassification,
+            unit: "box",
+            location: "Store Room",
+            quantity: 3,
+            unitCost: 85,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.itemType).toBe("consumable");
+    expect(lot.classification).toBe("supply");
+    expect(lot.categoryClass).toBe(fx.consumableClassification);
+    expect(lot.consumableId).toBeFalsy();
   });
 });

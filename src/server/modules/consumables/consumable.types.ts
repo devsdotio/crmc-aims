@@ -12,6 +12,8 @@ export type ConsumableDTO = {
   name: string;
   category: string;
   classification: ConsumableClassification;
+  /** General consumable classification label (denormalized on category_class). */
+  categoryClass?: string;
   unit: string;
   currentQty: number;
   reservedQty: number;
@@ -28,6 +30,8 @@ export type ConsumableDTO = {
 export type ListConsumableFilters = PaginationParams & {
   category?: ConsumableDTO["category"];
   classification?: ConsumableClassification;
+  /** Filter by denormalized general consumable classification name. */
+  categoryClass?: string;
   stockLevel?: "all" | "healthy" | "low" | "critical";
   search?: string;
   includeSandbox?: boolean;

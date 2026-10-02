@@ -48,7 +48,16 @@ export function formatFriendlyNetworkError(
     return "It looks like your internet connection is unstable. Please check your connection and try again.";
   }
 
-  if (/database|supabase|500|502|503|internal server/i.test(raw)) {
+  // Keep actionable schema / conflict messages; only soften opaque infra failures.
+  if (
+    /schema is out of date|already exists|missing related record/i.test(raw)
+  ) {
+    return raw;
+  }
+
+  if (
+    /couldn.?t reach the database|supabase|502|503|internal server/i.test(raw)
+  ) {
     return "The server is temporarily experiencing high load. Please try again in a few moments.";
   }
 

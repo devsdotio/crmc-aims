@@ -20,6 +20,7 @@ export const stockLevelSchema = z.enum(["all", "healthy", "low", "critical"]);
 export const listConsumablesQuerySchema = z.object({
   category: consumableCategorySchema.optional(),
   classification: z.enum(CONSUMABLE_CLASSIFICATIONS).optional(),
+  categoryClass: z.string().trim().max(120).optional(),
   stockLevel: stockLevelSchema.optional(),
   search: z.string().trim().max(200).optional(),
   page: z.coerce.number().int().min(1).optional(),
@@ -49,6 +50,8 @@ export const createConsumableSchema = z
     name: z.string().trim().min(1).max(255),
     category: consumableCategorySchema,
     classification: consumableClassificationSchema,
+    /** Optional general class; otherwise derived from the category's parent class. */
+    categoryClass: z.string().trim().max(120).optional(),
     unit: z.string().trim().min(1).max(40),
     currentQty: z
       .union([z.number(), z.string()])
@@ -109,6 +112,7 @@ export const updateConsumableSchema = z
     name: z.string().trim().min(1).max(255).optional(),
     category: consumableCategorySchema.optional(),
     classification: z.enum(CONSUMABLE_CLASSIFICATIONS).optional(),
+    categoryClass: z.string().trim().max(120).optional(),
     unit: z.string().trim().min(1).max(40).optional(),
     minThreshold: z.number().int().min(0).optional(),
     location: z.string().trim().min(1).max(120).optional(),

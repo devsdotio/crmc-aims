@@ -3,7 +3,11 @@ import type { UserRole } from "./users";
 export type SettingsSection = "account" | "categories" | "departments";
 
 /** Taxonomy row kinds managed under Category Management. */
-export type CategoryType = "asset" | "consumable" | "asset_class";
+export type CategoryType =
+  | "asset"
+  | "consumable"
+  | "asset_class"
+  | "consumable_class";
 
 export interface CategoryItem {
   id: string;
@@ -11,9 +15,9 @@ export interface CategoryItem {
   type: CategoryType;
   colorToken?: string;
   iconToken?: string;
-  /** Parent asset class id when type=asset. */
+  /** Parent general class id when type=asset or type=consumable. */
   parentId?: string | null;
-  /** Resolved parent asset class name (list enrichment). */
+  /** Resolved parent general class name (list enrichment). */
   parentName?: string | null;
   itemCount: number;
 }

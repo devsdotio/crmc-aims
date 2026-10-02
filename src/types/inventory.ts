@@ -42,6 +42,11 @@ export interface ConsumableItem {
   category: ConsumableCategory;
   /** Broad class: supply (Consumable Supplies) or material (Consumable Materials). */
   classification: ConsumableClassification;
+  /**
+   * General consumable classification (Settings type=consumable_class).
+   * Empty when the specific category has no parent class.
+   */
+  categoryClass?: string;
   unit: string;
   currentQty: number;
   /** Qty promised to approved supply requests not yet issued. */
@@ -62,6 +67,8 @@ export interface ConsumableItem {
 export interface ConsumableFilterState extends BaseFilterState {
   category: string;
   classification: "all" | ConsumableClassification;
+  /** General consumable classifications (Settings type=consumable_class). */
+  categoryClasses: string[];
   stockLevel: "all" | "healthy" | "low" | "critical";
   sortBy: "qty" | "qty_desc" | "critical" | "name" | "updated";
 }

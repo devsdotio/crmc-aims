@@ -45,6 +45,10 @@ export const suppliers = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("suppliers_tenant_supplier_code_uidx").on(
+      table.tenantId,
+      table.supplierCode
+    ),
     index("suppliers_status_idx").on(table.status),
     index("suppliers_name_idx").on(table.name),
   ]

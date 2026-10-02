@@ -24,6 +24,7 @@ const consumableListColumns = {
   name: consumables.name,
   category: consumables.category,
   classification: consumables.classification,
+  categoryClass: consumables.categoryClass,
   unit: consumables.unit,
   currentQty: consumables.currentQty,
   reservedQty: consumables.reservedQty,
@@ -116,6 +117,11 @@ export class ConsumableRepository implements IConsumableRepository {
     }
     if (filters.classification) {
       conditions.push(eq(consumables.classification, filters.classification));
+    }
+    if (filters.categoryClass?.trim()) {
+      conditions.push(
+        sql`lower(${consumables.categoryClass}) = ${filters.categoryClass.trim().toLowerCase()}`
+      );
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;

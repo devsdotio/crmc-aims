@@ -83,8 +83,37 @@ export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
 
+/**
+ * Postgres SQLSTATEs that are application/data errors — never "connectivity".
+ * Drizzle wraps these as `Failed query: …`, which previously matched our
+ * connectivity heuristic and showed a fake "high load / unreachable DB" UI.
+ */
+const POSTGRES_APP_ERROR_CODES =
+  /^(23505|23503|23502|23514|42703|42P01|22P02|22001|22003|22007|23P01)$/i;
+
+function postgresErrorCode(error: unknown): string {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current; depth++) {
+    if (typeof current !== "object" || current === null) break;
+    if ("code" in current && typeof current.code === "string") {
+      const code = current.code;
+      if (/^\d{5}$/.test(code) || /^[0-9A-Z]{5}$/i.test(code)) {
+        return code;
+      }
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+  return "";
+}
+
 /** Walk Error.cause chains for DNS / DB connectivity failures. */
 export function isConnectivityError(error: unknown): boolean {
+  // Prefer SQLSTATE: unique/missing-column/etc. must surface as real API errors.
+  const pgCode = postgresErrorCode(error);
+  if (pgCode && POSTGRES_APP_ERROR_CODES.test(pgCode)) {
+    return false;
+  }
+
   let current: unknown = error;
   for (let depth = 0; depth < 6 && current; depth++) {
     if (typeof current !== "object" || current === null) break;
@@ -104,14 +133,40 @@ export function isConnectivityError(error: unknown): boolean {
       /^(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENETUNREACH|UND_ERR_CONNECT_TIMEOUT)$/i.test(
         code
       ) ||
-      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Connect Timeout|Failed query|fetch failed|Cannot perform I\/O on behalf of a different request|HYPERDRIVE binding is missing/i.test(
+      /getaddrinfo|ENOTFOUND|ECONNREFUSED|connection.*(refused|reset|terminated)|Connect Timeout|fetch failed|Cannot perform I\/O on behalf of a different request|HYPERDRIVE binding is missing/i.test(
         message
       )
     ) {
       return true;
     }
 
+    // "Failed query" alone is not connectivity — only when no Postgres app code.
+    if (/Failed query/i.test(message) && !pgCode) {
+      return true;
+    }
+
     current = "cause" in current ? current.cause : undefined;
   }
   return false;
+}
+
+/** Map known Postgres driver errors into typed AppErrors when possible. */
+export function appErrorFromUnknown(error: unknown): AppError | null {
+  const code = postgresErrorCode(error);
+  if (code === "23505") {
+    return new ConflictError(
+      "A record with this name already exists. Choose a different name."
+    );
+  }
+  if (code === "23503") {
+    return new BadRequestError(
+      "This change references a missing related record. Refresh and try again."
+    );
+  }
+  if (code === "42703" || code === "42P01") {
+    return new ServiceUnavailableError(
+      "The database schema is out of date. Ask an admin to run migrations, then retry."
+    );
+  }
+  return null;
 }

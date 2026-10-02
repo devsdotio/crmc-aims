@@ -28,7 +28,8 @@ export const dashboardMetricSnapshots = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("dashboard_metric_snapshots_key_date_idx").on(
+    uniqueIndex("dashboard_metric_snapshots_tenant_key_date_uidx").on(
+      table.tenantId,
       table.metricKey,
       table.snapshotDate
     ),

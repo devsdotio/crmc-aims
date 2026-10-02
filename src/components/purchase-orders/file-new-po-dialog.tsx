@@ -281,7 +281,7 @@ export function FileNewPODialog({
     () =>
       consumableCategories.map((c) => ({
         value: c.name,
-        label: c.name,
+        label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
       })),
     [consumableCategories]
   );
@@ -305,8 +305,21 @@ export function FileNewPODialog({
     return map;
   }, [assetCategories]);
 
+  const consumableClassByCategoryName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of consumableCategories) {
+      if (c.parentName?.trim()) {
+        map.set(c.name.trim().toLowerCase(), c.parentName.trim());
+      }
+    }
+    return map;
+  }, [consumableCategories]);
+
   const resolveAssetClassForCategory = (categoryName: string) =>
     assetClassByCategoryName.get(categoryName.trim().toLowerCase()) || "";
+
+  const resolveConsumableClassForCategory = (categoryName: string) =>
+    consumableClassByCategoryName.get(categoryName.trim().toLowerCase()) || "";
 
   const supplierOptions = useMemo(
     () =>
@@ -1270,6 +1283,11 @@ export function FileNewPODialog({
               ) ||
               undefined
             : effectiveClassification,
+          categoryClass: isAsset
+            ? undefined
+            : resolveConsumableClassForCategory(
+                item.category.trim() || defaultConsumableCategory
+              ) || undefined,
           unit: (item.unit || "").trim() || (isAsset ? "unit" : "pcs"),
           minThreshold: item.minThreshold || 5,
           location: item.location || "Main Property Storage",

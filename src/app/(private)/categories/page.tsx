@@ -30,6 +30,8 @@ export default function CategoriesPage() {
     allCategories?.filter((c) => c.type === "asset_class") || [];
   const assetCategories =
     allCategories?.filter((c) => c.type === "asset") || [];
+  const consumableClasses =
+    allCategories?.filter((c) => c.type === "consumable_class") || [];
   const consumableCategories =
     allCategories?.filter((c) => c.type === "consumable") || [];
 
@@ -78,7 +80,7 @@ export default function CategoriesPage() {
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-0.5">
-              Configure asset classifications, specific asset categories, and consumable groups.
+              Configure asset and consumable classifications, then specific categories under each.
             </p>
           </div>
         </div>
@@ -102,6 +104,7 @@ export default function CategoriesPage() {
             <CategoriesSection
               assetClasses={assetClasses}
               assetCategories={assetCategories}
+              consumableClasses={consumableClasses}
               consumableCategories={consumableCategories}
               onSaveCategory={handleSaveCategory}
               onDeleteCategory={handleDeleteCategory}

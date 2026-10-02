@@ -67,6 +67,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
     searchQuery: "",
     category: "all",
     classification: lockedClassification ?? "all",
+    categoryClasses: [],
     stockLevel: "all",
     sortBy: "qty",
   });
@@ -104,7 +105,13 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
         const query = filters.searchQuery.toLowerCase();
         const matchName = item.name.toLowerCase().includes(query);
         const matchCode = item.itemCode.toLowerCase().includes(query);
-        if (!matchName && !matchCode) return false;
+        const matchCategory = item.category.toLowerCase().includes(query);
+        const matchClass = (item.categoryClass || "")
+          .toLowerCase()
+          .includes(query);
+        if (!matchName && !matchCode && !matchCategory && !matchClass) {
+          return false;
+        }
       }
 
       if (
@@ -112,6 +119,17 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
         filters.classification &&
         filters.classification !== "all" &&
         item.classification !== filters.classification
+      ) {
+        return false;
+      }
+
+      if (
+        filters.categoryClasses.length > 0 &&
+        !filters.categoryClasses.some(
+          (c) =>
+            c.trim().toLowerCase() ===
+            (item.categoryClass || "").trim().toLowerCase()
+        )
       ) {
         return false;
       }
@@ -168,6 +186,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
       searchQuery: "",
       category: "all",
       classification: lockedClassification ?? "all",
+      categoryClasses: [],
       stockLevel: "all",
       sortBy: "qty",
     });
