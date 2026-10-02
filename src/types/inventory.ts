@@ -67,6 +67,8 @@ export interface ConsumableItem {
 export interface ConsumableFilterState extends BaseFilterState {
   category: string;
   classification: "all" | ConsumableClassification;
+  /** General consumable classifications (Settings type=consumable_class). */
+  categoryClasses: string[];
   stockLevel: "all" | "healthy" | "low" | "critical";
   sortBy: "qty" | "qty_desc" | "critical" | "name" | "updated";
 }
