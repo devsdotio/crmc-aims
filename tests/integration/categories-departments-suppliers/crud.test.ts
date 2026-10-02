@@ -203,6 +203,137 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     expect(listed.some((a) => a.id === createdAsset.id)).toBe(true);
   });
 
+  it("creates consumable classifications and links specific consumable categories", async () => {
+    const db = getDb();
+    const [consumableClass] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Medical Consumables",
+        type: "consumable_class",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    expect(consumableClass.type).toBe("consumable_class");
+
+    const [specific] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Surgical Gloves",
+        type: "consumable",
+        parentId: consumableClass.id,
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    expect(specific.parentId).toBe(consumableClass.id);
+
+    const listedClasses = await categoryRepo.listWithCounts(
+      "consumable_class",
+      undefined,
+      fx.actor.tenantId
+    );
+    const foundClass = listedClasses.find((c) => c.id === consumableClass.id);
+    expect(foundClass).toBeTruthy();
+    expect(foundClass!.itemCount).toBeGreaterThanOrEqual(1);
+
+    const listedConsumables = await categoryRepo.listWithCounts(
+      "consumable",
+      undefined,
+      fx.actor.tenantId
+    );
+    const foundSpecific = listedConsumables.find((c) => c.id === specific.id);
+    expect(foundSpecific?.parentId).toBe(consumableClass.id);
+    expect(foundSpecific?.parentName).toBe("Medical Consumables");
+
+    const resolved =
+      await categoryRepo.resolveConsumableCategoryClassForCategoryName(
+        "Surgical Gloves",
+        undefined,
+        fx.actor.tenantId
+      );
+    expect(resolved).toBe("Medical Consumables");
+
+    const renamedClass = await categoryRepo.updateAndCascade(
+      consumableClass.id,
+      { name: "Clinical Consumables", type: "consumable_class" },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(renamedClass?.name).toBe("Clinical Consumables");
+
+    const resolvedAfterRename =
+      await categoryRepo.resolveConsumableCategoryClassForCategoryName(
+        "Surgical Gloves",
+        undefined,
+        fx.actor.tenantId
+      );
+    expect(resolvedAfterRename).toBe("Clinical Consumables");
+  });
+
+  it("assigns an existing consumable category under a classification and restamps items", async () => {
+    const db = getDb();
+    const { ConsumableService } = await import(
+      "@/server/modules/consumables/consumable.service"
+    );
+    const consumablesSvc = new ConsumableService();
+
+    const [orphanCategory] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Toner Cartridges",
+        type: "consumable",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+    expect(orphanCategory.parentId).toBeNull();
+
+    const [consumableClass] = await db
+      .insert(categories)
+      .values({
+        tenantId: fx.actor.tenantId,
+        name: "Print Media",
+        type: "consumable_class",
+        createdByUserId: fx.actor.userId,
+      })
+      .returning();
+
+    const createdItem = await consumablesSvc.create(
+      {
+        name: "HP Black Toner",
+        category: "Toner Cartridges",
+        classification: "supply",
+        unit: "pcs",
+        currentQty: 0,
+        location: "Supply Room",
+      },
+      fx.actor
+    );
+    expect(createdItem.categoryClass ?? "").toBe("");
+
+    const linked = await categoryRepo.updateAndCascade(
+      orphanCategory.id,
+      {
+        name: orphanCategory.name,
+        type: "consumable",
+        parentId: consumableClass.id,
+      },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(linked?.parentId).toBe(consumableClass.id);
+    expect(linked?.parentName).toBe("Print Media");
+
+    const refreshed = await consumablesSvc.getById(
+      createdItem.id,
+      fx.actor.tenantId
+    );
+    expect(refreshed.categoryClass).toBe("Print Media");
+  });
+
   it("creates, updates, lists, and deletes a department", async () => {
     const created = await departments.create(
       { code: "REG", name: "Registrar" },

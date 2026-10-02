@@ -69,6 +69,11 @@ export const consumables = pgTable(
     category: text("category").notNull(),
     /** Broad class: Consumable Supplies (`supply`) vs Consumable Materials (`material`). */
     classification: text("classification").notNull().default("supply"),
+    /**
+     * General consumable classification name (Settings type=consumable_class).
+     * Empty when the specific category has no parent class yet.
+     */
+    categoryClass: text("category_class").notNull().default(""),
     unit: text("unit").notNull(),
     currentQty: integer("current_qty").notNull().default(0),
     /** Qty promised to approved supply requests that have not been issued yet. */

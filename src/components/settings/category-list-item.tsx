@@ -23,9 +23,17 @@ export function getSwatchForName(name: string, colorToken?: string) {
 function typeBadge(category: CategoryItem) {
   if (category.type === "asset_class") {
     return {
-      label: "Class",
+      label: "Asset Class",
       className: "bg-violet-50 text-violet-700 border border-violet-200/60",
       blurb: "General asset classification",
+      Icon: Layers,
+    };
+  }
+  if (category.type === "consumable_class") {
+    return {
+      label: "Cons. Class",
+      className: "bg-teal-50 text-teal-700 border border-teal-200/60",
+      blurb: "General consumable classification",
       Icon: Layers,
     };
   }
@@ -42,7 +50,9 @@ function typeBadge(category: CategoryItem) {
   return {
     label: "Consumable",
     className: "bg-emerald-50 text-emerald-700 border border-emerald-200/60",
-    blurb: "Consumable inventory classification",
+    blurb: category.parentName
+      ? `Under ${category.parentName}`
+      : "Unclassified — edit to assign a class",
     Icon: Box,
   };
 }
@@ -131,8 +141,9 @@ export function CategoryListItem({
 
       <div className="flex items-center justify-between pt-2 border-t border-border/60 text-xs">
         <span className="text-text-secondary text-[11px] font-medium">
-          {category.type === "asset_class"
-            ? "Linked categories / assets"
+          {category.type === "asset_class" ||
+          category.type === "consumable_class"
+            ? "Linked categories / items"
             : "Associated Items"}
         </span>
         <span
@@ -150,7 +161,8 @@ export function CategoryListItem({
               ? category.itemCount === 1
                 ? "asset"
                 : "assets"
-              : category.type === "asset_class"
+              : category.type === "asset_class" ||
+                  category.type === "consumable_class"
                 ? "linked"
                 : category.itemCount === 1
                   ? "item"

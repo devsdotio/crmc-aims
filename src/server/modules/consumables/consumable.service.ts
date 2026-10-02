@@ -74,6 +74,7 @@ function toDTO(row: ConsumableRow): ConsumableDTO {
     classification: isConsumableClassification(row.classification)
       ? row.classification
       : DEFAULT_CONSUMABLE_CLASSIFICATION,
+    categoryClass: row.categoryClass || undefined,
     unit: row.unit,
     currentQty: row.currentQty,
     reservedQty,
@@ -163,10 +164,15 @@ export class ConsumableService {
     }
   }
 
-  private async resolveConsumableCategoryName(
+  /**
+   * Resolve specific category + denormalized general classification label.
+   * `categoryClass` is distinct from supply|material (`classification`).
+   */
+  private async resolveConsumableCategoryAndClass(
     rawName: string,
-    tenantId?: string
-  ): Promise<string> {
+    tenantId?: string,
+    explicitCategoryClass?: string | null
+  ): Promise<{ categoryName: string; categoryClass: string }> {
     const found = await this.taxonomy.findByTypeAndName(
       "consumable",
       rawName,
@@ -178,7 +184,30 @@ export class ConsumableService {
         `Unknown consumable category “${rawName}”. Add it under Settings → Categories first.`
       );
     }
-    return found.name;
+
+    const explicit = (explicitCategoryClass ?? "").trim();
+    if (explicit) {
+      const classRow = await this.taxonomy.findByTypeAndName(
+        "consumable_class",
+        explicit,
+        undefined,
+        tenantId
+      );
+      if (!classRow) {
+        throw new BadRequestError(
+          `Unknown consumable classification “${explicit}”. Add it under Settings → Categories first.`
+        );
+      }
+      return { categoryName: found.name, categoryClass: classRow.name };
+    }
+
+    const fromParent =
+      await this.taxonomy.resolveConsumableCategoryClassForCategoryName(
+        found.name,
+        undefined,
+        tenantId
+      );
+    return { categoryName: found.name, categoryClass: fromParent };
   }
 
   async list(
@@ -199,6 +228,7 @@ export class ConsumableService {
     const result = await this.repo.list({
       category: filters.category,
       classification: filters.classification,
+      categoryClass: filters.categoryClass,
       search: filters.search,
       stockLevel: filters.stockLevel === "critical" ? "critical" : undefined,
       page: filters.page,
@@ -243,10 +273,12 @@ export class ConsumableService {
   async create(rawInput: unknown, actor: ActorContext): Promise<ConsumableDTO> {
     const input = createConsumableSchema.parse(rawInput);
     const itemCode = input.itemCode?.trim() || generateOperationalCode("CON");
-    const categoryName = await this.resolveConsumableCategoryName(
-      input.category,
-      actor.tenantId
-    );
+    const { categoryName, categoryClass } =
+      await this.resolveConsumableCategoryAndClass(
+        input.category,
+        actor.tenantId,
+        input.categoryClass
+      );
 
     const exists = await this.repo.findByCode(itemCode, undefined, actor.tenantId);
     if (exists) {
@@ -259,6 +291,7 @@ export class ConsumableService {
       name: input.name,
       category: categoryName,
       classification: input.classification,
+      categoryClass,
       unit: input.unit,
       minThreshold: input.minThreshold,
       location: input.location,
@@ -468,16 +501,21 @@ export class ConsumableService {
     if (!existing) throw new NotFoundError("Consumable", id);
 
     let categoryName: string | undefined;
+    let categoryClass: string | undefined;
     if (input.category !== undefined) {
-      categoryName = await this.resolveConsumableCategoryName(
+      const resolved = await this.resolveConsumableCategoryAndClass(
         input.category,
-        actorTenantId
+        actorTenantId,
+        input.categoryClass
       );
+      categoryName = resolved.categoryName;
+      categoryClass = resolved.categoryClass;
     }
 
     const updated = await this.repo.update(id, {
       ...(input.name !== undefined ? { name: input.name } : {}),
       ...(categoryName !== undefined ? { category: categoryName } : {}),
+      ...(categoryClass !== undefined ? { categoryClass } : {}),
       ...(input.classification !== undefined
         ? { classification: input.classification }
         : {}),

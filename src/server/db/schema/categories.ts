@@ -7,7 +7,10 @@ import { profiles } from "./profiles";
  * Institutional taxonomy rows.
  * - `asset_class`: general asset classification (e.g. "Computer Equipments")
  * - `asset`: specific asset category (e.g. "Monitors") — optional parent_id → asset_class
- * - `consumable`: consumable category (e.g. "Office Supplies")
+ * - `consumable_class`: general consumable classification (e.g. "Stationery")
+ * - `consumable`: specific consumable category — optional parent_id → consumable_class
+ *
+ * Inventory still uses supply|material on consumables.classification separately.
  */
 export const categories = pgTable(
   "categories",
@@ -22,7 +25,10 @@ export const categories = pgTable(
     description: text("description"),
     type: text("type").notNull().default("asset"),
     colorToken: text("color_token"),
-    /** Parent general class when type=asset (FK → categories.id of type asset_class). */
+    /**
+     * Parent general class when type=asset → asset_class,
+     * or type=consumable → consumable_class.
+     */
     parentId: uuid("parent_id"),
 
     createdByUserId: uuid("created_by_user_id").references(() => profiles.userId),

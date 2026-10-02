@@ -56,6 +56,7 @@ export function ConsumableTableRow({
         <div className="flex flex-col gap-1 items-start">
           <span className="text-[10px] font-semibold text-text-secondary">
             {consumableClassificationLabel(item.classification)}
+            {item.categoryClass ? ` · ${item.categoryClass}` : ""}
           </span>
           <CategoryPill category={item.category} getCategoryStyle={getCategoryStyle} />
         </div>

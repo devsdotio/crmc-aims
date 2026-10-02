@@ -20,16 +20,23 @@ import { cn } from "@/lib/utils";
 export interface CategoriesSectionProps {
   assetClasses: CategoryItem[];
   assetCategories: CategoryItem[];
+  consumableClasses: CategoryItem[];
   consumableCategories: CategoryItem[];
   onSaveCategory: (categoryData: Partial<CategoryItem>) => void | Promise<void>;
   onDeleteCategory: (category: CategoryItem) => void;
 }
 
-type CategoryTab = "all" | "asset_class" | "asset" | "consumable";
+type CategoryTab =
+  | "all"
+  | "asset_class"
+  | "asset"
+  | "consumable_class"
+  | "consumable";
 
 export function CategoriesSection({
   assetClasses,
   assetCategories,
+  consumableClasses,
   consumableCategories,
   onSaveCategory,
   onDeleteCategory,
@@ -53,13 +60,19 @@ export function CategoriesSection({
   };
 
   const allCategories = useMemo(
-    () => [...assetClasses, ...assetCategories, ...consumableCategories],
-    [assetClasses, assetCategories, consumableCategories],
+    () => [
+      ...assetClasses,
+      ...assetCategories,
+      ...consumableClasses,
+      ...consumableCategories,
+    ],
+    [assetClasses, assetCategories, consumableClasses, consumableCategories],
   );
 
   const totalCount = allCategories.length;
   const totalAssetClassCount = assetClasses.length;
   const totalAssetsCount = assetCategories.length;
+  const totalConsumableClassCount = consumableClasses.length;
   const totalConsumablesCount = consumableCategories.length;
   const totalItemCount = useMemo(
     () =>
@@ -72,20 +85,37 @@ export function CategoriesSection({
 
   const filteredCategories = useMemo(() => {
     return allCategories.filter((cat) => {
-      if (activeTab === "asset_class" && cat.type !== "asset_class") return false;
-      if (activeTab === "asset" && cat.type !== "asset") return false;
-      if (activeTab === "consumable" && cat.type !== "consumable") return false;
+      if (activeTab !== "all" && cat.type !== activeTab) return false;
 
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchName = cat.name.toLowerCase().includes(query);
-        const matchParent = (cat.parentName || "").toLowerCase().includes(query);
+        const matchParent = (cat.parentName || "")
+          .toLowerCase()
+          .includes(query);
         if (!matchName && !matchParent) return false;
       }
 
       return true;
     });
   }, [allCategories, activeTab, searchQuery]);
+
+  const addButtonType = ((): CategoryType => {
+    if (activeTab === "consumable") return "consumable";
+    if (activeTab === "consumable_class") return "consumable_class";
+    if (activeTab === "asset_class") return "asset_class";
+    if (activeTab === "asset") return "asset";
+    return "asset";
+  })();
+
+  const addButtonLabel =
+    activeTab === "consumable"
+      ? "Add Consumable"
+      : activeTab === "consumable_class"
+        ? "Add Consumable Class"
+        : activeTab === "asset_class"
+          ? "Add Classification"
+          : "Add Category";
 
   return (
     <div className="w-full space-y-6">
@@ -126,6 +156,21 @@ export function CategoriesSection({
           subtitle="Monitors, keyboards & durable items"
           progress={{
             value: totalAssetsCount,
+            max: totalCount || 1,
+          }}
+        />
+
+        <StatCard
+          title="Consumable Classifications"
+          sublabel="GENERAL // CLASS"
+          value={totalConsumableClassCount}
+          icon={Layers}
+          tone="emerald"
+          toneValue={true}
+          badge="General"
+          subtitle="Broad groups like Stationery, Medical"
+          progress={{
+            value: totalConsumableClassCount,
             max: totalCount || 1,
           }}
         />
@@ -183,8 +228,12 @@ export function CategoriesSection({
             {(
               [
                 ["all", `All (${totalCount})`],
-                ["asset_class", `Classes (${totalAssetClassCount})`],
+                ["asset_class", `Asset Class (${totalAssetClassCount})`],
                 ["asset", `Assets (${totalAssetsCount})`],
+                [
+                  "consumable_class",
+                  `Cons. Class (${totalConsumableClassCount})`,
+                ],
                 ["consumable", `Consumables (${totalConsumablesCount})`],
               ] as const
             ).map(([tab, label]) => (
@@ -211,29 +260,23 @@ export function CategoriesSection({
               className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-border bg-bg text-text hover:bg-bg-subtle active:scale-95 transition-colors cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
             >
               <Layers className="h-4 w-4" strokeWidth={2.5} />
-              <span>Add Class</span>
+              <span>Add Asset Class</span>
             </button>
             <button
               type="button"
-              onClick={() =>
-                handleAddCategory(
-                  activeTab === "consumable"
-                    ? "consumable"
-                    : activeTab === "asset_class"
-                      ? "asset_class"
-                      : "asset",
-                )
-              }
+              onClick={() => handleAddCategory("consumable_class")}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border border-border bg-bg text-text hover:bg-bg-subtle active:scale-95 transition-colors cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
+            >
+              <Layers className="h-4 w-4" strokeWidth={2.5} />
+              <span>Add Cons. Class</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAddCategory(addButtonType)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90 active:scale-95 transition-opacity cursor-pointer shadow-xs shrink-0 whitespace-nowrap"
             >
               <Plus className="h-4 w-4" strokeWidth={2.5} />
-              <span>
-                {activeTab === "consumable"
-                  ? "Add Consumable"
-                  : activeTab === "asset_class"
-                    ? "Add Classification"
-                    : "Add Category"}
-              </span>
+              <span>{addButtonLabel}</span>
             </button>
           </div>
         </div>
@@ -277,6 +320,7 @@ export function CategoriesSection({
         type={dialogType}
         initialCategory={editTarget}
         assetClasses={assetClasses}
+        consumableClasses={consumableClasses}
         onClose={() => {
           setDialogOpen(false);
           setEditTarget(null);

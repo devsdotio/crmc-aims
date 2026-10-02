@@ -35,13 +35,18 @@ describeIntegration("custody / stock void (integration)", () => {
       fx.actor
     );
 
+    // Keep due date in the future so status=active list does not treat it as overdue.
+    const dueDate = new Date();
+    dueDate.setUTCDate(dueDate.getUTCDate() + 14);
+    const expectedReturnDate = dueDate.toISOString().slice(0, 10);
+
     const released = await assets.releaseAsset(
       asset.id,
       {
         custodyKind: "borrow",
         departmentId: fx.departmentId,
         borrowerName: "Jane Doe",
-        expectedReturnDate: "2026-10-01",
+        expectedReturnDate,
         notes: "Manual issue for event",
       },
       fx.actor
@@ -61,7 +66,7 @@ describeIntegration("custody / stock void (integration)", () => {
     expect(openLogs[0].assetCode).toBe(asset.assetCode);
     expect(openLogs[0].assetName).toBe("Custody Camera");
     expect(openLogs[0].status).toBe("active");
-    expect(openLogs[0].dueDate).toBe("2026-10-01");
+    expect(openLogs[0].dueDate).toBe(expectedReturnDate);
     expect(openLogs[0].department).toBe(fx.departmentName);
     const logId = openLogs[0].id;
 
@@ -98,7 +103,7 @@ describeIntegration("custody / stock void (integration)", () => {
         custodyKind: "borrow",
         departmentId: fx.departmentId,
         borrowerName: "Wrong Person",
-        expectedReturnDate: "2026-10-01",
+        expectedReturnDate,
       },
       fx.actor
     );

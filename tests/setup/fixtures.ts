@@ -18,6 +18,8 @@ export type TestFixtures = {
   assetCategory: string;
   assetClassification: string;
   consumableCategory: string;
+  /** Settings type=consumable_class parent of consumableCategory. */
+  consumableClassification: string;
   supplierId: string;
   supplierName: string;
 };
@@ -73,6 +75,7 @@ export async function seedCoreFixtures(
     const assetCategory = "Computing";
     const assetClassification = "Computer Equipments";
     const consumableCategory = "Office Supplies";
+    const consumableClassification = "Stationery";
 
     const [assetClassRow] = await tx
       .insert(categories)
@@ -80,6 +83,16 @@ export async function seedCoreFixtures(
         tenantId: actor.tenantId ?? DEFAULT_TENANT_ID,
         name: assetClassification,
         type: "asset_class",
+        createdByUserId: actor.userId,
+      })
+      .returning();
+
+    const [consumableClassRow] = await tx
+      .insert(categories)
+      .values({
+        tenantId: actor.tenantId ?? DEFAULT_TENANT_ID,
+        name: consumableClassification,
+        type: "consumable_class",
         createdByUserId: actor.userId,
       })
       .returning();
@@ -96,6 +109,7 @@ export async function seedCoreFixtures(
         tenantId: actor.tenantId ?? DEFAULT_TENANT_ID,
         name: consumableCategory,
         type: "consumable",
+        parentId: consumableClassRow.id,
         createdByUserId: actor.userId,
       },
     ]);
@@ -125,6 +139,7 @@ export async function seedCoreFixtures(
       assetCategory,
       assetClassification,
       consumableCategory,
+      consumableClassification,
       supplierId: supplier.id,
       supplierName,
     };

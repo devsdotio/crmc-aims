@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import { Search, FilterX, ArrowUpDown } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Search, FilterX, ArrowUpDown, Layers, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ConsumableFilterState } from "@/types/inventory";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
@@ -9,6 +9,8 @@ import {
   CONSUMABLE_CLASSIFICATIONS,
   CONSUMABLE_CLASSIFICATION_LABELS,
 } from "@/lib/consumable-classification";
+import { getCategoryStyle } from "@/constants/categories";
+import { MultiSelectDropdown } from "@/components/ui/multi-select-dropdown";
 
 export interface ConsumableFiltersProps {
   filters: ConsumableFilterState;
@@ -25,19 +27,43 @@ export function ConsumableFilters({
   onResetFilters,
   hideClassificationFilter,
 }: ConsumableFiltersProps) {
-  const { data: allCategories = [] } = useCategoriesQuery();
+  const [wantCategories, setWantCategories] = useState(false);
+  const { data: allCategories = [] } = useCategoriesQuery({
+    enabled:
+      wantCategories ||
+      filters.categoryClasses.length > 0 ||
+      (Boolean(filters.category) && filters.category !== "all"),
+  });
+
+  const consumableClasses = useMemo(
+    () => allCategories.filter((c) => c.type === "consumable_class"),
+    [allCategories]
+  );
+
   const categoryOptions = useMemo(() => {
     const names = allCategories
       .filter((c) => c.type === "consumable")
-      .map((c) => ({ id: c.name, label: c.name }));
+      .map((c) => ({
+        id: c.name,
+        label: c.parentName ? `${c.name} (${c.parentName})` : c.name,
+      }));
     return [{ id: "all", label: "All Categories" }, ...names];
   }, [allCategories]);
 
   const isFiltered =
     Boolean(filters.searchQuery) ||
     (Boolean(filters.category) && filters.category !== "all") ||
+    filters.categoryClasses.length > 0 ||
     (!hideClassificationFilter && filters.classification !== "all") ||
     filters.stockLevel !== "all";
+
+  const toggleCategoryClass = (className: string) => {
+    const exists = filters.categoryClasses.includes(className);
+    const updated = exists
+      ? filters.categoryClasses.filter((c) => c !== className)
+      : [...filters.categoryClasses, className];
+    onFilterChange({ categoryClasses: updated });
+  };
 
   return (
     <div className="flex flex-col gap-3 p-4 md:px-6 bg-bg border-b border-border shrink-0">
@@ -50,7 +76,7 @@ export function ConsumableFilters({
             type="text"
             value={filters.searchQuery}
             onChange={(e) => onFilterChange({ searchQuery: e.target.value })}
-            placeholder="Search consumables by name or item code…"
+            placeholder="Search by name, item code, category, or class…"
             className={cn(
               "w-full h-9 pl-9 pr-3 text-xs bg-bg-subtle border border-border rounded-lg text-text placeholder:text-text-secondary/60",
               "focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
@@ -62,7 +88,7 @@ export function ConsumableFilters({
           {!hideClassificationFilter && (
             <div className="flex items-center gap-1.5">
               <label htmlFor="consumable-classification-filter" className="sr-only">
-                Filter by classification
+                Filter by supply or material
               </label>
               <select
                 id="consumable-classification-filter"
@@ -75,7 +101,7 @@ export function ConsumableFilters({
                 }
                 className="h-9 px-3 text-xs bg-bg-subtle border border-border rounded-lg text-text font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
               >
-                <option value="all">All Classifications</option>
+                <option value="all">All Types</option>
                 {CONSUMABLE_CLASSIFICATIONS.map((id) => (
                   <option key={id} value={id}>
                     {CONSUMABLE_CLASSIFICATION_LABELS[id]}
@@ -85,6 +111,30 @@ export function ConsumableFilters({
             </div>
           )}
 
+          <MultiSelectDropdown
+            label="Class"
+            icon={Layers}
+            options={consumableClasses.map((c) => {
+              const categoryStyle = getCategoryStyle(
+                c.name,
+                c.name,
+                c.colorToken
+              );
+              return {
+                id: c.name,
+                label: c.name,
+                renderDot: () => (
+                  <span
+                    className={cn("h-2.5 w-2.5 rounded-full", categoryStyle.bg)}
+                  />
+                ),
+              };
+            })}
+            selectedIds={filters.categoryClasses}
+            onToggle={(id) => toggleCategoryClass(id)}
+            onOpen={() => setWantCategories(true)}
+          />
+
           <div className="flex items-center gap-1.5">
             <label htmlFor="consumable-category-filter" className="sr-only">
               Filter by category
@@ -93,6 +143,7 @@ export function ConsumableFilters({
               id="consumable-category-filter"
               value={filters.category}
               onChange={(e) => onFilterChange({ category: e.target.value })}
+              onFocus={() => setWantCategories(true)}
               className="h-9 px-3 text-xs bg-bg-subtle border border-border rounded-lg text-text font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent focus:bg-bg transition-colors"
             >
               {categoryOptions.map((cat) => (
@@ -157,6 +208,24 @@ export function ConsumableFilters({
           )}
         </div>
       </div>
+
+      {filters.categoryClasses.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-text-secondary">
+          <Tag className="h-3 w-3 shrink-0" />
+          <span>
+            Filtering by class
+            {filters.categoryClasses.length === 1 ? "" : "es"}:
+          </span>
+          {filters.categoryClasses.map((name) => (
+            <span
+              key={name}
+              className="inline-flex items-center px-2 py-0.5 rounded-md bg-bg-subtle border border-border font-medium text-text"
+            >
+              {name}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

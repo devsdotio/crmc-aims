@@ -15,12 +15,15 @@ export interface AddEditCategoryDialogProps {
   initialCategory?: CategoryItem | null;
   /** Available asset classes when editing/creating a specific asset category. */
   assetClasses?: CategoryItem[];
+  /** Available consumable classes when editing/creating a specific consumable category. */
+  consumableClasses?: CategoryItem[];
   onClose: () => void;
   onSave: (categoryData: Partial<CategoryItem>) => void | Promise<void>;
 }
 
 function typeLabel(type: CategoryType): string {
   if (type === "asset_class") return "Asset Classification";
+  if (type === "consumable_class") return "Consumable Classification";
   if (type === "asset") return "Asset Category";
   return "Consumable Category";
 }
@@ -30,6 +33,7 @@ export function AddEditCategoryDialog({
   type,
   initialCategory,
   assetClasses = [],
+  consumableClasses = [],
   onClose,
   onSave,
 }: AddEditCategoryDialogProps) {
@@ -40,14 +44,15 @@ export function AddEditCategoryDialog({
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  const classOptions = useMemo(
-    () =>
-      assetClasses
-        .filter((c) => c.type === "asset_class")
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [assetClasses],
-  );
+  const needsParent = type === "asset" || type === "consumable";
+
+  const classOptions = useMemo(() => {
+    const source =
+      type === "consumable"
+        ? consumableClasses.filter((c) => c.type === "consumable_class")
+        : assetClasses.filter((c) => c.type === "asset_class");
+    return source.slice().sort((a, b) => a.name.localeCompare(b.name));
+  }, [type, assetClasses, consumableClasses]);
 
   const [prevOpenKey, setPrevOpenKey] = useState({
     isOpen: false,
@@ -94,8 +99,12 @@ export function AddEditCategoryDialog({
       setError("Please enter the category name.");
       return;
     }
-    if (type === "asset" && !parentId) {
-      setError("Please select a general asset classification.");
+    if (needsParent && !parentId) {
+      setError(
+        type === "consumable"
+          ? "Please select a general consumable classification."
+          : "Please select a general asset classification.",
+      );
       return;
     }
 
@@ -106,7 +115,7 @@ export function AddEditCategoryDialog({
         name: name.trim(),
         type,
         colorToken,
-        parentId: type === "asset" ? parentId : null,
+        parentId: needsParent ? parentId : null,
         itemCount: initialCategory ? initialCategory.itemCount : 0,
       });
       onClose();
@@ -130,7 +139,7 @@ export function AddEditCategoryDialog({
         <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent/15 text-accent shrink-0">
-              {type === "asset_class" ? (
+              {type === "asset_class" || type === "consumable_class" ? (
                 <Layers className="h-5 w-5" />
               ) : (
                 <Tag className="h-5 w-5" />
@@ -146,9 +155,11 @@ export function AddEditCategoryDialog({
               <p className="text-xs text-text-secondary mt-0.5">
                 {type === "asset_class"
                   ? "Broad group for specific asset categories (e.g. Computer Equipments)"
-                  : type === "asset"
-                    ? "Specific category under a general classification (e.g. Monitors)"
-                    : "Configure category label & badge palette styling"}
+                  : type === "consumable_class"
+                    ? "Broad group for specific consumable categories (e.g. Stationery)"
+                    : type === "asset"
+                      ? "Specific category under a general classification (e.g. Monitors)"
+                      : "Specific category under a general classification (e.g. Bond Paper)"}
               </p>
             </div>
           </div>
@@ -164,7 +175,7 @@ export function AddEditCategoryDialog({
         </div>
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          {type === "asset" ? (
+          {needsParent ? (
             <div className="space-y-1.5">
               <label
                 htmlFor="cat-parent-select"
@@ -190,7 +201,9 @@ export function AddEditCategoryDialog({
               </select>
               {classOptions.length === 0 ? (
                 <p className="text-[11px] text-text-secondary">
-                  Create an Asset Classification first, then add specific categories under it.
+                  {type === "consumable"
+                    ? "Create a Consumable Classification first, then add specific categories under it."
+                    : "Create an Asset Classification first, then add specific categories under it."}
                 </p>
               ) : null}
             </div>
@@ -201,7 +214,9 @@ export function AddEditCategoryDialog({
               htmlFor="cat-name-input"
               className="block text-xs font-semibold text-text"
             >
-              {type === "asset_class" ? "Classification Name" : "Category Name"}{" "}
+              {type === "asset_class" || type === "consumable_class"
+                ? "Classification Name"
+                : "Category Name"}{" "}
               <span className="text-accent">*</span>
             </label>
             <input
@@ -215,9 +230,11 @@ export function AddEditCategoryDialog({
               placeholder={
                 type === "asset_class"
                   ? "e.g. Computer Equipments, Furniture, Lab Instruments"
-                  : type === "asset"
-                    ? "e.g. Monitors, Keyboards, Desks"
-                    : "e.g. Computing, Medical, Laboratory, Tools"
+                  : type === "consumable_class"
+                    ? "e.g. Stationery, Medical Supplies, Cleaning"
+                    : type === "asset"
+                      ? "e.g. Monitors, Keyboards, Desks"
+                      : "e.g. Bond Paper, Ballpens, Gloves"
               }
               className="w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60 focus:outline-none focus:ring-2 focus:ring-accent"
             />
@@ -302,7 +319,7 @@ export function AddEditCategoryDialog({
             </button>
             <button
               type="submit"
-              disabled={isSaving || (type === "asset" && classOptions.length === 0)}
+              disabled={isSaving || (needsParent && classOptions.length === 0)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-md bg-accent text-accent-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSaving ? (
@@ -314,7 +331,7 @@ export function AddEditCategoryDialog({
                 ? "Saving…"
                 : isEditing
                   ? "Save Changes"
-                  : type === "asset_class"
+                  : type === "asset_class" || type === "consumable_class"
                     ? "Create Classification"
                     : "Create Category"}
             </button>

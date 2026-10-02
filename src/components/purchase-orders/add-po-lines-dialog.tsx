@@ -182,6 +182,12 @@ export function AddPoLinesDialog({
     );
     return match?.parentName?.trim() || "";
   };
+  const resolveConsumableClassForCategory = (categoryName: string) => {
+    const match = consumableCategories.find(
+      (c) => c.name.trim().toLowerCase() === categoryName.trim().toLowerCase()
+    );
+    return match?.parentName?.trim() || "";
+  };
   const defaultConsumableCategory =
     consumableCategories[0]?.name ?? "General Supply";
   const defaultAssetCategory = assetCategories[0]?.name ?? "Equipment";
@@ -414,6 +420,12 @@ export function AddPoLinesDialog({
               item.category.trim() || defaultAssetCategory
             ) ||
             undefined,
+      categoryClass:
+        poType === "consumable"
+          ? resolveConsumableClassForCategory(
+              item.category.trim() || defaultConsumableCategory
+            ) || undefined
+          : undefined,
       unit: item.unit,
       minThreshold: item.minThreshold,
       location: item.location,

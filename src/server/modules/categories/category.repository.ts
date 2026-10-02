@@ -12,7 +12,11 @@ import {
   consumables,
 } from "@/server/db/schema";
 
-export type CategoryType = "asset" | "consumable" | "asset_class";
+export type CategoryType =
+  | "asset"
+  | "consumable"
+  | "asset_class"
+  | "consumable_class";
 
 export type CategoryListRow = {
   id: string;
@@ -101,7 +105,9 @@ export class CategoryRepository {
     if (resolvedTenantId) {
       childCountConditions.push(eq(categories.tenantId, resolvedTenantId));
     }
-    childCountConditions.push(eq(categories.type, "asset"));
+    childCountConditions.push(
+      sql`${categories.type} in ('asset', 'consumable')`
+    );
     const childCounts = await db
       .select({
         parentId: categories.parentId,
@@ -126,6 +132,25 @@ export class CategoryRepository {
           .groupBy(sql`lower(${consumables.category})`)
       : consumableCountsBase.groupBy(sql`lower(${consumables.category})`));
 
+    const consumableClassConditions = [];
+    if (resolvedTenantId) {
+      consumableClassConditions.push(eq(consumables.tenantId, resolvedTenantId));
+    }
+    const consumableClassCountsBase = db
+      .select({
+        classLower: sql<string>`lower(${consumables.categoryClass})`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(consumables);
+
+    const consumableClassCounts = await (consumableClassConditions.length > 0
+      ? consumableClassCountsBase
+          .where(and(...consumableClassConditions))
+          .groupBy(sql`lower(${consumables.categoryClass})`)
+      : consumableClassCountsBase.groupBy(
+          sql`lower(${consumables.categoryClass})`
+        ));
+
     const assetCountMap = new Map(assetCounts.map((r) => [r.categoryLower, r.count]));
     const assetClassCountMap = new Map(
       assetClassCounts.map((r) => [r.classLower, r.count])
@@ -137,6 +162,9 @@ export class CategoryRepository {
     );
     const consumableCountMap = new Map(
       consumableCounts.map((r) => [r.categoryLower, r.count])
+    );
+    const consumableClassCountMap = new Map(
+      consumableClassCounts.map((r) => [r.classLower, r.count])
     );
 
     return rows.map((c): CategoryListRow => {
@@ -150,6 +178,10 @@ export class CategoryRepository {
         // Count child specific categories + assets stamped with this class name
         itemCount =
           (childCountMap.get(c.id) ?? 0) + (assetClassCountMap.get(lowerName) ?? 0);
+      } else if (c.type === "consumable_class") {
+        itemCount =
+          (childCountMap.get(c.id) ?? 0) +
+          (consumableClassCountMap.get(lowerName) ?? 0);
       }
 
       return {
@@ -224,6 +256,28 @@ export class CategoryRepository {
     return parent.name.trim();
   }
 
+  /**
+   * Resolve the general classification label for a specific consumable category name.
+   * Returns "" when the category has no parent consumable class.
+   * Distinct from supply|material (`consumables.classification`).
+   */
+  async resolveConsumableCategoryClassForCategoryName(
+    categoryName: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<string> {
+    const found = await this.findByTypeAndName(
+      "consumable",
+      categoryName,
+      session,
+      tenantId
+    );
+    if (!found?.parentId) return "";
+    const parent = await this.findById(found.parentId, session, tenantId);
+    if (!parent || parent.type !== "consumable_class") return "";
+    return parent.name.trim();
+  }
+
   async countUsages(
     name: string,
     type: CategoryType,
@@ -257,6 +311,20 @@ export class CategoryRepository {
       // Also block delete while specific categories still parent to this class
       // (caller should pass id for child check — countUsagesById preferred).
       return assetRes?.count ?? 0;
+    }
+
+    if (type === "consumable_class") {
+      const classConditions = [
+        sql`lower(${consumables.categoryClass}) = ${lower}`,
+      ];
+      if (resolvedTenantId) {
+        classConditions.push(eq(consumables.tenantId, resolvedTenantId));
+      }
+      const [classRes] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(consumables)
+        .where(and(...classConditions));
+      return classRes?.count ?? 0;
     }
 
     const conditions = [sql`lower(${consumables.category}) = ${lower}`];
@@ -414,6 +482,24 @@ export class CategoryRepository {
             .set({ category: newName, updatedAt: now })
             .where(and(...consumableUpdateConditions));
         }
+
+        if (
+          existing.type === "consumable_class" ||
+          payload.type === "consumable_class"
+        ) {
+          const classUpdateConditions = [
+            sql`lower(${consumables.categoryClass}) = ${oldLower}`,
+          ];
+          if (resolvedTenantId) {
+            classUpdateConditions.push(
+              eq(consumables.tenantId, resolvedTenantId)
+            );
+          }
+          await tx
+            .update(consumables)
+            .set({ categoryClass: newName, updatedAt: now })
+            .where(and(...classUpdateConditions));
+        }
       }
 
       // When an asset category's parent class changes, restamp assets under that category
@@ -451,6 +537,34 @@ export class CategoryRepository {
           .where(and(...modelRestamp));
       }
 
+      // When a consumable category's parent class changes, restamp categoryClass
+      if (
+        (existing.type === "consumable" || payload.type === "consumable") &&
+        payload.parentId !== undefined
+      ) {
+        let className = "";
+        if (payload.parentId) {
+          const parent = await this.findById(
+            payload.parentId,
+            tx,
+            resolvedTenantId
+          );
+          if (parent?.type === "consumable_class") {
+            className = parent.name.trim();
+          }
+        }
+        const restampConditions = [
+          sql`lower(${consumables.category}) = ${newName.toLowerCase()}`,
+        ];
+        if (resolvedTenantId) {
+          restampConditions.push(eq(consumables.tenantId, resolvedTenantId));
+        }
+        await tx
+          .update(consumables)
+          .set({ categoryClass: className, updatedAt: now })
+          .where(and(...restampConditions));
+      }
+
       // Compute item count after update
       const lower = newName.toLowerCase();
       let count = 0;
@@ -475,6 +589,23 @@ export class CategoryRepository {
         const [classRes] = await tx
           .select({ count: sql<number>`count(*)::int` })
           .from(assets)
+          .where(and(...classConditions));
+        count = childCount + (classRes?.count ?? 0);
+      } else if (updated.type === "consumable_class") {
+        const childCount = await this.countChildCategories(
+          updated.id,
+          tx,
+          resolvedTenantId
+        );
+        const classConditions = [
+          sql`lower(${consumables.categoryClass}) = ${lower}`,
+        ];
+        if (resolvedTenantId) {
+          classConditions.push(eq(consumables.tenantId, resolvedTenantId));
+        }
+        const [classRes] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(consumables)
           .where(and(...classConditions));
         count = childCount + (classRes?.count ?? 0);
       } else {
