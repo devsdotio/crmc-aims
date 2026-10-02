@@ -105,7 +105,14 @@ function AddEditConsumableDialogForm({
   );
 
   const categoryOptions = useMemo(
-    () => consumableCategories.map((c) => ({ value: c.name, label: c.name })),
+    () =>
+      consumableCategories.map((c) => ({
+        value: c.name,
+        label:
+          "parentName" in c && c.parentName
+            ? `${c.name} (${c.parentName})`
+            : c.name,
+      })),
     [consumableCategories]
   );
 
@@ -123,6 +130,16 @@ function AddEditConsumableDialogForm({
   const [category, setCategory] = useState(
     () => initialItem?.category ?? ""
   );
+  const resolvedCategoryClass = useMemo(() => {
+    const match = consumableCategories.find(
+      (c) => c.name.trim().toLowerCase() === category.trim().toLowerCase()
+    );
+    const parentName =
+      match && "parentName" in match
+        ? (match as { parentName?: string | null }).parentName
+        : null;
+    return parentName?.trim() || initialItem?.categoryClass || "";
+  }, [consumableCategories, category, initialItem?.categoryClass]);
   const [classification, setClassification] = useState<ConsumableClassification>(
     () => initialItem?.classification ?? defaultClassification ?? DEFAULT_CONSUMABLE_CLASSIFICATION
   );
@@ -444,6 +461,9 @@ function AddEditConsumableDialogForm({
                 />
                 <p id="category-hint" className="text-[11px] text-text-secondary">
                   Managed under Settings → Categories
+                  {resolvedCategoryClass
+                    ? ` · Class: ${resolvedCategoryClass}`
+                    : ""}
                 </p>
               </div>
 

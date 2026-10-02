@@ -134,6 +134,8 @@ export type DraftItemSpecs = {
    * Assets: general classification name (Settings asset_class), or empty.
    */
   classification?: string | null;
+  /** Consumables: general category class (Settings consumable_class). */
+  categoryClass?: string | null;
   unit?: string | null;
   minThreshold?: number | null;
   location?: string | null;
@@ -147,6 +149,10 @@ function parseDraftItem(raw: unknown): DraftItemSpecs | null {
   if (typeof d.classification === "string" && d.classification.trim()) {
     classification = d.classification.trim();
   }
+  let categoryClass: string | null = null;
+  if (typeof d.categoryClass === "string" && d.categoryClass.trim()) {
+    categoryClass = d.categoryClass.trim();
+  }
   const assignmentType =
     d.assignmentType === "borrowable" || d.assignmentType === "assignable"
       ? d.assignmentType
@@ -154,6 +160,7 @@ function parseDraftItem(raw: unknown): DraftItemSpecs | null {
   return {
     category: typeof d.category === "string" ? d.category : null,
     classification,
+    categoryClass,
     unit: typeof d.unit === "string" ? d.unit : null,
     minThreshold:
       typeof d.minThreshold === "number" && Number.isFinite(d.minThreshold)
@@ -348,6 +355,7 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     projectId: row.projectId ?? null,
     projectName: row.projectName ?? null,
     classification: meta.draftItem?.classification ?? null,
+    categoryClass: meta.draftItem?.categoryClass ?? null,
     unit: meta.draftItem?.unit?.trim()
       ? meta.draftItem.unit.trim()
       : row.itemType === "asset"
@@ -409,7 +417,7 @@ async function withConsumableClassifications(
           (d) =>
             d.itemType === "consumable" &&
             Boolean(d.consumableId) &&
-            (!d.classification || !d.unit?.trim())
+            (!d.classification || !d.unit?.trim() || !d.categoryClass?.trim())
         )
         .map((d) => d.consumableId as string)
     ),
@@ -426,6 +434,7 @@ async function withConsumableClassifications(
     .select({
       id: consumables.id,
       classification: consumables.classification,
+      categoryClass: consumables.categoryClass,
       unit: consumables.unit,
     })
     .from(consumables)
@@ -433,7 +442,11 @@ async function withConsumableClassifications(
 
   const byId = new Map<
     string,
-    { classification: "supply" | "material" | null; unit: string | null }
+    {
+      classification: "supply" | "material" | null;
+      categoryClass: string | null;
+      unit: string | null;
+    }
   >();
   for (const row of linked) {
     byId.set(row.id, {
@@ -441,6 +454,7 @@ async function withConsumableClassifications(
         row.classification === "material" || row.classification === "supply"
           ? row.classification
           : null,
+      categoryClass: row.categoryClass?.trim() || null,
       unit: row.unit?.trim() || null,
     });
   }
@@ -454,6 +468,9 @@ async function withConsumableClassifications(
     return {
       ...dto,
       classification: dto.classification ?? linkedRow.classification,
+      categoryClass: dto.categoryClass?.trim()
+        ? dto.categoryClass
+        : linkedRow.categoryClass,
       unit: dto.unit?.trim() || linkedRow.unit,
     };
   });
@@ -604,6 +621,21 @@ export class PurchaseLotService {
     if (trimmed) return trimmed;
     if (!category?.trim()) return "";
     return this.taxonomy.resolveAssetClassificationForCategoryName(
+      category,
+      undefined,
+      tenantId ?? undefined
+    );
+  }
+
+  private async resolveConsumableLineCategoryClass(
+    category: string | null | undefined,
+    explicit: string | null | undefined,
+    tenantId?: string | null
+  ): Promise<string> {
+    const trimmed = (explicit ?? "").trim();
+    if (trimmed) return trimmed;
+    if (!category?.trim()) return "";
+    return this.taxonomy.resolveConsumableCategoryClassForCategoryName(
       category,
       undefined,
       tenantId ?? undefined
@@ -1068,6 +1100,12 @@ export class PurchaseLotService {
             itemCode = generateOperationalCode("ITM");
             const itemClassification =
               item.classification || (targetProjectId ? "material" : "supply");
+            const itemCategoryClass =
+              await this.resolveConsumableLineCategoryClass(
+                item.category || "General Supply",
+                item.categoryClass,
+                actor.tenantId
+              );
             // Project deliveries dual-credit (restock then issue) so start at 0;
             // warehouse deliveries land directly on-hand.
             const initialQty = !targetProjectId ? item.quantity : 0;
@@ -1082,6 +1120,7 @@ export class PurchaseLotService {
                 name: itemName,
                 category: item.category || "General Supply",
                 classification: itemClassification,
+                categoryClass: itemCategoryClass,
                 unit: item.unit || "pcs",
                 currentQty: initialQty,
                 minThreshold: item.minThreshold ?? 5,
@@ -1185,10 +1224,17 @@ export class PurchaseLotService {
             // Defer catalog insert until delivery — lot holds draft specs only
             itemCode = generateOperationalCode("ITM");
             consumableId = null;
+            const deferredCategoryClass =
+              await this.resolveConsumableLineCategoryClass(
+                item.category || "General Supply",
+                item.categoryClass,
+                actor.tenantId
+              );
             draftItem = {
               category: item.category || "General Supply",
               classification:
                 item.classification || (targetProjectId ? "material" : "supply"),
+              categoryClass: deferredCategoryClass || null,
               unit: item.unit || "pcs",
               minThreshold: item.minThreshold ?? 5,
               location: item.location || "Main Property Storage",
@@ -1567,6 +1613,12 @@ export class PurchaseLotService {
             const itemClassification =
               draft?.classification ||
               (lot.projectId ? "material" : "supply");
+            const itemCategoryClass =
+              await this.resolveConsumableLineCategoryClass(
+                draft?.category || "General Supply",
+                draft?.categoryClass,
+                lot.tenantId ?? actor.tenantId
+              );
             const [newConsumable] = await db
               .insert(consumables)
               .values({
@@ -1575,6 +1627,7 @@ export class PurchaseLotService {
                 name: lot.itemName,
                 category: draft?.category || "General Supply",
                 classification: itemClassification,
+                categoryClass: itemCategoryClass,
                 unit: draft?.unit || "pcs",
                 currentQty: 0,
                 minThreshold: draft?.minThreshold ?? 5,
@@ -2502,10 +2555,17 @@ export class PurchaseLotService {
           } else {
             itemCode = generateOperationalCode("ITM");
             consumableId = null;
+            const addLineCategoryClass =
+              await this.resolveConsumableLineCategoryClass(
+                item.category || "General Supply",
+                item.categoryClass,
+                actor.tenantId
+              );
             draftItem = {
               category: item.category || "General Supply",
               classification:
                 item.classification || (targetProjectId ? "material" : "supply"),
+              categoryClass: addLineCategoryClass || null,
               unit: item.unit || "pcs",
               minThreshold: item.minThreshold ?? 5,
               location: item.location || "Main Property Storage",
