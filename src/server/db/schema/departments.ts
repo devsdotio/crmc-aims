@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -6,6 +7,7 @@ import {
   timestamp,
   uuid,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import { tenants } from "./tenants";
@@ -30,6 +32,10 @@ export const departments = pgTable(
   },
   (table) => [
     unique("departments_tenant_code_idx").on(table.tenantId, table.code),
+    uniqueIndex("departments_tenant_name_lower_uidx").on(
+      table.tenantId,
+      sql`lower(${table.name})`
+    ),
     index("departments_is_sandbox_idx").on(table.isSandbox),
   ]
 );

@@ -351,6 +351,13 @@
       "when": 1786384000000,
       "tag": "0049_categories_tenant_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1786385000000,
+      "tag": "0050_tenant_scoped_uniques",
+      "breakpoints": true
     }
   ]
 }

@@ -128,6 +128,10 @@ export const borrowRequests = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("borrow_requests_tenant_request_code_uidx").on(
+      table.tenantId,
+      table.requestCode
+    ),
     index("requests_status_idx").on(table.status),
     index("requests_department_idx").on(table.department),
     index("requests_department_id_idx").on(table.departmentId),

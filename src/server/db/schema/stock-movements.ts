@@ -75,6 +75,10 @@ export const stockMovements = pgTable(
       .defaultNow(),
   },
   (table) => [
+    unique("stock_movements_tenant_movement_code_uidx").on(
+      table.tenantId,
+      table.movementCode
+    ),
     index("stock_movements_consumable_id_idx").on(table.consumableId),
     index("stock_movements_created_at_idx").on(table.createdAt),
     index("stock_movements_request_id_idx").on(table.requestId),
