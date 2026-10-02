@@ -233,7 +233,7 @@ function buildLineRows(data: DisbursementSlipData): string {
       <td colspan="6" class="sign-cell">
         <div class="signatories-row">
           <div class="sign-block">
-            <span class="sign-label">Received by:</span>
+            <span class="sign-label">Requested by:</span>
             <input class="sign-space" data-slip-field="requestedBy" value="${escapeHtml(data.requestedBy)}" aria-label="Payee" autocomplete="off" />
             <span class="sign-title">Payee</span>
           </div>
