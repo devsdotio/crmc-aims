@@ -1810,7 +1810,7 @@ export class PurchaseLotService {
         } else if (lot.itemType === "asset") {
           // Activate / mint physical units so /assets reflects received quantity
           const unitsToEnsure = receivedQty;
-          let primaryAssetId = lot.assetId;
+          const primaryAssetId = lot.assetId;
           const draftCategory = draft?.category || "Equipment";
           const draftLocation =
             draft?.location || "Property Custodian Depot";
