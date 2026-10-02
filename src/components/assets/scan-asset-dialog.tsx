@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, QrCode, X } from "lucide-react";
+import { Loader2, QrCode } from "lucide-react";
+import { AssetDialogShell } from "./asset-dialog-shell";
 import { cn } from "@/lib/utils";
 import {
   useResolveScanMutation,
@@ -186,37 +187,21 @@ export function ScanAssetDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={() => !busy && onClose()}
-        aria-hidden="true"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="scan-asset-title"
-        className="relative z-10 w-full max-w-md rounded-xl bg-bg border border-border shadow-xl overflow-hidden"
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <QrCode className="h-4 w-4 text-accent" />
-            <h2 id="scan-asset-title" className="text-sm font-bold text-text">
-              Scan asset code
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="p-1 rounded-md text-text-secondary hover:text-text hover:bg-bg-subtle"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
+    <AssetDialogShell
+      title="Scan asset code"
+      icon={<QrCode className="h-5 w-5" />}
+      onClose={onClose}
+      busy={busy}
+      initialFocusSelector="#scan-code"
+      alert={
+        error ? (
+          <p role="alert" className="text-xs font-semibold text-status-outofservice-text">
+            {error}
+          </p>
+        ) : null
+      }
+    >
+      <div className="space-y-4">
           <form onSubmit={handleResolve} className="space-y-2">
             <label htmlFor="scan-code" className="block text-xs font-bold text-text">
               QR payload or asset code
@@ -241,10 +226,6 @@ export function ScanAssetDialog({
               </button>
             </div>
           </form>
-
-          {error && (
-            <p className="text-xs font-semibold text-status-outofservice-text">{error}</p>
-          )}
 
           {resolved && (
             <div className="rounded-lg border border-border bg-bg-subtle p-3 space-y-3">
@@ -364,8 +345,7 @@ export function ScanAssetDialog({
               )}
             </div>
           )}
-        </div>
       </div>
-    </div>
+    </AssetDialogShell>
   );
 }

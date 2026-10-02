@@ -123,7 +123,6 @@ export function SearchableSelect({
       : "";
     setQuery(label);
     setOpen(false);
-    focusedRef.current = false;
   };
 
   const commitOnBlur = () => {
@@ -154,6 +153,7 @@ export function SearchableSelect({
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (disabled) return;
     if (!open && (e.key === "ArrowDown" || e.key === "Enter")) {
+      e.preventDefault();
       setOpen(true);
       return;
     }
@@ -168,9 +168,9 @@ export function SearchableSelect({
       e.preventDefault();
       setHighlight((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
+      e.preventDefault();
       const row = rows[highlight];
       if (!row) return;
-      e.preventDefault();
       if (row.kind === "clear") pick("");
       else if (!row.option.disabled) pick(row.option.value);
     } else if (e.key === "Escape") {
@@ -181,6 +181,9 @@ export function SearchableSelect({
     }
   };
 
+  const activeOptionId =
+    open && rows.length > 0 ? `${listId}-opt-${highlight}` : undefined;
+
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <input
@@ -189,6 +192,7 @@ export function SearchableSelect({
         role="combobox"
         aria-expanded={open}
         aria-controls={listId}
+        aria-activedescendant={activeOptionId}
         aria-autocomplete="list"
         aria-required={ariaRequired}
         aria-invalid={ariaInvalid}
@@ -208,7 +212,7 @@ export function SearchableSelect({
         onBlur={commitOnBlur}
         onKeyDown={onKeyDown}
         className={cn(
-          "w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-50",
+          "w-full h-9 px-3 text-xs bg-bg border border-border rounded-lg text-text font-medium focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20 disabled:opacity-50",
           inputClassName
         )}
       />
@@ -232,6 +236,7 @@ export function SearchableSelect({
               if (row.kind === "clear") {
                 return (
                   <li
+                    id={`${listId}-opt-${index}`}
                     key="__clear"
                     role="option"
                     aria-selected={value === "" && active}
@@ -239,12 +244,14 @@ export function SearchableSelect({
                     <button
                       type="button"
                       onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => pick("")}
+                      onClick={() => {
+                        pick("");
+                      }}
                       onMouseEnter={() => setHighlight(index)}
                       className={cn(
                         "w-full px-3 py-2 text-left text-xs cursor-pointer",
                         active
-                          ? "bg-accent/15 text-text font-semibold"
+                          ? "bg-primary/10 text-text font-semibold"
                           : "text-text-secondary hover:bg-bg-subtle"
                       )}
                     >
@@ -257,6 +264,7 @@ export function SearchableSelect({
               const { option } = row;
               return (
                 <li
+                  id={`${listId}-opt-${index}`}
                   key={option.value}
                   role="option"
                   aria-selected={option.value === value}
@@ -273,7 +281,7 @@ export function SearchableSelect({
                     className={cn(
                       "w-full px-3 py-2 text-left text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed",
                       active
-                        ? "bg-accent/15 text-text font-semibold"
+                        ? "bg-primary/10 text-text font-semibold"
                         : "text-text hover:bg-bg-subtle"
                     )}
                   >

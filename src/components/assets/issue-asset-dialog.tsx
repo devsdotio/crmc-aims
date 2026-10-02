@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { PackageMinus, X } from "lucide-react";
+import { PackageMinus } from "lucide-react";
 import type { Asset } from "@/types/assets";
 import { useReleaseAssetMutation } from "@/features/assets/client/use-assets";
 import { useDepartmentsQuery } from "@/features/departments/client";
 import { useProjectsQuery } from "@/features/projects/client";
 import { useUsersQuery } from "@/features/users/client";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { AssetDialogShell } from "./asset-dialog-shell";
 
 export interface IssueAssetDialogProps {
   asset: Asset | null;
@@ -159,33 +160,57 @@ export function IssueAssetDialog({
     }
   };
 
+  const pending = releaseMutation.isPending;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => !releaseMutation.isPending && onClose()}
-      />
-      <form
-        onSubmit={(e) => void handleSubmit(e)}
-        className="relative z-10 w-full max-w-md rounded-xl border border-border bg-bg shadow-xl"
-      >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div>
-            <h2 className="text-sm font-bold text-text">Issue asset</h2>
-            <p className="text-xs text-text-secondary mt-0.5 font-mono">
-              {asset.assetCode} · {custodyKind === "borrow" ? "Borrow" : "Assign"}
-            </p>
-          </div>
+    <AssetDialogShell
+      title="Issue asset"
+      subtitle={
+        <span className="font-mono">
+          {asset.assetCode} · {custodyKind === "borrow" ? "Borrow" : "Assign"}
+        </span>
+      }
+      icon={<PackageMinus className="h-5 w-5" />}
+      onClose={onClose}
+      busy={pending}
+      initialFocusSelector={
+        destinationKind === "project" ? "#issue-project" : "#issue-department"
+      }
+      formProps={{ onSubmit: (e) => void handleSubmit(e) }}
+      alert={
+        error ? (
+          <p role="alert" className="text-xs font-semibold text-destructive">
+            {error}
+          </p>
+        ) : null
+      }
+      footer={
+        <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded hover:bg-bg-subtle text-text-secondary"
+            disabled={pending}
+            className="min-h-11 rounded-lg border border-border px-4 text-xs font-semibold"
           >
-            <X className="h-4 w-4" />
+            Cancel
+          </button>
+          <button
+            type="submit"
+            hidden={asset.assignmentType === "fixed"}
+            disabled={
+              pending ||
+              asset.status !== "active" ||
+              Boolean(asset.currentHolder)
+            }
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg bg-primary px-4 text-xs font-bold text-primary-foreground disabled:opacity-50"
+          >
+            <PackageMinus className="h-3.5 w-3.5" />
+            {pending ? "Issuing…" : "Confirm issue"}
           </button>
         </div>
-
-        <div className="p-5 space-y-4">
+      }
+    >
+      <div className="space-y-4">
           {asset.assignmentType === "fixed" ? (
             <p className="text-xs text-text-secondary">
               Fixed assets such as buildings, gyms, and warehouses stay on site.
@@ -335,35 +360,9 @@ export function IssueAssetDialog({
             />
           </label>
 
-          {error && <p className="text-xs text-destructive">{error}</p>}
           </>
           ) : null}
-        </div>
-
-        <div className="px-5 py-4 border-t border-border flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={releaseMutation.isPending}
-            className="px-4 py-2 text-xs font-semibold rounded-lg border border-border"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            hidden={asset.assignmentType === "fixed"}
-            disabled={
-              releaseMutation.isPending ||
-              asset.status !== "active" ||
-              Boolean(asset.currentHolder)
-            }
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
-          >
-            <PackageMinus className="h-3.5 w-3.5" />
-            {releaseMutation.isPending ? "Issuing…" : "Confirm issue"}
-          </button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </AssetDialogShell>
   );
 }

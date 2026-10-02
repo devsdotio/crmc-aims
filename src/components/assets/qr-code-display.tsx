@@ -107,7 +107,7 @@ export function QRCodeDisplay({
           "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer",
           downloaded
             ? "bg-status-active-bg text-white"
-            : "bg-primary text-primary-foreground hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            : "bg-primary text-primary-foreground hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         )}
       >
         {downloaded ? (
