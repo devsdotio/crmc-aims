@@ -488,14 +488,14 @@ export function DepartmentInventoryView() {
     return (
       <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle gap-3">
         <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs">
-          <h1 className="text-xl font-bold tracking-tight text-text">Inventory</h1>
+          <h1 className="text-xl font-bold tracking-tight text-text">Assets</h1>
           <p className="text-xs text-text-secondary mt-0.5">
             Assets currently held by your department (view only).
           </p>
         </div>
         <div className="rounded-lg border border-status-repair-bg/40 bg-status-repair-bg/10 px-4 py-3 text-xs text-status-repair-text">
           This login is not linked to a department yet. Ask Property Custodian
-          to assign a department before viewing department inventory.
+          to assign a department before viewing department assets.
         </div>
       </div>
     );
@@ -506,9 +506,9 @@ export function DepartmentInventoryView() {
       <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-text">Inventory</h1>
+            <h1 className="text-xl font-bold tracking-tight text-text">Assets</h1>
             <p className="text-xs text-text-secondary mt-0.5 max-w-xl leading-relaxed">
-              Equipment currently held by{" "}
+              Assets currently held by{" "}
               <span className="font-semibold text-text">{deptLabel}</span>.
               View only — return or reassign through Property Custodian. Project
               holds are not listed here.

@@ -51,42 +51,42 @@ function DashStatCard({
 }: StatCardProps) {
   const toneStyles = {
     default: {
-      card: "bg-white hover:bg-white border-border hover:border-text-secondary/40 shadow-xs",
+      card: "bg-card border-border hover:border-text-secondary/40 shadow-xs",
       icon: "bg-slate-100 text-slate-700 border border-slate-200",
       value: "text-text font-bold",
       badge: "",
       badgeText: "",
     },
     blue: {
-      card: "bg-white hover:bg-white border-blue-400/90 hover:border-blue-500 shadow-xs",
+      card: "bg-card border-blue-400/90 hover:border-blue-500 shadow-xs",
       icon: "bg-blue-600 text-white shadow-2xs",
       value: "text-text font-bold",
       badge: "text-blue-700 bg-blue-50 border-blue-200 shadow-2xs",
       badgeText: "Active",
     },
     amber: {
-      card: "bg-white hover:bg-white border-amber-400/90 hover:border-amber-500 shadow-xs",
+      card: "bg-card border-amber-400/90 hover:border-amber-500 shadow-xs",
       icon: "bg-amber-500 text-white shadow-2xs",
       value: "text-text font-bold",
       badge: "text-amber-800 bg-amber-50 border-amber-200 shadow-2xs",
       badgeText: "Pending",
     },
     danger: {
-      card: "bg-white hover:bg-white border-rose-400/90 hover:border-rose-500 shadow-xs",
+      card: "bg-card border-rose-400/90 hover:border-rose-500 shadow-xs",
       icon: "bg-rose-600 text-white shadow-2xs",
       value: "text-text font-bold",
       badge: "text-rose-800 bg-rose-50 border-rose-200 shadow-2xs",
       badgeText: "Overdue",
     },
     purple: {
-      card: "bg-white hover:bg-white border-purple-400/90 hover:border-purple-500 shadow-xs",
+      card: "bg-card border-purple-400/90 hover:border-purple-500 shadow-xs",
       icon: "bg-purple-600 text-white shadow-2xs",
       value: "text-text font-bold",
       badge: "text-purple-800 bg-purple-50 border-purple-200 shadow-2xs",
       badgeText: "Total",
     },
     success: {
-      card: "bg-white hover:bg-white border-emerald-400/90 hover:border-emerald-500 shadow-xs",
+      card: "bg-card border-emerald-400/90 hover:border-emerald-500 shadow-xs",
       icon: "bg-emerald-600 text-white shadow-2xs",
       value: "text-text font-bold",
       badge: "text-emerald-800 bg-emerald-50 border-emerald-200 shadow-2xs",
@@ -394,7 +394,7 @@ export function BorrowerDashboard() {
 
   const statCards: StatCardProps[] = [
     {
-      label: "On Hand",
+      label: "Equipment on hand",
       value: onHandCount,
       subtext: onHandCount ? "Released to your department" : "No equipment in custody",
       icon: PackageCheck,
@@ -404,7 +404,7 @@ export function BorrowerDashboard() {
     {
       label: "Overdue",
       value: overdueCount,
-      subtext: overdueCount ? "Past due date — return immediately" : "All on-hand items on time",
+      subtext: overdueCount ? "Past due date — return immediately" : "All equipment on time",
       icon: AlertTriangle,
       tone: "danger",
       isLoading: statsLoading || custodyLoading,
@@ -428,7 +428,7 @@ export function BorrowerDashboard() {
   ];
 
   return (
-    <div className="h-full flex flex-col min-h-0 gap-3 bg-bg-subtle max-w-full" data-theme="light">
+    <div className="h-full flex flex-col min-h-0 gap-3 bg-bg-subtle max-w-full">
       <div className="rounded-lg border border-border bg-card p-6 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
         <div className="h-12 w-12 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
           <TrendingUp className="h-6 w-6 text-accent" aria-hidden />
@@ -443,7 +443,7 @@ export function BorrowerDashboard() {
               <span className="inline-block w-12 h-3.5 bg-border animate-pulse rounded align-middle" />
             ) : (
               <span className="font-semibold text-text">
-                {onHandCount} item{onHandCount !== 1 ? "s" : ""}
+                {onHandCount} {onHandCount === 1 ? "unit" : "units"} of equipment
               </span>
             )}{" "}
             on hand
@@ -459,21 +459,47 @@ export function BorrowerDashboard() {
             .
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => openWizard(null, "borrow")}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+          >
+            Borrow
+          </button>
+          <button
+            type="button"
+            onClick={() => openWizard(null, "assign")}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+          >
+            Assign
+          </button>
+          <button
+            type="button"
+            onClick={() => openWizard(null, "requisition")}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+          >
+            Request supplies
+          </button>
           <Link
             href="/borrower-db/inventory"
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
           >
             <Package className="h-4 w-4" aria-hidden />
-            My Inventory
+            Assets
+          </Link>
+          <Link
+            href="/borrower-db/supplies"
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
+          >
+            Issued supplies
           </Link>
           <button
             type="button"
             onClick={() => openWizard(null)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+            className="inline-flex items-center px-2 py-2 text-xs font-semibold text-text-secondary hover:text-text underline-offset-2 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
           >
-            <Package className="h-4 w-4" aria-hidden />
-            Multi-type Request
+            Multi-type request
           </button>
         </div>
       </div>
@@ -533,7 +559,7 @@ export function BorrowerDashboard() {
                   </span>
                   <p className="text-sm font-bold text-text">All caught up</p>
                   <p className="text-xs text-text-secondary mt-1 max-w-xs leading-relaxed">
-                    None of your on-hand items are past their due date.
+                    None of your equipment is past its due date.
                   </p>
                 </div>
               ) : (
@@ -550,13 +576,13 @@ export function BorrowerDashboard() {
             <div className="rounded-lg border border-border bg-card overflow-hidden h-full flex flex-col min-h-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
                 <h2 id="on-hand-heading" className="text-sm font-bold text-text">
-                  On Hand
+                  Equipment on hand
                 </h2>
                 <Link
                   href="/borrower-db/inventory"
                   className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1 shrink-0"
                 >
-                  View inventory <ArrowRight className="h-3.5 w-3.5" />
+                  View assets <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
               {custodyLoading ? (

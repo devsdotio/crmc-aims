@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMeQuery } from "@/features/users/client";
+import { useBorrowerPortal } from "@/components/borrower-db/context";
+import type { BrowseConsumableItem } from "@/components/borrower-db/types";
 import {
   useStockMovementsQuery,
   type StockMovement,
@@ -41,10 +43,33 @@ function IssueCardSkeleton() {
   );
 }
 
-function IssuedItemCard({ row }: { row: StockMovement }) {
+function IssuedItemCard({
+  row,
+  classification,
+}: {
+  row: StockMovement;
+  classification: ConsumableClassification;
+}) {
+  const { openWizard } = useBorrowerPortal();
   const qtyLabel = `${row.direction === "out" ? "−" : "+"}${row.qty}${
     row.unit ? ` ${row.unit}` : ""
   }`;
+  const canRequestAgain = !row.voided && !row.isReversal && Boolean(row.consumableId);
+
+  const requestAgain = () => {
+    const item: BrowseConsumableItem = {
+      type: "consumable",
+      id: row.consumableId,
+      name: row.itemName ?? "Consumable",
+      category: classification === "material" ? "Material" : "Supply",
+      status: "available",
+      itemCode: row.itemCode ?? "",
+      unit: row.unit ?? "unit",
+      currentQty: 1,
+      location: "",
+    };
+    openWizard([item], "requisition");
+  };
 
   return (
     <article className="rounded-xl border border-border bg-bg p-4 h-full flex flex-col gap-3 hover:border-primary/30 transition-colors">
@@ -53,11 +78,11 @@ function IssuedItemCard({ row }: { row: StockMovement }) {
           <Boxes className="h-4 w-4" strokeWidth={2.2} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-xs font-bold text-text tracking-tight">
-            {row.itemCode ?? "—"}
-          </p>
-          <p className="text-sm font-semibold text-text truncate mt-0.5">
+          <p className="text-sm font-semibold text-text truncate">
             {row.itemName ?? "Consumable"}
+          </p>
+          <p className="font-mono text-xs text-text-secondary tracking-tight mt-0.5">
+            {row.itemCode ?? "—"}
           </p>
         </div>
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/25 shrink-0">
@@ -86,6 +111,15 @@ function IssuedItemCard({ row }: { row: StockMovement }) {
           <p className="truncate">By {row.actorName}</p>
         ) : null}
       </div>
+      {canRequestAgain ? (
+        <button
+          type="button"
+          onClick={requestAgain}
+          className="self-start text-xs font-semibold text-accent hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+        >
+          Request again
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -96,10 +130,10 @@ export function DepartmentIssuedConsumablesView({
   classification: ConsumableClassification;
 }) {
   const isSupply = classification === "supply";
-  const title = isSupply ? "Supplies" : "Materials";
+  const title = isSupply ? "Issued Supplies" : "Issued Materials";
   const subtitle = isSupply
-    ? "Supplies issued to your department (view only)."
-    : "Materials issued to your department (view only).";
+    ? "Supplies already released to your department. Request again to ask for the same item."
+    : "Materials issued for projects and the department. Request again starts a supply request for that item.";
 
   const { data: me, isLoading: meLoading } = useMeQuery();
   const {
@@ -231,7 +265,7 @@ export function DepartmentIssuedConsumablesView({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-0.5 pb-4">
             {filtered.map((row) => (
-              <IssuedItemCard key={row.id} row={row} />
+              <IssuedItemCard key={row.id} row={row} classification={classification} />
             ))}
           </div>
         )}

@@ -12,6 +12,7 @@ export const consumableRequestQueryKeys = {
     startDate?: string;
     endDate?: string;
     includeSandbox?: boolean;
+    fetchAll?: boolean;
   }) => [...consumableRequestQueryKeys.lists(), filters ?? {}] as const,
   detail: (id: string) =>
     [...consumableRequestQueryKeys.all, "detail", id] as const,

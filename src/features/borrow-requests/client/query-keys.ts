@@ -14,6 +14,7 @@ export const borrowRequestQueryKeys = {
     assetId?: string;
     requestType?: BorrowRequest["requestType"];
     includeSandbox?: boolean;
+    fetchAll?: boolean;
   }) => [...borrowRequestQueryKeys.lists(), filters ?? {}] as const,
   detail: (id: string) => [...borrowRequestQueryKeys.all, "detail", id] as const,
 };

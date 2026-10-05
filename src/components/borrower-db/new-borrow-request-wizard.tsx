@@ -21,23 +21,15 @@ import {
   User,
   Minus,
   Plus,
-  Laptop,
-  Video,
-  Truck,
-  Armchair,
-  HeartPulse,
-  Printer,
   FlaskConical,
-  Wrench,
-  Zap,
   Trash2,
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { categoryIconComponent } from "@/components/ui/category-icon";
 import { getCategoryStyle } from "@/constants/categories";
 import type {
   BrowseItem,
+  BrowseAssetItem,
   BrowseConsumableItem,
   WizardFormValues,
   WizardPurposeGroup,
@@ -46,7 +38,8 @@ import type {
   RequestWizardStep,
   PortalBorrowRequest,
 } from "./types";
-import { useCategoriesQuery } from "@/features/categories/client/use-categories";
+import { useAssetsQuery } from "@/features/assets/client/use-assets";
+import { isAssetAvailableForRequest } from "@/lib/assets-custody";
 import { useCreateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
 import { useCreateConsumableRequestMutation } from "@/features/consumable-requests/client";
 import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
@@ -138,7 +131,7 @@ function formatFriendlyErrorMessage(rawMessage?: string): string {
 
 const STEPS: { key: RequestWizardStep; label: string; stepNumber: number }[] = [
   { key: "type", label: "Request Type", stepNumber: 1 },
-  { key: "select", label: "Select Category", stepNumber: 2 },
+  { key: "select", label: "Select Equipment", stepNumber: 2 },
   { key: "details", label: "Request Details", stepNumber: 3 },
   { key: "review", label: "Review & Submit", stepNumber: 4 },
 ];
@@ -171,7 +164,7 @@ function MilestoneStepIndicator({
       ? "Select Items"
       : hasConsumable
         ? "Select Supplies"
-        : "Select Category";
+        : "Select Equipment";
 
   return (
     <nav aria-label="Request Progress" className="w-full">
@@ -464,91 +457,7 @@ function StepType({
   );
 }
 
-// ─── Step 2: Select Asset Category (Color Coded Cards View) ──────────────────
-
-interface AssetCategoryCardMeta {
-  id: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  icon: React.ElementType;
-  style: ReturnType<typeof getCategoryStyle>;
-}
-
-const ASSET_CATEGORIES: AssetCategoryCardMeta[] = [
-  {
-    id: "computing",
-    title: "Computing & IT",
-    subtitle: "Laptops & PCs",
-    description: "Workstations, monitors, keyboards & IT units.",
-    icon: Laptop,
-    style: getCategoryStyle("computing"),
-  },
-  {
-    id: "av",
-    title: "Audio & Visual",
-    subtitle: "Cameras & AV",
-    description: "Projectors, cameras, microphones & sound gear.",
-    icon: Video,
-    style: getCategoryStyle("av"),
-  },
-  {
-    id: "transport",
-    title: "Transport",
-    subtitle: "Vehicles & Carts",
-    description: "Service vans, utility carts & mobility units.",
-    icon: Truck,
-    style: getCategoryStyle("transport"),
-  },
-  {
-    id: "furniture",
-    title: "Furniture",
-    subtitle: "Chairs & Desks",
-    description: "Office chairs, conference tables & cabinets.",
-    icon: Armchair,
-    style: getCategoryStyle("furniture"),
-  },
-  {
-    id: "medical",
-    title: "Medical",
-    subtitle: "Clinical Units",
-    description: "Diagnostic sets, monitors & clinical units.",
-    icon: HeartPulse,
-    style: getCategoryStyle("medical"),
-  },
-  {
-    id: "office",
-    title: "Office Eqpt",
-    subtitle: "Printers & Scanners",
-    description: "Laser printers, copiers & document scanners.",
-    icon: Printer,
-    style: getCategoryStyle("office"),
-  },
-  {
-    id: "electronics",
-    title: "Electronics",
-    subtitle: "Power & UPS",
-    description: "UPS units, power supplies & analyzers.",
-    icon: Zap,
-    style: getCategoryStyle("electronics"),
-  },
-  {
-    id: "laboratory",
-    title: "Laboratory",
-    subtitle: "Lab & Testing",
-    description: "Centrifuges, incubators & testing gear.",
-    icon: FlaskConical,
-    style: getCategoryStyle("laboratory"),
-  },
-  {
-    id: "tools",
-    title: "Tools",
-    subtitle: "Toolkits & Repair",
-    description: "Power drills, toolkit cases & safety gear.",
-    icon: Wrench,
-    style: getCategoryStyle("tools"),
-  },
-];
+// ─── Step 2: Select available equipment units ────────────────────────────────
 
 function StepSelect({
   value,
@@ -561,68 +470,64 @@ function StepSelect({
   requestType?: "borrowable" | "assignable" | "consumable" | null;
 }) {
   const [search, setSearch] = useState("");
-  const { data: dbCategories = [], isLoading } = useCategoriesQuery();
+  const assignmentType =
+    requestType === "assignable" ? "assignable" : "borrowable";
+  const { data: assets = [], isLoading } = useAssetsQuery(undefined, {
+    catalog: true,
+    assignmentType,
+  });
 
-  // Build category cards dynamically from the Admin Categories
-  const categoryCards = useMemo<AssetCategoryCardMeta[]>(() => {
-    const adminAssetCats = dbCategories.filter((c) => c.type === "asset" || !c.type);
-    if (adminAssetCats.length > 0) {
-      return adminAssetCats.map((c) => {
-        const style = getCategoryStyle(c.name, c.name, c.colorToken, c.iconToken);
-        const Icon = categoryIconComponent(c.iconToken);
-        return {
-          id: c.id,
-          title: c.name,
-          subtitle: `${c.name} Category`,
-          description: `Equipment and units registered under ${c.name}.`,
-          icon: Icon,
-          style,
-        };
-      });
-    }
-    return ASSET_CATEGORIES;
-  }, [dbCategories]);
+  const available = useMemo<BrowseAssetItem[]>(() => {
+    return assets
+      .filter(
+        (asset) =>
+          asset.assignmentType === assignmentType &&
+          isAssetAvailableForRequest(asset)
+      )
+      .map((asset) => ({
+        type: "asset" as const,
+        id: asset.id,
+        name: asset.name,
+        category: String(asset.category),
+        status: asset.status,
+        assignmentType: asset.assignmentType,
+        assetCode: asset.assetCode,
+        location: asset.location,
+        currentHolder: asset.currentHolder,
+        reservedForRequestId: asset.reservedForRequestId,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [assets, assignmentType]);
 
-  const filteredCategories = useMemo(() => {
-    if (!search.trim()) return categoryCards;
+  const filtered = useMemo(() => {
+    if (!search.trim()) return available;
     const q = search.toLowerCase();
-    return categoryCards.filter(
-      (c) =>
-        c.title.toLowerCase().includes(q) ||
-        c.subtitle.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q)
+    return available.filter(
+      (asset) =>
+        asset.name.toLowerCase().includes(q) ||
+        asset.assetCode.toLowerCase().includes(q) ||
+        asset.category.toLowerCase().includes(q) ||
+        asset.location.toLowerCase().includes(q)
     );
-  }, [categoryCards, search]);
+  }, [available, search]);
 
-  const toggleCategory = (cat: AssetCategoryCardMeta) => {
-    const syntheticId = `cat-${cat.id}`;
-    const isSelected = value.some((v) => v.id === syntheticId);
-    if (isSelected) {
-      onChange(value.filter((v) => v.id !== syntheticId));
-    } else {
-      const categoryItem: BrowseItem = {
-        id: syntheticId,
-        name: `${cat.title} Equipment`,
-        category: cat.title,
-        type: "asset",
-        status: "active",
-        assignmentType: requestType === "assignable" ? "assignable" : "borrowable",
-        assetCode: `CAT-${cat.id.toUpperCase()}`,
-        location: "Central Storage",
-      };
-      onChange([...value, categoryItem]);
-    }
+  const toggleAsset = (asset: BrowseAssetItem) => {
+    const isSelected = value.some((item) => item.id === asset.id);
+    onChange(
+      isSelected
+        ? value.filter((item) => item.id !== asset.id)
+        : [...value, asset]
+    );
   };
 
   const isAssignable = requestType === "assignable";
-  const searchId = `search-categories-${requestType ?? "asset"}`;
+  const searchId = `search-equipment-${requestType ?? "asset"}`;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-bold text-text truncate">
-          {isAssignable ? "Assignment categories" : "Borrow categories"}
+          {isAssignable ? "Available to assign" : "Available to borrow"}
         </h3>
         {value.length > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25 shrink-0">
@@ -630,25 +535,14 @@ function StepSelect({
             {value.length}
           </span>
         )}
-        {filteredCategories.length > 0 && (
+        {filtered.length > 0 && (
           <button
             type="button"
             onClick={() => {
               const next = [...value];
-              for (const cat of filteredCategories) {
-                const syntheticId = `cat-${cat.id}`;
-                if (next.some((v) => v.id === syntheticId)) continue;
-                next.push({
-                  id: syntheticId,
-                  name: `${cat.title} Equipment`,
-                  category: cat.title,
-                  type: "asset",
-                  status: "active",
-                  assignmentType:
-                    requestType === "assignable" ? "assignable" : "borrowable",
-                  assetCode: `CAT-${cat.id.toUpperCase()}`,
-                  location: "Central Storage",
-                });
+              for (const asset of filtered) {
+                if (next.some((item) => item.id === asset.id)) continue;
+                next.push(asset);
               }
               onChange(next);
             }}
@@ -659,7 +553,7 @@ function StepSelect({
         )}
         <div className="relative ml-auto w-44 sm:w-56 shrink-0">
           <label htmlFor={searchId} className="sr-only">
-            Search asset categories
+            Search equipment
           </label>
           <Search
             className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
@@ -691,14 +585,18 @@ function StepSelect({
           <LoadingState
             variant="inline"
             icon="package"
-            message="Loading asset categories..."
-            subtitle="Fetching latest inventory data..."
+            message="Loading equipment..."
+            subtitle="Fetching units available for this request..."
             className="py-8"
           />
-        ) : filteredCategories.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="p-6 text-center rounded-lg border border-dashed border-border">
             <Package className="h-7 w-7 text-text-secondary/40 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-text">No matching category found</p>
+            <p className="text-sm font-semibold text-text">
+              {search
+                ? "No matching equipment found"
+                : "No equipment is available right now"}
+            </p>
             {search && (
               <button
                 type="button"
@@ -710,16 +608,16 @@ function StepSelect({
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
-            {filteredCategories.map((cat) => {
-              const isSelected = value.some((v) => v.id === `cat-${cat.id}`);
-              const style = cat.style;
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {filtered.map((asset) => {
+              const isSelected = value.some((item) => item.id === asset.id);
+              const style = getCategoryStyle(asset.category);
 
               return (
                 <button
-                  key={cat.id}
+                  key={asset.id}
                   type="button"
-                  onClick={() => toggleCategory(cat)}
+                  onClick={() => toggleAsset(asset)}
                   className={cn(
                     "flex flex-col text-left p-3 rounded-lg border transition-all duration-150 cursor-pointer group select-none",
                     "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
@@ -732,17 +630,11 @@ function StepSelect({
                   <div className="flex items-start justify-between gap-2 w-full mb-1.5">
                     <div className="min-w-0 flex-1">
                       <h4 className="text-sm font-bold text-text truncate group-hover:text-accent">
-                        {cat.title}
+                        {asset.name}
                       </h4>
-                      <span
-                        className={cn(
-                          "inline-block mt-1 px-1.5 py-0.5 rounded font-bold text-[9px] uppercase tracking-wider",
-                          style.bg,
-                          style.text
-                        )}
-                      >
-                        {cat.subtitle}
-                      </span>
+                      <p className="text-[11px] font-mono text-text-secondary mt-0.5 truncate">
+                        {asset.assetCode}
+                      </p>
                     </div>
                     <div
                       className={cn(
@@ -755,12 +647,18 @@ function StepSelect({
                       {isSelected ? <Check className="h-3.5 w-3.5 stroke-3" /> : null}
                     </div>
                   </div>
-                  <p className="text-xs text-text-secondary leading-relaxed line-clamp-2 mb-2">
-                    {cat.description}
-                  </p>
+                  <span
+                    className={cn(
+                      "inline-block self-start px-1.5 py-0.5 rounded font-bold text-[9px] uppercase tracking-wider",
+                      style.bg,
+                      style.text
+                    )}
+                  >
+                    {asset.category}
+                  </span>
                   <div className="flex items-center justify-between pt-2 border-t border-border/50 text-[11px] w-full mt-auto">
                     <span className="text-text-secondary font-medium truncate">
-                      {cat.title}
+                      {asset.location || "No location"}
                     </span>
                     <span className="text-text-secondary font-medium flex items-center gap-1 shrink-0">
                       <span className="h-1.5 w-1.5 rounded-full bg-status-active-bg" />

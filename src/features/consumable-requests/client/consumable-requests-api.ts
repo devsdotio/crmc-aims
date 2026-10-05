@@ -92,6 +92,43 @@ export const consumableRequestsApi = {
     return res.data;
   },
 
+  /** Walk pages of 100 so requester lists are not cut off at the first page. */
+  async listAll(params?: {
+    status?: ConsumableRequest["status"];
+    department?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<PaginatedResponse<ConsumableRequest[]>> {
+    const limit = 100;
+    const first = await this.list({ ...params, page: 1, limit });
+    const totalPages = Math.min(Math.max(first.meta.totalPages || 1, 1), 20);
+    if (totalPages <= 1) return first;
+
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        this.list({ ...params, page: index + 2, limit })
+      )
+    );
+    const seen = new Set<string>();
+    const data: ConsumableRequest[] = [];
+    for (const row of [first, ...rest].flatMap((page) => page.data)) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      data.push(row);
+    }
+    return {
+      data,
+      meta: {
+        ...first.meta,
+        total: data.length,
+        page: 1,
+        limit: data.length,
+        totalPages: 1,
+      },
+    };
+  },
+
   async getById(id: string): Promise<ConsumableRequest> {
     const res = await fetchJson<ApiResponse<ConsumableRequest>>(
       `/api/consumable-requests/${id}`
