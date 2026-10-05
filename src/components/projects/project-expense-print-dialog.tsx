@@ -7,6 +7,10 @@ import type { Project, ProjectExpenseLine } from "@/types/projects";
 import {
   expenseCategoryDisplay,
 } from "@/types/projects";
+import {
+  isInventoryExpenseLine,
+  isManualMaterialExpenseLine,
+} from "@/lib/project-expense-line";
 import { formatPhp } from "./format-money";
 import { cn } from "@/lib/utils";
 
@@ -69,16 +73,16 @@ function sectionHasQtyCols(key: SectionKey): boolean {
 }
 
 function sectionKey(line: ProjectExpenseLine): SectionKey {
-  if (line.lineType === "consumable") return "inventory";
-  if (line.lineType === "material") return "manual";
+  if (isInventoryExpenseLine(line)) return "inventory";
+  if (isManualMaterialExpenseLine(line)) return "manual";
   if (line.lineType === "adjustment") return "adjustment";
   if (line.lineType === "asset_writeoff") return "writeoff";
   return "misc";
 }
 
 function categoryLabel(line: ProjectExpenseLine): string {
-  if (line.lineType === "consumable") return "Inventory";
-  if (line.lineType === "material") return "Manual material";
+  if (isInventoryExpenseLine(line)) return "Inventory";
+  if (isManualMaterialExpenseLine(line)) return "Manual material";
   if (line.lineType === "asset_writeoff") return "Write-off";
   if (line.lineType === "adjustment") return "Adjustment / credit";
   return expenseCategoryDisplay(line.category, line.categoryLabel);

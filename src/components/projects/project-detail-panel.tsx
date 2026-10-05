@@ -58,8 +58,12 @@ import {
   useUpdateProjectExpenseMutation,
   type ManualMaterialItemPayload,
 } from "@/features/projects/client";
-import { useConsumablesQuery } from "@/features/consumables/client";
+import { useConsumableCatalogQuery } from "@/features/consumables/client";
 import { useAssetsQuery } from "@/features/assets/client";
+import {
+  isInventoryExpenseLine,
+  isManualMaterialExpenseLine,
+} from "@/lib/project-expense-line";
 import {
   AddEditExpenseDialog,
   type ExpenseFormInput,
@@ -162,7 +166,10 @@ export function ProjectDetailPanel({
   const {
     data: consumablesPage,
     isLoading: consumablesLoading,
-  } = useConsumablesQuery({ limit: 100, enabled: materialOpen });
+  } = useConsumableCatalogQuery({
+    classification: "material",
+    enabled: materialOpen,
+  });
   const consumables = consumablesPage?.data ?? [];
   const {
     data: assets = [],
@@ -929,8 +936,8 @@ export function ProjectDetailPanel({
                 {expenses.map((line) => {
                   const amount = Number(line.amount);
                   const isCredit = amount < 0;
-                  const isInventory = line.lineType === "consumable";
-                  const isManualMaterial = line.lineType === "material";
+                  const isInventory = isInventoryExpenseLine(line);
+                  const isManualMaterial = isManualMaterialExpenseLine(line);
                   const isWriteOff = line.lineType === "asset_writeoff";
                   return (
                     <li
@@ -1020,8 +1027,8 @@ export function ProjectDetailPanel({
                           {project.isMutable &&
                             (line.lineType === "miscellaneous" ||
                               line.lineType === "adjustment" ||
-                              line.lineType === "material" ||
-                              line.lineType === "consumable") && (
+                              isManualMaterial ||
+                              isInventory) && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1276,12 +1283,13 @@ export function ProjectDetailPanel({
       <ConfirmDialog
         isOpen={Boolean(deleteExpenseTarget)}
         title={
-          deleteExpenseTarget?.lineType === "consumable"
+          deleteExpenseTarget && isInventoryExpenseLine(deleteExpenseTarget)
             ? "Remove Material Usage"
             : "Delete Expense Line"
         }
         description={
-          deleteExpenseTarget?.lineType === "consumable"
+          deleteExpenseTarget &&
+          isInventoryExpenseLine(deleteExpenseTarget)
             ? `Remove material charge "${deleteExpenseTarget.description}"? Deducted stock and purchase lots will be restored.`
             : `Permanently remove expense line "${deleteExpenseTarget?.description}"?`
         }
