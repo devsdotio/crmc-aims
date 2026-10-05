@@ -58,17 +58,21 @@ export function AddMaterialDialog({
       (i) =>
         i.name.toLowerCase().includes(q) ||
         i.itemCode.toLowerCase().includes(q) ||
-        i.category.toLowerCase().includes(q)
+        i.category.toLowerCase().includes(q) ||
+        i.classification.toLowerCase().includes(q)
     );
   }, [available, search]);
 
   const consumableOptions = useMemo(
     () =>
-      filteredItems.map((i) => ({
-        value: i.id,
-        label: `${i.name} (${i.itemCode}) — ${availableQty(i)} ${i.unit} available`,
-        keywords: `${i.itemCode} ${i.name} ${i.category}`,
-      })),
+      filteredItems.map((i) => {
+        const kind = i.classification === "material" ? "Material" : "Supply";
+        return {
+          value: i.id,
+          label: `${i.name} (${i.itemCode}) · ${kind} — ${availableQty(i)} ${i.unit} available`,
+          keywords: `${i.itemCode} ${i.name} ${i.category} ${i.classification} ${kind}`,
+        };
+      }),
     [filteredItems]
   );
 
@@ -216,10 +220,10 @@ export function AddMaterialDialog({
             </div>
             <div>
               <h2 id="material-form-heading" className="text-sm font-bold text-text">
-                Use Inventory Material
+                Use Inventory Stock
               </h2>
               <p className="text-[11px] text-text-secondary">
-                Select consumable and purchase lot to charge to this project
+                Charge a supply or material from warehouse stock to this project
               </p>
             </div>
           </div>
@@ -237,7 +241,7 @@ export function AddMaterialDialog({
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
             <label htmlFor="mat-search" className={labelClass}>
-              Search supplies
+              Search inventory
             </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
@@ -254,7 +258,7 @@ export function AddMaterialDialog({
 
           <div>
             <label htmlFor="mat-item" className={labelClass}>
-              Consumable Material <span className="text-accent">*</span>
+              Supply or material <span className="text-accent">*</span>
             </label>
             {loadingItems ? (
               <div className="h-9 rounded-lg bg-border animate-pulse" />
@@ -267,10 +271,10 @@ export function AddMaterialDialog({
                 disabled={filteredItems.length === 0}
                 placeholder={
                   filteredItems.length === 0
-                    ? "No stocked items match your search"
-                    : "Type to find a material…"
+                    ? "No stocked supplies or materials match your search"
+                    : "Type to find a supply or material…"
                 }
-                emptyMessage="No stocked items match your search"
+                emptyMessage="No stocked supplies or materials match your search"
               />
             )}
           </div>

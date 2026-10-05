@@ -111,7 +111,7 @@ describeIntegration("purchase orders / project delivery intake", () => {
     const lines = await expenses.listForProject(project.id, fx.actor.tenantId);
     const auto = lines.find(
       (l) =>
-        l.lineType === "material" &&
+        l.lineType === "consumable" &&
         l.consumableId === item.id &&
         (l.notes ?? "").toLowerCase().includes("auto-credited")
     );
@@ -120,6 +120,8 @@ describeIntegration("purchase orders / project delivery intake", () => {
     expect(Number(auto!.amount)).toBe(7200);
     expect(auto!.description).toMatch(/Project Rebar Bundle/);
     expect(auto!.description).toMatch(/PO:/);
+    expect(auto!.consumableName).toBe("Project Rebar Bundle");
+    expect(auto!.consumableCode).toBeTruthy();
   });
 
   it("delivers a project PO against an existing material and leaves warehouse qty unchanged", async () => {
@@ -190,5 +192,16 @@ describeIntegration("purchase orders / project delivery intake", () => {
       .from(consumables)
       .where(eq(consumables.id, existing.id));
     expect(row.classification).toBe("material");
+
+    const lines = await expenses.listForProject(project.id, fx.actor.tenantId);
+    const auto = lines.find(
+      (l) =>
+        l.lineType === "consumable" &&
+        l.consumableId === existing.id &&
+        (l.notes ?? "").toLowerCase().includes("auto-credited")
+    );
+    expect(auto).toBeTruthy();
+    expect(Number(auto!.quantity)).toBe(2);
+    expect(auto!.consumableName).toBe("Paint Gallons");
   });
 });

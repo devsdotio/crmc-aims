@@ -1011,24 +1011,27 @@ export class PurchaseLotService {
                       byTenantId(consumables.tenantId, actor.tenantId)
                     )
                   );
-                await db.insert(stockMovements).values({
-                  tenantId: actor.tenantId,
-                  movementCode: generateOperationalCode("MOV"),
-                  consumableId,
-                  projectId: targetProjectId,
-                  qty: item.quantity,
-                  direction: "out",
-                  reason: "issue",
-                  unitCost: unitCostMoney,
-                  lineTotal,
-                  notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
-                  actorUserId: actor.userId,
-                  actorName: actor.displayName,
-                });
+                const [issueMove] = await db
+                  .insert(stockMovements)
+                  .values({
+                    tenantId: actor.tenantId,
+                    movementCode: generateOperationalCode("MOV"),
+                    consumableId,
+                    projectId: targetProjectId,
+                    qty: item.quantity,
+                    direction: "out",
+                    reason: "issue",
+                    unitCost: unitCostMoney,
+                    lineTotal,
+                    notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
+                    actorUserId: actor.userId,
+                    actorName: actor.displayName,
+                  })
+                  .returning();
                 await db.insert(projectExpenseLines).values({
                   tenantId: actor.tenantId,
                   projectId: targetProjectId,
-                  lineType: "material",
+                  lineType: "consumable",
                   category: "miscellaneous",
                   description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
                   amount: lineTotal,
@@ -1043,6 +1046,11 @@ export class PurchaseLotService {
                     poNumber,
                     supplierName: lineSupplierName,
                     directProjectDelivery: true,
+                    consumableCode: itemCode || undefined,
+                    consumableName: itemName,
+                    consumableUnit: linkedConsumableUnit || undefined,
+                    stockMovementId: issueMove?.id,
+                    stockMovementIds: issueMove?.id ? [issueMove.id] : [],
                   },
                 });
               } else {
@@ -1171,24 +1179,27 @@ export class PurchaseLotService {
                     byTenantId(consumables.tenantId, actor.tenantId)
                   )
                 );
-              await db.insert(stockMovements).values({
-                tenantId: actor.tenantId,
-                movementCode: generateOperationalCode("MOV"),
-                consumableId,
-                projectId: targetProjectId,
-                qty: item.quantity,
-                direction: "out",
-                reason: "issue",
-                unitCost: unitCostMoney,
-                lineTotal,
-                notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
-                actorUserId: actor.userId,
-                actorName: actor.displayName,
-              });
+              const [issueMove] = await db
+                .insert(stockMovements)
+                .values({
+                  tenantId: actor.tenantId,
+                  movementCode: generateOperationalCode("MOV"),
+                  consumableId,
+                  projectId: targetProjectId,
+                  qty: item.quantity,
+                  direction: "out",
+                  reason: "issue",
+                  unitCost: unitCostMoney,
+                  lineTotal,
+                  notes: `Direct project delivery to ${targetProjectName || "Project"} via PO ${poNumber}`,
+                  actorUserId: actor.userId,
+                  actorName: actor.displayName,
+                })
+                .returning();
               await db.insert(projectExpenseLines).values({
                 tenantId: actor.tenantId,
                 projectId: targetProjectId,
-                lineType: "material",
+                lineType: "consumable",
                 category: "miscellaneous",
                 description: `${itemName} (${item.quantity} × ₱${Number(item.unitCost).toFixed(2)}) [PO: ${poNumber}]`,
                 amount: lineTotal,
@@ -1203,6 +1214,11 @@ export class PurchaseLotService {
                   poNumber,
                   supplierName: lineSupplierName,
                   directProjectDelivery: true,
+                  consumableCode: itemCode || undefined,
+                  consumableName: itemName,
+                  consumableUnit: item.unit || "pcs",
+                  stockMovementId: issueMove?.id,
+                  stockMovementIds: issueMove?.id ? [issueMove.id] : [],
                 },
               });
             } else {
@@ -1726,27 +1742,40 @@ export class PurchaseLotService {
                 )
               );
 
-            await db.insert(stockMovements).values({
-              tenantId: lot.tenantId,
-              movementCode: generateOperationalCode("MOV"),
-              consumableId,
-              projectId: lot.projectId,
-              purchaseLotId: lot.id,
-              lotCode: lot.lotCode,
-              qty: receivedQty,
-              direction: "out",
-              reason: "issue",
-              unitCost: lot.unitCost,
-              lineTotal,
-              notes: `Direct project delivery to ${lot.projectName || "Project"} via PO ${poNumber}`,
-              actorUserId: actor.userId,
-              actorName: actor.displayName,
-            });
+            const [issueMove] = await db
+              .insert(stockMovements)
+              .values({
+                tenantId: lot.tenantId,
+                movementCode: generateOperationalCode("MOV"),
+                consumableId,
+                projectId: lot.projectId,
+                purchaseLotId: lot.id,
+                lotCode: lot.lotCode,
+                qty: receivedQty,
+                direction: "out",
+                reason: "issue",
+                unitCost: lot.unitCost,
+                lineTotal,
+                notes: `Direct project delivery to ${lot.projectName || "Project"} via PO ${poNumber}`,
+                actorUserId: actor.userId,
+                actorName: actor.displayName,
+              })
+              .returning();
+
+            const lotAllocations = [
+              {
+                lotId: lot.id,
+                lotCode: lot.lotCode,
+                quantity: receivedQty,
+                unitCost: unit.toFixed(2),
+                total: lineTotal,
+              },
+            ];
 
             await db.insert(projectExpenseLines).values({
               tenantId: lot.tenantId,
               projectId: lot.projectId,
-              lineType: "material",
+              lineType: "consumable",
               category: "miscellaneous",
               description: `${lot.itemName} (${receivedQty} × ₱${unit.toFixed(2)}) [PO: ${poNumber}]`,
               amount: lineTotal,
@@ -1766,7 +1795,13 @@ export class PurchaseLotService {
                   ? null
                   : lot.supplierName,
                 lotCode: lot.lotCode,
+                lotAllocations,
                 directProjectDelivery: true,
+                consumableCode: consumable.itemCode,
+                consumableName: consumable.name,
+                consumableUnit: consumable.unit,
+                stockMovementId: issueMove?.id,
+                stockMovementIds: issueMove?.id ? [issueMove.id] : [],
               },
             });
           } else {

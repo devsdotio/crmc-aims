@@ -573,13 +573,18 @@ export class ProjectExpenseService {
     if (
       existing.lineType === "miscellaneous" ||
       existing.lineType === "adjustment" ||
-      existing.lineType === "material"
+      (existing.lineType === "material" && !existing.consumableId)
     ) {
       await this.expenses.delete(existing.id, undefined, actor.tenantId);
       return;
     }
 
-    if (existing.lineType === "consumable") {
+    // Inventory charges: lineType "consumable", or legacy PO deliveries
+    // stored as "material" with consumableId + stock already deducted.
+    if (
+      existing.lineType === "consumable" ||
+      (existing.lineType === "material" && existing.consumableId)
+    ) {
       await this.reverseConsumableExpense(existing, actor);
       return;
     }
