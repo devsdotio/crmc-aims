@@ -167,7 +167,6 @@ export function ProjectDetailPanel({
     data: consumablesPage,
     isLoading: consumablesLoading,
   } = useConsumableCatalogQuery({
-    classification: "material",
     enabled: materialOpen,
   });
   const consumables = consumablesPage?.data ?? [];
@@ -852,7 +851,7 @@ export function ProjectDetailPanel({
                     type="button"
                     onClick={() => setMaterialOpen(true)}
                     className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-bold rounded-md border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer"
-                    title="Issue from inventory stock"
+                    title="Charge a supply or material from inventory stock"
                   >
                     <Boxes className="h-3.5 w-3.5" />
                     Inventory
@@ -861,7 +860,7 @@ export function ProjectDetailPanel({
                     type="button"
                     onClick={() => setManualMaterialOpen(true)}
                     className="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] font-bold rounded-md border border-border bg-bg text-text hover:bg-bg-subtle cursor-pointer"
-                    title="Add material not in inventory"
+                    title="Add material not tracked in inventory"
                   >
                     <PackagePlus className="h-3.5 w-3.5" />
                     Manual
@@ -899,7 +898,7 @@ export function ProjectDetailPanel({
                 <div className="space-y-1 max-w-xs">
                   <h4 className="text-xs font-bold text-text">No project expenses yet</h4>
                   <p className="text-[11px] text-text-secondary leading-relaxed">
-                    Issue from inventory, charge manual materials not in stock, or log travel, meals, fees, and credits.
+                    Charge supplies or materials from inventory, add manual materials not in stock, or log travel, meals, fees, and credits.
                   </p>
                 </div>
                 {project.isMutable && (

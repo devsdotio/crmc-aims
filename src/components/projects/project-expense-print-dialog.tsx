@@ -60,7 +60,7 @@ const SECTION_ORDER: SectionKey[] = [
 ];
 
 const SECTION_BASE_TITLES: Record<SectionKey, string> = {
-  inventory: "Inventory materials (from stock)",
+  inventory: "Inventory stock (supplies & materials)",
   manual: "Manual materials (not in inventory)",
   misc: "Miscellaneous expenses",
   adjustment: "Adjustments / credits",

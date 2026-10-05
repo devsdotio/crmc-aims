@@ -156,7 +156,7 @@ describeIntegration("projects milestones / materials / assets", () => {
     expect(Number(manual[0].quantity)).toBe(5);
     expect(Number(manual[0].amount)).toBe(1250);
 
-    const item = await consumables.create(
+    const materialItem = await consumables.create(
       {
         name: "Paint Cans",
         category: fx.consumableCategory,
@@ -169,35 +169,64 @@ describeIntegration("projects milestones / materials / assets", () => {
       },
       fx.actor
     );
-
-    const charged = await expenses.useConsumable(
-      project.id,
-      { consumableId: item.id, quantity: 3 },
+    const supplyItem = await consumables.create(
+      {
+        name: "Bond Paper Ream",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "ream",
+        currentQty: 8,
+        unitCost: 180,
+        supplierId: fx.supplierId,
+        location: "Supply Room",
+      },
       fx.actor
     );
-    expect(charged.lineType).toBe("consumable");
-    expect(charged.consumableId).toBe(item.id);
-    expect(Number(charged.quantity)).toBe(3);
 
-    let stock = await consumables.getById(item.id, fx.actor.tenantId);
+    const chargedMaterial = await expenses.useConsumable(
+      project.id,
+      { consumableId: materialItem.id, quantity: 3 },
+      fx.actor
+    );
+    expect(chargedMaterial.lineType).toBe("consumable");
+    expect(chargedMaterial.consumableId).toBe(materialItem.id);
+    expect(Number(chargedMaterial.quantity)).toBe(3);
+
+    const chargedSupply = await expenses.useConsumable(
+      project.id,
+      { consumableId: supplyItem.id, quantity: 2 },
+      fx.actor
+    );
+    expect(chargedSupply.lineType).toBe("consumable");
+    expect(chargedSupply.consumableId).toBe(supplyItem.id);
+    expect(Number(chargedSupply.quantity)).toBe(2);
+    expect(
+      (await consumables.getById(supplyItem.id, fx.actor.tenantId)).currentQty
+    ).toBe(6);
+    expect(
+      (await consumables.getById(supplyItem.id, fx.actor.tenantId))
+        .classification
+    ).toBe("supply");
+
+    let stock = await consumables.getById(materialItem.id, fx.actor.tenantId);
     expect(stock.currentQty).toBe(7);
 
     const afterCharge = await getDb()
       .select()
       .from(stockMovements)
-      .where(eq(stockMovements.consumableId, item.id));
+      .where(eq(stockMovements.consumableId, materialItem.id));
     expect(
       afterCharge.some((m) => m.direction === "out" && m.reason === "issue")
     ).toBe(true);
 
-    await expenses.delete(project.id, charged.id, fx.actor);
-    stock = await consumables.getById(item.id, fx.actor.tenantId);
+    await expenses.delete(project.id, chargedMaterial.id, fx.actor);
+    stock = await consumables.getById(materialItem.id, fx.actor.tenantId);
     expect(stock.currentQty).toBe(10);
 
     const refundMoves = await getDb()
       .select()
       .from(stockMovements)
-      .where(eq(stockMovements.consumableId, item.id));
+      .where(eq(stockMovements.consumableId, materialItem.id));
     const refund = refundMoves.find(
       (m) =>
         m.direction === "in" &&
