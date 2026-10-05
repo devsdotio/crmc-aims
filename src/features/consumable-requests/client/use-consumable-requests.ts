@@ -42,11 +42,15 @@ export function useConsumableRequests(filters?: {
   limit?: number;
   enabled?: boolean;
   refetchInterval?: number | false;
+  fetchAll?: boolean;
 }): UseQueryResult<PaginatedResponse<ConsumableRequest[]>, Error> {
-  const { enabled = true, refetchInterval, ...listFilters } = filters ?? {};
+  const { enabled = true, refetchInterval, fetchAll = false, ...listFilters } = filters ?? {};
   return useQuery({
-    queryKey: consumableRequestQueryKeys.list(listFilters),
-    queryFn: () => consumableRequestsApi.list(listFilters),
+    queryKey: consumableRequestQueryKeys.list({ ...listFilters, fetchAll }),
+    queryFn: () =>
+      fetchAll
+        ? consumableRequestsApi.listAll(listFilters)
+        : consumableRequestsApi.list(listFilters),
     enabled,
     placeholderData: keepPreviousData,
     refetchInterval,

@@ -235,7 +235,7 @@ export default function Sidebar({
       label: "Request",
       items: [
         {
-          name: "Assign",
+          name: "Assign Request",
           href: "/borrower-db/requests/assignment",
           icon: ClipboardList,
           badge: pendingAssignCount,
@@ -243,7 +243,7 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Borrow",
+          name: "Borrow Request",
           href: "/borrower-db/requests/borrow",
           icon: Repeat,
           badge: pendingBorrowCount,
@@ -251,7 +251,7 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Supplies",
+          name: "Request Supplies",
           href: "/borrower-db/requests/supplies",
           icon: Boxes,
           badge: pendingSupplyCount,
@@ -270,20 +270,14 @@ export default function Sidebar({
           roles: ["admin", "staff"],
         },
         {
-          name: "Inventory",
+          name: "Assets",
           href: "/borrower-db/inventory",
           icon: Package,
           roles: ["borrower"],
         },
         {
-          name: "Supplies",
+          name: "Issued Supplies",
           href: "/borrower-db/supplies",
-          icon: Boxes,
-          roles: ["borrower"],
-        },
-        {
-          name: "Materials",
-          href: "/borrower-db/materials",
           icon: Boxes,
           roles: ["borrower"],
         },
@@ -417,7 +411,7 @@ export default function Sidebar({
           roles: ["admin", "staff"],
         },
         {
-          name: "Borrow History",
+          name: "Equipment History",
           href: "/borrower-db/history",
           icon: History,
           roles: ["borrower"],

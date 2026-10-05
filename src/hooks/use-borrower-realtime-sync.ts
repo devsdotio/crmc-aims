@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-keys";
 import { consumableRequestQueryKeys } from "@/features/consumable-requests/client/query-keys";
+import { consumableQueryKeys } from "@/features/consumables/client/query-keys";
+import { stockMovementQueryKeys } from "@/features/stock-movements/client/query-keys";
 import { borrowLogQueryKeys } from "@/features/borrow-log/client/query-keys";
 
 interface UseBorrowerRealtimeSyncOptions {
@@ -53,7 +55,9 @@ export function useBorrowerRealtimeSync(
           );
         } else if (domain === "supplies") {
           jobs.push(
-            qc.invalidateQueries({ queryKey: consumableRequestQueryKeys.all })
+            qc.invalidateQueries({ queryKey: consumableRequestQueryKeys.all }),
+            qc.invalidateQueries({ queryKey: consumableQueryKeys.all }),
+            qc.invalidateQueries({ queryKey: stockMovementQueryKeys.all })
           );
         } else {
           jobs.push(qc.invalidateQueries({ queryKey: borrowLogQueryKeys.all }));
@@ -79,10 +83,18 @@ export function useBorrowerRealtimeSync(
     const custodyConfig = filter
       ? { event: "*" as const, schema: "public", table: "borrow_transactions", filter }
       : { event: "*" as const, schema: "public", table: "borrow_transactions" };
+    const catalogConfig = filter
+      ? { event: "*" as const, schema: "public", table: "consumables", filter }
+      : { event: "*" as const, schema: "public", table: "consumables" };
+    const movementConfig = filter
+      ? { event: "*" as const, schema: "public", table: "stock_movements", filter }
+      : { event: "*" as const, schema: "public", table: "stock_movements" };
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", requestConfig, () => invalidateDomain("requests"))
       .on("postgres_changes", supplyConfig, () => invalidateDomain("supplies"))
+      .on("postgres_changes", catalogConfig, () => invalidateDomain("supplies"))
+      .on("postgres_changes", movementConfig, () => invalidateDomain("supplies"))
       .on("postgres_changes", custodyConfig, () => invalidateDomain("custody"))
       .subscribe((status) => {
         if (status !== "SUBSCRIBED") return;

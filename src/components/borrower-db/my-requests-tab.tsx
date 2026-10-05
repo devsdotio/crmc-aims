@@ -26,6 +26,13 @@ const STATUS_FILTERS: {
   activeBadge: string;
 }[] = [
   {
+    key: "all",
+    label: "All",
+    dot: "bg-text-secondary/70",
+    badge: "bg-bg-subtle text-text-secondary border border-border",
+    activeBadge: "bg-bg-subtle text-text font-bold border border-border/80",
+  },
+  {
     key: "pending",
     label: "Pending",
     dot: "bg-amber-500",
@@ -62,14 +69,6 @@ const STATUS_FILTERS: {
   },
 ];
 
-const ALL_REQUESTS_FILTER = {
-  key: "all" as const,
-  label: "All Requests",
-  dot: "bg-text-secondary/70",
-  badge: "bg-bg-subtle text-text-secondary border border-border",
-  activeBadge: "bg-bg-subtle text-text font-bold border border-border/80",
-};
-
 const REQUESTS_PAGE_SIZE = 10;
 
 export type RequestKindFilter = "all" | "borrow" | "assign" | "supply";
@@ -93,12 +92,12 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   const fetchSupplies = kind !== "borrow" && kind !== "assign";
 
   const { data: response, isLoading: loadingAssets } = useBorrowRequests({
-    limit: 100,
+    fetchAll: true,
     requestType: kind === "borrow" ? "borrowable" : kind === "assign" ? "assignable" : undefined,
     enabled: fetchAssets,
   });
   const { data: supplyResponse, isLoading: loadingSupplies } = useConsumableRequests({
-    limit: 100,
+    fetchAll: true,
     enabled: fetchSupplies,
   });
   const assetRequests = useMemo(() => response?.data ?? [], [response?.data]);
@@ -179,9 +178,7 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
 
   return (
     <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col min-h-0">
-      {/* Toolbar: status chips left, All Requests + search right */}
       <div className="px-4 md:px-6 py-3 bg-bg border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
-        {/* Status Tabs */}
         <div className="flex items-center gap-2 shrink-0 min-w-0">
           <span className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
             Status:
@@ -229,34 +226,7 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
           </div>
         </div>
 
-        {/* All Requests (opposite side) + Search */}
         <div className="flex items-center gap-2 flex-1 min-w-48 justify-end">
-          <button
-            type="button"
-            onClick={() => setStatusFilter(ALL_REQUESTS_FILTER.key)}
-            className={cn(
-              "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors duration-150 cursor-pointer whitespace-nowrap select-none shrink-0",
-              statusFilter === "all"
-                ? "text-text bg-bg shadow-xs border-border/80"
-                : "text-text-secondary hover:text-text border-border bg-bg-subtle"
-            )}
-          >
-            <span
-              className={cn("h-1.5 w-1.5 rounded-full shrink-0", ALL_REQUESTS_FILTER.dot)}
-              aria-hidden="true"
-            />
-            <span>{ALL_REQUESTS_FILTER.label}</span>
-            <span
-              className={cn(
-                "px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold",
-                statusFilter === "all"
-                  ? ALL_REQUESTS_FILTER.activeBadge
-                  : ALL_REQUESTS_FILTER.badge
-              )}
-            >
-              {requests.length}
-            </span>
-          </button>
           <div className="relative flex-1 min-w-40 max-w-sm">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
               <Search className="h-3.5 w-3.5" />

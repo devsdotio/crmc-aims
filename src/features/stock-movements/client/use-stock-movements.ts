@@ -23,16 +23,22 @@ import { stockMovementQueryKeys } from "./query-keys";
 export function useStockMovementsQuery(filters?: {
   reason?: StockMovement["reason"];
   limit?: number;
+  offset?: number;
   departmentId?: string;
   classification?: "supply" | "material";
   fromDate?: string;
   excludeVoided?: boolean;
+  /** Load every page instead of a single capped window. */
+  fetchAll?: boolean;
   enabled?: boolean;
 }): UseQueryResult<StockMovement[], Error> {
-  const { enabled = true, ...params } = filters ?? {};
+  const { enabled = true, fetchAll = false, ...params } = filters ?? {};
   return useQuery({
-    queryKey: stockMovementQueryKeys.list(params),
-    queryFn: () => stockMovementsApi.list(params),
+    queryKey: stockMovementQueryKeys.list({ ...params, fetchAll }),
+    queryFn: () =>
+      fetchAll
+        ? stockMovementsApi.listAll(params)
+        : stockMovementsApi.list(params),
     enabled,
   });
 }

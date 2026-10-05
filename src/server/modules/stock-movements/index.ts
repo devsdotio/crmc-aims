@@ -31,6 +31,7 @@ export class StockMovementController {
           {
             reason: url.searchParams.get("reason") ?? undefined,
             limit: url.searchParams.get("limit") ?? undefined,
+            offset: url.searchParams.get("offset") ?? undefined,
             // Client departmentId is ignored for borrowers inside the service.
             departmentId: url.searchParams.get("departmentId") ?? undefined,
             classification: url.searchParams.get("classification") ?? undefined,

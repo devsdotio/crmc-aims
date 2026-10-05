@@ -84,11 +84,15 @@ export function useBorrowRequests(filters?: {
   requestType?: "borrowable" | "assignable";
   enabled?: boolean;
   refetchInterval?: number | false;
+  fetchAll?: boolean;
 }): UseQueryResult<PaginatedResponse<BorrowRequest[]>, Error> {
-  const { enabled = true, refetchInterval, ...listFilters } = filters ?? {};
+  const { enabled = true, refetchInterval, fetchAll = false, ...listFilters } = filters ?? {};
   return useQuery({
-    queryKey: borrowRequestQueryKeys.list(listFilters),
-    queryFn: () => borrowRequestsApi.list(listFilters),
+    queryKey: borrowRequestQueryKeys.list({ ...listFilters, fetchAll }),
+    queryFn: () =>
+      fetchAll
+        ? borrowRequestsApi.listAll(listFilters)
+        : borrowRequestsApi.list(listFilters),
     enabled,
     placeholderData: keepPreviousData,
     refetchInterval,

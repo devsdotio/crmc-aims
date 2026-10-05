@@ -264,7 +264,7 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     category: "Operations",
   },
   "/borrower-db/inventory": {
-    title: "My Inventory",
+    title: "Assets",
     subtitle: "Assets currently borrowed or assigned to your department",
     category: "Overview",
   },
@@ -289,8 +289,8 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     category: "Operations",
   },
   "/borrower-db/history": {
-    title: "Borrow History",
-    subtitle: "Asset custody logs, active loans, and return audit trails",
+    title: "Equipment History",
+    subtitle: "Equipment custody logs, active loans, and return audit trails",
     category: "Logs & History",
   },
   "/borrower-db/requisition": {

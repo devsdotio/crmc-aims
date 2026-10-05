@@ -53,29 +53,25 @@ export function RequestsPage({ kind }: { kind: RequestKindFilter }) {
           <p className="text-xs text-text-secondary mt-0.5">{copy.subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => openWizard(null)}
+            title="File borrow, assignment, and/or supply in one submission"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+          >
+            <Layers className="h-3.5 w-3.5" aria-hidden />
+            Multi-type Request
+          </button>
           {typedKind && (
             <button
               type="button"
-              onClick={() => openWizard(null)}
-              title="File borrow, assignment, and/or supply in one submission"
+              onClick={() => openWizard(null, wizardTypeForKind(kind))}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-border bg-bg text-text text-xs font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
             >
-              <Layers className="h-3.5 w-3.5" aria-hidden />
-              Multi-type Request
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              {copy.cta}
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => openWizard(null, wizardTypeForKind(kind))}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-          >
-            {typedKind ? (
-              <Plus className="h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <Layers className="h-3.5 w-3.5" aria-hidden />
-            )}
-            {typedKind ? copy.cta : "Multi-type Request"}
-          </button>
         </div>
       </div>
 
