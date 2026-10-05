@@ -7,7 +7,7 @@ import { RequisitionItemRow } from "./RequisitionItemRow";
 import { SignatureBlock } from "./SignatureBlock";
 import type { RequisitionItem } from "./types";
 import { useCreateConsumableRequestMutation } from "@/features/consumable-requests/client/use-consumable-requests";
-import { useConsumablesQuery } from "@/features/consumables/client/use-consumables";
+import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useToast } from "@/components/providers/toast-context";
 import { summarizePurposes } from "@/lib/request-purpose";
@@ -43,7 +43,7 @@ export function RequisitionSlip({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const { data: me } = useMeQuery();
-  const { data: catalogPage } = useConsumablesQuery({ limit: 100 });
+  const { data: catalogPage } = useConsumableCatalogQuery({ catalog: true });
   const catalog = catalogPage?.data ?? [];
   const { mutateAsync: createConsumableRequest, isPending: isSubmitting } =
     useCreateConsumableRequestMutation();

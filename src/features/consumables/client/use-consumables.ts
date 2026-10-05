@@ -34,6 +34,30 @@ function invalidate(qc: ReturnType<typeof useQueryClient>, id?: string) {
   }
 }
 
+/** Full warehouse catalog for requester pickers (every page, not the first 100). */
+export function useConsumableCatalogQuery(filters?: {
+  classification?: ConsumableItem["classification"];
+  catalog?: boolean;
+  enabled?: boolean;
+}): UseQueryResult<PaginatedResponse<ConsumableItem>, Error> {
+  const { enabled = true, catalog = true, ...rest } = filters ?? {};
+  const listFilters = { ...rest, catalog };
+  return useQuery({
+    queryKey: [...consumableQueryKeys.list(listFilters), "catalog-all"],
+    queryFn: async () => {
+      const data = await consumablesApi.listAll(listFilters);
+      return {
+        data,
+        total: data.length,
+        page: 1,
+        limit: data.length || 1,
+        totalPages: 1,
+      };
+    },
+    enabled,
+  });
+}
+
 export function useConsumablesQuery(filters?: {
   category?: ConsumableItem["category"];
   classification?: ConsumableItem["classification"];

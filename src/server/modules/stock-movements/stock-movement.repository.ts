@@ -211,6 +211,7 @@ export class StockMovementRepository {
   async listRecent(filters: {
     reason?: StockMovementRow["reason"];
     limit?: number;
+    offset?: number;
     includeSandbox?: boolean;
     tenantId?: string;
     /** Forced from session for borrowers — never trust client alone. */
@@ -256,7 +257,13 @@ export class StockMovementRepository {
       conditions.push(eq(stockMovements.departmentId, filters.departmentId));
     }
     if (filters.classification) {
-      conditions.push(eq(consumables.classification, filters.classification));
+      const wanted = filters.classification.toLowerCase();
+      // Blank / odd-cased rows still belong on Supplies (DTO treats them as supply).
+      conditions.push(
+        wanted === "supply"
+          ? sql`lower(trim(${consumables.classification})) in ('supply', '')`
+          : sql`lower(trim(${consumables.classification})) = ${wanted}`
+      );
     }
     if (filters.fromDate?.trim()) {
       const raw = filters.fromDate.trim();
@@ -284,6 +291,7 @@ export class StockMovementRepository {
 
     return filtered
       .orderBy(desc(stockMovements.createdAt))
-      .limit(filters.limit ?? 100);
+      .limit(filters.limit ?? 100)
+      .offset(filters.offset ?? 0);
   }
 }

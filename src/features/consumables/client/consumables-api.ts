@@ -92,6 +92,38 @@ export const consumablesApi = {
     return res.data;
   },
 
+  /**
+   * Walk every page. Request pickers used to stop at the first 100 rows
+   * (lowest on-hand first), so later supplies never appeared for requesters.
+   */
+  async listAll(params?: {
+    category?: ConsumableItem["category"];
+    classification?: ConsumableItem["classification"];
+    stockLevel?: "all" | "healthy" | "low" | "critical";
+    search?: string;
+    catalog?: boolean;
+  }): Promise<ConsumableItem[]> {
+    const limit = 200;
+    const first = await this.list({ ...params, page: 1, limit });
+    const totalPages = Math.min(Math.max(first.totalPages || 1, 1), 25);
+    if (totalPages <= 1) return first.data;
+
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        this.list({ ...params, page: index + 2, limit })
+      )
+    );
+
+    const seen = new Set<string>();
+    const data: ConsumableItem[] = [];
+    for (const row of [first, ...rest].flatMap((page) => page.data)) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      data.push(row);
+    }
+    return data;
+  },
+
   async getById(id: string): Promise<ConsumableItem> {
     const res = await fetchJson<ApiResponse<ConsumableItem>>(
       `/api/consumables/${id}`

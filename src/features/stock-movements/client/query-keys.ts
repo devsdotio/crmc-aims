@@ -4,9 +4,11 @@ export const stockMovementQueryKeys = {
   list: (filters?: {
     reason?: string;
     limit?: number;
+    offset?: number;
     departmentId?: string;
     classification?: string;
     includeSandbox?: boolean;
+    fetchAll?: boolean;
   }) => [...stockMovementQueryKeys.lists(), filters ?? {}] as const,
   byConsumable: (id: string) =>
     [...stockMovementQueryKeys.all, "consumable", id] as const,

@@ -11,6 +11,7 @@ export const stockMovementsApi = {
   async list(params?: {
     reason?: StockMovement["reason"];
     limit?: number;
+    offset?: number;
     departmentId?: string;
     classification?: "supply" | "material";
     fromDate?: string;
@@ -19,6 +20,7 @@ export const stockMovementsApi = {
     const sp = new URLSearchParams();
     if (params?.reason) sp.set("reason", params.reason);
     if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
     if (params?.departmentId) sp.set("departmentId", params.departmentId);
     if (params?.classification) sp.set("classification", params.classification);
     if (params?.fromDate) sp.set("fromDate", params.fromDate);
@@ -28,6 +30,28 @@ export const stockMovementsApi = {
       qs ? `/api/stock-movements?${qs}` : "/api/stock-movements"
     );
     return res.data;
+  },
+
+  /** Page through department issues so older supplies are not cut off at 200. */
+  async listAll(params?: {
+    reason?: StockMovement["reason"];
+    departmentId?: string;
+    classification?: "supply" | "material";
+    fromDate?: string;
+    excludeVoided?: boolean;
+  }): Promise<StockMovement[]> {
+    const limit = 200;
+    const rows: StockMovement[] = [];
+    for (let page = 0; page < 25; page += 1) {
+      const batch = await this.list({
+        ...params,
+        limit,
+        offset: page * limit,
+      });
+      rows.push(...batch);
+      if (batch.length < limit) break;
+    }
+    return rows;
   },
 
   async listByConsumable(id: string): Promise<StockMovement[]> {

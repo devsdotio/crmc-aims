@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategoriesQuery, useCategoryStyleMap } from "@/features/categories/client/use-categories";
-import { useConsumablesQuery } from "@/features/consumables/client/use-consumables";
+import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { useUpdateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
 import { useUpdateConsumableRequestMutation } from "@/features/consumable-requests/client";
 import { useToast } from "@/components/providers/toast-context";
@@ -62,8 +62,7 @@ export function EditRequestDialog({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [supplyLines, setSupplyLines] = useState<any[]>([]);
 
-  const { data: consumableData } = useConsumablesQuery({
-    limit: 100,
+  const { data: consumableData } = useConsumableCatalogQuery({
     catalog: true,
   });
 

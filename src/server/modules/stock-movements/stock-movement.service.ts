@@ -97,6 +97,7 @@ export type StockMovementDTO = {
 export const listStockMovementsQuerySchema = z.object({
   reason: z.enum(["restock", "issue", "adjust"]).optional(),
   limit: z.coerce.number().int().min(1).max(500).optional().default(100),
+  offset: z.coerce.number().int().min(0).optional(),
   /** Optional for staff filters; borrowers always use session departmentId. */
   departmentId: z.string().uuid().optional(),
   classification: z.enum(["supply", "material"]).optional(),
@@ -314,6 +315,7 @@ export class StockMovementService {
     const rows = await this.repo.listRecent({
       reason: query.reason,
       limit: query.limit,
+      offset: query.offset,
       includeSandbox: query.includeSandbox,
       tenantId: actor?.tenantId,
       departmentId,

@@ -7,7 +7,7 @@ import { BrowseItemCard, BrowseItemCardSkeleton } from "./browse-item-card";
 import type { BrowseItem } from "./types";
 
 import { useAssetsQuery } from "@/features/assets/client/use-assets";
-import { useConsumablesQuery } from "@/features/consumables/client/use-consumables";
+import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { useBorrowerPortal } from "./context";
 import { isAssetAvailableForRequest } from "@/lib/assets-custody";
 import { availableQty } from "@/components/consumables/utils";
@@ -40,7 +40,7 @@ export function BrowseTab() {
     { catalog: true }
   );
   const { data: paginatedData, isLoading: consumablesLoading } =
-    useConsumablesQuery({ catalog: true });
+    useConsumableCatalogQuery({ catalog: true });
   const consumables = useMemo(() => paginatedData?.data ?? [], [paginatedData?.data]);
   const loading = assetsLoading || consumablesLoading;
 

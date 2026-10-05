@@ -49,7 +49,7 @@ import type {
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import { useCreateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
 import { useCreateConsumableRequestMutation } from "@/features/consumable-requests/client";
-import { useConsumablesQuery } from "@/features/consumables/client/use-consumables";
+import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { availableQty } from "@/components/consumables/utils";
 import { useMeQuery, useUsersQuery } from "@/features/users/client/use-users";
 import type { MeProfile } from "@/features/users/client/users-api";
@@ -786,8 +786,7 @@ function StepSelectConsumables({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const { data: paginatedData, isLoading } = useConsumablesQuery({
-    limit: 100,
+  const { data: paginatedData, isLoading } = useConsumableCatalogQuery({
     catalog: true,
   });
   const consumables = useMemo(
@@ -796,20 +795,22 @@ function StepSelectConsumables({
   );
 
   const supplyItems = useMemo(() => {
-    return consumables.map((c) => {
-      const free = c.availableQty ?? availableQty(c);
-      return {
-        id: c.id,
-        name: c.name,
-        category: c.category,
-        type: "consumable" as const,
-        status: "available" as const,
-        itemCode: c.itemCode,
-        unit: c.unit,
-        currentQty: free,
-        location: c.location,
-      };
-    });
+    return consumables
+      .map((c) => {
+        const free = c.availableQty ?? availableQty(c);
+        return {
+          id: c.id,
+          name: c.name,
+          category: c.category,
+          type: "consumable" as const,
+          status: "available" as const,
+          itemCode: c.itemCode,
+          unit: c.unit,
+          currentQty: free,
+          location: c.location,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [consumables]);
 
   const categories = useMemo(() => {

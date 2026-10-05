@@ -111,7 +111,7 @@ export function DepartmentIssuedConsumablesView({
   } = useStockMovementsQuery({
     reason: "issue",
     classification,
-    limit: 200,
+    fetchAll: true,
     enabled: Boolean(me?.departmentId),
   });
 
