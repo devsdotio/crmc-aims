@@ -282,12 +282,6 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Issued Materials",
-          href: "/borrower-db/materials",
-          icon: Boxes,
-          roles: ["borrower"],
-        },
-        {
           name: "Inventory",
           href: "/consumables",
           icon: Boxes,

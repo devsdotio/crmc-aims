@@ -53,58 +53,23 @@ export function RequestsPage({ kind }: { kind: RequestKindFilter }) {
           <p className="text-xs text-text-secondary mt-0.5">{copy.subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {typedKind ? (
-            <button
-              type="button"
-              onClick={() => openWizard(null)}
-              title="File borrow, assignment, and/or supply in one submission"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-border bg-bg text-text text-xs font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-            >
-              <Layers className="h-3.5 w-3.5" aria-hidden />
-              Multi-type Request
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => openWizard(null, "borrow")}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-              >
-                Borrow
-              </button>
-              <button
-                type="button"
-                onClick={() => openWizard(null, "assign")}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-              >
-                Assign
-              </button>
-              <button
-                type="button"
-                onClick={() => openWizard(null, "requisition")}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-              >
-                Request supplies
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => openWizard(null)}
+            title="File borrow, assignment, and/or supply in one submission"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+          >
+            <Layers className="h-3.5 w-3.5" aria-hidden />
+            Multi-type Request
+          </button>
           {typedKind && (
             <button
               type="button"
               onClick={() => openWizard(null, wizardTypeForKind(kind))}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-border bg-bg text-text text-xs font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
               {copy.cta}
-            </button>
-          )}
-          {!typedKind && (
-            <button
-              type="button"
-              onClick={() => openWizard(null)}
-              className="inline-flex items-center px-2 py-2 text-xs font-semibold text-text-secondary hover:text-text underline-offset-2 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-            >
-              Multi-type request
             </button>
           )}
         </div>

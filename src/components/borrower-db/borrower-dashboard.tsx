@@ -462,24 +462,10 @@ export function BorrowerDashboard() {
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => openWizard(null, "borrow")}
+            onClick={() => openWizard(null)}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
           >
-            Borrow
-          </button>
-          <button
-            type="button"
-            onClick={() => openWizard(null, "assign")}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-          >
-            Assign
-          </button>
-          <button
-            type="button"
-            onClick={() => openWizard(null, "requisition")}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
-          >
-            Request supplies
+            Multi-type Request
           </button>
           <Link
             href="/borrower-db/inventory"
@@ -494,13 +480,6 @@ export function BorrowerDashboard() {
           >
             Issued supplies
           </Link>
-          <button
-            type="button"
-            onClick={() => openWizard(null)}
-            className="inline-flex items-center px-2 py-2 text-xs font-semibold text-text-secondary hover:text-text underline-offset-2 hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-          >
-            Multi-type request
-          </button>
         </div>
       </div>
 
