@@ -228,7 +228,7 @@ function buildLineRows(data: DisbursementSlipData): string {
 
   const serviceInvoiceBar = data.serviceInvoiceNumber
     ? `<div class="forwarded-bar">
-          Service Invoice #: <strong>${escapeHtml(data.serviceInvoiceNumber)}</strong>
+          <strong>${escapeHtml(data.serviceInvoiceNumber)}</strong>
         </div>`
     : "";
 

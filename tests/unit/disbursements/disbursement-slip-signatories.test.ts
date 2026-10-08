@@ -136,20 +136,20 @@ describe("disbursement slip signatories", () => {
   });
 });
 
-describe("disbursement slip service invoice", () => {
-  it("shows voucher check/reference no. as Service Invoice #", () => {
+describe("disbursement slip check / reference no.", () => {
+  it("prints voucher check/reference no. with no Service Invoice label", () => {
     const slip = voucherToSlip(
-      sampleVoucher({ checkNumber: "SI-2026-0042" }),
+      sampleVoucher({ checkNumber: "CHK-2026-0042" }),
       "https://example.test/logo.png"
     );
-    expect(slip.serviceInvoiceNumber).toBe("SI-2026-0042");
+    expect(slip.serviceInvoiceNumber).toBe("CHK-2026-0042");
     const html = buildDisbursementSlipBodyHtml(slip);
-    expect(html).toContain("Service Invoice #:");
-    expect(html).toContain("<strong>SI-2026-0042</strong>");
+    expect(html).toContain("<strong>CHK-2026-0042</strong>");
+    expect(html).not.toContain("Service Invoice #");
     expect(html).not.toContain("Date Forwarded for Voucher");
   });
 
-  it("shows petty cash receipt/ref no. as Service Invoice #", () => {
+  it("prints petty cash receipt/ref no. the same way", () => {
     const slip = pettyCashToSlip(
       samplePettyCash({ receiptNumber: "OR-8891" }),
       "https://example.test/logo.png"
@@ -160,7 +160,7 @@ describe("disbursement slip service invoice", () => {
     );
   });
 
-  it("omits the Service Invoice line when check/reference is empty", () => {
+  it("omits the bar when check/reference is empty", () => {
     const voucherSlip = voucherToSlip(
       sampleVoucher({ checkNumber: null }),
       "https://example.test/logo.png"
@@ -171,18 +171,8 @@ describe("disbursement slip service invoice", () => {
     );
     expect(voucherSlip.serviceInvoiceNumber).toBe("");
     expect(pettySlip.serviceInvoiceNumber).toBe("");
-    const html = buildDisbursementSlipBodyHtml(voucherSlip);
-    expect(html).not.toContain("Service Invoice #");
-  });
-
-  it("prints the check/reference no. exactly as entered", () => {
-    const slip = voucherToSlip(
-      sampleVoucher({ checkNumber: "CHK-2026-0042" }),
-      "https://example.test/logo.png"
-    );
-    expect(slip.serviceInvoiceNumber).toBe("CHK-2026-0042");
-    expect(buildDisbursementSlipBodyHtml(slip)).toContain(
-      "Service Invoice #: <strong>CHK-2026-0042</strong>"
+    expect(buildDisbursementSlipBodyHtml(voucherSlip)).not.toContain(
+      "forwarded-bar"
     );
   });
 });
