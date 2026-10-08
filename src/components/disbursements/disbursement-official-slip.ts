@@ -25,13 +25,19 @@ export interface DisbursementSlipData {
   documentTitle: string;
   code: string;
   dateLabel: string;
-  forwardedDateLabel: string;
+  /** Check / reference no. (voucher) or receipt / slip no. (petty cash). */
+  serviceInvoiceNumber: string;
   lines: DisbursementSlipLine[];
   amount: number;
   requestedBy: string;
   verifiedBy: string;
   preparedBy: string;
   logoUrl: string;
+}
+
+function serviceInvoiceLabel(value: string | null | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  return trimmed || "No Service Invoice";
 }
 
 function escapeHtml(value: string): string {
@@ -132,7 +138,7 @@ export function voucherToSlip(voucher: Voucher, logoUrl: string): DisbursementSl
     documentTitle: voucherTitle(voucher.type),
     code: voucher.voucherCode,
     dateLabel: formatSlipDate(voucher.voucherDate),
-    forwardedDateLabel: formatSlipDate(voucher.approvedAt),
+    serviceInvoiceNumber: serviceInvoiceLabel(voucher.checkNumber),
     lines: slipLines(voucher.particulars, purpose, dealer, amount),
     amount,
     requestedBy: voucher.payeeName?.trim() || "",
@@ -154,7 +160,7 @@ export function pettyCashToSlip(
     documentTitle: "Disbursement Voucher Records",
     code: voucher.pcvNumber,
     dateLabel: formatSlipDate(voucher.voucherDate),
-    forwardedDateLabel: formatSlipDate(voucher.approvedAt),
+    serviceInvoiceNumber: serviceInvoiceLabel(voucher.receiptNumber),
     lines: slipLines(voucher.particulars, purpose, dealer, amount),
     amount,
     requestedBy: voucher.payeeName?.trim() || "",
@@ -220,9 +226,7 @@ function buildLineRows(data: DisbursementSlipData): string {
     )
     .join("");
 
-  const forwarded = data.forwardedDateLabel
-    ? escapeHtml(data.forwardedDateLabel)
-    : "&nbsp;";
+  const serviceInvoice = escapeHtml(data.serviceInvoiceNumber);
 
   const footer = `<tr class="total-row">
       <td colspan="4"></td>
@@ -249,7 +253,7 @@ function buildLineRows(data: DisbursementSlipData): string {
           </div>
         </div>
         <div class="forwarded-bar">
-          Date Forwarded for Voucher: <strong>${forwarded}</strong>
+          Service Invoice #: <strong>${serviceInvoice}</strong>
         </div>
       </td>
     </tr>`;
