@@ -25,13 +25,19 @@ export interface DisbursementSlipData {
   documentTitle: string;
   code: string;
   dateLabel: string;
-  forwardedDateLabel: string;
+  /** Check / reference no. (voucher) or receipt / slip no. (petty cash). */
+  serviceInvoiceNumber: string;
   lines: DisbursementSlipLine[];
   amount: number;
   requestedBy: string;
   verifiedBy: string;
   preparedBy: string;
   logoUrl: string;
+}
+
+/** Check / reference no. as entered. Empty string = omit the Service Invoice line. */
+function serviceInvoiceLabel(value: string | null | undefined): string {
+  return value?.trim() ?? "";
 }
 
 function escapeHtml(value: string): string {
@@ -132,7 +138,7 @@ export function voucherToSlip(voucher: Voucher, logoUrl: string): DisbursementSl
     documentTitle: voucherTitle(voucher.type),
     code: voucher.voucherCode,
     dateLabel: formatSlipDate(voucher.voucherDate),
-    forwardedDateLabel: formatSlipDate(voucher.approvedAt),
+    serviceInvoiceNumber: serviceInvoiceLabel(voucher.checkNumber),
     lines: slipLines(voucher.particulars, purpose, dealer, amount),
     amount,
     requestedBy: voucher.payeeName?.trim() || "",
@@ -154,7 +160,7 @@ export function pettyCashToSlip(
     documentTitle: "Disbursement Voucher Records",
     code: voucher.pcvNumber,
     dateLabel: formatSlipDate(voucher.voucherDate),
-    forwardedDateLabel: formatSlipDate(voucher.approvedAt),
+    serviceInvoiceNumber: serviceInvoiceLabel(voucher.receiptNumber),
     lines: slipLines(voucher.particulars, purpose, dealer, amount),
     amount,
     requestedBy: voucher.payeeName?.trim() || "",
@@ -220,9 +226,11 @@ function buildLineRows(data: DisbursementSlipData): string {
     )
     .join("");
 
-  const forwarded = data.forwardedDateLabel
-    ? escapeHtml(data.forwardedDateLabel)
-    : "&nbsp;";
+  const serviceInvoiceBar = data.serviceInvoiceNumber
+    ? `<div class="forwarded-bar">
+          <strong>${escapeHtml(data.serviceInvoiceNumber)}</strong>
+        </div>`
+    : "";
 
   const footer = `<tr class="total-row">
       <td colspan="4"></td>
@@ -248,9 +256,7 @@ function buildLineRows(data: DisbursementSlipData): string {
             <span class="sign-title">Materials Control and Work Progress Staff</span>
           </div>
         </div>
-        <div class="forwarded-bar">
-          Date Forwarded for Voucher: <strong>${forwarded}</strong>
-        </div>
+        ${serviceInvoiceBar}
       </td>
     </tr>`;
 
