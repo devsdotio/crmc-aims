@@ -160,7 +160,7 @@ describe("disbursement slip service invoice", () => {
     );
   });
 
-  it("falls back to No Service Invoice when check/reference is empty", () => {
+  it("omits the Service Invoice line when check/reference is empty", () => {
     const voucherSlip = voucherToSlip(
       sampleVoucher({ checkNumber: null }),
       "https://example.test/logo.png"
@@ -169,10 +169,20 @@ describe("disbursement slip service invoice", () => {
       samplePettyCash({ receiptNumber: "   " }),
       "https://example.test/logo.png"
     );
-    expect(voucherSlip.serviceInvoiceNumber).toBe("No Service Invoice");
-    expect(pettySlip.serviceInvoiceNumber).toBe("No Service Invoice");
-    expect(buildDisbursementSlipBodyHtml(voucherSlip)).toContain(
-      "<strong>No Service Invoice</strong>"
+    expect(voucherSlip.serviceInvoiceNumber).toBe("");
+    expect(pettySlip.serviceInvoiceNumber).toBe("");
+    const html = buildDisbursementSlipBodyHtml(voucherSlip);
+    expect(html).not.toContain("Service Invoice #");
+  });
+
+  it("prints the check/reference no. exactly as entered", () => {
+    const slip = voucherToSlip(
+      sampleVoucher({ checkNumber: "CHK-2026-0042" }),
+      "https://example.test/logo.png"
+    );
+    expect(slip.serviceInvoiceNumber).toBe("CHK-2026-0042");
+    expect(buildDisbursementSlipBodyHtml(slip)).toContain(
+      "Service Invoice #: <strong>CHK-2026-0042</strong>"
     );
   });
 });

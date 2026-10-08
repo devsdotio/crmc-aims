@@ -35,9 +35,9 @@ export interface DisbursementSlipData {
   logoUrl: string;
 }
 
+/** Check / reference no. as entered. Empty string = omit the Service Invoice line. */
 function serviceInvoiceLabel(value: string | null | undefined): string {
-  const trimmed = value?.trim() ?? "";
-  return trimmed || "No Service Invoice";
+  return value?.trim() ?? "";
 }
 
 function escapeHtml(value: string): string {
@@ -226,7 +226,11 @@ function buildLineRows(data: DisbursementSlipData): string {
     )
     .join("");
 
-  const serviceInvoice = escapeHtml(data.serviceInvoiceNumber);
+  const serviceInvoiceBar = data.serviceInvoiceNumber
+    ? `<div class="forwarded-bar">
+          Service Invoice #: <strong>${escapeHtml(data.serviceInvoiceNumber)}</strong>
+        </div>`
+    : "";
 
   const footer = `<tr class="total-row">
       <td colspan="4"></td>
@@ -252,9 +256,7 @@ function buildLineRows(data: DisbursementSlipData): string {
             <span class="sign-title">Materials Control and Work Progress Staff</span>
           </div>
         </div>
-        <div class="forwarded-bar">
-          Service Invoice #: <strong>${serviceInvoice}</strong>
-        </div>
+        ${serviceInvoiceBar}
       </td>
     </tr>`;
 
