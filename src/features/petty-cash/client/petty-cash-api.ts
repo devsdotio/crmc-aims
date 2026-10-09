@@ -34,9 +34,12 @@ export interface PettyCashListResponse {
 }
 
 export const pettyCashApi = {
-  async getNextCode(): Promise<{ pcvNumber: string }> {
+  async getNextCode(year?: number): Promise<{ pcvNumber: string }> {
+    const sp = new URLSearchParams();
+    if (year != null) sp.set("year", String(year));
+    const qs = sp.toString();
     const res = await fetchJson<ApiResponse<{ pcvNumber: string }>>(
-      "/api/petty-cash/next-code"
+      qs ? `/api/petty-cash/next-code?${qs}` : "/api/petty-cash/next-code"
     );
     return res.data;
   },
