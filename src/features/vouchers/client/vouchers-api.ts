@@ -38,9 +38,14 @@ export interface VoucherListResponse {
 }
 
 export const vouchersApi = {
-  async getNextCode(type: VoucherType = "disbursement"): Promise<{ voucherCode: string }> {
+  async getNextCode(
+    type: VoucherType = "disbursement",
+    year?: number
+  ): Promise<{ voucherCode: string }> {
+    const sp = new URLSearchParams({ type });
+    if (year != null) sp.set("year", String(year));
     const res = await fetchJson<ApiResponse<{ voucherCode: string }>>(
-      `/api/vouchers/next-code?type=${type}`
+      `/api/vouchers/next-code?${sp}`
     );
     return res.data;
   },

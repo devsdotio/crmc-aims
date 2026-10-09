@@ -37,7 +37,17 @@ export class VoucherController {
       const actor = await requireActor();
       const url = new URL(request.url);
       const type = (url.searchParams.get("type") as "disbursement" | "property_transfer" | "liquidation") ?? "disbursement";
-      const voucherCode = await this.service.generateNextVoucherCode(type, undefined, actor.tenantId);
+      const yearRaw = url.searchParams.get("year");
+      const year = yearRaw ? Number(yearRaw) : NaN;
+      const now =
+        Number.isInteger(year) && year >= 2000 && year <= 2100
+          ? new Date(year, 0, 1)
+          : undefined;
+      const voucherCode = await this.service.generateNextVoucherCode(
+        type,
+        now,
+        actor.tenantId
+      );
       return ok({ voucherCode });
     } catch (error) {
       return handleError(error);

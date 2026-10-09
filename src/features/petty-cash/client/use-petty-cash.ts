@@ -106,11 +106,12 @@ export function usePettyCashQuery(
 }
 
 export function useNextPcvCodeQuery(
-  enabled: boolean = true
+  enabled: boolean = true,
+  year?: number
 ): UseQueryResult<{ pcvNumber: string }, Error> {
   return useQuery({
-    queryKey: [...pettyCashQueryKeys.all, "next-code"],
-    queryFn: () => pettyCashApi.getNextCode(),
+    queryKey: [...pettyCashQueryKeys.all, "next-code", year ?? "current"],
+    queryFn: () => pettyCashApi.getNextCode(year),
     enabled,
     staleTime: 0,
     refetchOnWindowFocus: false,
