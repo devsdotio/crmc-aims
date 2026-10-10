@@ -337,6 +337,7 @@ function AssetsViewContent() {
               loading={isLoading && !isError}
               onSelect={setSelectedAsset}
               getCategoryStyle={getCategoryStyle}
+              onResetFilters={handleResetFilters}
             />
           ) : (
             <AssetTable
@@ -344,6 +345,7 @@ function AssetsViewContent() {
               loading={isLoading && !isError}
               onSelect={setSelectedAsset}
               getCategoryStyle={getCategoryStyle}
+              onResetFilters={handleResetFilters}
             />
           )}
         </main>

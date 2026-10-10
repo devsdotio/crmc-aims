@@ -244,15 +244,16 @@ export default function PurchaseOrdersReportPage() {
           icon={DollarSign}
           tone="indigo"
           toneValue={true}
-          delta="+18.4%"
           loading={isLoading}
+          tooltipAlign="left"
+          tooltip="The total money spent on all orders delivered to the school so far."
         />
 
         <KpiCard
-          title="Open Purchase Lots"
-          sublabel="STOCK // UNDEPLETED"
+          title="Open Orders"
+          sublabel="STOCK // ACTIVE"
           value={isLoading ? "…" : summary?.openOrdersCount || 0}
-          subtitle="Lots with unexhausted stock"
+          subtitle="Orders with stock remaining"
           icon={ShoppingCart}
           tone="amber"
           toneValue={true}
@@ -261,29 +262,43 @@ export default function PurchaseOrdersReportPage() {
             isPositive: (summary?.openOrdersCount || 0) < 10,
           }}
           loading={isLoading}
+          tooltipAlign="center"
+          tooltip="Orders that still have items left in stock that haven't been handed out yet."
         />
 
         <KpiCard
-          title="Completed Receipts"
+          title="Completed Orders"
           value={isLoading ? "…" : summary?.deliveredCount || 0}
-          subtitle="Received into warehouse inventory"
+          subtitle="Received into school storage"
           icon={CheckCircle2}
           tone="emerald"
           toneValue={true}
-          delta="+12.5%"
+          delta={{
+            value: `${summary?.deliveredCount || 0} received`,
+            isPositive: true,
+          }}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="Orders that have been safely delivered, checked, and accepted into school storage."
         />
 
         <KpiCard
-          title="Fulfillment Lead Time"
-          sublabel="LOGISTICS // VELOCITY"
-          value={isLoading ? "…" : `${summary?.avgLeadTimeDays || 4.2} d`}
-          subtitle="PO issuance to warehouse delivery"
+          title="Delivery Time"
+          sublabel="LOGISTICS // TIME"
+          value={
+            isLoading
+              ? "…"
+              : summary?.avgLeadTimeDays != null
+              ? `${summary.avgLeadTimeDays} d`
+              : "—"
+          }
+          subtitle="Order date to delivery"
           icon={Clock}
           tone="blue"
           toneValue={true}
-          delta="-0.8 d"
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="The average number of days between placing an order and receiving the items at the school."
         />
       </StatCardGrid>
 

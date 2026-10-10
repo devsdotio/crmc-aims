@@ -619,10 +619,10 @@ export function VoucherDetailSheet({
                   type="button"
                   disabled={actionLoading}
                   onClick={() => handleStatusChange("pending_approval")}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-xs"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-xs min-h-8"
                 >
                   <Send className="h-3.5 w-3.5" />
-                  <span>Submit</span>
+                  <span>Submit for Approval</span>
                 </button>
               )}
               {voucher.status === "pending_approval" && (
@@ -631,7 +631,7 @@ export function VoucherDetailSheet({
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleStatusChange("cancelled")}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer min-h-8"
                   >
                     <Ban className="h-3.5 w-3.5" />
                     <span>Reject</span>
@@ -640,10 +640,10 @@ export function VoucherDetailSheet({
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleStatusChange("approved")}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors cursor-pointer shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-xs min-h-8"
                   >
                     <ShieldCheck className="h-3.5 w-3.5" />
-                    <span>Approve</span>
+                    <span>Approve Voucher</span>
                   </button>
                 </>
               )}
@@ -653,19 +653,19 @@ export function VoucherDetailSheet({
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleStatusChange("cancelled")}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-rose-600 hover:bg-rose-500/10 transition-colors cursor-pointer min-h-8"
                   >
                     <Ban className="h-3.5 w-3.5" />
-                    <span>Cancel</span>
+                    <span>Cancel Voucher</span>
                   </button>
                   <button
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleStatusChange("disbursed")}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer shadow-xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors cursor-pointer shadow-xs min-h-8"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    <span>Disburse / Pay</span>
+                    <span>Complete Disbursement</span>
                   </button>
                 </>
               )}

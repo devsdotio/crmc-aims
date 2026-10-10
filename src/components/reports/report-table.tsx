@@ -1,6 +1,5 @@
-"use client";
-
-import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
+import React, { useState } from "react";
+import { ChevronDown, ChevronRight, ChevronUp, ChevronLeft, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface ColumnDef<T> {
@@ -24,6 +23,7 @@ interface ReportTableProps<T> {
   emptyTitle?: string;
   emptyDescription?: string;
   className?: string;
+  renderExpandedRow?: (row: T) => React.ReactNode;
 }
 
 export function ReportTable<T>({
@@ -39,7 +39,20 @@ export function ReportTable<T>({
   emptyTitle = "No records found",
   emptyDescription = "Try adjusting your filters or date range.",
   className,
+  renderExpandedRow,
 }: ReportTableProps<T>) {
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  
+  const toggleRow = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpandedRows((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      return newSet;
+    });
+  };
+
   const startRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const endRow = Math.min(page * pageSize, total);
 
@@ -54,6 +67,7 @@ export function ReportTable<T>({
         <table className="w-full text-left text-xs" aria-label="Report Data Table">
           <thead className="sticky top-0 z-10 border-b border-border/80 bg-bg-subtle/80 backdrop-blur-xs text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-text-secondary">
             <tr>
+              {renderExpandedRow && <th scope="col" className="px-4 py-3.5 w-8"></th>}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -75,7 +89,7 @@ export function ReportTable<T>({
               Array.from({ length: 8 }).map((_, idx) => (
                 <tr key={idx} className="animate-pulse bg-card">
                   {columns.map((col, cIdx) => (
-                    <td key={cIdx} className="px-4 py-4">
+                    <td key={cIdx} className="px-4 py-4" colSpan={cIdx === 0 && renderExpandedRow ? 2 : 1}>
                       <div className="h-4 w-3/4 rounded-md bg-border/40" />
                     </td>
                   ))}
@@ -83,7 +97,7 @@ export function ReportTable<T>({
               ))
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="py-28 sm:py-36 text-center">
+                <td colSpan={columns.length + (renderExpandedRow ? 1 : 0)} className="py-28 sm:py-36 text-center">
                   <div className="flex flex-col items-center justify-center gap-3.5 max-w-sm mx-auto">
                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-bg-subtle border border-border/80 text-text-secondary/70 shadow-xs">
                       <Inbox className="h-8 w-8 text-text-secondary" />
@@ -94,39 +108,61 @@ export function ReportTable<T>({
                 </td>
               </tr>
             ) : (
-              data.map((row, idx) => (
-                <tr
-                  key={
-                    String(
-                      (row as Record<string, unknown>).id ||
-                        (row as Record<string, unknown>).poNumber ||
-                        (row as Record<string, unknown>).logCode ||
-                        idx
-                    )
-                  }
-                  onClick={() => onRowClick?.(row)}
-                  className={cn(
-                    "transition-colors hover:bg-bg-subtle/60",
-                    onRowClick && "cursor-pointer"
-                  )}
-                >
-                  {columns.map((col) => (
-                    <td
-                      key={col.key}
+              data.map((row, idx) => {
+                const rowId = String(
+                  (row as Record<string, unknown>).id ||
+                    (row as Record<string, unknown>).poNumber ||
+                    (row as Record<string, unknown>).logCode ||
+                    idx
+                );
+                const isExpanded = expandedRows.has(rowId);
+                
+                return (
+                  <React.Fragment key={rowId}>
+                    <tr
+                      onClick={(e) => {
+                        if (renderExpandedRow) {
+                          toggleRow(rowId, e as any);
+                        } else {
+                          onRowClick?.(row);
+                        }
+                      }}
                       className={cn(
-                        "px-4 py-3 text-text",
-                        col.align === "right" && "text-right",
-                        col.align === "center" && "text-center",
-                        col.className
+                        "transition-colors hover:bg-bg-subtle/60",
+                        (onRowClick || renderExpandedRow) && "cursor-pointer"
                       )}
                     >
-                      {col.render
-                        ? col.render(row)
-                        : ((row as Record<string, unknown>)[col.key] as React.ReactNode) ?? "—"}
-                    </td>
-                  ))}
-                </tr>
-              ))
+                      {renderExpandedRow && (
+                        <td className="px-4 py-3 text-text-secondary">
+                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </td>
+                      )}
+                      {columns.map((col) => (
+                        <td
+                          key={col.key}
+                          className={cn(
+                            "px-4 py-3 text-text",
+                            col.align === "right" && "text-right",
+                            col.align === "center" && "text-center",
+                            col.className
+                          )}
+                        >
+                          {col.render
+                            ? col.render(row)
+                            : ((row as Record<string, unknown>)[col.key] as React.ReactNode) ?? "—"}
+                        </td>
+                      ))}
+                    </tr>
+                    {isExpanded && renderExpandedRow && (
+                      <tr className="bg-bg-subtle/30 border-b border-border/50">
+                        <td colSpan={columns.length + 1} className="p-0">
+                          {renderExpandedRow(row)}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </tbody>
         </table>

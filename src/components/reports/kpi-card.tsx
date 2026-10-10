@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
+import { Info, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { StatCardTone } from "@/components/ui/stat-card";
 
@@ -26,6 +26,10 @@ export interface KpiCardProps {
   href?: string;
   className?: string;
   onClick?: () => void;
+  tooltip?: string;
+  infoTooltip?: React.ReactNode;
+  tooltipAlign?: "left" | "center" | "right";
+  tooltipPlacement?: "top" | "bottom";
 }
 
 const TONE_CONFIG: Record<
@@ -101,6 +105,10 @@ export function KpiCard({
   href,
   className,
   onClick,
+  tooltip,
+  infoTooltip,
+  tooltipAlign = "center",
+  tooltipPlacement = "bottom",
 }: KpiCardProps) {
   const toneCfg = TONE_CONFIG[tone] || TONE_CONFIG.neutral;
 
@@ -114,10 +122,13 @@ export function KpiCard({
     return delta;
   }, [delta]);
 
+  const tooltipContent = tooltip || infoTooltip;
+
   const cardInner = (
     <div
       className={cn(
         "group relative flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs transition-all duration-200 hover:shadow-md hover:border-border select-none min-h-30",
+        tooltipContent && "overflow-visible hover:z-30 focus-within:z-30",
         (href || onClick) && "cursor-pointer active:scale-[0.99]",
         className
       )}
@@ -140,9 +151,63 @@ export function KpiCard({
                 {sublabel}
               </span>
             )}
-            <h2 className="text-xs sm:text-sm font-bold tracking-tight text-text truncate">
-              {title}
-            </h2>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <h2 className="text-xs sm:text-sm font-bold tracking-tight text-text truncate">
+                {title}
+              </h2>
+              {tooltipContent && (
+                <div className="relative group/tip inline-flex items-center shrink-0">
+                  <span
+                    aria-label={typeof tooltip === "string" ? tooltip : `Explanation for ${title}`}
+                    tabIndex={0}
+                    className="flex items-center justify-center text-text-secondary/50 hover:text-text focus-visible:text-primary transition-colors cursor-help rounded-full p-0.5 outline-none"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </span>
+                  {/* Tooltip Popup */}
+                  <div
+                    role="tooltip"
+                    className={cn(
+                      "pointer-events-none absolute z-50",
+                      tooltipPlacement === "top"
+                        ? "bottom-full mb-2 origin-bottom translate-y-1"
+                        : "top-full mt-2.5 origin-top -translate-y-1",
+                      tooltipAlign === "left" && "left-0 right-auto translate-x-0",
+                      tooltipAlign === "right" && "right-0 left-auto translate-x-0",
+                      tooltipAlign === "center" && "left-1/2 -translate-x-1/2",
+                      "w-68 sm:w-76 max-w-[calc(100vw-2.5rem)] p-3 sm:p-3.5 rounded-xl",
+                      "bg-text text-white",
+                      "border border-white/15 shadow-2xl",
+                      "opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible group-focus-within/tip:opacity-100 group-focus-within/tip:visible",
+                      "transition-all duration-150 transform-gpu group-hover/tip:translate-y-0 group-focus-within/tip:translate-y-0"
+                    )}
+                  >
+                    <div className="font-bold text-white text-xs sm:text-sm mb-1.5 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-accent shrink-0" />
+                      <span className="truncate">{title}</span>
+                    </div>
+                    <p className="text-white/90 text-xs sm:text-[13px] leading-relaxed font-normal normal-case">
+                      {tooltipContent}
+                    </p>
+                    {/* Tooltip Caret */}
+                    <div
+                      className={cn(
+                        "absolute border-4 border-transparent",
+                        tooltipPlacement === "top"
+                          ? "top-full border-t-text"
+                          : "bottom-full border-b-text",
+                        tooltipAlign === "left" && "left-2.5",
+                        tooltipAlign === "right" && "right-2.5",
+                        tooltipAlign === "center" && "left-1/2 -translate-x-1/2"
+                      )}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

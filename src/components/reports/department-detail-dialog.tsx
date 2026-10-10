@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Printer,
   Copy,
@@ -12,9 +12,14 @@ import {
   FolderKanban,
   QrCode,
   X,
-  PieChart as PieChartIcon,
   BarChart3,
   Search,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  Calendar,
+  CheckCircle2,
+  PieChart as PieChartIcon,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -57,6 +62,7 @@ export function DepartmentDetailDialog({
   const [supplySearch, setSupplySearch] = useState("");
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
+  const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
   const [cachedDepartment, setCachedDepartment] = useState<DepartmentReportRow | null>(
     department
   );
@@ -100,6 +106,18 @@ export function DepartmentDetailDialog({
   if (!isRendered || !effectiveDepartment) {
     return null;
   }
+
+  const toggleAssetExpand = (assetId: string) => {
+    setExpandedAssets((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(assetId)) {
+        newSet.delete(assetId);
+      } else {
+        newSet.add(assetId);
+      }
+      return newSet;
+    });
+  };
 
   const handleCopyCode = () => {
     if (!effectiveDepartment?.departmentName) return;
@@ -623,6 +641,7 @@ export function DepartmentDetailDialog({
                   <table className="w-full text-left text-xs">
                     <thead className="border-b border-border/80 bg-bg-subtle/80 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
                       <tr>
+                        <th className="px-4 py-3 w-8"></th>
                         <th className="px-4 py-3">Asset Code</th>
                         <th className="px-4 py-3">Item Name</th>
                         <th className="px-4 py-3">Category</th>
@@ -633,38 +652,129 @@ export function DepartmentDetailDialog({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
-                      {filteredAssets.map((asset) => (
-                        <tr key={asset.id} className="hover:bg-bg-subtle/50 transition-colors">
-                          <td className="px-4 py-3 font-mono font-bold text-text flex items-center gap-1.5">
-                            <QrCode className="h-3.5 w-3.5 text-accent" />
-                            {asset.assetCode}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="font-semibold text-text">{asset.name}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex rounded-full bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-bold text-text capitalize">
-                              {asset.category}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-text-secondary text-[11px]">
-                            {asset.serialNumber || "—"}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-status-active-bg/20 text-status-active-text border-status-active-bg/30">
-                              {asset.status.replace(/_/g, " ")}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-text-secondary">
-                            {asset.location || "—"}
-                          </td>
-                          {canViewCosts && (
-                            <td className="px-4 py-3 text-right font-mono font-bold text-text">
-                              {asset.value != null ? `₱${asset.value.toLocaleString()}` : "—"}
-                            </td>
-                          )}
-                        </tr>
-                      ))}
+                      {filteredAssets.map((asset) => {
+                        const hasMaintenance = asset.maintenanceLogs && asset.maintenanceLogs.length > 0;
+                        const isExpanded = expandedAssets.has(asset.id);
+                        
+                        return (
+                          <React.Fragment key={asset.id}>
+                            <tr 
+                              className={cn(
+                                "transition-colors",
+                                hasMaintenance ? "hover:bg-bg-subtle/50 cursor-pointer" : "hover:bg-bg-subtle/30"
+                              )}
+                              onClick={() => hasMaintenance && toggleAssetExpand(asset.id)}
+                            >
+                              <td className="px-4 py-3">
+                                {hasMaintenance ? (
+                                  isExpanded ? (
+                                    <ChevronUp className="h-4 w-4 text-text-secondary" />
+                                  ) : (
+                                    <ChevronDown className="h-4 w-4 text-text-secondary" />
+                                  )
+                                ) : (
+                                  <div className="w-4" />
+                                )}
+                              </td>
+                              <td className="px-4 py-3 font-mono font-bold text-text flex items-center gap-1.5">
+                                <QrCode className="h-3.5 w-3.5 text-accent" />
+                                {asset.assetCode}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="font-semibold text-text">{asset.name}</div>
+                                {hasMaintenance && (
+                                  <div className="text-[10px] text-accent mt-0.5 font-semibold">
+                                    {asset.maintenanceLogs!.length} Maintenance Logs
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="inline-flex rounded-full bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-bold text-text capitalize">
+                                  {asset.category}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 font-mono text-text-secondary text-[11px]">
+                                {asset.serialNumber || "—"}
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border bg-status-active-bg/20 text-status-active-text border-status-active-bg/30">
+                                  {asset.status.replace(/_/g, " ")}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-text-secondary">
+                                {asset.location || "—"}
+                              </td>
+                              {canViewCosts && (
+                                <td className="px-4 py-3 text-right font-mono font-bold text-text">
+                                  {asset.value != null ? `₱${asset.value.toLocaleString()}` : "—"}
+                                </td>
+                              )}
+                            </tr>
+                            
+                            {/* Expanded Maintenance Logs */}
+                            {isExpanded && hasMaintenance && (
+                              <tr className="bg-bg-subtle/30">
+                                <td colSpan={canViewCosts ? 8 : 7} className="p-0 border-b border-border/60">
+                                  <div className="px-12 py-4 space-y-3 bg-bg-subtle/50 inner-shadow-sm">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Wrench className="h-4 w-4 text-emerald-600" />
+                                      <span className="text-xs font-bold text-text">Maintenance History for {asset.assetCode}</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      {asset.maintenanceLogs!.map((log) => (
+                                        <div key={log.id} className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                                          <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                              <div className="font-mono text-[10px] font-bold text-text-secondary mb-1">{log.logCode}</div>
+                                              <div className="font-semibold text-xs text-text">{log.condition}</div>
+                                            </div>
+                                            {canViewCosts && log.totalCost != null && (
+                                              <div className="text-right">
+                                                <div className="font-mono text-xs font-bold text-text">
+                                                  ₱{log.totalCost.toLocaleString()}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {log.resolutionNotes ? (
+                                            <p className="text-[11px] text-text-secondary mt-1.5 leading-relaxed bg-bg-subtle/50 p-2 rounded-lg border border-border/40">
+                                              <span className="font-bold text-text block mb-0.5">Resolution</span>
+                                              {log.resolutionNotes}
+                                            </p>
+                                          ) : log.notes ? (
+                                            <p className="text-[11px] text-text-secondary mt-1.5 leading-relaxed bg-bg-subtle/50 p-2 rounded-lg border border-border/40">
+                                              {log.notes}
+                                            </p>
+                                          ) : null}
+                                          
+                                          <div className="flex flex-wrap items-center justify-between gap-4 text-[10px] text-text-secondary pt-3 mt-2 border-t border-border/50">
+                                            <span className="flex items-center gap-1 font-mono">
+                                              <Calendar className="h-3 w-3" />
+                                              {log.dateLogged}
+                                            </span>
+                                            {log.isResolved ? (
+                                              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                                                <CheckCircle2 className="h-3 w-3" />
+                                                Resolved
+                                              </span>
+                                            ) : (
+                                              <span className="text-rose-600 font-semibold flex items-center gap-1">
+                                                <AlertCircle className="h-3 w-3" />
+                                                Active
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -856,14 +966,34 @@ export function DepartmentDetailDialog({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
                 <span className="text-xs text-text-secondary block mb-1">Active Repairs</span>
                 <div className="text-xl font-bold font-mono text-text">
-                  {effectiveDepartment.activeMaintenanceCount}
+                  {effectiveDepartment.maintenanceSummary?.openLogs ?? effectiveDepartment.activeMaintenanceCount}
                 </div>
                 <p className="text-[11px] text-text-secondary mt-1">Open maintenance work orders</p>
               </div>
+
+              {effectiveDepartment.maintenanceSummary && (
+                <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
+                  <span className="text-xs text-text-secondary block mb-1">Total Maintenances</span>
+                  <div className="text-xl font-bold font-mono text-text">
+                    {effectiveDepartment.maintenanceSummary.totalLogs}
+                  </div>
+                  <p className="text-[11px] text-text-secondary mt-1">Lifetime recorded logs</p>
+                </div>
+              )}
+
+              {canViewCosts && effectiveDepartment.maintenanceSummary && (
+                <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
+                  <span className="text-xs text-text-secondary block mb-1">Total Repair Spend</span>
+                  <div className="text-xl font-bold font-mono text-accent">
+                    ₱{effectiveDepartment.maintenanceSummary.totalRepairSpend.toLocaleString()}
+                  </div>
+                  <p className="text-[11px] text-text-secondary mt-1">Lifetime maintenance costs</p>
+                </div>
+              )}
 
               <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
                 <span className="text-xs text-text-secondary block mb-1">Active Projects</span>

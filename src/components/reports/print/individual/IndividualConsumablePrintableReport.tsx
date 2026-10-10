@@ -225,7 +225,7 @@ export function IndividualConsumablePrintableReport({
       </section>
 
       {/* ─── Section 3: Department Consumption Table ─────────────────────── */}
-      <section className="avoid-break w-full">
+      <section className="w-full">
         <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>3. Department Consumption Ranking</span>

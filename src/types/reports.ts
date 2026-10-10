@@ -314,6 +314,25 @@ export interface MaintenanceSummary {
 
 // ─── Shared Report Drilldown Types ──────────────────────────────────────────
 
+export interface MaintenanceLogItem {
+  id: string;
+  logCode: string;
+  condition: string;
+  source: string;
+  notes: string;
+  workNotes: string | null;
+  resolutionNotes: string | null;
+  dateLogged: string;
+  resolutionDate: string | null;
+  isResolved: boolean;
+  repairCost: number | null;
+  totalCost: number | null;
+  mttrDays: number | null;
+  loggedByName: string;
+  resolvedByName: string | null;
+  repairParts: Array<{ name: string; cost: string | null }>;
+}
+
 export interface AssignedAssetItem {
   id: string;
   assetCode: string;
@@ -325,6 +344,8 @@ export interface AssignedAssetItem {
   location?: string | null;
   assignedAt?: string | null;
   assignedByName?: string | null;
+  /** Maintenance logs for this specific asset (populated in department drilldown) */
+  maintenanceLogs?: MaintenanceLogItem[];
 }
 
 export interface ConsumedSupplyItem {
@@ -371,6 +392,14 @@ export interface ProjectReportSummary {
 
 // ─── 9. Department Report ─────────────────────────────────────────────────────
 
+export interface DepartmentMaintenanceSummary {
+  totalLogs: number;
+  openLogs: number;
+  resolvedLogs: number;
+  totalRepairSpend: number;
+  avgMttrDays: number | null;
+}
+
 export interface DepartmentReportRow {
   id: string;
   departmentName: string;
@@ -384,6 +413,8 @@ export interface DepartmentReportRow {
   topAssets: string[];
   assignedAssets?: AssignedAssetItem[];
   consumedSupplies?: ConsumedSupplyItem[];
+  /** Full maintenance summary for this department */
+  maintenanceSummary?: DepartmentMaintenanceSummary;
 }
 
 export interface DepartmentReportSummary {

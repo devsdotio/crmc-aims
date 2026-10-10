@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2, ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { AuthCard } from './AuthCard';
@@ -99,6 +99,7 @@ type SignInApiData = {
 };
 
 export function SignInForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const emailInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -270,8 +271,9 @@ export function SignInForm() {
         successMessage: 'Sign in successful! Opening workspace…',
       });
 
-      // Full navigation so the next document reliably picks up Set-Cookie cookies.
-      window.location.assign(nextPath);
+      // Navigate to destination workspace.
+      router.push(nextPath);
+      router.refresh();
     } catch {
       setFormState({
         isLoading: false,
@@ -332,11 +334,12 @@ export function SignInForm() {
               <input
                 id="email"
                 type="email"
+                inputMode="email"
                 ref={emailInputRef}
                 value={formValues.email}
                 onChange={(e) => handleChange('email', e.target.value)}
                 onBlur={() => handleBlur('email')}
-                placeholder="admin@example.com"
+                placeholder="name@crmc.edu.ph"
                 autoComplete="username"
                 disabled={formState.isLoading}
                 aria-invalid={Boolean(errors.email && touched.email)}

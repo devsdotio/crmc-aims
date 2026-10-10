@@ -276,6 +276,8 @@ export default function ProjectReportsPage() {
           tone="accent"
           toneValue={true}
           loading={isLoading}
+          tooltipAlign="left"
+          tooltip="All school projects, repairs, and building activities tracked in the system."
         />
         <KpiCard
           title="Active Projects"
@@ -286,16 +288,20 @@ export default function ProjectReportsPage() {
           tone="amber"
           toneValue={true}
           loading={isLoading}
+          tooltipAlign="center"
+          tooltip="Projects that are currently ongoing and being worked on right now."
         />
         <KpiCard
-          title="Assets Deployed"
-          sublabel="CAPITAL // ASSIGNED"
+          title="Assigned Equipment"
+          sublabel="EQUIPMENT // ASSIGNED"
           value={isLoading ? "…" : summary?.totalAssetsAssigned || 0}
-          subtitle="Across all tracked projects"
+          subtitle="Used across active projects"
           icon={Package}
           tone="blue"
           toneValue={true}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="Equipment and tools currently borrowed and in use at project locations."
         />
         <KpiCard
           title="Project Spend"
@@ -309,13 +315,15 @@ export default function ProjectReportsPage() {
           }
           subtitle={
             canViewCosts
-              ? `${summary?.totalConsumablesConsumed || 0} consumables issued`
+              ? `${summary?.totalConsumablesConsumed || 0} supplies issued`
               : "Admin view only"
           }
           icon={DollarSign}
           tone="emerald"
           toneValue={true}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="The total money spent so far on materials, supplies, and work for these projects."
         />
       </StatCardGrid>
 

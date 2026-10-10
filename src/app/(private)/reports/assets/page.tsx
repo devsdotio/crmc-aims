@@ -351,8 +351,9 @@ export default function AssetRegisterReportPage() {
           icon={Package}
           tone="blue"
           toneValue={true}
-          delta="+12.5%"
           loading={isLoading}
+          tooltipAlign="left"
+          tooltip="The total number of school items and equipment registered with an ID tag in our inventory."
         />
 
         <KpiCard
@@ -376,6 +377,8 @@ export default function AssetRegisterReportPage() {
             isPositive: true,
           }}
           loading={isLoading}
+          tooltipAlign="center"
+          tooltip="The percentage of all school equipment that is in good working order and ready to use."
         />
 
         <KpiCard
@@ -395,6 +398,8 @@ export default function AssetRegisterReportPage() {
             isPositive: false,
           }}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="Items that are broken, waiting for parts, or currently being repaired by our maintenance team."
         />
 
         <KpiCard
@@ -407,11 +412,13 @@ export default function AssetRegisterReportPage() {
               ? `₱${(summary?.totalValuation || 0).toLocaleString()}`
               : "Restricted"
           }
-          subtitle={canViewCosts ? "Acquisition value baseline" : "Admin view only"}
+          subtitle={canViewCosts ? "Original purchase cost" : "Admin view only"}
           icon={DollarSign}
           tone="indigo"
           toneValue={true}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="The original purchase price of all school property and equipment currently in use."
         />
       </StatCardGrid>
 
