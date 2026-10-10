@@ -1,19 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
 import { Search, FilterX, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BorrowRequestFilterState } from "@/types/borrow-requests";
+import { useDepartmentsQuery } from "@/features/departments/client";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
-const DEPARTMENTS = [
-  "All Departments",
-  "IT Support",
-  "Emergency",
-  "Surgery",
-  "Pediatrics",
-  "Cardiology",
-  "Administration",
-  "Radiology",
-];
+const ALL_DEPARTMENTS = "All Departments";
 
 export interface RequestSearchAndDeptProps {
   filters: BorrowRequestFilterState;
@@ -24,6 +18,41 @@ export function RequestSearchAndDept({
   filters,
   onFilterChange,
 }: RequestSearchAndDeptProps) {
+  const { data: departments = [], isLoading, isError } = useDepartmentsQuery();
+
+  const departmentOptions = useMemo(() => {
+    const options = departments
+      .map((d) => ({
+        value: d.name.trim(),
+        label: d.name.trim(),
+        keywords: `${d.code ?? ""} ${d.name}`,
+      }))
+      .filter((o) => Boolean(o.value))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    // Keep a selected legacy/custom name visible even if it left the catalog.
+    if (
+      filters.department &&
+      filters.department !== ALL_DEPARTMENTS &&
+      !options.some((o) => o.value === filters.department)
+    ) {
+      return [
+        {
+          value: filters.department,
+          label: filters.department,
+          keywords: filters.department,
+        },
+        ...options,
+      ];
+    }
+    return options;
+  }, [departments, filters.department]);
+
+  const selectedDepartment =
+    filters.department && filters.department !== ALL_DEPARTMENTS
+      ? filters.department
+      : "";
+
   return (
     <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-72 justify-end">
       {/* Search Input */}
@@ -48,21 +77,26 @@ export function RequestSearchAndDept({
         <label htmlFor="department-filter" className="text-xs font-semibold text-text-secondary shrink-0">
           Dept:
         </label>
-        <select
+        <SearchableSelect
           id="department-filter"
-          value={filters.department}
-          onChange={(e) => onFilterChange({ department: e.target.value })}
-          className={cn(
-            "h-9 px-2.5 text-xs bg-bg border border-border rounded-lg text-text font-semibold cursor-pointer",
-            "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
-          )}
-        >
-          {DEPARTMENTS.map((dept) => (
-            <option key={dept} value={dept}>
-              {dept}
-            </option>
-          ))}
-        </select>
+          value={selectedDepartment}
+          onValueChange={(value) =>
+            onFilterChange({ department: value || ALL_DEPARTMENTS })
+          }
+          options={departmentOptions}
+          placeholder={
+            isLoading
+              ? "Loading departments…"
+              : isError
+                ? "Could not load departments"
+                : "Search department…"
+          }
+          clearLabel={ALL_DEPARTMENTS}
+          emptyMessage="No departments match your search"
+          disabled={isLoading}
+          className="w-48 sm:w-56"
+          inputClassName="h-9 px-2.5 text-xs font-semibold rounded-lg border-border"
+        />
       </div>
     </div>
   );
