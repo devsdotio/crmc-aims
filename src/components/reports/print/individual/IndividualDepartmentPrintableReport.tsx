@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { DepartmentDTO } from "@/features/departments/client";
 import {
   PrintMetricBar,
@@ -17,6 +18,15 @@ export interface IndividualDepartmentAsset {
   status?: string;
   cost?: number | null;
   value?: number | null;
+  maintenanceLogs?: Array<{
+    logCode: string;
+    condition: string;
+    dateLogged: string;
+    isResolved: boolean;
+    repairCost?: number | null;
+    resolutionNotes?: string | null;
+    notes?: string;
+  }>;
 }
 
 export interface IndividualDepartmentSupplyUsage {
@@ -90,6 +100,15 @@ export function IndividualDepartmentPrintableReport({
       condition: a.condition,
       status: a.status,
       cost: a.value ?? a.cost ?? null,
+      maintenanceLogs: a.maintenanceLogs?.map(log => ({
+        logCode: log.logCode,
+        condition: log.condition,
+        dateLogged: log.dateLogged,
+        isResolved: log.isResolved,
+        repairCost: log.repairCost,
+        resolutionNotes: log.resolutionNotes,
+        notes: log.notes,
+      })),
     })) ||
     [];
 
@@ -245,7 +264,7 @@ export function IndividualDepartmentPrintableReport({
       </section>
 
       {/* ─── Section 2: Assigned Capital Fleet Equipment Register ────────── */}
-      <section className="avoid-break">
+      <section>
         <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>2. Assigned Fleet Capital Assets Register</span>
@@ -266,26 +285,64 @@ export function IndividualDepartmentPrintableReport({
             </thead>
             <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
               {effectiveAssets.slice(0, 10).map((asset) => (
-                <tr key={asset.id}>
-                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">
-                    {asset.assetCode || asset.id}
-                  </td>
-                  <td className="py-1.5 px-3 font-medium">
-                    {asset.name}
-                  </td>
-                  <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap">
-                    {asset.category || "Equipment"}
-                  </td>
-                  <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap">
-                    {asset.serialNumber || "—"}
-                  </td>
-                  <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap">
-                    {asset.condition || "Good"}
-                  </td>
-                  <td className="py-1.5 px-3 whitespace-nowrap">
-                    <PrintStatusBadge status={asset.status || "active"} />
-                  </td>
-                </tr>
+                <React.Fragment key={asset.id}>
+                  <tr>
+                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap border-b-0">
+                      {asset.assetCode || asset.id}
+                    </td>
+                    <td className="py-1.5 px-3 font-medium border-b-0">
+                      {asset.name}
+                    </td>
+                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0">
+                      {asset.category || "Equipment"}
+                    </td>
+                    <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap border-b-0">
+                      {asset.serialNumber || "—"}
+                    </td>
+                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0">
+                      {asset.condition || "Good"}
+                    </td>
+                    <td className="py-1.5 px-3 whitespace-nowrap border-b-0">
+                      <PrintStatusBadge status={asset.status || "active"} />
+                    </td>
+                  </tr>
+                  {asset.maintenanceLogs && asset.maintenanceLogs.length > 0 && (
+                    <tr className="bg-neutral-50/50">
+                      <td colSpan={6} className="py-2 px-3 pb-3 border-t-0">
+                        <div className="ml-2 pl-3 border-l-2 border-teal-600/30 space-y-1.5">
+                          <div className="text-[9.5px] font-bold text-teal-800 uppercase tracking-wider mb-1">
+                            Maintenance History ({asset.maintenanceLogs.length} Records)
+                          </div>
+                          {asset.maintenanceLogs.map((log) => (
+                            <div key={log.logCode} className="grid grid-cols-12 gap-2 text-[10px] items-start">
+                              <div className="col-span-2 font-mono text-neutral-600">
+                                {log.dateLogged}
+                              </div>
+                              <div className="col-span-3">
+                                <span className="font-bold text-neutral-800 mr-1">{log.logCode}</span>
+                                <span className={`capitalize px-1.5 py-0.5 rounded-xs text-[9px] ${
+                                  log.isResolved ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                }`}>
+                                  {log.isResolved ? 'Resolved' : 'Active'}
+                                </span>
+                              </div>
+                              <div className="col-span-5 text-neutral-600 italic leading-snug">
+                                {log.resolutionNotes || log.notes || "No details provided."}
+                              </div>
+                              <div className="col-span-2 text-right">
+                                {canViewCosts && log.repairCost != null ? (
+                                  <span className="font-mono font-bold text-neutral-800">
+                                    ₱{log.repairCost.toLocaleString()}
+                                  </span>
+                                ) : "—"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
               {effectiveAssets.length === 0 && (
                 <tr>
@@ -300,7 +357,7 @@ export function IndividualDepartmentPrintableReport({
       </section>
 
       {/* ─── Section 3: Consumables Supplies Usage Ledger ────────────────── */}
-      <section className="avoid-break">
+      <section>
         <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>3. Consumable Supplies Requisitions &amp; Usage Ledger</span>

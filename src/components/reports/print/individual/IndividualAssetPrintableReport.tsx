@@ -342,7 +342,7 @@ export function IndividualAssetPrintableReport({
       </section>
 
       {/* ─── Section 2: Maintenance & Repair Work Orders Log ────────────── */}
-      <section className="avoid-break">
+      <section>
         <div className="rounded-xs border border-black bg-white overflow-hidden w-full">
           <div className="border-b border-black bg-white px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-black flex items-center justify-between">
             <span>2. Maintenance &amp; Repair Work Orders Log</span>

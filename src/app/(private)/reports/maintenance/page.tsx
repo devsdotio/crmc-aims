@@ -10,6 +10,8 @@ import {
   Flame,
   ExternalLink,
   BarChart3,
+  FileText,
+  HardHat,
 } from "lucide-react";
 
 import { useMaintenanceReportQuery } from "@/features/reports/client/use-reports";
@@ -501,6 +503,80 @@ export default function MaintenanceReportPage() {
         totalPages={data?.totalPages || 1}
         isLoading={isLoading}
         onPageChange={(page) => handleFilterChange({ page })}
+        renderExpandedRow={(row) => (
+          <div className="px-6 py-4 bg-bg-subtle/50 inner-shadow-sm space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left Column: Diagnostics */}
+              <div className="space-y-3">
+                <div>
+                  <h4 className="flex items-center gap-1.5 text-xs font-bold text-text mb-1.5 uppercase tracking-wide">
+                    <FileText className="h-3.5 w-3.5 text-accent" />
+                    Diagnostics &amp; Condition
+                  </h4>
+                  <div className="p-3 rounded-xl border border-border/60 bg-card text-xs text-text-secondary leading-relaxed shadow-2xs">
+                    {row.notes || <span className="italic opacity-60">No initial diagnostic notes provided.</span>}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 text-[11px] bg-card p-3 rounded-xl border border-border/60 shadow-2xs">
+                  <div className="flex-1">
+                    <span className="block text-text-secondary mb-0.5">Logged By</span>
+                    <span className="font-semibold text-text">{row.loggedByName}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Resolution & Work */}
+              <div className="space-y-3">
+                <div>
+                  <h4 className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 mb-1.5 uppercase tracking-wide">
+                    <HardHat className="h-3.5 w-3.5" />
+                    Work Executed &amp; Resolution
+                  </h4>
+                  <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs text-text-secondary leading-relaxed shadow-2xs">
+                    {row.resolutionNotes || row.workNotes ? (
+                      <div className="space-y-2">
+                        {row.workNotes && (
+                          <div>
+                            <span className="font-bold text-text block mb-0.5">Work Done:</span>
+                            {row.workNotes}
+                          </div>
+                        )}
+                        {row.resolutionNotes && (
+                          <div>
+                            <span className="font-bold text-text block mb-0.5">Resolution:</span>
+                            {row.resolutionNotes}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="italic opacity-60 text-text-secondary">No resolution documentation provided.</span>
+                    )}
+                  </div>
+                </div>
+
+                {row.repairParts && row.repairParts.length > 0 && (
+                  <div>
+                    <h5 className="text-[10px] font-bold text-text-secondary uppercase tracking-wider mb-1">
+                      Parts Consumed ({row.repairParts.length})
+                    </h5>
+                    <div className="flex flex-wrap gap-2">
+                      {row.repairParts.map((part, i) => (
+                        <div key={i} className="flex items-center gap-2 bg-card border border-border/60 px-2.5 py-1.5 rounded-lg shadow-2xs text-[11px]">
+                          <Wrench className="h-3 w-3 text-sky-600" />
+                          <span className="font-medium text-text">{part.name}</span>
+                          {canViewCosts && part.cost != null && (
+                            <span className="font-mono text-accent">₱{Number(part.cost).toLocaleString()}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       />
 
     </div>

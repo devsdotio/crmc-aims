@@ -27,8 +27,10 @@ import { getTenantContext } from "@/server/shared/tenant-context";
 import type {
   AssignedAssetItem,
   ConsumedSupplyItem,
+  DepartmentMaintenanceSummary,
   DepartmentReportRow,
   DepartmentReportSummary,
+  MaintenanceLogItem,
   ProjectReportRow,
   ProjectReportSummary,
 } from "@/types/reports";
@@ -1804,6 +1806,92 @@ export class ReportRepository {
           ])
         : [[], []];
 
+    // ─── Maintenance logs for paged dept assets ───────────────────────────────
+    const pagedAssetIds = itemizedAssets.map((a) => a.id);
+    let rawMaintenanceLogs: Array<{
+      assetId: string | null;
+      id: string;
+      logCode: string;
+      condition: string;
+      source: string;
+      notes: string;
+      workNotes: string | null;
+      resolutionNotes: string | null;
+      dateLogged: string;
+      resolutionDate: string | null;
+      isResolved: boolean;
+      repairCost: number | null;
+      totalCost: number | null;
+      mttrDays: number | null;
+      loggedByName: string;
+      resolvedByName: string | null;
+      repairParts: Array<{ name: string; cost: string | null }>;
+    }> = [];
+
+    if (includeLineItems && pagedAssetIds.length > 0) {
+      rawMaintenanceLogs = await db
+        .select({
+          assetId: maintenanceLogs.assetId,
+          id: maintenanceLogs.id,
+          logCode: maintenanceLogs.logCode,
+          condition: maintenanceLogs.condition,
+          source: maintenanceLogs.source,
+          notes: maintenanceLogs.notes,
+          workNotes: maintenanceLogs.workNotes,
+          resolutionNotes: maintenanceLogs.resolutionNotes,
+          dateLogged: sql<string>`${maintenanceLogs.dateLogged}::text`,
+          resolutionDate: sql<string | null>`${maintenanceLogs.resolutionDate}::text`,
+          isResolved: maintenanceLogs.isResolved,
+          repairCost: sql<number | null>`${maintenanceLogs.repairCost}::float`,
+          totalCost: sql<number | null>`${effectiveRepairCostSql()}::float`,
+          mttrDays: sql<number | null>`
+            case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} is not null
+              then extract(day from (${maintenanceLogs.resolutionDate}::timestamp - ${maintenanceLogs.dateLogged}::timestamp))::int
+            end
+          `,
+          loggedByName: maintenanceLogs.loggedByName,
+          resolvedByName: maintenanceLogs.resolvedByName,
+          repairParts: sql<Array<{ name: string; cost: string | null }>>`coalesce(${maintenanceLogs.repairParts}, '[]'::jsonb)`,
+        })
+        .from(maintenanceLogs)
+        .where(
+          and(
+            inArray(maintenanceLogs.assetId, pagedAssetIds),
+            ...(tenantId ? [eq(maintenanceLogs.tenantId, tenantId)] : [])
+          )
+        )
+        .orderBy(desc(maintenanceLogs.dateLogged));
+    }
+
+    // Group maintenance logs by assetId
+    const maintLogsByAsset = new Map<string, MaintenanceLogItem[]>();
+    for (const ml of rawMaintenanceLogs) {
+      if (!ml.assetId) continue;
+      let list = maintLogsByAsset.get(ml.assetId);
+      if (!list) {
+        list = [];
+        maintLogsByAsset.set(ml.assetId, list);
+      }
+      list.push({
+        id: ml.id,
+        logCode: ml.logCode,
+        condition: ml.condition,
+        source: ml.source,
+        notes: ml.notes,
+        workNotes: ml.workNotes,
+        resolutionNotes: ml.resolutionNotes,
+        dateLogged: ml.dateLogged?.split("T")[0] || ml.dateLogged,
+        resolutionDate: ml.resolutionDate?.split("T")[0] || ml.resolutionDate,
+        isResolved: ml.isResolved,
+        repairCost: ml.repairCost,
+        totalCost: ml.totalCost,
+        mttrDays: ml.mttrDays,
+        loggedByName: ml.loggedByName,
+        resolvedByName: ml.resolvedByName,
+        repairParts: Array.isArray(ml.repairParts) ? ml.repairParts : [],
+      });
+    }
+
     const assetsByDeptKey = new Map<string, AssignedAssetItem[]>();
     for (const a of itemizedAssets) {
       if (!a.department) continue;
@@ -1862,6 +1950,43 @@ export class ReportRepository {
             }))
         : undefined;
 
+      // Attach maintenance logs to each asset item and compute dept maintenance summary
+      let deptMaintSummary: DepartmentMaintenanceSummary | undefined;
+      if (includeLineItems && assignedAssets) {
+        let totalLogs = 0;
+        let openLogs = 0;
+        let resolvedLogs = 0;
+        let totalRepairSpend = 0;
+        let totalMttrDays = 0;
+        let mttrCount = 0;
+
+        for (const asset of assignedAssets) {
+          const logs = maintLogsByAsset.get(asset.id) || [];
+          asset.maintenanceLogs = logs;
+          totalLogs += logs.length;
+          for (const log of logs) {
+            if (log.isResolved) {
+              resolvedLogs++;
+              if (log.mttrDays != null) {
+                totalMttrDays += log.mttrDays;
+                mttrCount++;
+              }
+            } else {
+              openLogs++;
+            }
+            totalRepairSpend += log.totalCost ?? log.repairCost ?? 0;
+          }
+        }
+
+        deptMaintSummary = {
+          totalLogs,
+          openLogs,
+          resolvedLogs,
+          totalRepairSpend,
+          avgMttrDays: mttrCount > 0 ? Math.round(totalMttrDays / mttrCount) : null,
+        };
+      }
+
       return {
         id: d.id,
         departmentName: d.name,
@@ -1873,10 +1998,15 @@ export class ReportRepository {
         activeProjects: activeProjectsCount,
         topAssets,
         ...(includeLineItems
-          ? { assignedAssets: assignedAssets ?? [], consumedSupplies: consumedSupplies ?? [] }
+          ? {
+              assignedAssets: assignedAssets ?? [],
+              consumedSupplies: consumedSupplies ?? [],
+              maintenanceSummary: deptMaintSummary,
+            }
           : {}),
       };
     });
+
 
     return {
       data,

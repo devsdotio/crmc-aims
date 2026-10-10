@@ -247,7 +247,7 @@ export function IndividualProjectPrintableReport({
       </section>
 
       {/* ─── Section 2: Allocated Capital Assets Table ──────────────────── */}
-      <section className="avoid-break">
+      <section>
         <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>2. Allocated Capital Equipment &amp; Assets</span>
@@ -298,7 +298,7 @@ export function IndividualProjectPrintableReport({
       </section>
 
       {/* ─── Section 3: Project Material & Expense Ledger ────────────────── */}
-      <section className="avoid-break">
+      <section>
         <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>3. Bill of Materials &amp; Project Expense Ledger</span>
