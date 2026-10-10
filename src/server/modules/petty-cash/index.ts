@@ -33,10 +33,22 @@ export class PettyCashController {
     }
   }
 
-  async nextCode() {
+  async nextCode(request?: NextRequest | Request) {
     try {
       const actor = await requireActor();
-      const pcvNumber = await this.service.generateNextPcvCode(undefined, actor.tenantId);
+      const yearRaw =
+        request && "url" in request
+          ? new URL(request.url).searchParams.get("year")
+          : null;
+      const year = yearRaw ? Number(yearRaw) : NaN;
+      const now =
+        Number.isInteger(year) && year >= 2000 && year <= 2100
+          ? new Date(year, 0, 1)
+          : undefined;
+      const pcvNumber = await this.service.generateNextPcvCode(
+        now,
+        actor.tenantId
+      );
       return ok({ pcvNumber });
     } catch (error) {
       return handleError(error);

@@ -252,6 +252,9 @@ export function PettyCashTable({
                 Purpose
               </th>
               <th scope="col" className="py-3 px-4">
+                PO / Asset Ref
+              </th>
+              <th scope="col" className="py-3 px-4">
                 Ref / Receipt #
               </th>
               <th
@@ -367,24 +370,28 @@ export function PettyCashTable({
                     })()}
                   </td>
 
-                  {/* Ref / Receipt # & Linked PO */}
+                  {/* PO / Asset Ref */}
+                  <td className="py-3.5 px-4 text-text-secondary">
+                    {voucher.purchaseOrderNumber ? (
+                      <div className="flex items-center gap-1 font-mono text-[11px] text-text font-medium">
+                        <Boxes className="h-3 w-3 text-primary" />
+                        <span>#{voucher.purchaseOrderNumber}</span>
+                      </div>
+                    ) : (
+                      <span className="text-text-secondary/60">—</span>
+                    )}
+                  </td>
+
+                  {/* Ref / Receipt # */}
                   <td className="py-3.5 px-4 whitespace-nowrap">
-                    <div className="flex flex-col gap-1">
-                      {voucher.purchaseOrderNumber && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-primary/10 text-primary border border-primary/20">
-                          <Boxes className="w-3 h-3" />
-                          #{voucher.purchaseOrderNumber}
-                        </span>
-                      )}
-                      {voucher.receiptNumber ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-bg-subtle text-text-secondary border border-border">
-                          <Receipt className="w-3 h-3 opacity-70" />
-                          {voucher.receiptNumber}
-                        </span>
-                      ) : !voucher.purchaseOrderNumber ? (
-                        <span className="text-text-secondary/60 text-[11px]">—</span>
-                      ) : null}
-                    </div>
+                    {voucher.receiptNumber ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-bg-subtle text-text-secondary border border-border">
+                        <Receipt className="w-3 h-3 opacity-70" />
+                        {voucher.receiptNumber}
+                      </span>
+                    ) : (
+                      <span className="text-text-secondary/60 text-[11px]">—</span>
+                    )}
                   </td>
 
                   {/* Amount */}

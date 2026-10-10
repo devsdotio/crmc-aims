@@ -135,3 +135,44 @@ describe("disbursement slip signatories", () => {
     expectSignatoryTitles(html);
   });
 });
+
+describe("disbursement slip check / reference no.", () => {
+  it("prints voucher check/reference no. with no Service Invoice label", () => {
+    const slip = voucherToSlip(
+      sampleVoucher({ checkNumber: "CHK-2026-0042" }),
+      "https://example.test/logo.png"
+    );
+    expect(slip.serviceInvoiceNumber).toBe("CHK-2026-0042");
+    const html = buildDisbursementSlipBodyHtml(slip);
+    expect(html).toContain("<strong>CHK-2026-0042</strong>");
+    expect(html).not.toContain("Service Invoice #");
+    expect(html).not.toContain("Date Forwarded for Voucher");
+  });
+
+  it("prints petty cash receipt/ref no. the same way", () => {
+    const slip = pettyCashToSlip(
+      samplePettyCash({ receiptNumber: "OR-8891" }),
+      "https://example.test/logo.png"
+    );
+    expect(slip.serviceInvoiceNumber).toBe("OR-8891");
+    expect(buildDisbursementSlipBodyHtml(slip)).toContain(
+      "<strong>OR-8891</strong>"
+    );
+  });
+
+  it("omits the bar when check/reference is empty", () => {
+    const voucherSlip = voucherToSlip(
+      sampleVoucher({ checkNumber: null }),
+      "https://example.test/logo.png"
+    );
+    const pettySlip = pettyCashToSlip(
+      samplePettyCash({ receiptNumber: "   " }),
+      "https://example.test/logo.png"
+    );
+    expect(voucherSlip.serviceInvoiceNumber).toBe("");
+    expect(pettySlip.serviceInvoiceNumber).toBe("");
+    expect(buildDisbursementSlipBodyHtml(voucherSlip)).not.toContain(
+      "forwarded-bar"
+    );
+  });
+});

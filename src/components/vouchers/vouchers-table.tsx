@@ -11,12 +11,11 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Building2,
   Boxes,
   Eye,
   Printer,
 } from "lucide-react";
-import type { Voucher, VoucherStatus, VoucherType } from "@/types/vouchers";
+import type { Voucher, VoucherStatus } from "@/types/vouchers";
 import { formatPhp } from "@/components/projects/format-money";
 import { disbursementPurposeLabel } from "@/lib/voucher-particulars";
 import { cn } from "@/lib/utils";
@@ -75,31 +74,6 @@ function getStatusBadge(status: VoucherStatus) {
         className: "bg-gray-500/15 text-gray-700 dark:text-gray-400 border-gray-500/20",
         rail: "bg-gray-400",
         icon: FileText,
-      };
-  }
-}
-
-function getTypeBadge(type: VoucherType) {
-  switch (type) {
-    case "disbursement":
-      return {
-        label: "Disbursement",
-        className: "bg-primary/10 text-primary border-primary/20",
-      };
-    case "property_transfer":
-      return {
-        label: "Property Transfer",
-        className: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20",
-      };
-    case "liquidation":
-      return {
-        label: "Liquidation",
-        className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20",
-      };
-    default:
-      return {
-        label: type || "Voucher",
-        className: "bg-bg-subtle text-text-secondary border-border",
       };
   }
 }
@@ -194,9 +168,6 @@ export function VouchersTable({
                   {renderSortIcon("voucherCode")}
                 </div>
               </th>
-              <th scope="col" className="py-3 px-4">
-                Type
-              </th>
               <th
                 scope="col"
                 className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
@@ -219,6 +190,9 @@ export function VouchersTable({
               </th>
               <th scope="col" className="py-3 px-4">
                 PO / Asset Ref
+              </th>
+              <th scope="col" className="py-3 px-4">
+                Ref / Receipt #
               </th>
               <th
                 scope="col"
@@ -248,7 +222,6 @@ export function VouchersTable({
           <tbody className="divide-y divide-border">
             {sortedVouchers.map((voucher) => {
               const statusInfo = getStatusBadge(voucher.status);
-              const typeInfo = getTypeBadge(voucher.type);
               const StatusIcon = statusInfo.icon;
 
               return (
@@ -277,18 +250,6 @@ export function VouchersTable({
                         </span>
                       )}
                     </div>
-                  </td>
-
-                  {/* Type */}
-                  <td className="py-3.5 px-4">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-                        typeInfo.className
-                      )}
-                    >
-                      {typeInfo.label}
-                    </span>
                   </td>
 
                   {/* Date */}
@@ -323,7 +284,7 @@ export function VouchersTable({
                     })()}
                   </td>
 
-                  {/* References */}
+                  {/* PO / Asset Ref */}
                   <td className="py-3.5 px-4 text-text-secondary">
                     {voucher.purchaseOrderNumber ? (
                       <div className="flex items-center gap-1 font-mono text-[11px] text-text font-medium">
@@ -337,6 +298,18 @@ export function VouchersTable({
                       </div>
                     ) : (
                       <span className="text-text-secondary/60">—</span>
+                    )}
+                  </td>
+
+                  {/* Ref / Receipt # */}
+                  <td className="py-3.5 px-4 whitespace-nowrap">
+                    {voucher.checkNumber ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-bg-subtle text-text-secondary border border-border">
+                        <Receipt className="w-3 h-3 opacity-70" />
+                        {voucher.checkNumber}
+                      </span>
+                    ) : (
+                      <span className="text-text-secondary/60 text-[11px]">—</span>
                     )}
                   </td>
 
