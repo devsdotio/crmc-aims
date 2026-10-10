@@ -319,12 +319,13 @@ export default function MaintenanceReportPage() {
           icon={Wrench}
           tone="blue"
           toneValue={true}
-          delta="+9.4%"
           loading={isLoading}
+          tooltipAlign="left"
+          tooltip="The total number of repair and maintenance tasks recorded in the system."
         />
 
         <KpiCard
-          title="Active Defects"
+          title="Active Repairs"
           sublabel="UNRESOLVED // ATTENTION"
           value={isLoading ? "…" : summary?.openWorkOrders || 0}
           subtitle={
@@ -343,23 +344,26 @@ export default function MaintenanceReportPage() {
             isPositive: (summary?.openWorkOrders || 0) === 0,
           }}
           loading={isLoading}
+          tooltipAlign="center"
+          tooltip="Items that are currently broken and waiting to be fixed or serviced."
         />
 
         <KpiCard
-          title="Avg MTTR Turnaround"
-          sublabel="RESOLUTION // VELOCITY"
+          title="Average Repair Time"
+          sublabel="REPAIRS // DURATION"
           value={isLoading ? "…" : `${summary?.avgMttrDays || 0} days`}
-          subtitle="Mean time to restore asset"
+          subtitle="Average time to fix equipment"
           icon={Clock}
           tone="amber"
           toneValue={true}
-          delta="-0.5 days"
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="The average number of days it takes from reporting a broken item until it is completely fixed."
         />
 
         <KpiCard
-          title="Repair Expenditure"
-          sublabel="EXPENDITURE // TCO"
+          title="Repair Cost"
+          sublabel="FINANCIAL // REPAIRS"
           value={
             isLoading
               ? "…"
@@ -367,12 +371,13 @@ export default function MaintenanceReportPage() {
               ? `₱${(summary?.totalRepairSpend || 0).toLocaleString()}`
               : "Restricted"
           }
-          subtitle={canViewCosts ? "Cumulative parts and labor" : "Admin view only"}
+          subtitle={canViewCosts ? "Total parts and labor costs" : "Admin view only"}
           icon={Wrench}
           tone="accent"
           toneValue={true}
-          delta="+11.2%"
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="The total money spent on spare parts, supplies, and labor to fix broken equipment."
         />
       </StatCardGrid>
 

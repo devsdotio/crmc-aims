@@ -221,6 +221,7 @@ export default function DepartmentReportsPage() {
           tone="blue"
           toneValue={true}
           loading={isLoading}
+          infoTooltip="Total administrative offices, colleges, academic departments, and institutional units recorded in CRMC."
         />
         <StatCard
           title="Assets Deployed"
@@ -237,6 +238,7 @@ export default function DepartmentReportsPage() {
           tone="accent"
           toneValue={true}
           loading={isLoading}
+          infoTooltip="Total fixed capital equipment and instructional apparatus currently assigned to departmental custodians."
         />
         <StatCard
           title="Consumables Consumed"
@@ -253,6 +255,7 @@ export default function DepartmentReportsPage() {
           tone="indigo"
           toneValue={true}
           loading={isLoading}
+          infoTooltip="Volume of consumable materials and office supplies dispatched and consumed across all campus departments."
         />
       </StatCardGrid>
 

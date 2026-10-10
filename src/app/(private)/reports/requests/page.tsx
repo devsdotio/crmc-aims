@@ -239,15 +239,16 @@ export default function RequestsReportPage() {
       {/* ── KPI Cards Grid with Inline Sparklines ───────────────────── */}
       <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 -mt-1.5">
         <KpiCard
-          title="Total Requisitions"
+          title="Total Requests"
           sublabel="REQUESTS // LOGISTICS"
           value={isLoading ? "…" : summary?.totalRequests || 0}
-          subtitle="Cumulative tickets filed"
+          subtitle="Supply & borrow requests"
           icon={ClipboardList}
           tone="blue"
           toneValue={true}
-          delta="+14.6%"
           loading={isLoading}
+          tooltipAlign="left"
+          tooltip="The total number of supply and equipment requests submitted by staff and teachers."
         />
 
         <KpiCard
@@ -256,7 +257,7 @@ export default function RequestsReportPage() {
           value={isLoading ? "…" : summary?.pendingCount || 0}
           subtitle={
             summary?.pendingCount
-              ? "Awaiting review or dispatch"
+              ? "Awaiting review or pickup"
               : "Queue is all clear"
           }
           icon={Clock}
@@ -270,6 +271,8 @@ export default function RequestsReportPage() {
             isPositive: (summary?.pendingCount || 0) === 0,
           }}
           loading={isLoading}
+          tooltipAlign="center"
+          tooltip="Requests still waiting to be approved or prepared for pickup."
         />
 
         <KpiCard
@@ -284,20 +287,36 @@ export default function RequestsReportPage() {
           icon={CheckCircle2}
           tone="emerald"
           toneValue={true}
-          delta="+18.2%"
+          delta={{
+            value: `${
+              summary?.totalRequests
+                ? Math.round(((summary.fulfilledCount || 0) / summary.totalRequests) * 100)
+                : 0
+            }% rate`,
+            isPositive: true,
+          }}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="Requests where all items have been given to the person who asked for them."
         />
 
         <KpiCard
-          title="Avg Turnaround Time"
-          sublabel="SLA // DISPATCH SPEED"
-          value={isLoading ? "…" : `${summary?.avgTurnaroundHours ?? 4.8} hrs`}
-          subtitle="Submission to release resolution"
+          title="Avg Response Time"
+          sublabel="SPEED // TURNAROUND"
+          value={
+            isLoading
+              ? "…"
+              : summary?.avgTurnaroundHours != null
+              ? `${summary.avgTurnaroundHours} hrs`
+              : "—"
+          }
+          subtitle="Request to pickup time"
           icon={TrendingUp}
           tone="accent"
           toneValue={true}
-          delta="-1.4 hrs"
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="How many hours it usually takes from when a request is made until the items are handed out."
         />
       </StatCardGrid>
 

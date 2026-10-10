@@ -180,10 +180,10 @@ export function AssetTableRow({ asset, onSelect, getCategoryStyle }: AssetTableR
             type="button"
             onClick={() => onSelect(asset)}
             aria-label={`View details for ${asset.name}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-border bg-bg text-xs font-semibold text-text-secondary hover:text-text hover:border-primary transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-bg text-xs font-semibold text-text-secondary hover:text-text hover:border-primary transition-colors cursor-pointer min-h-9 min-w-9"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">View</span>
+            <span className="hidden md:inline">View Details</span>
           </button>
         </div>
       </td>

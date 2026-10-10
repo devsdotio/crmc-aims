@@ -1,6 +1,6 @@
 "use client";
 
-import { PackageSearch } from "lucide-react";
+import { PackageSearch, RotateCcw } from "lucide-react";
 import type { Asset } from "@/types/assets";
 import type { CategoryStyleMeta } from "@/constants/categories";
 import { AssetTableRow } from "./asset-table-row";
@@ -10,6 +10,7 @@ export interface AssetTableProps {
   loading?: boolean;
   onSelect: (asset: Asset) => void;
   getCategoryStyle: (categoryName: string, fallbackLabel?: string) => CategoryStyleMeta;
+  onResetFilters?: () => void;
 }
 
 // ─── Matched Skeleton Row for Table View ─────────────────────────────────────
@@ -55,6 +56,7 @@ export function AssetTable({
   loading = false,
   onSelect,
   getCategoryStyle,
+  onResetFilters,
 }: AssetTableProps) {
   if (loading) {
     return (
@@ -94,6 +96,16 @@ export function AssetTable({
             No institutional fixed assets match your current search query, category, or status filters.
           </p>
         </div>
+        {onResetFilters && (
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-text hover:border-primary transition-colors cursor-pointer min-h-9 shadow-xs mt-2"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>Reset Active Filters</span>
+          </button>
+        )}
       </div>
     );
   }

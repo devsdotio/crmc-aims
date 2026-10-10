@@ -334,25 +334,26 @@ export default function ConsumablesReportPage() {
       {/* ── KPI Cards Grid with Inline Sparklines ───────────────────── */}
       <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 -mt-1.5">
         <KpiCard
-          title="Tracked SKUs"
-          sublabel="INVENTORY // CATALOG"
+          title="Supply Items"
+          sublabel="INVENTORY // SUPPLIES"
           value={isLoading ? "…" : summary?.totalSkus || 0}
-          subtitle="Cataloged consumable items"
+          subtitle="Types of supplies tracked"
           icon={Layers}
           tone="blue"
           toneValue={true}
-          delta="+8.3%"
           loading={isLoading}
+          tooltipAlign="left"
+          tooltip="The different kinds of supplies and office items kept in our storerooms."
         />
 
         <KpiCard
-          title="Threshold Alerts"
-          sublabel="REORDER // CRITICAL"
+          title="Low Stock Alerts"
+          sublabel="REORDER // LOW STOCK"
           value={isLoading ? "…" : summary?.lowStockItemsCount || 0}
           subtitle={
             summary?.lowStockItemsCount
-              ? "Needs replenishment PO"
-              : "All stock levels adequate"
+              ? "Items need reordering"
+              : "All stock levels healthy"
           }
           icon={AlertTriangle}
           tone={summary?.lowStockItemsCount ? "amber" : "emerald"}
@@ -365,22 +366,25 @@ export default function ConsumablesReportPage() {
             isPositive: (summary?.lowStockItemsCount || 0) === 0,
           }}
           loading={isLoading}
+          tooltipAlign="center"
+          tooltip="Items that are running low and need to be ordered again soon before they run out."
         />
 
         <KpiCard
           title="30-Day Dispatched"
-          sublabel="VELOCITY // CONSUMPTION"
+          sublabel="SUPPLIES // USAGE"
           value={isLoading ? "…" : (summary?.totalDispatched30d || 0).toLocaleString()}
           subtitle="Total units issued to departments"
           icon={TrendingDown}
           tone="indigo"
           toneValue={true}
-          delta="+16.4%"
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="How many supplies were given out to school offices and departments in the past 30 days."
         />
 
         <KpiCard
-          title="Stock Valuation"
+          title="Stock Value"
           sublabel="FINANCIAL // ON-HAND"
           value={
             isLoading
@@ -389,11 +393,13 @@ export default function ConsumablesReportPage() {
               ? `₱${(summary?.totalInventoryValuation || 0).toLocaleString()}`
               : "Restricted"
           }
-          subtitle={canViewCosts ? "Warehouse inventory value" : "Admin view only"}
+          subtitle={canViewCosts ? "Storeroom supplies value" : "Admin view only"}
           icon={Warehouse}
           tone="accent"
           toneValue={true}
           loading={isLoading}
+          tooltipAlign="right"
+          tooltip="The total monetary value of all supplies currently stored in school stockrooms."
         />
       </StatCardGrid>
 

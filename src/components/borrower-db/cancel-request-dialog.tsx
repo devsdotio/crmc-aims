@@ -120,7 +120,7 @@ export function CancelRequestDialog({
               </span>
             </div>
             <p id="cancel-dialog-desc" className="text-xs text-text-secondary leading-relaxed">
-              Are you sure you want to cancel this request? Once cancelled, this action cannot be undone.
+              Cancelling request <strong className="font-semibold text-text font-mono">{request.requestCode}</strong> cannot be undone. Any reserved inventory or queue holds will be released immediately.
             </p>
           </div>
         </div>
@@ -216,7 +216,7 @@ export function CancelRequestDialog({
             type="button"
             onClick={requestClose}
             disabled={isCancelling}
-            className="px-4 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+            className="px-4 py-2 text-xs font-semibold rounded-xl border border-border text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer min-h-9"
           >
             Keep Request
           </button>
@@ -224,10 +224,10 @@ export function CancelRequestDialog({
             type="button"
             onClick={() => void handleConfirm()}
             disabled={isCancelling}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-destructive text-white hover:bg-destructive/90 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60 shadow-xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-destructive text-white hover:bg-destructive/90 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60 shadow-xs cursor-pointer min-h-9"
           >
             {isCancelling && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {isCancelling ? "Cancelling Request…" : "Confirm Cancellation"}
+            {isCancelling ? "Cancelling Request…" : "Cancel Request"}
           </button>
         </div>
       </div>

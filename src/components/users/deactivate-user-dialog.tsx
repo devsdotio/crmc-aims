@@ -82,12 +82,12 @@ export function DeactivateUserDialog({
 
         <div className="p-4 rounded-xl border border-border bg-bg-subtle text-xs space-y-2">
           <p className="text-text font-bold leading-snug">
-            Are you sure you want to deactivate {`${user.name}'s`} account?
+            Deactivating {`${user.name}'s`} account will immediately revoke login access.
           </p>
           <ul className="list-disc list-inside space-y-1 text-text-secondary">
-            <li>This account will lose system access immediately.</li>
-            <li>All past approvals, releases, and maintenance logs remain in the audit trail.</li>
-            <li>The account can be re-activated by an Admin at any time.</li>
+            <li>This user will lose access to all CRMC-AIMS portals immediately.</li>
+            <li>All past approvals, releases, and custody logs remain preserved in the permanent audit trail.</li>
+            <li>The account can be re-activated by a Superadmin or Custodian at any time.</li>
           </ul>
         </div>
 
@@ -100,17 +100,17 @@ export function DeactivateUserDialog({
             type="button"
             onClick={onClose}
             disabled={isSubmitting}
-            className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text rounded-md border border-border bg-bg transition-colors cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 text-xs font-semibold text-text-secondary hover:text-text rounded-md border border-border bg-bg transition-colors cursor-pointer disabled:opacity-50 min-h-9"
           >
-            Cancel
+            Keep Account Active
           </button>
           <button
             type="button"
             onClick={handleConfirm}
             disabled={isSubmitting}
-            className="px-4 py-2 text-xs font-semibold rounded-md border border-status-retired-bg bg-bg text-status-retired-text hover:bg-status-retired-bg/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-xs font-semibold rounded-md border border-status-retired-bg bg-bg text-status-retired-text hover:bg-status-retired-bg/10 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed min-h-9"
           >
-            {isSubmitting ? "Deactivating…" : "Confirm Deactivation"}
+            {isSubmitting ? "Deactivating…" : "Deactivate Account"}
           </button>
         </div>
       </div>

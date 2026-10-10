@@ -84,9 +84,14 @@ export default function ExecutiveReportsPage() {
             icon={Package}
             tone="blue"
             toneValue={true}
-            delta="+12.4%"
+            delta={{
+              value: `${operationalRate}% active`,
+              isPositive: operationalRate >= 80,
+            }}
             loading={isLoading}
             href="/reports/assets"
+            tooltipAlign="left"
+            tooltip="The total cost of all school equipment and property (such as computers, furniture, and vehicles) recorded in the system."
           />
 
           <KpiCard
@@ -97,12 +102,12 @@ export default function ExecutiveReportsPage() {
                 ? "…"
                 : canViewCosts
                 ? `₱${(consumables?.totalValuation || 0).toLocaleString()}`
-                : `${consumables?.totalItems || 0} SKUs`
+                : `${consumables?.totalItems || 0} items`
             }
             subtitle={
               consumables?.lowStockCount
-                ? `${consumables.lowStockCount} items below threshold`
-                : "All stock healthy"
+                ? `${consumables.lowStockCount} items running low`
+                : "All supplies in good stock"
             }
             icon={Layers}
             tone={consumables?.lowStockCount ? "amber" : "emerald"}
@@ -113,6 +118,8 @@ export default function ExecutiveReportsPage() {
             }}
             loading={isLoading}
             href="/reports/consumables"
+            tooltipAlign="left"
+            tooltip="The total value of everyday supplies (like paper, ink, and cleaning materials) currently stored in school stockrooms."
           />
 
           <KpiCard
@@ -129,14 +136,19 @@ export default function ExecutiveReportsPage() {
             icon={ShoppingCart}
             tone="indigo"
             toneValue={true}
-            delta="+18.5%"
+            delta={{
+              value: (procurement?.openOrdersCount ?? 0) > 0 ? `${procurement?.openOrdersCount} open` : "Clear",
+              isPositive: true,
+            }}
             loading={isLoading}
             href="/reports/purchase-orders"
+            tooltipAlign="center"
+            tooltip="The total money spent on buying new supplies and equipment over the past 30 days."
           />
 
           <KpiCard
             title="Supply Requests"
-            sublabel="LOGISTICS // REQUISITIONS"
+            sublabel="LOGISTICS // REQUESTS"
             value={isLoading ? "…" : requests?.pendingCount ?? 0}
             subtitle={`${requests?.fulfilledThisMonth || 0} fulfilled this month`}
             icon={ClipboardList}
@@ -148,19 +160,26 @@ export default function ExecutiveReportsPage() {
             }}
             loading={isLoading}
             href="/reports/requests"
+            tooltipAlign="right"
+            tooltip="Supplies requested by school staff and teachers that are waiting to be checked or given out."
           />
 
           <KpiCard
-            title="Maintenance MTTR"
-            sublabel="FACILITY // DOWNTIME"
+            title="Average Repair Time"
+            sublabel="FACILITY // REPAIRS"
             value={isLoading ? "…" : `${maintenance?.avgMttrDays || 0} d`}
             subtitle={`${maintenance?.activeIssuesCount || 0} active work orders`}
             icon={Wrench}
             tone="rose"
             toneValue={true}
-            delta="-0.8 d"
+            delta={{
+              value: (maintenance?.activeIssuesCount ?? 0) > 0 ? `${maintenance?.activeIssuesCount} active` : "Clear",
+              isPositive: (maintenance?.activeIssuesCount ?? 0) === 0,
+            }}
             loading={isLoading}
             href="/reports/maintenance"
+            tooltipAlign="right"
+            tooltip="The average number of days it takes for our team to fix broken equipment and get it working again."
           />
         </StatCardGrid>
 
@@ -471,7 +490,7 @@ export default function ExecutiveReportsPage() {
           {/* ── Side-by-Side Tables: Category Valuation & 6-Month Spend Ledgers ── */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
             {/* Table 2: Category Valuation & Inventory Breakdown (col-span-6) */}
-            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col h-[360px]">
+            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col h-90">
               <div className="border-b border-border px-4 sm:px-5 py-3 bg-bg-subtle/40 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-text">
@@ -571,7 +590,7 @@ export default function ExecutiveReportsPage() {
             </div>
 
             {/* Table 3: 6-Month Institutional Spend Ledger (col-span-6) */}
-            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col h-[360px]">
+            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col h-90">
               <div className="border-b border-border px-4 sm:px-5 py-3 bg-bg-subtle/40 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-text">

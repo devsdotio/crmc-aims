@@ -623,21 +623,54 @@ export class ReportRepository {
       .orderBy(sql`sum(${stockMovements.qty}) desc`)
       .limit(5);
 
+    // Query actual 30-day and 90-day outgoing stock movements for listed items
+    const now = new Date();
+    const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const d90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+    const consumableUsageAggregates = await db
+      .select({
+        consumableId: stockMovements.consumableId,
+        usage30d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d30} then ${stockMovements.qty} else 0 end), 0)::int`,
+        usage90d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d90} then ${stockMovements.qty} else 0 end), 0)::int`,
+      })
+      .from(stockMovements)
+      .where(
+        and(
+          eq(stockMovements.direction, "out"),
+          gte(stockMovements.createdAt, d90),
+          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
+        )
+      )
+      .groupBy(stockMovements.consumableId);
+
+    const usageMap = new Map<string, { usage30d: number; usage90d: number }>();
+    for (const u of consumableUsageAggregates) {
+      if (u.consumableId) {
+        usageMap.set(u.consumableId, {
+          usage30d: u.usage30d || 0,
+          usage90d: u.usage90d || 0,
+        });
+      }
+    }
+
     const total = summaryRow?.totalSkus ?? 0;
 
     return {
       data: rows.map((r) => {
         const available = Math.max(0, r.currentQty - r.reservedQty);
         const isLow = r.currentQty <= r.minThreshold;
-        // Mock estimate for velocity burn
-        const usage30d = Math.round(r.minThreshold * 0.8) || 5;
-        const usage90d = usage30d * 3;
+        
+        // Real velocity burn from aggregated stock movements
+        const itemUsage = usageMap.get(r.id);
+        const usage30d = itemUsage?.usage30d ?? 0;
+        const usage90d = itemUsage?.usage90d ?? 0;
         const dailyBurn = usage30d / 30;
         const daysRemaining = dailyBurn > 0 ? Math.round(available / dailyBurn) : null;
 
         const lotInfo = lotMap.get(r.id);
-        const unitCost = lotInfo?.latestUnitCost ?? 15.5;
-        const stockValuation = lotInfo && lotInfo.valuation > 0 ? lotInfo.valuation : (r.currentQty * unitCost);
+        const unitCost = lotInfo?.latestUnitCost ?? null;
+        const stockValuation = lotInfo && lotInfo.valuation > 0 ? lotInfo.valuation : (unitCost ? r.currentQty * unitCost : null);
 
         return {
           id: r.id,
@@ -670,7 +703,7 @@ export class ReportRepository {
         totalInventoryValuation:
           consumableValuation?.totalValuation && consumableValuation.totalValuation > 0
             ? consumableValuation.totalValuation
-            : rows.reduce((sum, r) => sum + ((lotMap.get(r.id)?.valuation) ?? (r.currentQty * 15.5)), 0),
+            : rows.reduce((sum, r) => sum + ((lotMap.get(r.id)?.valuation) ?? (r.currentQty * (lotMap.get(r.id)?.latestUnitCost ?? 0))), 0),
         totalDispatched30d: dispatchSummary?.totalQty ?? 0,
         totalDispatchedValue30d: dispatchSummary?.totalVal ?? 0,
         topConsumingDepartments: topDeptRows,
