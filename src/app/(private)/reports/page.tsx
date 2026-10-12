@@ -17,7 +17,11 @@ import {
   TableProperties,
 } from "lucide-react";
 
-import { useExecutiveReportQuery } from "@/features/reports/client/use-reports";
+import {
+  useExecutiveReportQuery,
+  useProjectReportQuery,
+  useDepartmentReportQuery,
+} from "@/features/reports/client/use-reports";
 import { StatCardGrid } from "@/components/ui/stat-card";
 import { KpiCard } from "@/components/reports/kpi-card";
 import { ReportExportButton } from "@/components/reports/report-export-button";
@@ -27,12 +31,18 @@ import { cn } from "@/lib/utils";
 export default function ExecutiveReportsPage() {
   const { data, isLoading } = useExecutiveReportQuery();
 
+  const domainFilter = useMemo(() => ({ page: 1, pageSize: 1 }), []);
+  const { data: projectReportData, isLoading: isProjectLoading } = useProjectReportQuery(domainFilter);
+  const { data: departmentReportData, isLoading: isDeptLoading } = useDepartmentReportQuery(domainFilter);
+
   const canViewCosts = data?.canViewCosts ?? true;
   const assets = data?.assets;
   const consumables = data?.consumables;
   const procurement = data?.procurement;
   const requests = data?.requests;
   const maintenance = data?.maintenance;
+  const projects = projectReportData?.summary;
+  const departments = departmentReportData?.summary;
 
   const operationalRate = useMemo(() => {
     if (!assets?.totalCount || assets.totalCount === 0) return 0;
@@ -479,6 +489,110 @@ export default function ExecutiveReportsPage() {
                         className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
                       >
                         View Logs <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </td>
+                  </tr>
+
+                  {/* Row 6: Institutional Projects */}
+                  <tr className="hover:bg-bg-subtle/30 transition-colors">
+                    <td className="py-3 px-4 sm:px-5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
+                          <FolderKanban className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-text">Institutional Projects</div>
+                          <div className="text-[11px] text-text-secondary">Capital ventures &amp; facility improvements</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className="font-bold text-text">
+                        {isProjectLoading ? "…" : projects?.totalProjects || 0}
+                      </span>{" "}
+                      <span className="text-[11px] text-text-secondary">initiatives</span>
+                      <div className="text-[10px] text-text-secondary">
+                        {isProjectLoading ? "…" : `${projects?.activeProjects || 0} active, ${projects?.completedProjects || 0} completed`}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold whitespace-nowrap text-text">
+                      {isProjectLoading
+                        ? "…"
+                        : canViewCosts
+                        ? `₱${(projects?.totalProjectSpend || 0).toLocaleString()}`
+                        : "—"}
+                      <div className="text-[10px] text-text-secondary font-normal">
+                        {isProjectLoading ? "…" : `${projects?.totalAssetsAssigned || 0} assets assigned`}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {isProjectLoading ? "…" : `${projects?.activeProjects || 0} In Progress`}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-text-secondary whitespace-nowrap text-[11px]">
+                      {isProjectLoading ? "…" : `${projects?.totalConsumablesConsumed || 0} supplies consumed`}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <Link
+                        href="/reports/projects"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                      >
+                        View Projects <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </td>
+                  </tr>
+
+                  {/* Row 7: Department Operational Units */}
+                  <tr className="hover:bg-bg-subtle/30 transition-colors">
+                    <td className="py-3 px-4 sm:px-5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400">
+                          <Building2 className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-text">Department Units</div>
+                          <div className="text-[11px] text-text-secondary">Colleges, institutes, &amp; administrative branches</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className="font-bold text-text">
+                        {isDeptLoading ? "…" : departments?.totalDepartments || 0}
+                      </span>{" "}
+                      <span className="text-[11px] text-text-secondary">departments</span>
+                      <div className="text-[10px] text-text-secondary">
+                        {isDeptLoading ? "…" : `${departments?.totalAssetsDeployed || 0} deployed units`}
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold whitespace-nowrap text-text">
+                      {isDeptLoading
+                        ? "…"
+                        : canViewCosts
+                        ? `₱${(departments?.totalAssetsValue || 0).toLocaleString()}`
+                        : "—"}
+                      {canViewCosts && (departments?.totalConsumablesValue || 0) > 0 && (
+                        <div className="text-[10px] text-text-secondary font-normal">
+                          ₱{(departments?.totalConsumablesValue || 0).toLocaleString()} supplies
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {isDeptLoading ? "…" : departments?.mostActiveByAssets ? `Top: ${departments.mostActiveByAssets}` : "Audited Units"}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-text-secondary whitespace-nowrap text-[11px]">
+                      {isDeptLoading ? "…" : `${departments?.totalConsumablesConsumed || 0} supplies issued`}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <Link
+                        href="/reports/departments"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                      >
+                        View Units <ArrowRight className="h-3 w-3" />
                       </Link>
                     </td>
                   </tr>

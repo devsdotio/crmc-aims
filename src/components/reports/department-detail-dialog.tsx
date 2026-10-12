@@ -20,6 +20,13 @@ import {
   Calendar,
   CheckCircle2,
   PieChart as PieChartIcon,
+  Cpu,
+  FileText,
+  HardHat,
+  Clock,
+  Sparkles,
+  User,
+  ExternalLink,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -38,14 +45,16 @@ import {
 
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
-import type { DepartmentReportRow } from "@/types/reports";
+import type { DepartmentReportRow, MaintenanceLogItem } from "@/types/reports";
 import { IndividualDepartmentPrintableReport } from "@/components/reports/print/individual/IndividualDepartmentPrintableReport";
+import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
 
 interface DepartmentDetailDialogProps {
   department: DepartmentReportRow | null;
   isOpen: boolean;
   onClose: () => void;
   canViewCosts?: boolean;
+  isLoading?: boolean;
 }
 
 const VALUATION_COLORS = ["#2563EB", "#FF4E45"];
@@ -56,13 +65,18 @@ export function DepartmentDetailDialog({
   isOpen,
   onClose,
   canViewCosts = true,
+  isLoading = false,
 }: DepartmentDetailDialogProps) {
   const [copied, setCopied] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
   const [supplySearch, setSupplySearch] = useState("");
+  const [maintenanceSearch, setMaintenanceSearch] = useState("");
+  const [maintenanceStatusFilter, setMaintenanceStatusFilter] = useState<"all" | "open" | "resolved">("all");
+  const [selectedAssetCode, setSelectedAssetCode] = useState<string | null>(null);
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
+  const [expandedWorkOrders, setExpandedWorkOrders] = useState<Set<string>>(new Set());
   const [cachedDepartment, setCachedDepartment] = useState<DepartmentReportRow | null>(
     department
   );
@@ -103,8 +117,96 @@ export function DepartmentDetailDialog({
 
   const effectiveDepartment = isOpen ? department : cachedDepartment;
 
-  if (!isRendered || !effectiveDepartment) {
+  if (!isRendered) {
     return null;
+  }
+
+  if (isLoading || !effectiveDepartment) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 print:hidden">
+        {/* ── Backdrop ─────────────────────────────────────────────────── */}
+        <div
+          className={cn(
+            "fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity duration-200",
+            isClosing ? "opacity-0" : "animate-in fade-in duration-200 opacity-100"
+          )}
+          onClick={handleInitiateClose}
+          aria-hidden="true"
+        />
+
+        {/* ── Modal Shell Skeleton ───────────────────────────────────────── */}
+        <div
+          role="dialog"
+          aria-modal="true"
+          className={cn(
+            "relative z-10 w-full sm:w-[88vw] max-w-6xl h-[85vh] bg-card rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden transform-gpu transition-all duration-200 ease-out",
+            isClosing ? "scale-95 opacity-0" : "animate-in fade-in zoom-in-95 duration-200 scale-100 opacity-100"
+          )}
+        >
+          {/* Header Skeleton */}
+          <div className="flex shrink-0 items-center justify-between border-b border-border/80 px-5 py-3.5 bg-bg-subtle/50">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-border/40 shimmer-skeleton" />
+              <div className="space-y-1.5">
+                <div className="h-4.5 w-48 rounded-md bg-border/40 shimmer-skeleton" />
+                <div className="h-3 w-28 rounded-md bg-border/40 shimmer-skeleton" />
+              </div>
+            </div>
+            <button
+              onClick={handleInitiateClose}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Quick Nav Skeleton */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-border/80 bg-card px-5 py-2 overflow-x-auto">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-7 w-28 rounded-lg bg-border/40 shimmer-skeleton" />
+            ))}
+          </div>
+
+          {/* Body Skeleton */}
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
+            {/* 4 Stat Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-24 rounded-xl border border-border/80 bg-card p-3.5 space-y-2">
+                  <div className="h-3 w-16 rounded bg-border/40 shimmer-skeleton" />
+                  <div className="h-6 w-24 rounded bg-border/40 shimmer-skeleton" />
+                  <div className="h-3 w-20 rounded bg-border/40 shimmer-skeleton" />
+                </div>
+              ))}
+            </div>
+
+            {/* 2 Charts Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="h-64 rounded-xl border border-border/80 bg-card p-4 space-y-3">
+                <div className="h-4 w-36 rounded bg-border/40 shimmer-skeleton" />
+                <div className="h-44 rounded-lg bg-bg-subtle/60 shimmer-skeleton" />
+              </div>
+              <div className="h-64 rounded-xl border border-border/80 bg-card p-4 space-y-3">
+                <div className="h-4 w-36 rounded bg-border/40 shimmer-skeleton" />
+                <div className="h-44 rounded-lg bg-bg-subtle/60 shimmer-skeleton" />
+              </div>
+            </div>
+
+            {/* 2-column maintenance cards skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="h-48 rounded-xl border border-border/80 bg-card p-4 space-y-3">
+                <div className="h-4 w-32 rounded bg-border/40 shimmer-skeleton" />
+                <div className="h-28 rounded-lg bg-bg-subtle/60 shimmer-skeleton" />
+              </div>
+              <div className="h-48 rounded-xl border border-border/80 bg-card p-4 space-y-3">
+                <div className="h-4 w-32 rounded bg-border/40 shimmer-skeleton" />
+                <div className="h-28 rounded-lg bg-bg-subtle/60 shimmer-skeleton" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const toggleAssetExpand = (assetId: string) => {
@@ -114,6 +216,18 @@ export function DepartmentDetailDialog({
         newSet.delete(assetId);
       } else {
         newSet.add(assetId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleWorkOrderExpand = (logId: string) => {
+    setExpandedWorkOrders((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
       }
       return newSet;
     });
@@ -180,6 +294,72 @@ export function DepartmentDetailDialog({
       cost: s.totalCost || 0,
       qty: s.quantity,
     }));
+
+  // Itemized department maintenance logs
+  const deptMaintenanceLogs: MaintenanceLogItem[] = (() => {
+    if (
+      effectiveDepartment.departmentMaintenanceLogs &&
+      effectiveDepartment.departmentMaintenanceLogs.length > 0
+    ) {
+      return effectiveDepartment.departmentMaintenanceLogs;
+    }
+    const collected: MaintenanceLogItem[] = [];
+    for (const asset of effectiveDepartment.assignedAssets || []) {
+      for (const log of asset.maintenanceLogs || []) {
+        collected.push({
+          ...log,
+          assetCode: log.assetCode || asset.assetCode,
+          assetName: log.assetName || asset.name,
+          department: effectiveDepartment.departmentName,
+        });
+      }
+    }
+    return collected.sort((a, b) => b.dateLogged.localeCompare(a.dateLogged));
+  })();
+
+  const filteredMaintenanceLogs = deptMaintenanceLogs.filter((log) => {
+    if (maintenanceStatusFilter === "open" && log.isResolved) return false;
+    if (maintenanceStatusFilter === "resolved" && !log.isResolved) return false;
+    if (!maintenanceSearch.trim()) return true;
+    const q = maintenanceSearch.toLowerCase();
+    return (
+      log.logCode.toLowerCase().includes(q) ||
+      (log.assetCode && log.assetCode.toLowerCase().includes(q)) ||
+      (log.assetName && log.assetName.toLowerCase().includes(q)) ||
+      log.condition.toLowerCase().includes(q) ||
+      log.notes.toLowerCase().includes(q) ||
+      (log.workNotes && log.workNotes.toLowerCase().includes(q)) ||
+      (log.resolutionNotes && log.resolutionNotes.toLowerCase().includes(q)) ||
+      (log.loggedByName && log.loggedByName.toLowerCase().includes(q))
+    );
+  });
+
+  const openRepairsCount = deptMaintenanceLogs.filter((l) => !l.isResolved).length;
+  const resolvedRepairsCount = deptMaintenanceLogs.filter((l) => l.isResolved).length;
+
+  // Aggregated parts & hardware replaced across all department maintenance logs
+  const partsSummary = (() => {
+    let totalPartsCount = 0;
+    let totalPartsCost = 0;
+    const partsMap: Record<string, { count: number; totalCost: number }> = {};
+    for (const log of deptMaintenanceLogs) {
+      if (log.repairParts && log.repairParts.length > 0) {
+        for (const p of log.repairParts) {
+          totalPartsCount += 1;
+          const costNum = p.cost != null ? Number(p.cost) || 0 : 0;
+          totalPartsCost += costNum;
+          const key = p.name.trim();
+          if (!partsMap[key]) partsMap[key] = { count: 0, totalCost: 0 };
+          partsMap[key].count += 1;
+          partsMap[key].totalCost += costNum;
+        }
+      }
+    }
+    const topParts = Object.entries(partsMap)
+      .map(([name, stat]) => ({ name, ...stat }))
+      .sort((a, b) => b.count - a.count || b.totalCost - a.totalCost);
+    return { totalPartsCount, totalPartsCost, topParts };
+  })();
 
   return (
     <>
@@ -300,7 +480,9 @@ export function DepartmentDetailDialog({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
             >
               <Wrench className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Operations &amp; Maintenance</span>
+              <span>
+                Operations &amp; Maintenance ({deptMaintenanceLogs.length || effectiveDepartment.activeMaintenanceCount})
+              </span>
             </button>
           </div>
           <div className="hidden md:flex items-center gap-2 text-[11px] text-text-secondary shrink-0 font-medium">
@@ -952,65 +1134,550 @@ export function DepartmentDetailDialog({
 
           {/* ════ SECTION 4: OPERATIONS & MAINTENANCE AUDIT ══════════════ */}
           <section id="sec-dept-operations" className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
                   <Wrench className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text">Operations &amp; Maintenance Audit</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-text">Operations &amp; Maintenance Audit</h3>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
+                      {deptMaintenanceLogs.length} Work Orders Logged
+                    </span>
+                  </div>
                   <p className="text-xs text-text-secondary">
-                    Health status, ongoing repairs, and departmental staffing metrics
+                    Detailed corrective work orders, equipment condition audit, and maintenance expenditures for {effectiveDepartment.departmentName}
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                <span className="text-xs text-text-secondary block mb-1">Active Repairs</span>
-                <div className="text-xl font-bold font-mono text-text">
-                  {effectiveDepartment.maintenanceSummary?.openLogs ?? effectiveDepartment.activeMaintenanceCount}
-                </div>
-                <p className="text-[11px] text-text-secondary mt-1">Open maintenance work orders</p>
-              </div>
-
-              {effectiveDepartment.maintenanceSummary && (
-                <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                  <span className="text-xs text-text-secondary block mb-1">Total Maintenances</span>
-                  <div className="text-xl font-bold font-mono text-text">
-                    {effectiveDepartment.maintenanceSummary.totalLogs}
-                  </div>
-                  <p className="text-[11px] text-text-secondary mt-1">Lifetime recorded logs</p>
-                </div>
-              )}
 
               {canViewCosts && effectiveDepartment.maintenanceSummary && (
-                <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                  <span className="text-xs text-text-secondary block mb-1">Total Repair Spend</span>
-                  <div className="text-xl font-bold font-mono text-accent">
-                    ₱{effectiveDepartment.maintenanceSummary.totalRepairSpend.toLocaleString()}
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-accent bg-accent/10 px-2.5 py-1 rounded-md border border-accent/20 shrink-0">
+                    Total Repair Spend: ₱{effectiveDepartment.maintenanceSummary.totalRepairSpend.toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Active Repairs
+                </span>
+                <div className="text-lg font-bold font-mono text-rose-600">
+                  {openRepairsCount}
+                </div>
+                <p className="text-[10px] text-text-secondary mt-0.5">Under service</p>
+              </div>
+
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Resolved Tickets
+                </span>
+                <div className="text-lg font-bold font-mono text-emerald-600">
+                  {resolvedRepairsCount}
+                </div>
+                <p className="text-[10px] text-text-secondary mt-0.5">Completed repairs</p>
+              </div>
+
+              {canViewCosts && (
+                <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                    Repair Spend
+                  </span>
+                  <div className="text-lg font-bold font-mono text-accent">
+                    ₱{(effectiveDepartment.maintenanceSummary?.totalRepairSpend || 0).toLocaleString()}
                   </div>
-                  <p className="text-[11px] text-text-secondary mt-1">Lifetime maintenance costs</p>
+                  <p className="text-[10px] text-text-secondary mt-0.5">Total parts &amp; labor</p>
                 </div>
               )}
 
-              <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                <span className="text-xs text-text-secondary block mb-1">Active Projects</span>
-                <div className="text-xl font-bold font-mono text-text">
-                  {effectiveDepartment.activeProjects}
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Avg. MTTR
+                </span>
+                <div className="text-lg font-bold font-mono text-text">
+                  {effectiveDepartment.maintenanceSummary?.avgMttrDays != null
+                    ? `${effectiveDepartment.maintenanceSummary.avgMttrDays} d`
+                    : "—"}
                 </div>
-                <p className="text-[11px] text-text-secondary mt-1">Currently running initiatives</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">Mean time to repair</p>
               </div>
 
-              <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                <span className="text-xs text-text-secondary block mb-1">Staff Headcount</span>
-                <div className="text-xl font-bold font-mono text-text">
-                  {effectiveDepartment.staffCount ?? "—"}
+              <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 dark:bg-sky-950/20 p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 block mb-0.5">
+                  Parts Replaced
+                </span>
+                <div className="text-lg font-bold font-mono text-sky-700 dark:text-sky-300">
+                  {partsSummary.totalPartsCount}
                 </div>
-                <p className="text-[11px] text-text-secondary mt-1">Active personnel</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">
+                  {partsSummary.topParts.length} unique hardware item{partsSummary.topParts.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+
+              {canViewCosts && (
+                <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 dark:bg-sky-950/20 p-3 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 block mb-0.5">
+                    Parts Valuation
+                  </span>
+                  <div className="text-lg font-bold font-mono text-accent">
+                    ₱{partsSummary.totalPartsCost.toLocaleString()}
+                  </div>
+                  <p className="text-[10px] text-text-secondary mt-0.5">Hardware component spend</p>
+                </div>
+              )}
+            </div>
+
+            {/* Condition Breakdown Chips */}
+            {effectiveDepartment.maintenanceSummary?.conditionBreakdown &&
+              effectiveDepartment.maintenanceSummary.conditionBreakdown.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-text-secondary mr-1">Condition Profile:</span>
+                  {effectiveDepartment.maintenanceSummary.conditionBreakdown.map((c) => (
+                    <span
+                      key={c.condition}
+                      className="inline-flex items-center gap-1 rounded-md bg-bg-subtle border border-border px-2 py-0.5 text-[10px] font-semibold text-text"
+                    >
+                      <span className="capitalize">{c.condition.replace(/_/g, " ")}:</span>
+                      <span className="font-mono font-bold text-accent">{c.count}</span>
+                      {canViewCosts && c.cost > 0 && (
+                        <span className="text-[9px] font-mono text-text-secondary">
+                          (₱{c.cost.toLocaleString()})
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+            {/* Filter and Search Bar for Department Maintenance */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2">
+              <div className="flex items-center gap-1 bg-bg-subtle p-0.5 rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceStatusFilter("all")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                    maintenanceStatusFilter === "all"
+                      ? "bg-card text-text shadow-2xs"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  All ({deptMaintenanceLogs.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceStatusFilter("open")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                    maintenanceStatusFilter === "open"
+                      ? "bg-card text-rose-600 shadow-2xs font-bold"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  Active Repairs ({openRepairsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceStatusFilter("resolved")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                    maintenanceStatusFilter === "resolved"
+                      ? "bg-card text-emerald-600 shadow-2xs font-bold"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  Resolved ({resolvedRepairsCount})
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
+                  <input
+                    type="text"
+                    placeholder="Search log code, asset tag, issue, technician..."
+                    value={maintenanceSearch}
+                    onChange={(e) => setMaintenanceSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-card text-text placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+                {filteredMaintenanceLogs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allExpanded = filteredMaintenanceLogs.every((l) => expandedWorkOrders.has(l.id));
+                      if (allExpanded) {
+                        setExpandedWorkOrders(new Set());
+                      } else {
+                        setExpandedWorkOrders(new Set(filteredMaintenanceLogs.map((l) => l.id)));
+                      }
+                    }}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-card text-text hover:bg-bg-subtle transition-colors shrink-0 cursor-pointer shadow-2xs"
+                  >
+                    {filteredMaintenanceLogs.every((l) => expandedWorkOrders.has(l.id)) ? "Collapse All" : "Expand All"}
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* Itemized Department Maintenance Cards */}
+            {deptMaintenanceLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-10 text-center rounded-2xl border border-dashed border-border bg-bg-subtle/30">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-2" />
+                <div className="text-sm font-bold text-text">Zero Maintenance Faults Logged</div>
+                <p className="text-xs text-text-secondary max-w-sm mt-1">
+                  All assets assigned to {effectiveDepartment.departmentName} are operational with no recorded repair work orders.
+                </p>
+              </div>
+            ) : filteredMaintenanceLogs.length === 0 ? (
+              <div className="py-8 text-center text-xs text-text-secondary border border-dashed border-border rounded-xl">
+                No maintenance work orders matching &ldquo;{maintenanceSearch}&rdquo; in selected filter.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                {filteredMaintenanceLogs.map((log) => {
+                  const isExpanded = expandedWorkOrders.has(log.id);
+                  const parts = log.repairParts ?? [];
+                  const partsCount = parts.length;
+                  const partsSubtotal = parts.reduce(
+                    (sum, p) => sum + (p.cost != null ? Number(p.cost) || 0 : 0),
+                    0
+                  );
+
+                  return (
+                    <div
+                      key={log.id}
+                      className={cn(
+                        "group rounded-2xl border bg-card transition-all duration-200 overflow-hidden shadow-2xs flex flex-col",
+                        isExpanded
+                          ? "border-accent/40 ring-1 ring-accent/20 shadow-xs"
+                          : "border-border/80 hover:border-border hover:shadow-xs h-82.5"
+                      )}
+                    >
+                      {/* Card Primary Header & Summary */}
+                      <div className={cn("p-4 sm:p-5 flex flex-col justify-between gap-3", !isExpanded && "h-full")}>
+                        <div className="flex flex-col gap-2.5">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            {/* Left: Expand Chevron, Log Code & Asset Tag */}
+                            <div className="flex items-start gap-2.5 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => toggleWorkOrderExpand(log.id)}
+                                className="mt-0.5 p-1 rounded-md text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0"
+                                title={isExpanded ? "Collapse work order" : "Expand work order"}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="h-4 w-4 text-accent" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
+                              </button>
+
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-xs font-bold text-accent">
+                                    {log.logCode}
+                                  </span>
+                                  <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-bg-subtle text-text-secondary border border-border/60">
+                                    {log.source.replace(/_/g, " ")}
+                                  </span>
+                                  {log.isResolved ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                                      <CheckCircle2 className="h-3 w-3" /> Resolved
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-400">
+                                      <AlertCircle className="h-3 w-3" /> Under Repair
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Asset Link & Name */}
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                  {log.assetCode ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedAssetCode(log.assetCode!)}
+                                      className="inline-flex items-center gap-1 font-mono text-xs font-bold text-text hover:text-accent transition-colors cursor-pointer group/link"
+                                      title="View full asset dossier"
+                                    >
+                                      <span>{log.assetCode}</span>
+                                      <ExternalLink className="h-3 w-3 opacity-60 group-hover/link:opacity-100" />
+                                    </button>
+                                  ) : (
+                                    <span className="font-mono text-xs text-text-secondary">—</span>
+                                  )}
+                                  {log.assetName && (
+                                    <>
+                                      <span className="text-text-secondary text-xs">·</span>
+                                      <span className="text-xs font-medium text-text truncate max-w-45 sm:max-w-xs" title={log.assetName}>
+                                        {log.assetName}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right: Condition & Financial Total */}
+                            <div className="flex items-center gap-2.5 shrink-0 ml-auto">
+                              {log.condition && (
+                                <span
+                                  className={cn(
+                                    "rounded-md px-2 py-0.5 text-[10px] font-semibold border capitalize",
+                                    log.condition === "functional"
+                                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20"
+                                      : log.condition === "damaged"
+                                      ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20 font-bold"
+                                      : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 font-bold"
+                                  )}
+                                >
+                                  {log.condition.replace(/_/g, " ")}
+                                </span>
+                              )}
+
+                              {canViewCosts && (
+                                <div className="text-right pl-2 border-l border-border/60">
+                                  <div className="text-[9px] uppercase tracking-wider text-text-secondary font-medium">
+                                    Repair Total
+                                  </div>
+                                  <div className="text-xs font-mono font-bold text-accent">
+                                    ₱{(log.totalCost ?? log.repairCost ?? 0).toLocaleString()}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Metadata strip: Personnel, Timeline, MTTR */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-2 border-t border-border/50 text-[11px] text-text-secondary">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Calendar className="h-3 w-3 text-text-secondary/70 shrink-0" />
+                              <span className="truncate">
+                                Logged: <strong className="text-text font-medium">{log.dateLogged}</strong>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 truncate">
+                              <User className="h-3 w-3 text-text-secondary/70 shrink-0" />
+                              <span className="truncate">
+                                By: <strong className="text-text font-medium">{log.loggedByName || "Staff"}</strong>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 truncate">
+                              <HardHat className="h-3 w-3 text-text-secondary/70 shrink-0" />
+                              <span className="truncate">
+                                Tech: <strong className="text-text font-medium">{log.resolvedByName || "In Queue"}</strong>
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Clock className="h-3 w-3 text-text-secondary/70 shrink-0" />
+                              <span className="truncate">
+                                {log.resolutionDate ? (
+                                  <>
+                                    MTTR:{" "}
+                                    <strong className="text-text font-medium">
+                                      {log.mttrDays != null ? `${log.mttrDays}d` : "Done"}
+                                    </strong>
+                                  </>
+                                ) : (
+                                  <strong className="text-amber-600 dark:text-amber-400 font-medium">Active</strong>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Dedicated Replaced Parts Spotlight Container (Uniform Fixed Height) */}
+                        {partsCount > 0 ? (
+                          <div className="h-24 rounded-xl border border-sky-300/40 dark:border-sky-800/40 bg-sky-500/5 dark:bg-sky-950/20 p-2.5 flex flex-col justify-between overflow-hidden">
+                            <div className="flex items-center justify-between gap-2 shrink-0">
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 dark:text-sky-200">
+                                <Cpu className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                                <span className="truncate">Replaced Hardware &amp; Components</span>
+                                <span className="rounded-full bg-sky-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-sky-700 dark:text-sky-300 shrink-0">
+                                  {partsCount}
+                                </span>
+                              </div>
+                              {canViewCosts && partsSubtotal > 0 && (
+                                <span className="text-[10px] font-mono text-sky-700 dark:text-sky-300 font-bold shrink-0">
+                                  ₱{partsSubtotal.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 overflow-y-auto max-h-13.5 pr-0.5">
+                              {parts.map((part, pIdx) => (
+                                <div
+                                  key={pIdx}
+                                  className="inline-flex items-center gap-1 rounded-md border border-sky-200/60 dark:border-sky-800/60 bg-card px-2 py-0.5 text-[11px] shadow-2xs"
+                                >
+                                  <span className="font-semibold text-text truncate max-w-32.5" title={part.name}>
+                                    {part.name}
+                                  </span>
+                                  {canViewCosts && part.cost != null && (
+                                    <span className="font-mono text-[10px] font-bold text-accent shrink-0">
+                                      ₱{Number(part.cost).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-24 rounded-xl border border-dashed border-border/70 bg-bg-subtle/30 p-2.5 flex flex-col items-center justify-center gap-1 text-center text-xs text-text-secondary">
+                            <div className="flex items-center gap-1.5 font-medium text-text-secondary">
+                              <Wrench className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
+                              <span>No physical parts replaced</span>
+                            </div>
+                            <span className="text-[10px] text-text-secondary/70">Labor, inspection, or servicing only</span>
+                          </div>
+                        )}
+
+                        {/* Collapsed Brief Preview & Drawer Toggle */}
+                        <div className="flex items-center justify-between pt-2 border-t border-border/50 shrink-0 mt-auto">
+                          <p className="text-xs text-text-secondary line-clamp-1 italic max-w-45 sm:max-w-xs" title={log.notes || log.workNotes || ""}>
+                            {log.notes ? `"${log.notes}"` : log.workNotes ? `Work: ${log.workNotes}` : "No notes logged."}
+                          </p>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleWorkOrderExpand(log.id)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:underline shrink-0 ml-2 cursor-pointer"
+                          >
+                            <span>{isExpanded ? "Hide Details" : "Diagnostic Dossier"}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expandable Diagnostic & Parts Dossier Drawer */}
+                      {isExpanded && (
+                        <div className="border-t border-border/70 bg-bg-subtle/40 p-4 sm:p-5 flex flex-col gap-4 animate-in fade-in-50 duration-200">
+                          {/* Diagnostic Summary Blocks */}
+                          <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+                            <div className="rounded-xl border border-border/80 bg-card p-3.5 shadow-2xs space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary mb-1">
+                                <FileText className="h-3.5 w-3.5 text-accent" />
+                                <span>Diagnostic &amp; Initial Complaint</span>
+                              </div>
+                              <p className="text-xs text-text whitespace-pre-wrap leading-relaxed">
+                                {log.notes?.trim() || (
+                                  <span className="text-text-secondary italic">No initial complaint notes recorded.</span>
+                                )}
+                              </p>
+                              <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px] text-text-secondary">
+                                <span>Reported By:</span>
+                                <span className="font-semibold text-text">{log.loggedByName || "Staff"}</span>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-sky-500/20 bg-card p-3.5 shadow-2xs space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 mb-1">
+                                <HardHat className="h-3.5 w-3.5 text-sky-600" />
+                                <span>Technical Work Performed</span>
+                              </div>
+                              <p className="text-xs text-text whitespace-pre-wrap leading-relaxed">
+                                {log.workNotes?.trim() || (
+                                  <span className="text-text-secondary italic">No technical procedure notes logged.</span>
+                                )}
+                              </p>
+                              <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px] text-text-secondary">
+                                <span>Origin Ticket:</span>
+                                <span className="font-mono uppercase font-bold text-text">{log.source.replace(/_/g, " ")}</span>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl border border-emerald-500/20 bg-card p-3.5 shadow-2xs space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-1">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+                                <span>Resolution &amp; Clearance</span>
+                              </div>
+                              <p className="text-xs text-text whitespace-pre-wrap leading-relaxed">
+                                {log.resolutionNotes?.trim() || (
+                                  <span className="text-text-secondary italic">
+                                    {log.isResolved
+                                      ? "Repair marked resolved; documentation closed."
+                                      : "Service order currently in progress."}
+                                  </span>
+                                )}
+                              </p>
+                              <div className="pt-2 border-t border-border/60 flex items-center justify-between text-[11px] text-text-secondary">
+                                <span>Assigned Specialist:</span>
+                                <span className="font-semibold text-text">{log.resolvedByName || "In Queue"}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Full Itemized Parts & Spares Breakdown */}
+                          <div className="rounded-xl border border-sky-300/40 dark:border-sky-800/40 bg-card overflow-hidden shadow-2xs">
+                            <div className="flex items-center justify-between px-3.5 py-2.5 bg-bg-subtle/80 border-b border-border/80">
+                              <div className="flex items-center gap-2">
+                                <Cpu className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                                <span className="text-xs font-bold text-text">
+                                  Full Parts &amp; Hardware Components Ledger
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-text-secondary font-medium">
+                                {partsCount} component{partsCount === 1 ? "" : "s"}
+                              </span>
+                            </div>
+
+                            {partsCount > 0 ? (
+                              <div className="divide-y divide-border/60 p-1">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2">
+                                  {parts.map((part, pIdx) => (
+                                    <div
+                                      key={pIdx}
+                                      className="flex items-center justify-between p-2.5 rounded-lg bg-sky-500/5 dark:bg-sky-950/20 border border-sky-200/50 dark:border-sky-800/50 text-xs"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <Cpu className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                                        <span className="font-semibold text-text truncate" title={part.name}>
+                                          {part.name}
+                                        </span>
+                                      </div>
+                                      {canViewCosts && part.cost != null && (
+                                        <span className="font-mono font-bold text-accent shrink-0 ml-2">
+                                          ₱{Number(part.cost).toLocaleString()}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                {canViewCosts && partsSubtotal > 0 && (
+                                  <div className="flex items-center justify-between px-4 py-2.5 bg-bg-subtle/60 text-xs font-semibold">
+                                    <span className="text-text">Total Parts Expenditure:</span>
+                                    <span className="font-mono font-bold text-accent">
+                                      ₱{partsSubtotal.toLocaleString()}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="p-4 text-center text-xs text-text-secondary flex items-center justify-center gap-2">
+                                <Wrench className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
+                                <span>No physical parts were replaced on this equipment ticket. Labor and servicing only.</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
         </div>
 
@@ -1019,7 +1686,7 @@ export function DepartmentDetailDialog({
           <div className="flex items-center gap-2">
             <span className="font-semibold text-text">{effectiveDepartment.departmentName}</span>
             <span>·</span>
-            <span>CRMC Department Audit</span>
+            <span>CRMC Department Audit ({deptMaintenanceLogs.length} Maintenance Records)</span>
           </div>
           <button
             onClick={handleInitiateClose}
@@ -1030,6 +1697,15 @@ export function DepartmentDetailDialog({
         </div>
       </div>
     </div>
+
+    {/* Asset Detail Preview Modal */}
+    {selectedAssetCode && (
+      <AssetDetailDialog
+        assetId={selectedAssetCode}
+        isOpen={Boolean(selectedAssetCode)}
+        onClose={() => setSelectedAssetCode(null)}
+      />
+    )}
 
     <div className="hidden print:block">
         <IndividualDepartmentPrintableReport

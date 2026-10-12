@@ -216,6 +216,22 @@ export class ReportService {
         ...row,
         assetsValue: null,
         consumablesValue: null,
+        maintenanceSummary: row.maintenanceSummary
+          ? {
+              ...row.maintenanceSummary,
+              totalRepairSpend: 0,
+              conditionBreakdown: (row.maintenanceSummary.conditionBreakdown || []).map((c) => ({
+                ...c,
+                cost: 0,
+              })),
+            }
+          : undefined,
+        departmentMaintenanceLogs: (row.departmentMaintenanceLogs || []).map((l) => ({
+          ...l,
+          repairCost: null,
+          totalCost: null,
+          repairParts: (l.repairParts || []).map((p) => ({ ...p, cost: null })),
+        })),
       }));
     }
 
@@ -385,6 +401,7 @@ export class ReportService {
           "Asset Code",
           "Asset Name",
           "Category",
+          "Department",
           "Condition",
           "Date Logged",
           "Status",
@@ -410,6 +427,7 @@ export class ReportService {
             r.assetCode,
             r.assetName,
             r.category,
+            r.department || "General",
             r.condition,
             r.dateLogged,
             r.isResolved ? "Resolved" : "Open",

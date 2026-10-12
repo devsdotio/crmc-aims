@@ -8,6 +8,12 @@ import {
   DollarSign,
   PieChart as PieIcon,
   Truck,
+  LayoutGrid,
+  Table as TableIcon,
+  ChevronLeft,
+  ChevronRight,
+  Package,
+  Calendar,
 } from "lucide-react";
 
 import { usePurchaseOrdersReportQuery } from "@/features/reports/client/use-reports";
@@ -23,6 +29,8 @@ import { ReportExportButton } from "@/components/reports/report-export-button";
 import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-filter";
 import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { ProcurementPrintableReport } from "@/components/reports/print/ProcurementPrintableReport";
+import { PurchaseOrderCardSkeleton } from "@/components/reports/report-card-skeleton";
+import { cn } from "@/lib/utils";
 
 const TYPE_OPTIONS = [
   { label: "All Types", value: "all" },
@@ -32,6 +40,7 @@ const TYPE_OPTIONS = [
 
 export default function PurchaseOrdersReportPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
     pageSize: 20,
@@ -359,17 +368,168 @@ export default function PurchaseOrdersReportPage() {
         />
       </div>
 
-      {/* ── Data Table ───────────────────────────────────────────────── */}
-      <ReportTable
-        columns={columns}
-        data={data?.data || []}
-        total={data?.total || 0}
-        page={data?.page || 1}
-        pageSize={data?.pageSize || 20}
-        totalPages={data?.totalPages || 1}
-        isLoading={isLoading}
-        onPageChange={(page) => handleFilterChange({ page })}
-      />
+      {/* ── View Switcher Header ────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
+        <div className="text-xs text-text-secondary font-medium">
+          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> purchase orders
+        </div>
+        <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "table"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+          >
+            <TableIcon className="h-3.5 w-3.5" />
+            <span>Table</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("cards")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "cards"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>Cards</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Data Display: Table or Cards ──────────────────────────────── */}
+      {viewMode === "table" ? (
+        <ReportTable
+          columns={columns}
+          data={data?.data || []}
+          total={data?.total || 0}
+          page={data?.page || 1}
+          pageSize={data?.pageSize || 20}
+          totalPages={data?.totalPages || 1}
+          isLoading={isLoading}
+          onPageChange={(page) => handleFilterChange({ page })}
+        />
+      ) : (
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <PurchaseOrderCardSkeleton key={idx} />
+              ))}
+            </div>
+          ) : !data?.data || data.data.length === 0 ? (
+            <div className="rounded-xl border border-border/80 bg-card p-12 text-center">
+              <ShoppingCart className="h-10 w-10 text-text-secondary/40 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-text">No purchase orders found</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Try adjusting your search criteria or filter selections.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.data.map((row) => (
+                <div
+                  key={row.poNumber}
+                  className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-accent/40 hover:shadow-md transition-all relative"
+                >
+                  <div>
+                    {/* Top Bar: PO Code & Status */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-accent transition-colors">
+                        <span>{row.poNumber}</span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 px-2 py-0.5 text-[10px] font-bold capitalize">
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>{row.status}</span>
+                      </span>
+                    </div>
+
+                    {/* Supplier Name */}
+                    <h4 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1">
+                      {row.supplierName}
+                    </h4>
+
+                    {/* Item Type & Items Preview */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="inline-flex rounded-md bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-semibold text-text capitalize">
+                        {row.itemType}
+                      </span>
+                    </div>
+                    {row.itemsPreview && (
+                      <p className="text-xs text-text-secondary mt-2 line-clamp-2">
+                        {row.itemsPreview}
+                      </p>
+                    )}
+
+                    {/* Order Details */}
+                    <div className="mt-3.5 space-y-1.5 text-xs text-text-secondary border-t border-border/40 pt-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-text-secondary">Quantity</span>
+                        <span className="font-mono font-bold text-text text-xs">
+                          {row.totalQuantity.toLocaleString()} items
+                        </span>
+                      </div>
+                      {row.purchasedOn && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-text-secondary">Acquired</span>
+                          <span className="font-mono text-[11px] text-text">
+                            {row.purchasedOn}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bottom Footer: Total Amount / Spend */}
+                  {canViewCosts && row.totalAmount != null && (
+                    <div className="mt-4 pt-2.5 border-t border-border/50 flex items-center justify-between text-xs">
+                      <span className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">Total Spend</span>
+                      <span className="font-mono font-bold text-text text-sm">
+                        ₱{row.totalAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Card View Pagination Footer */}
+          {!isLoading && data && data.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border/80 px-2 py-3">
+              <span className="text-xs text-text-secondary">
+                Page {data.page} of {data.totalPages} ({data.total} total)
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={data.page <= 1}
+                  onClick={() => handleFilterChange({ page: data.page - 1 })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <span>Prev</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={data.page >= data.totalPages}
+                  onClick={() => handleFilterChange({ page: data.page + 1 })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
     </>
   );

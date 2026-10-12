@@ -287,6 +287,7 @@ export interface MaintenanceReportRow {
   assetCode: string;
   assetName: string;
   category: string;
+  department: string | null;
   condition: string;
   source: string;
   dateLogged: string;
@@ -309,7 +310,7 @@ export interface MaintenanceSummary {
   totalRepairSpend: number;
   avgMttrDays: number;
   topFaultyAssets: Array<{ assetCode: string; name: string; count: number; totalCost: number }>;
-  conditionBreakdown: Array<{ condition: string; count: number }>;
+  conditionBreakdown: Array<{ condition: string; count: number; cost: number }>;
 }
 
 // ─── Shared Report Drilldown Types ──────────────────────────────────────────
@@ -317,6 +318,10 @@ export interface MaintenanceSummary {
 export interface MaintenanceLogItem {
   id: string;
   logCode: string;
+  assetId?: string | null;
+  assetCode?: string;
+  assetName?: string;
+  department?: string | null;
   condition: string;
   source: string;
   notes: string;
@@ -398,6 +403,7 @@ export interface DepartmentMaintenanceSummary {
   resolvedLogs: number;
   totalRepairSpend: number;
   avgMttrDays: number | null;
+  conditionBreakdown?: Array<{ condition: string; count: number; cost: number }>;
 }
 
 export interface DepartmentReportRow {
@@ -413,6 +419,8 @@ export interface DepartmentReportRow {
   topAssets: string[];
   assignedAssets?: AssignedAssetItem[];
   consumedSupplies?: ConsumedSupplyItem[];
+  /** Detailed list of maintenance logs/work orders for assets in this department */
+  departmentMaintenanceLogs?: MaintenanceLogItem[];
   /** Full maintenance summary for this department */
   maintenanceSummary?: DepartmentMaintenanceSummary;
 }
