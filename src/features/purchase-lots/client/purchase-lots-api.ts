@@ -224,7 +224,8 @@ export const purchaseLotsApi = {
   },
 
   async scanRelease(payload: {
-    code: string;
+    code?: string;
+    lotId?: string;
     quantity: number;
     reason?: string;
     notes?: string;

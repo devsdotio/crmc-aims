@@ -223,8 +223,16 @@ export function LotReleaseDialog({
     }
 
     try {
+      const destLabel =
+        destinationKind === "project"
+          ? projectOptions.find((p) => p.value === projectId)?.label ?? "project"
+          : departmentOptions.find((d) => d.value === departmentId)?.label ??
+            "department";
+
       await releaseMutation.mutateAsync({
-        code: activeLot.lotCode,
+        // lotId is authoritative for PO line release (DB may store PO-* while UI shows LOT-*).
+        lotId: activeLot.id,
+        code: activeLot.qrPayload || activeLot.lotCode,
         quantity: qtyValue,
         recipientName: recipientName.trim() || undefined,
         reason: reason.trim() || undefined,
@@ -234,7 +242,7 @@ export function LotReleaseDialog({
       });
 
       toast.success(
-        `Released ${qtyValue}× ${activeLot.itemName} from lot ${activeLot.lotCode}.`
+        `Issued ${qtyValue}× ${activeLot.itemName} from lot ${activeLot.lotCode} to ${destLabel}.`
       );
       onSuccess?.();
       onClose();
@@ -265,7 +273,7 @@ export function LotReleaseDialog({
               id="release-dialog-title"
               className="text-sm font-bold text-text"
             >
-              Release stock from lot
+              Issue / release from this lot
             </h2>
           </div>
           <button
