@@ -120,7 +120,8 @@ export function LotReleaseDialog({
     if (!isOpen || !lot) return;
     setSelectedLotId(lot.id);
     setQuantity("1");
-    setDestinationKind("department");
+    // Prefer project when the PO line is already tied to one; else department.
+    setDestinationKind(lot.projectId ? "project" : "department");
     setRecipientName("");
     setReason("");
     setErrorMsg(null);
@@ -141,10 +142,17 @@ export function LotReleaseDialog({
       setDepartmentId("");
       return;
     }
-    setDepartmentId((prev) =>
-      prev && departments.some((d) => d.id === prev) ? prev : departments[0].id
-    );
-  }, [isOpen, departments]);
+    setDepartmentId((prev) => {
+      if (prev && departments.some((d) => d.id === prev)) return prev;
+      if (
+        lot?.departmentId &&
+        departments.some((d) => d.id === lot.departmentId)
+      ) {
+        return lot.departmentId;
+      }
+      return departments[0].id;
+    });
+  }, [isOpen, departments, lot?.departmentId]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -152,12 +160,14 @@ export function LotReleaseDialog({
       setProjectId("");
       return;
     }
-    setProjectId((prev) =>
-      prev && mutableProjects.some((p) => p.id === prev)
-        ? prev
-        : mutableProjects[0].id
-    );
-  }, [isOpen, mutableProjects]);
+    setProjectId((prev) => {
+      if (prev && mutableProjects.some((p) => p.id === prev)) return prev;
+      if (lot?.projectId && mutableProjects.some((p) => p.id === lot.projectId)) {
+        return lot.projectId;
+      }
+      return mutableProjects[0].id;
+    });
+  }, [isOpen, mutableProjects, lot?.projectId]);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

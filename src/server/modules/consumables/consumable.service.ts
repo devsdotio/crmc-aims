@@ -772,6 +772,7 @@ export class ConsumableService {
 
         await this.projectExpenses.create(
           {
+            tenantId: actor.tenantId,
             projectId: dest.projectId,
             lineType: "consumable",
             category: "miscellaneous",
@@ -783,7 +784,14 @@ export class ConsumableService {
             assetId: null,
             incurredOn: todayDateString(),
             notes: input.notes ?? destNote ?? null,
-            metadata,
+            metadata: {
+              ...metadata,
+              purchaseLotId: allocation.lotId ?? preview.id,
+              lotCode: allocation.lotCode ?? preview.lotCode,
+              poNumber: preview.poNumber,
+              supplierName:
+                allocation.supplierName ?? preview.supplierName ?? undefined,
+            },
             recordedByUserId: actor.userId,
             recordedByName: actor.displayName,
           },
@@ -1077,6 +1085,7 @@ export class ConsumableService {
 
         await this.projectExpenses.create(
           {
+            tenantId: actor.tenantId,
             projectId: dest.projectId,
             lineType: "consumable",
             category: "miscellaneous",
@@ -1088,7 +1097,12 @@ export class ConsumableService {
             assetId: null,
             incurredOn: todayDateString(),
             notes: input.notes ?? destNote ?? null,
-            metadata,
+            metadata: {
+              ...metadata,
+              purchaseLotId: result.allocation.lotId ?? undefined,
+              lotCode: result.allocation.lotCode ?? undefined,
+              supplierName: result.allocation.supplierName ?? undefined,
+            },
             recordedByUserId: actor.userId,
             recordedByName: actor.displayName,
           },

@@ -60,8 +60,13 @@ describeIntegration("PO lot release → department / project (integration)", () 
       },
       fx.actor
     );
-    const lotA = created[0];
-    await lots.updatePOStatus(lotA.id, { status: "delivered" }, fx.actor);
+    const draftA = created[0];
+    const deliveredA = await lots.updatePOStatus(
+      draftA.id,
+      { status: "delivered" },
+      fx.actor
+    );
+    expect(deliveredA.consumableId).toBeTruthy();
 
     const second = await lots.createPurchaseOrder(
       {
@@ -73,7 +78,7 @@ describeIntegration("PO lot release → department / project (integration)", () 
         items: [
           {
             itemType: "consumable",
-            consumableId: lotA.consumableId!,
+            consumableId: deliveredA.consumableId!,
             name: "Lot Release Paper",
             category: fx.consumableCategory,
             classification: "supply",
@@ -87,11 +92,11 @@ describeIntegration("PO lot release → department / project (integration)", () 
       },
       fx.actor
     );
-    const lotB = second[0];
-    await lots.updatePOStatus(lotB.id, { status: "delivered" }, fx.actor);
+    const draftB = second[0];
+    await lots.updatePOStatus(draftB.id, { status: "delivered" }, fx.actor);
 
-    const refreshedA = await lots.getById(lotA.id, fx.actor.tenantId);
-    const refreshedB = await lots.getById(lotB.id, fx.actor.tenantId);
+    const refreshedA = await lots.getById(draftA.id, fx.actor.tenantId);
+    const refreshedB = await lots.getById(draftB.id, fx.actor.tenantId);
     return { lotA: refreshedA, lotB: refreshedB };
   }
 
@@ -199,9 +204,13 @@ describeIntegration("PO lot release → department / project (integration)", () 
       .select()
       .from(projectExpenseLines)
       .where(eq(projectExpenseLines.id, expense!.id));
+    expect(expenseRow.tenantId).toBe(fx.actor.tenantId);
+    expect(expenseRow.projectId).toBe(project.id);
+    expect(expenseRow.lineType).toBe("consumable");
     const meta = (expenseRow.metadata ?? {}) as ProjectExpenseMetadata;
     expect(meta.lotAllocations?.[0]?.lotId).toBe(lotB.id);
     expect(meta.stockMovementId).toBe(issueMove!.id);
+    expect(meta.purchaseLotId).toBe(lotB.id);
   });
 
   it("rejects release without a department or project destination", async () => {
