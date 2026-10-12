@@ -16,6 +16,7 @@ interface ReportFilterBarProps {
   categories?: FilterOption[];
   classifications?: FilterOption[];
   statuses?: FilterOption[];
+  departments?: FilterOption[];
   showDatePresets?: boolean;
   searchPlaceholder?: string;
   actions?: React.ReactNode;
@@ -28,6 +29,7 @@ export function ReportFilterBar({
   categories,
   classifications,
   statuses,
+  departments,
   showDatePresets = false,
   searchPlaceholder = "Search records…",
   actions,
@@ -116,6 +118,23 @@ export function ReportFilterBar({
             {categories.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {/* Department selector */}
+        {departments && departments.length > 0 && (
+          <select
+            value={filters.departmentId || ""}
+            onChange={(e) => onFilterChange({ departmentId: e.target.value || undefined, page: 1 })}
+            aria-label="Filter by department"
+            className="h-8.5 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-accent focus:bg-card focus:outline-hidden cursor-pointer"
+          >
+            <option value="">All Departments</option>
+            {departments.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
               </option>
             ))}
           </select>

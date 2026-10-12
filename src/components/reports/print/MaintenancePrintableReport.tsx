@@ -195,7 +195,8 @@ export function MaintenancePrintableReport({
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">WO / Log Code</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Property Tag No.</th>
-                <th className="py-2 px-2 border-r border-black min-w-40">Equipment Description</th>
+                <th className="py-2 px-2 border-r border-black min-w-36">Equipment Description</th>
+                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Department</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Fault Condition</th>
                 <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Status</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Date Logged</th>
@@ -239,6 +240,9 @@ export function MaintenancePrintableReport({
                     <td className="py-1.5 px-2 border-r border-black font-semibold text-black">
                       {row.assetName}
                     </td>
+                    <td className="py-1.5 px-2 border-r border-black text-[8.5px] truncate max-w-28">
+                      {row.department || "General"}
+                    </td>
                     <td className="py-1.5 px-2 border-r border-black capitalize">
                       {row.condition || "Unserviceable"}
                     </td>
@@ -262,7 +266,7 @@ export function MaintenancePrintableReport({
 
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-6 text-center italic text-[10px]">
+                  <td colSpan={10} className="py-6 text-center italic text-[10px]">
                     No equipment maintenance or repair records found matching specified filters.
                   </td>
                 </tr>
@@ -273,7 +277,7 @@ export function MaintenancePrintableReport({
             {data.length > 0 && (
               <tfoot>
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
-                  <td colSpan={7} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                  <td colSpan={8} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
                     Grand Total Repair Expenditures:
                   </td>
                   <td className="py-1.5 px-2 text-right font-mono border-r border-black">

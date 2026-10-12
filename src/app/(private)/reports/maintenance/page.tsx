@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { useMaintenanceReportQuery } from "@/features/reports/client/use-reports";
+import { useDepartmentsQuery } from "@/features/departments/client";
 import type { BaseReportFilters, MaintenanceReportRow } from "@/types/reports";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { KpiCard } from "@/components/reports/kpi-card";
@@ -51,7 +52,17 @@ export default function MaintenanceReportPage() {
     search: "",
     category: "",
     status: "",
+    departmentId: "",
   });
+
+  const { data: deptData = [] } = useDepartmentsQuery();
+  const departmentOptions = useMemo(
+    () =>
+      deptData
+        .map((d) => ({ label: d.name, value: d.name }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [deptData]
+  );
 
   const effectiveFilters = useMemo<BaseReportFilters>(
     () => ({
@@ -123,6 +134,7 @@ export default function MaintenanceReportPage() {
       search: "",
       category: "",
       status: "",
+      departmentId: "",
     });
   };
 
@@ -164,6 +176,15 @@ export default function MaintenanceReportPage() {
       render: (row) => (
         <span className="rounded-full bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-bold text-text capitalize">
           {row.category}
+        </span>
+      ),
+    },
+    {
+      key: "department",
+      header: "Department",
+      render: (row) => (
+        <span className="text-xs text-text-secondary truncate max-w-40">
+          {row.department || "General / Unassigned"}
         </span>
       ),
     },
@@ -493,6 +514,7 @@ export default function MaintenanceReportPage() {
           onFilterChange={handleFilterChange}
           onReset={handleReset}
           categories={CATEGORY_OPTIONS}
+          departments={departmentOptions}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search log code, asset code, technician, description…"
         />

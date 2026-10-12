@@ -38,8 +38,9 @@ import {
 
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
-import type { DepartmentReportRow } from "@/types/reports";
+import type { DepartmentReportRow, MaintenanceLogItem } from "@/types/reports";
 import { IndividualDepartmentPrintableReport } from "@/components/reports/print/individual/IndividualDepartmentPrintableReport";
+import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
 
 interface DepartmentDetailDialogProps {
   department: DepartmentReportRow | null;
@@ -60,6 +61,9 @@ export function DepartmentDetailDialog({
   const [copied, setCopied] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
   const [supplySearch, setSupplySearch] = useState("");
+  const [maintenanceSearch, setMaintenanceSearch] = useState("");
+  const [maintenanceStatusFilter, setMaintenanceStatusFilter] = useState<"all" | "open" | "resolved">("all");
+  const [selectedAssetCode, setSelectedAssetCode] = useState<string | null>(null);
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
   const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
@@ -181,6 +185,48 @@ export function DepartmentDetailDialog({
       qty: s.quantity,
     }));
 
+  // Itemized department maintenance logs
+  const deptMaintenanceLogs: MaintenanceLogItem[] = (() => {
+    if (
+      effectiveDepartment.departmentMaintenanceLogs &&
+      effectiveDepartment.departmentMaintenanceLogs.length > 0
+    ) {
+      return effectiveDepartment.departmentMaintenanceLogs;
+    }
+    const collected: MaintenanceLogItem[] = [];
+    for (const asset of effectiveDepartment.assignedAssets || []) {
+      for (const log of asset.maintenanceLogs || []) {
+        collected.push({
+          ...log,
+          assetCode: log.assetCode || asset.assetCode,
+          assetName: log.assetName || asset.name,
+          department: effectiveDepartment.departmentName,
+        });
+      }
+    }
+    return collected.sort((a, b) => b.dateLogged.localeCompare(a.dateLogged));
+  })();
+
+  const filteredMaintenanceLogs = deptMaintenanceLogs.filter((log) => {
+    if (maintenanceStatusFilter === "open" && log.isResolved) return false;
+    if (maintenanceStatusFilter === "resolved" && !log.isResolved) return false;
+    if (!maintenanceSearch.trim()) return true;
+    const q = maintenanceSearch.toLowerCase();
+    return (
+      log.logCode.toLowerCase().includes(q) ||
+      (log.assetCode && log.assetCode.toLowerCase().includes(q)) ||
+      (log.assetName && log.assetName.toLowerCase().includes(q)) ||
+      log.condition.toLowerCase().includes(q) ||
+      log.notes.toLowerCase().includes(q) ||
+      (log.workNotes && log.workNotes.toLowerCase().includes(q)) ||
+      (log.resolutionNotes && log.resolutionNotes.toLowerCase().includes(q)) ||
+      (log.loggedByName && log.loggedByName.toLowerCase().includes(q))
+    );
+  });
+
+  const openRepairsCount = deptMaintenanceLogs.filter((l) => !l.isResolved).length;
+  const resolvedRepairsCount = deptMaintenanceLogs.filter((l) => l.isResolved).length;
+
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 print:hidden">
@@ -300,7 +346,9 @@ export function DepartmentDetailDialog({
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
             >
               <Wrench className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Operations &amp; Maintenance</span>
+              <span>
+                Operations &amp; Maintenance ({deptMaintenanceLogs.length || effectiveDepartment.activeMaintenanceCount})
+              </span>
             </button>
           </div>
           <div className="hidden md:flex items-center gap-2 text-[11px] text-text-secondary shrink-0 font-medium">
@@ -952,65 +1000,327 @@ export function DepartmentDetailDialog({
 
           {/* ════ SECTION 4: OPERATIONS & MAINTENANCE AUDIT ══════════════ */}
           <section id="sec-dept-operations" className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
                   <Wrench className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text">Operations &amp; Maintenance Audit</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-text">Operations &amp; Maintenance Audit</h3>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
+                      {deptMaintenanceLogs.length} Work Orders Logged
+                    </span>
+                  </div>
                   <p className="text-xs text-text-secondary">
-                    Health status, ongoing repairs, and departmental staffing metrics
+                    Detailed corrective work orders, equipment condition audit, and maintenance expenditures for {effectiveDepartment.departmentName}
                   </p>
                 </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                <span className="text-xs text-text-secondary block mb-1">Active Repairs</span>
-                <div className="text-xl font-bold font-mono text-text">
-                  {effectiveDepartment.maintenanceSummary?.openLogs ?? effectiveDepartment.activeMaintenanceCount}
-                </div>
-                <p className="text-[11px] text-text-secondary mt-1">Open maintenance work orders</p>
-              </div>
-
-              {effectiveDepartment.maintenanceSummary && (
-                <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                  <span className="text-xs text-text-secondary block mb-1">Total Maintenances</span>
-                  <div className="text-xl font-bold font-mono text-text">
-                    {effectiveDepartment.maintenanceSummary.totalLogs}
-                  </div>
-                  <p className="text-[11px] text-text-secondary mt-1">Lifetime recorded logs</p>
-                </div>
-              )}
 
               {canViewCosts && effectiveDepartment.maintenanceSummary && (
-                <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                  <span className="text-xs text-text-secondary block mb-1">Total Repair Spend</span>
-                  <div className="text-xl font-bold font-mono text-accent">
-                    ₱{effectiveDepartment.maintenanceSummary.totalRepairSpend.toLocaleString()}
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-accent bg-accent/10 px-2.5 py-1 rounded-md border border-accent/20 shrink-0">
+                    Total Repair Spend: ₱{effectiveDepartment.maintenanceSummary.totalRepairSpend.toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Active Repairs
+                </span>
+                <div className="text-lg font-bold font-mono text-rose-600">
+                  {openRepairsCount}
+                </div>
+                <p className="text-[10px] text-text-secondary mt-0.5">Under service</p>
+              </div>
+
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Resolved Tickets
+                </span>
+                <div className="text-lg font-bold font-mono text-emerald-600">
+                  {resolvedRepairsCount}
+                </div>
+                <p className="text-[10px] text-text-secondary mt-0.5">Completed repairs</p>
+              </div>
+
+              {canViewCosts && (
+                <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                    Repair Spend
+                  </span>
+                  <div className="text-lg font-bold font-mono text-accent">
+                    ₱{(effectiveDepartment.maintenanceSummary?.totalRepairSpend || 0).toLocaleString()}
                   </div>
-                  <p className="text-[11px] text-text-secondary mt-1">Lifetime maintenance costs</p>
+                  <p className="text-[10px] text-text-secondary mt-0.5">Total parts &amp; labor</p>
                 </div>
               )}
 
-              <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                <span className="text-xs text-text-secondary block mb-1">Active Projects</span>
-                <div className="text-xl font-bold font-mono text-text">
-                  {effectiveDepartment.activeProjects}
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Avg. MTTR
+                </span>
+                <div className="text-lg font-bold font-mono text-text">
+                  {effectiveDepartment.maintenanceSummary?.avgMttrDays != null
+                    ? `${effectiveDepartment.maintenanceSummary.avgMttrDays} d`
+                    : "—"}
                 </div>
-                <p className="text-[11px] text-text-secondary mt-1">Currently running initiatives</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">Mean time to repair</p>
               </div>
 
-              <div className="rounded-xl border border-border/80 bg-card p-4 shadow-2xs">
-                <span className="text-xs text-text-secondary block mb-1">Staff Headcount</span>
-                <div className="text-xl font-bold font-mono text-text">
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Active Projects
+                </span>
+                <div className="text-lg font-bold font-mono text-text">
+                  {effectiveDepartment.activeProjects}
+                </div>
+                <p className="text-[10px] text-text-secondary mt-0.5">Ongoing initiatives</p>
+              </div>
+
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block mb-0.5">
+                  Staff Headcount
+                </span>
+                <div className="text-lg font-bold font-mono text-text">
                   {effectiveDepartment.staffCount ?? "—"}
                 </div>
-                <p className="text-[11px] text-text-secondary mt-1">Active personnel</p>
+                <p className="text-[10px] text-text-secondary mt-0.5">Active personnel</p>
               </div>
             </div>
+
+            {/* Condition Breakdown Chips */}
+            {effectiveDepartment.maintenanceSummary?.conditionBreakdown &&
+              effectiveDepartment.maintenanceSummary.conditionBreakdown.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-text-secondary mr-1">Condition Profile:</span>
+                  {effectiveDepartment.maintenanceSummary.conditionBreakdown.map((c) => (
+                    <span
+                      key={c.condition}
+                      className="inline-flex items-center gap-1 rounded-md bg-bg-subtle border border-border px-2 py-0.5 text-[10px] font-semibold text-text"
+                    >
+                      <span className="capitalize">{c.condition.replace(/_/g, " ")}:</span>
+                      <span className="font-mono font-bold text-accent">{c.count}</span>
+                      {canViewCosts && c.cost > 0 && (
+                        <span className="text-[9px] font-mono text-text-secondary">
+                          (₱{c.cost.toLocaleString()})
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+            {/* Filter and Search Bar for Department Maintenance */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2">
+              <div className="flex items-center gap-1 bg-bg-subtle p-0.5 rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceStatusFilter("all")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                    maintenanceStatusFilter === "all"
+                      ? "bg-card text-text shadow-2xs"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  All ({deptMaintenanceLogs.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceStatusFilter("open")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                    maintenanceStatusFilter === "open"
+                      ? "bg-card text-rose-600 shadow-2xs font-bold"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  Active Repairs ({openRepairsCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMaintenanceStatusFilter("resolved")}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer",
+                    maintenanceStatusFilter === "resolved"
+                      ? "bg-card text-emerald-600 shadow-2xs font-bold"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  Resolved ({resolvedRepairsCount})
+                </button>
+              </div>
+
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
+                <input
+                  type="text"
+                  placeholder="Search log code, asset tag, issue, technician..."
+                  value={maintenanceSearch}
+                  onChange={(e) => setMaintenanceSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-card text-text placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+            </div>
+
+            {/* Itemized Department Maintenance Table */}
+            {deptMaintenanceLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-10 text-center rounded-2xl border border-dashed border-border bg-bg-subtle/30">
+                <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-2" />
+                <div className="text-sm font-bold text-text">Zero Maintenance Faults Logged</div>
+                <p className="text-xs text-text-secondary max-w-sm mt-1">
+                  All assets assigned to {effectiveDepartment.departmentName} are operational with no recorded repair work orders.
+                </p>
+              </div>
+            ) : filteredMaintenanceLogs.length === 0 ? (
+              <div className="py-8 text-center text-xs text-text-secondary border border-dashed border-border rounded-xl">
+                No maintenance work orders matching &ldquo;{maintenanceSearch}&rdquo; in selected filter.
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-2xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-border/80 bg-bg-subtle/80 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                      <tr>
+                        <th className="px-3.5 py-2.5">Log Code</th>
+                        <th className="px-3.5 py-2.5">Asset Tag &amp; Item</th>
+                        <th className="px-3.5 py-2.5">Condition</th>
+                        <th className="px-3.5 py-2.5 text-center">Status</th>
+                        <th className="px-3.5 py-2.5">Date Logged</th>
+                        <th className="px-3.5 py-2.5">Handled By</th>
+                        {canViewCosts && <th className="px-3.5 py-2.5 text-right">Repair Cost</th>}
+                        <th className="px-3.5 py-2.5 min-w-44">Work Notes &amp; Resolution</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {filteredMaintenanceLogs.map((log) => {
+                        const partsSnippet =
+                          log.repairParts && log.repairParts.length > 0
+                            ? log.repairParts.map((p) => p.name).join(", ")
+                            : null;
+
+                        return (
+                          <tr key={log.id} className="hover:bg-bg-subtle/50 transition-colors">
+                            <td className="px-3.5 py-3 font-mono font-bold text-text whitespace-nowrap">
+                              <span className="text-accent">{log.logCode}</span>
+                              <div className="text-[10px] text-text-secondary uppercase">
+                                {log.source.replace(/_/g, " ")}
+                              </div>
+                            </td>
+                            <td className="px-3.5 py-3">
+                              {log.assetCode ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedAssetCode(log.assetCode!);
+                                  }}
+                                  className="text-left font-mono font-bold text-text hover:text-accent transition-colors cursor-pointer"
+                                  title="View asset dossier"
+                                >
+                                  {log.assetCode}
+                                  {log.assetName && (
+                                    <div className="text-[11px] font-sans font-medium text-text-secondary truncate max-w-44">
+                                      {log.assetName}
+                                    </div>
+                                  )}
+                                </button>
+                              ) : (
+                                <span className="font-mono text-text-secondary">—</span>
+                              )}
+                            </td>
+                            <td className="px-3.5 py-3">
+                              <span
+                                className={cn(
+                                  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize",
+                                  log.condition === "functional"
+                                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                    : log.condition === "damaged"
+                                    ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold"
+                                    : "bg-amber-500/10 text-amber-700 dark:text-amber-400 font-bold"
+                                )}
+                              >
+                                {log.condition.replace(/_/g, " ")}
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-3 text-center whitespace-nowrap">
+                              {log.isResolved ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Resolved
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20 px-2 py-0.5 text-[10px] font-bold">
+                                  <AlertCircle className="h-3 w-3" />
+                                  Under Repair
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3.5 py-3 font-mono text-[11px] text-text-secondary whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3 text-text-secondary/70" />
+                                {log.dateLogged}
+                              </div>
+                              {log.resolutionDate && (
+                                <div className="text-[10px] text-emerald-600 font-sans mt-0.5">
+                                  Closed: {log.resolutionDate}
+                                  {log.mttrDays != null && ` (${log.mttrDays}d)`}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3.5 py-3 text-[11px] text-text-secondary">
+                              <div className="font-medium text-text">{log.loggedByName}</div>
+                              {log.resolvedByName && (
+                                <div className="text-[10px] text-text-secondary">
+                                  Tech: {log.resolvedByName}
+                                </div>
+                              )}
+                            </td>
+                            {canViewCosts && (
+                              <td className="px-3.5 py-3 text-right font-mono font-bold text-text whitespace-nowrap">
+                                {log.totalCost != null || log.repairCost != null ? (
+                                  <span className="text-accent">
+                                    ₱{(log.totalCost ?? log.repairCost ?? 0).toLocaleString()}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                            )}
+                            <td className="px-3.5 py-3 text-[11px] text-text-secondary leading-relaxed">
+                              {log.resolutionNotes ? (
+                                <div className="bg-bg-subtle/60 p-1.5 rounded border border-border/40 mb-1">
+                                  <span className="font-bold text-text block text-[10px] uppercase">
+                                    Resolution
+                                  </span>
+                                  {log.resolutionNotes}
+                                </div>
+                              ) : null}
+                              {log.notes && (
+                                <div className="italic text-text/80">
+                                  &ldquo;{log.notes}&rdquo;
+                                </div>
+                              )}
+                              {partsSnippet && (
+                                <div className="text-[10px] text-text-secondary font-mono mt-0.5">
+                                  Parts: {partsSnippet}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
@@ -1019,7 +1329,7 @@ export function DepartmentDetailDialog({
           <div className="flex items-center gap-2">
             <span className="font-semibold text-text">{effectiveDepartment.departmentName}</span>
             <span>·</span>
-            <span>CRMC Department Audit</span>
+            <span>CRMC Department Audit ({deptMaintenanceLogs.length} Maintenance Records)</span>
           </div>
           <button
             onClick={handleInitiateClose}
@@ -1030,6 +1340,15 @@ export function DepartmentDetailDialog({
         </div>
       </div>
     </div>
+
+    {/* Asset Detail Preview Modal */}
+    {selectedAssetCode && (
+      <AssetDetailDialog
+        assetId={selectedAssetCode}
+        isOpen={Boolean(selectedAssetCode)}
+        onClose={() => setSelectedAssetCode(null)}
+      />
+    )}
 
     <div className="hidden print:block">
         <IndividualDepartmentPrintableReport

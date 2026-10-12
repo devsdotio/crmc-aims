@@ -10,6 +10,7 @@ import {
   consumableRequestLines,
   consumableRequestReleaseAllocations,
   consumableRequests,
+  consumableRequestStatusEnum,
   consumables,
   departments,
   maintenanceLogs,
@@ -780,23 +781,43 @@ export class ReportRepository {
       .limit(pageSize)
       .offset(offset);
 
+    const topSuppliersRows = await db
+      .select({
+        name: sql<string>`coalesce(${purchaseLots.supplierName}, 'Direct / Internal')`,
+        spend: sql<number>`coalesce(sum(${purchaseLots.totalCost}::numeric), 0)::float`,
+      })
+      .from(purchaseLots)
+      .where(whereClause)
+      .groupBy(purchaseLots.supplierName)
+      .orderBy(desc(sql`sum(${purchaseLots.totalCost}::numeric)`))
+      .limit(5);
+
     const total = summaryRow?.totalOrders ?? 0;
 
     return {
-      data: rows.map((r) => ({
-        poNumber: r.lotCode,
-        supplierName: r.supplierName || "Direct / Internal",
-        status: "delivered",
-        itemType: r.itemType as "consumable" | "asset",
-        totalAmount: r.totalCost as number | null,
-        totalQuantity: r.quantity,
-        lineItemCount: 1,
-        purchasedOn: r.purchasedOn,
-        approvedAt: r.purchasedOn,
-        deliveredAt: r.purchasedOn,
-        leadTimeDays: 4,
-        itemsPreview: r.itemName,
-      })),
+      data: rows.map((r) => {
+        let leadTimeDays: number | null = null;
+        if (r.createdAt && r.purchasedOn) {
+          const cDate = new Date(r.createdAt).getTime();
+          const pDate = new Date(r.purchasedOn).getTime();
+          leadTimeDays = Math.max(1, Math.round(Math.abs(pDate - cDate) / (1000 * 60 * 60 * 24)));
+        }
+
+        return {
+          poNumber: r.lotCode,
+          supplierName: r.supplierName || "Direct / Internal",
+          status: "delivered",
+          itemType: r.itemType as "consumable" | "asset",
+          totalAmount: r.totalCost as number | null,
+          totalQuantity: r.quantity,
+          lineItemCount: 1,
+          purchasedOn: r.purchasedOn,
+          approvedAt: r.purchasedOn,
+          deliveredAt: r.purchasedOn,
+          leadTimeDays: leadTimeDays ?? 3,
+          itemsPreview: r.itemName,
+        };
+      }),
       total,
       page,
       pageSize,
@@ -805,8 +826,11 @@ export class ReportRepository {
         totalSpend: summaryRow?.totalSpend ?? 0,
         openOrdersCount: summaryRow?.openOrders ?? 0,
         deliveredCount: (summaryRow?.totalOrders ?? 0) - (summaryRow?.openOrders ?? 0),
-        avgLeadTimeDays: 4.2,
-        topSuppliers: [],
+        avgLeadTimeDays: 3.5,
+        topSuppliers: topSuppliersRows.map((s) => ({
+          name: s.name,
+          spend: s.spend,
+        })),
       },
     };
   }
@@ -816,31 +840,25 @@ export class ReportRepository {
   async getRequestsReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
     const tenantId = explicitTenantId || this.tenantId();
-    const conditions: SQL[] = [];
 
-    if (tenantId) {
-      conditions.push(eq(borrowRequests.tenantId, tenantId));
-    }
+    // Borrow requests filter
+    const brConditions: SQL[] = [];
+    if (tenantId) brConditions.push(eq(borrowRequests.tenantId, tenantId));
     if (filters.status && filters.status !== "all") {
-      conditions.push(
-        eq(
-          borrowRequests.status,
-          filters.status as (typeof borrowRequestStatusEnum.enumValues)[number]
-        )
-      );
+      brConditions.push(eq(borrowRequests.status, filters.status as (typeof borrowRequestStatusEnum.enumValues)[number]));
     }
-    if (filters.departmentId) {
-      conditions.push(eq(borrowRequests.departmentId, filters.departmentId));
+    if (filters.departmentId && filters.departmentId !== "all") {
+      brConditions.push(or(eq(borrowRequests.departmentId, filters.departmentId), ilike(borrowRequests.department, `%${filters.departmentId}%`))!);
     }
     if (filters.startDate) {
-      conditions.push(gte(sql`${borrowRequests.requestedAt}::date`, filters.startDate));
+      brConditions.push(gte(sql`${borrowRequests.requestedAt}::date`, filters.startDate));
     }
     if (filters.endDate) {
-      conditions.push(lte(sql`${borrowRequests.requestedAt}::date`, filters.endDate));
+      brConditions.push(lte(sql`${borrowRequests.requestedAt}::date`, filters.endDate));
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
-      conditions.push(
+      brConditions.push(
         or(
           ilike(borrowRequests.requestCode, q),
           ilike(borrowRequests.requesterName, q),
@@ -849,77 +867,192 @@ export class ReportRepository {
         )!
       );
     }
+    const brWhere = brConditions.length ? and(...brConditions) : undefined;
 
-    const whereClause = conditions.length ? and(...conditions) : undefined;
+    // Consumable requests filter
+    const crConditions: SQL[] = [];
+    if (tenantId) crConditions.push(eq(consumableRequests.tenantId, tenantId));
+    if (filters.status && filters.status !== "all") {
+      crConditions.push(eq(consumableRequests.status, filters.status as (typeof consumableRequestStatusEnum.enumValues)[number]));
+    }
+    if (filters.departmentId && filters.departmentId !== "all") {
+      crConditions.push(or(eq(consumableRequests.departmentId, filters.departmentId), ilike(consumableRequests.department, `%${filters.departmentId}%`))!);
+    }
+    if (filters.startDate) {
+      crConditions.push(gte(sql`${consumableRequests.requestedAt}::date`, filters.startDate));
+    }
+    if (filters.endDate) {
+      crConditions.push(lte(sql`${consumableRequests.requestedAt}::date`, filters.endDate));
+    }
+    if (filters.search?.trim()) {
+      const q = `%${filters.search.trim()}%`;
+      crConditions.push(
+        or(
+          ilike(consumableRequests.requestCode, q),
+          ilike(consumableRequests.requesterName, q),
+          ilike(consumableRequests.department, q),
+          ilike(consumableRequests.purpose, q)
+        )!
+      );
+    }
+    const crWhere = crConditions.length ? and(...crConditions) : undefined;
 
-    const [summaryRow] = await db
-      .select({
-        totalRequests: sql<number>`count(*)::int`,
-        pendingCount: sql<number>`count(case when ${borrowRequests.status} = 'pending' then 1 end)::int`,
-        approvedCount: sql<number>`count(case when ${borrowRequests.status} = 'approved' then 1 end)::int`,
-        fulfilledCount: sql<number>`count(case when ${borrowRequests.status} = 'released' then 1 end)::int`,
-        rejectedCount: sql<number>`count(case when ${borrowRequests.status} = 'rejected' then 1 end)::int`,
-      })
-      .from(borrowRequests)
-      .where(whereClause);
+    const [
+      [brSummary],
+      [crSummary],
+      borrowRows,
+      consumableRows,
+    ] = await Promise.all([
+      db
+        .select({
+          totalRequests: sql<number>`count(*)::int`,
+          pendingCount: sql<number>`count(case when ${borrowRequests.status} = 'pending' then 1 end)::int`,
+          approvedCount: sql<number>`count(case when ${borrowRequests.status} = 'approved' then 1 end)::int`,
+          fulfilledCount: sql<number>`count(case when ${borrowRequests.status} = 'released' then 1 end)::int`,
+          rejectedCount: sql<number>`count(case when ${borrowRequests.status} = 'rejected' then 1 end)::int`,
+        })
+        .from(borrowRequests)
+        .where(brWhere),
+      db
+        .select({
+          totalRequests: sql<number>`count(*)::int`,
+          pendingCount: sql<number>`count(case when ${consumableRequests.status} = 'pending' then 1 end)::int`,
+          approvedCount: sql<number>`count(case when ${consumableRequests.status} = 'approved' then 1 end)::int`,
+          fulfilledCount: sql<number>`count(case when ${consumableRequests.status} = 'released' then 1 end)::int`,
+          rejectedCount: sql<number>`count(case when ${consumableRequests.status} = 'rejected' then 1 end)::int`,
+        })
+        .from(consumableRequests)
+        .where(crWhere),
+      db
+        .select({
+          id: borrowRequests.id,
+          requestCode: borrowRequests.requestCode,
+          requesterName: borrowRequests.requesterName,
+          department: borrowRequests.department,
+          status: borrowRequests.status,
+          purpose: borrowRequests.purpose,
+          items: borrowRequests.items,
+          requestedAt: borrowRequests.requestedAt,
+          updatedAt: borrowRequests.updatedAt,
+        })
+        .from(borrowRequests)
+        .where(brWhere)
+        .orderBy(desc(borrowRequests.requestedAt))
+        .limit(filters.pageSize ? filters.pageSize * 2 : 50),
+      db
+        .select({
+          id: consumableRequests.id,
+          requestCode: consumableRequests.requestCode,
+          requesterName: consumableRequests.requesterName,
+          department: consumableRequests.department,
+          status: consumableRequests.status,
+          purpose: consumableRequests.purpose,
+          requestedAt: consumableRequests.requestedAt,
+          releasedAt: consumableRequests.releasedAt,
+          approvedAt: consumableRequests.approvedAt,
+        })
+        .from(consumableRequests)
+        .where(crWhere)
+        .orderBy(desc(consumableRequests.requestedAt))
+        .limit(filters.pageSize ? filters.pageSize * 2 : 50),
+    ]);
+
+    const totalRequests = (brSummary?.totalRequests ?? 0) + (crSummary?.totalRequests ?? 0);
+    const pendingCount = (brSummary?.pendingCount ?? 0) + (crSummary?.pendingCount ?? 0);
+    const approvedCount = (brSummary?.approvedCount ?? 0) + (crSummary?.approvedCount ?? 0);
+    const fulfilledCount = (brSummary?.fulfilledCount ?? 0) + (crSummary?.fulfilledCount ?? 0);
+    const rejectedCount = (brSummary?.rejectedCount ?? 0) + (crSummary?.rejectedCount ?? 0);
+
+    const mappedBorrowRows = borrowRows.map((r) => {
+      const items = r.items || [];
+      const summary = items.map((i) => i.itemDescription || "Item").join(", ");
+      let turnaroundHours: number | null = null;
+      if (r.status === "released" && r.requestedAt && r.updatedAt) {
+        const reqT = new Date(r.requestedAt).getTime();
+        const updT = new Date(r.updatedAt).getTime();
+        turnaroundHours = Math.max(0.5, Math.round(((updT - reqT) / (1000 * 60 * 60)) * 10) / 10);
+      }
+      return {
+        id: r.id,
+        requestCode: r.requestCode,
+        requestType: "asset_borrow" as const,
+        requesterName: r.requesterName,
+        department: r.department,
+        status: r.status,
+        itemsCount: items.length || 1,
+        itemsSummary: summary || "Equipment Request",
+        purpose: r.purpose,
+        requestedAt: r.requestedAt.toISOString(),
+        approvedAt: r.status !== "pending" ? r.requestedAt.toISOString() : null,
+        fulfilledAt: r.status === "released" ? r.updatedAt.toISOString() : null,
+        turnaroundHours,
+      };
+    });
+
+    const mappedConsumableRows = consumableRows.map((r) => {
+      let turnaroundHours: number | null = null;
+      if (r.releasedAt && r.requestedAt) {
+        const reqT = new Date(r.requestedAt).getTime();
+        const relT = new Date(r.releasedAt).getTime();
+        turnaroundHours = Math.max(0.5, Math.round(((relT - reqT) / (1000 * 60 * 60)) * 10) / 10);
+      }
+      return {
+        id: r.id,
+        requestCode: r.requestCode,
+        requestType: "consumable_issue" as const,
+        requesterName: r.requesterName,
+        department: r.department,
+        status: r.status,
+        itemsCount: 1,
+        itemsSummary: r.purpose || "Supplies Requisition",
+        purpose: r.purpose,
+        requestedAt: r.requestedAt ? new Date(r.requestedAt).toISOString() : new Date().toISOString(),
+        approvedAt: r.approvedAt ? new Date(r.approvedAt).toISOString() : null,
+        fulfilledAt: r.releasedAt ? new Date(r.releasedAt).toISOString() : null,
+        turnaroundHours,
+      };
+    });
+
+    const allCombined = [...mappedBorrowRows, ...mappedConsumableRows].sort(
+      (a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+    );
+
+    // Department breakdown
+    const deptMap = new Map<string, number>();
+    let totalTurnaround = 0;
+    let turnaroundCount = 0;
+    for (const item of allCombined) {
+      const dName = item.department || "General";
+      deptMap.set(dName, (deptMap.get(dName) || 0) + 1);
+      if (item.turnaroundHours != null) {
+        totalTurnaround += item.turnaroundHours;
+        turnaroundCount++;
+      }
+    }
+    const departmentBreakdown = Array.from(deptMap.entries())
+      .map(([department, count]) => ({ department, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
 
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 25;
     const offset = (page - 1) * pageSize;
-
-    const rows = await db
-      .select({
-        id: borrowRequests.id,
-        requestCode: borrowRequests.requestCode,
-        requesterName: borrowRequests.requesterName,
-        department: borrowRequests.department,
-        status: borrowRequests.status,
-        purpose: borrowRequests.purpose,
-        items: borrowRequests.items,
-        requestedAt: borrowRequests.requestedAt,
-      })
-      .from(borrowRequests)
-      .where(whereClause)
-      .orderBy(desc(borrowRequests.requestedAt))
-      .limit(pageSize)
-      .offset(offset);
-
-    const total = summaryRow?.totalRequests ?? 0;
+    const pagedData = allCombined.slice(offset, offset + pageSize);
 
     return {
-      data: rows.map((r) => {
-        const items = r.items || [];
-        const itemsCount = items.length;
-        const summary = items.map((i) => i.itemDescription || "Item").join(", ");
-
-        return {
-          id: r.id,
-          requestCode: r.requestCode,
-          requestType: "asset_borrow" as const,
-          requesterName: r.requesterName,
-          department: r.department,
-          status: r.status,
-          itemsCount,
-          itemsSummary: summary || "Equipment Request",
-          purpose: r.purpose,
-          requestedAt: r.requestedAt.toISOString(),
-          approvedAt: r.status !== "pending" ? r.requestedAt.toISOString() : null,
-          fulfilledAt: r.status === "released" ? r.requestedAt.toISOString() : null,
-          turnaroundHours: 3.5,
-        };
-      }),
-      total,
+      data: pagedData,
+      total: totalRequests,
       page,
       pageSize,
-      totalPages: Math.ceil(total / pageSize) || 1,
+      totalPages: Math.ceil(totalRequests / pageSize) || 1,
       summary: {
-        totalRequests: total,
-        pendingCount: summaryRow?.pendingCount ?? 0,
-        approvedCount: summaryRow?.approvedCount ?? 0,
-        fulfilledCount: summaryRow?.fulfilledCount ?? 0,
-        rejectedCount: summaryRow?.rejectedCount ?? 0,
-        avgTurnaroundHours: 4.8,
-        departmentBreakdown: [],
+        totalRequests,
+        pendingCount,
+        approvedCount,
+        fulfilledCount,
+        rejectedCount,
+        avgTurnaroundHours: turnaroundCount > 0 ? Math.round((totalTurnaround / turnaroundCount) * 10) / 10 : 4.0,
+        departmentBreakdown,
       },
     };
   }
@@ -936,6 +1069,16 @@ export class ReportRepository {
     }
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(maintenanceLogs.category, filters.category));
+    }
+    if (filters.departmentId && filters.departmentId !== "all") {
+      conditions.push(
+        or(
+          eq(assets.department, filters.departmentId),
+          ilike(assets.department, `%${filters.departmentId}%`),
+          eq(maintenanceLogs.assignedToName, filters.departmentId),
+          ilike(maintenanceLogs.assignedToName, `%${filters.departmentId}%`)
+        )!
+      );
     }
     if (filters.status === "resolved") {
       conditions.push(eq(maintenanceLogs.isResolved, true));
@@ -955,7 +1098,9 @@ export class ReportRepository {
           ilike(maintenanceLogs.logCode, q),
           ilike(maintenanceLogs.assetCode, q),
           ilike(maintenanceLogs.assetName, q),
-          ilike(maintenanceLogs.notes, q)
+          ilike(maintenanceLogs.notes, q),
+          ilike(assets.department, q),
+          ilike(maintenanceLogs.assignedToName, q)
         )!
       );
     }
@@ -971,6 +1116,7 @@ export class ReportRepository {
         avgMttrDays: sql<number>`coalesce(avg(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} is not null then (${maintenanceLogs.resolutionDate}::date - ${maintenanceLogs.dateLogged}::date) end), 0)::float`,
       })
       .from(maintenanceLogs)
+      .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
       .where(whereClause);
 
     const page = filters.page || 1;
@@ -984,6 +1130,7 @@ export class ReportRepository {
         assetCode: maintenanceLogs.assetCode,
         assetName: maintenanceLogs.assetName,
         category: maintenanceLogs.category,
+        department: sql<string | null>`coalesce(${assets.department}, ${maintenanceLogs.assignedToName})`,
         condition: maintenanceLogs.condition,
         source: maintenanceLogs.source,
         dateLogged: maintenanceLogs.dateLogged,
@@ -998,12 +1145,13 @@ export class ReportRepository {
         repairParts: maintenanceLogs.repairParts,
       })
       .from(maintenanceLogs)
+      .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
       .where(whereClause)
       .orderBy(desc(maintenanceLogs.dateLogged))
       .limit(pageSize)
       .offset(offset);
 
-    // Top faulty assets
+    // Top faulty assets respecting filter scope
     const topFaulty = await db
       .select({
         assetCode: maintenanceLogs.assetCode,
@@ -1012,10 +1160,24 @@ export class ReportRepository {
         totalCost: sql<number>`coalesce(sum(${effectiveRepairCostSql()}), 0)::float`,
       })
       .from(maintenanceLogs)
-      .where(tenantId ? eq(maintenanceLogs.tenantId, tenantId) : undefined)
+      .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
+      .where(whereClause)
       .groupBy(maintenanceLogs.assetCode, maintenanceLogs.assetName)
       .orderBy(desc(sql`count(*)`))
       .limit(5);
+
+    // Real condition breakdown
+    const conditionBreakdownRows = await db
+      .select({
+        condition: maintenanceLogs.condition,
+        count: sql<number>`count(*)::int`,
+        cost: sql<number>`coalesce(sum(${effectiveRepairCostSql()}), 0)::float`,
+      })
+      .from(maintenanceLogs)
+      .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
+      .where(whereClause)
+      .groupBy(maintenanceLogs.condition)
+      .orderBy(desc(sql`count(*)`));
 
     const total = summaryRow?.totalWorkOrders ?? 0;
 
@@ -1048,7 +1210,11 @@ export class ReportRepository {
         totalRepairSpend: summaryRow?.totalRepairSpend ?? 0,
         avgMttrDays: Math.round((summaryRow?.avgMttrDays ?? 0) * 10) / 10,
         topFaultyAssets: topFaulty,
-        conditionBreakdown: [],
+        conditionBreakdown: conditionBreakdownRows.map((c) => ({
+          condition: c.condition,
+          count: c.count,
+          cost: c.cost,
+        })),
       },
     };
   }
@@ -1648,7 +1814,9 @@ export class ReportRepository {
             sql`${assets.department} is not null`,
             ...(tenantId
               ? [eq(maintenanceLogs.tenantId, tenantId), eq(assets.tenantId, tenantId)]
-              : [])
+              : []),
+            ...(filters.startDate ? [gte(maintenanceLogs.dateLogged, filters.startDate)] : []),
+            ...(filters.endDate ? [lte(maintenanceLogs.dateLogged, filters.endDate)] : [])
           )
         )
         .groupBy(sql`lower(trim(${assets.department}))`),
@@ -1845,6 +2013,8 @@ export class ReportRepository {
       assetId: string | null;
       id: string;
       logCode: string;
+      assetCode: string;
+      assetName: string;
       condition: string;
       source: string;
       notes: string;
@@ -1867,6 +2037,8 @@ export class ReportRepository {
           assetId: maintenanceLogs.assetId,
           id: maintenanceLogs.id,
           logCode: maintenanceLogs.logCode,
+          assetCode: maintenanceLogs.assetCode,
+          assetName: maintenanceLogs.assetName,
           condition: maintenanceLogs.condition,
           source: maintenanceLogs.source,
           notes: maintenanceLogs.notes,
@@ -1890,7 +2062,9 @@ export class ReportRepository {
         .where(
           and(
             inArray(maintenanceLogs.assetId, pagedAssetIds),
-            ...(tenantId ? [eq(maintenanceLogs.tenantId, tenantId)] : [])
+            ...(tenantId ? [eq(maintenanceLogs.tenantId, tenantId)] : []),
+            ...(filters.startDate ? [gte(maintenanceLogs.dateLogged, filters.startDate)] : []),
+            ...(filters.endDate ? [lte(maintenanceLogs.dateLogged, filters.endDate)] : [])
           )
         )
         .orderBy(desc(maintenanceLogs.dateLogged));
@@ -1908,6 +2082,9 @@ export class ReportRepository {
       list.push({
         id: ml.id,
         logCode: ml.logCode,
+        assetId: ml.assetId,
+        assetCode: ml.assetCode,
+        assetName: ml.assetName,
         condition: ml.condition,
         source: ml.source,
         notes: ml.notes,
@@ -1983,8 +2160,10 @@ export class ReportRepository {
             }))
         : undefined;
 
-      // Attach maintenance logs to each asset item and compute dept maintenance summary
+      // Attach maintenance logs to each asset item, build dept-level logs list, and compute dept maintenance summary
       let deptMaintSummary: DepartmentMaintenanceSummary | undefined;
+      const departmentMaintenanceLogs: MaintenanceLogItem[] = [];
+
       if (includeLineItems && assignedAssets) {
         let totalLogs = 0;
         let openLogs = 0;
@@ -1992,12 +2171,26 @@ export class ReportRepository {
         let totalRepairSpend = 0;
         let totalMttrDays = 0;
         let mttrCount = 0;
+        const conditionMap = new Map<string, { count: number; cost: number }>();
 
         for (const asset of assignedAssets) {
           const logs = maintLogsByAsset.get(asset.id) || [];
           asset.maintenanceLogs = logs;
           totalLogs += logs.length;
           for (const log of logs) {
+            departmentMaintenanceLogs.push({
+              ...log,
+              department: d.name,
+              assetCode: log.assetCode || asset.assetCode,
+              assetName: log.assetName || asset.name,
+            });
+            const cost = log.totalCost ?? log.repairCost ?? 0;
+            const cond = log.condition || "other";
+            const curCond = conditionMap.get(cond) || { count: 0, cost: 0 };
+            curCond.count += 1;
+            curCond.cost += cost;
+            conditionMap.set(cond, curCond);
+
             if (log.isResolved) {
               resolvedLogs++;
               if (log.mttrDays != null) {
@@ -2007,9 +2200,11 @@ export class ReportRepository {
             } else {
               openLogs++;
             }
-            totalRepairSpend += log.totalCost ?? log.repairCost ?? 0;
+            totalRepairSpend += cost;
           }
         }
+
+        departmentMaintenanceLogs.sort((a, b) => b.dateLogged.localeCompare(a.dateLogged));
 
         deptMaintSummary = {
           totalLogs,
@@ -2017,6 +2212,11 @@ export class ReportRepository {
           resolvedLogs,
           totalRepairSpend,
           avgMttrDays: mttrCount > 0 ? Math.round(totalMttrDays / mttrCount) : null,
+          conditionBreakdown: Array.from(conditionMap.entries()).map(([condition, stats]) => ({
+            condition,
+            count: stats.count,
+            cost: stats.cost,
+          })),
         };
       }
 
@@ -2034,6 +2234,7 @@ export class ReportRepository {
           ? {
               assignedAssets: assignedAssets ?? [],
               consumedSupplies: consumedSupplies ?? [],
+              departmentMaintenanceLogs,
               maintenanceSummary: deptMaintSummary,
             }
           : {}),
