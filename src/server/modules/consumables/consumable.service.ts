@@ -626,8 +626,9 @@ export class ConsumableService {
   }
 
   /**
-   * QR scan release against a *specific* supplier purchase lot.
-   * Quantity is entered after scan; cost/supplier are frozen from the lot row.
+   * QR / PO lot release against a *specific* supplier purchase lot.
+   * Same destination rules as walk-up issue: exactly one of department or
+   * project. Project destinations also write a project expense line.
    */
   async releaseFromLot(
     rawInput: unknown,
@@ -638,15 +639,22 @@ export class ConsumableService {
     allocation: LotCostAllocation;
   }> {
     const input = scanReleaseLotSchema.parse(rawInput);
-    const parsed = parseScanPayload(input.code);
-    if (!parsed.code) {
-      throw new BadRequestError("Lot code is required.");
-    }
 
     return withTransaction(async (tx) => {
-      // Resolve lot without consuming yet — then lock consumable stock first
-      // so we never drain a lot when the stock item is short.
-      const preview = await this.purchaseLots.getByCode(parsed.code, actor.tenantId);
+      // Prefer lotId (PO line picker). Fall back to QR / lot code for scanners.
+      let preview: PurchaseLotDTO;
+      if (input.lotId) {
+        preview = await this.purchaseLots.getById(input.lotId, actor.tenantId);
+      } else {
+        const parsed = parseScanPayload(input.code ?? "");
+        if (!parsed.code) {
+          throw new BadRequestError("Lot code is required.");
+        }
+        preview = await this.purchaseLots.getByCode(
+          parsed.code,
+          actor.tenantId
+        );
+      }
       if (preview.itemType !== "consumable") {
         throw new BadRequestError(
           "Only consumable purchase lots support quantity release via scan."
@@ -691,13 +699,28 @@ export class ConsumableService {
         actor.tenantId
       );
 
-      const { lot, allocation } = await this.purchaseLots.consumeFromLot(
-        preview.lotCode,
+      // Prefer lot id so PO "issue from this lot" cannot hit a different code.
+      const { lot, allocation } = await this.purchaseLots.consumeFromLotId(
+        preview.id,
         input.quantity,
         tx,
-        undefined,
+        existing.id,
         actor.tenantId
       );
+
+      const totalCost = Number(allocation.total) || 0;
+      const destNote = [
+        input.reason,
+        dest.projectCode
+          ? `Issued to project ${dest.projectCode}${dest.projectName ? ` (${dest.projectName})` : ""}`
+          : dest.departmentCode
+            ? `Issued to department ${dest.departmentCode}${dest.departmentName ? ` (${dest.departmentName})` : ""}`
+            : null,
+        input.recipientName ? `Received by: ${input.recipientName}` : null,
+        `From lot ${allocation.lotCode ?? preview.lotCode}`,
+      ]
+        .filter(Boolean)
+        .join(". ");
 
       const updated = await this.repo.update(
         existing.id,
@@ -708,7 +731,7 @@ export class ConsumableService {
       );
       if (!updated) throw new NotFoundError("Consumable", existing.id);
 
-      await this.movements.record(
+      const movementRows = await this.movements.record(
         {
           consumableId: existing.id,
           direction: "out",
@@ -716,11 +739,65 @@ export class ConsumableService {
           actor,
           departmentId: dest.departmentId,
           projectId: dest.projectId,
-          notes: input.notes ?? input.reason ?? null,
+          notes: input.notes ?? destNote ?? null,
           lines: allocationsToMovementLines([allocation]),
         },
         tx
       );
+
+      // Mirror walk-up issue so project charges appear on the project ledger.
+      if (dest.projectId) {
+        const averageUnit =
+          input.quantity > 0
+            ? (totalCost / input.quantity).toFixed(2)
+            : "0.00";
+        const movementIds = movementRows.map((r) => r.id);
+        const metadata: ProjectExpenseMetadata = {
+          lotAllocations: [
+            {
+              lotId: allocation.lotId,
+              lotCode: allocation.lotCode,
+              quantity: allocation.quantity,
+              unitCost: allocation.unitCost,
+              total: allocation.total,
+              uncosted: allocation.uncosted,
+            },
+          ],
+          consumableCode: existing.itemCode,
+          consumableName: existing.name,
+          consumableUnit: existing.unit,
+          stockMovementId: movementIds[0],
+          stockMovementIds: movementIds,
+        };
+
+        await this.projectExpenses.create(
+          {
+            tenantId: actor.tenantId,
+            projectId: dest.projectId,
+            lineType: "consumable",
+            category: "miscellaneous",
+            description: `${existing.name} (${existing.itemCode}) × ${input.quantity} ${existing.unit}`,
+            amount: totalCost.toFixed(2),
+            quantity: String(input.quantity),
+            unitCost: averageUnit,
+            consumableId: existing.id,
+            assetId: null,
+            incurredOn: todayDateString(),
+            notes: input.notes ?? destNote ?? null,
+            metadata: {
+              ...metadata,
+              purchaseLotId: allocation.lotId ?? preview.id,
+              lotCode: allocation.lotCode ?? preview.lotCode,
+              poNumber: preview.poNumber,
+              supplierName:
+                allocation.supplierName ?? preview.supplierName ?? undefined,
+            },
+            recordedByUserId: actor.userId,
+            recordedByName: actor.displayName,
+          },
+          tx
+        );
+      }
 
       await this.auditLogs.log(
         {
@@ -735,7 +812,9 @@ export class ConsumableService {
             quantity: input.quantity,
             departmentId: dest.departmentId,
             projectId: dest.projectId,
+            lotId: allocation.lotId ?? preview.id,
             lotCode: allocation.lotCode ?? preview.lotCode,
+            recipientName: input.recipientName ?? null,
           },
         },
         tx
@@ -1006,6 +1085,7 @@ export class ConsumableService {
 
         await this.projectExpenses.create(
           {
+            tenantId: actor.tenantId,
             projectId: dest.projectId,
             lineType: "consumable",
             category: "miscellaneous",
@@ -1017,7 +1097,12 @@ export class ConsumableService {
             assetId: null,
             incurredOn: todayDateString(),
             notes: input.notes ?? destNote ?? null,
-            metadata,
+            metadata: {
+              ...metadata,
+              purchaseLotId: result.allocation.lotId ?? undefined,
+              lotCode: result.allocation.lotCode ?? undefined,
+              supplierName: result.allocation.supplierName ?? undefined,
+            },
             recordedByUserId: actor.userId,
             recordedByName: actor.displayName,
           },
