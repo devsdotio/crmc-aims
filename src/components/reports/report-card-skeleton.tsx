@@ -86,23 +86,23 @@ export function ConsumableCardSkeleton() {
 /** ── Maintenance Card Skeleton (matches fixed h-82.5 2-col card) ──── */
 export function MaintenanceCardSkeleton() {
   return (
-    <div className="h-82.5 rounded-2xl border border-border/80 bg-card p-5 shadow-2xs flex flex-col justify-between">
-      <div>
+    <div className="h-82.5 rounded-2xl border border-border/80 bg-card p-5 shadow-2xs flex flex-col justify-between gap-3">
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between mb-2.5">
           <Skeleton className="h-5 w-24 rounded-md" />
           <Skeleton className="h-4.5 w-20 rounded-full" />
         </div>
         <Skeleton className="h-4.5 w-3/4 rounded-md mb-1.5" />
         <Skeleton className="h-3.5 w-1/2 rounded-md mb-3" />
-        <div className="h-24 rounded-xl bg-bg-subtle/60 border border-border/60 p-3 space-y-2">
-          <Skeleton className="h-3 w-36 rounded" />
-          <div className="grid grid-cols-2 gap-2">
-            <Skeleton className="h-6 rounded-lg" />
-            <Skeleton className="h-6 rounded-lg" />
-          </div>
+      </div>
+      <div className="flex-1 min-h-24 rounded-xl bg-bg-subtle/60 border border-border/60 p-3 space-y-2">
+        <Skeleton className="h-3 w-36 rounded" />
+        <div className="grid grid-cols-2 gap-2">
+          <Skeleton className="h-6 rounded-lg" />
+          <Skeleton className="h-6 rounded-lg" />
         </div>
       </div>
-      <div className="pt-3 border-t border-border/50 flex items-center justify-between">
+      <div className="pt-3 border-t border-border/50 flex items-center justify-between shrink-0">
         <Skeleton className="h-4 w-24 rounded-md" />
         <Skeleton className="h-4 w-16 rounded-md" />
       </div>

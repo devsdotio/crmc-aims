@@ -907,8 +907,12 @@ export function DepartmentDetailDialog({
                                         <div key={log.id} className="rounded-xl border border-border/80 bg-card p-3 shadow-2xs">
                                           <div className="flex justify-between items-start mb-2">
                                             <div>
-                                              <div className="font-mono text-[10px] font-bold text-text-secondary mb-1">{log.logCode}</div>
-                                              <div className="font-semibold text-xs text-text">{log.condition}</div>
+                                              <div className="font-mono text-[10px] font-bold text-text-secondary">{log.logCode}</div>
+                                              {log.condition && log.condition.toLowerCase() !== "resolved" && (
+                                                <div className="font-semibold text-xs text-text capitalize mt-0.5">
+                                                  {log.condition.replace(/_/g, " ")}
+                                                </div>
+                                              )}
                                             </div>
                                             {canViewCosts && log.totalCost != null && (
                                               <div className="text-right">
@@ -1426,7 +1430,7 @@ export function DepartmentDetailDialog({
 
                             {/* Right: Condition & Financial Total */}
                             <div className="flex items-center gap-2.5 shrink-0 ml-auto">
-                              {log.condition && (
+                              {log.condition && log.condition.toLowerCase() !== "resolved" && (
                                 <span
                                   className={cn(
                                     "rounded-md px-2 py-0.5 text-[10px] font-semibold border capitalize",
@@ -1454,8 +1458,8 @@ export function DepartmentDetailDialog({
                             </div>
                           </div>
 
-                          {/* Metadata strip: Personnel, Timeline, MTTR */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-2 border-t border-border/50 text-[11px] text-text-secondary">
+                          {/* Metadata strip: Personnel, Timeline */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-border/50 text-[11px] text-text-secondary">
                             <div className="flex items-center gap-1.5 truncate">
                               <Calendar className="h-3 w-3 text-text-secondary/70 shrink-0" />
                               <span className="truncate">
@@ -1476,28 +1480,12 @@ export function DepartmentDetailDialog({
                                 Tech: <strong className="text-text font-medium">{log.resolvedByName || "In Queue"}</strong>
                               </span>
                             </div>
-
-                            <div className="flex items-center gap-1.5 truncate">
-                              <Clock className="h-3 w-3 text-text-secondary/70 shrink-0" />
-                              <span className="truncate">
-                                {log.resolutionDate ? (
-                                  <>
-                                    MTTR:{" "}
-                                    <strong className="text-text font-medium">
-                                      {log.mttrDays != null ? `${log.mttrDays}d` : "Done"}
-                                    </strong>
-                                  </>
-                                ) : (
-                                  <strong className="text-amber-600 dark:text-amber-400 font-medium">Active</strong>
-                                )}
-                              </span>
-                            </div>
                           </div>
                         </div>
 
-                        {/* Dedicated Replaced Parts Spotlight Container (Uniform Fixed Height) */}
+                        {/* Dedicated Replaced Parts Spotlight Container (Consumes Extra Space) */}
                         {partsCount > 0 ? (
-                          <div className="h-24 rounded-xl border border-sky-300/40 dark:border-sky-800/40 bg-sky-500/5 dark:bg-sky-950/20 p-2.5 flex flex-col justify-between overflow-hidden">
+                          <div className="flex-1 min-h-24 rounded-xl border border-sky-300/40 dark:border-sky-800/40 bg-sky-500/5 dark:bg-sky-950/20 p-2.5 flex flex-col gap-2 overflow-hidden">
                             <div className="flex items-center justify-between gap-2 shrink-0">
                               <div className="flex items-center gap-1.5 text-xs font-bold text-sky-800 dark:text-sky-200">
                                 <Cpu className="h-3.5 w-3.5 text-sky-600 shrink-0" />
@@ -1512,7 +1500,7 @@ export function DepartmentDetailDialog({
                                 </span>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-1.5 overflow-y-auto max-h-13.5 pr-0.5">
+                            <div className="flex-1 min-h-0 flex flex-wrap content-start gap-1.5 overflow-y-auto pr-0.5">
                               {parts.map((part, pIdx) => (
                                 <div
                                   key={pIdx}
@@ -1531,7 +1519,7 @@ export function DepartmentDetailDialog({
                             </div>
                           </div>
                         ) : (
-                          <div className="h-24 rounded-xl border border-dashed border-border/70 bg-bg-subtle/30 p-2.5 flex flex-col items-center justify-center gap-1 text-center text-xs text-text-secondary">
+                          <div className="flex-1 min-h-24 rounded-xl border border-dashed border-border/70 bg-bg-subtle/30 p-2.5 flex flex-col items-center justify-center gap-1 text-center text-xs text-text-secondary">
                             <div className="flex items-center gap-1.5 font-medium text-text-secondary">
                               <Wrench className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
                               <span>No physical parts replaced</span>
