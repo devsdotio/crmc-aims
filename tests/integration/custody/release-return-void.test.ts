@@ -44,6 +44,7 @@ describeIntegration("custody / stock void (integration)", () => {
           custodyKind: "borrow",
           departmentId: fx.departmentId,
           borrowerName: "Jane Doe",
+          expectedReturnDate: new Date().toISOString().slice(0, 10),
         },
         fx.actor
       )

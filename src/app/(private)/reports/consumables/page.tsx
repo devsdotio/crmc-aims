@@ -8,8 +8,13 @@ import {
   Warehouse,
   CheckCircle2,
   ChevronRight,
+  ChevronLeft,
   BarChart3,
   Flame,
+  LayoutGrid,
+  Table as TableIcon,
+  Package,
+  MapPin,
 } from "lucide-react";
 
 import { useConsumablesReportQuery } from "@/features/reports/client/use-reports";
@@ -26,6 +31,8 @@ import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-fil
 import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { ConsumableDetailDialog } from "@/components/reports/consumable-detail-dialog";
 import { ConsumablesPrintableReport } from "@/components/reports/print/ConsumablesPrintableReport";
+import { ConsumableCardSkeleton } from "@/components/reports/report-card-skeleton";
+import { cn } from "@/lib/utils";
 
 const CATEGORY_OPTIONS = [
   { label: "Paper & Stationery", value: "paper" },
@@ -43,6 +50,7 @@ const STATUS_OPTIONS = [
 export default function ConsumablesReportPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
   const [selectedConsumable, setSelectedConsumable] = useState<ConsumableStockRow | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
     pageSize: 20,
@@ -451,18 +459,217 @@ export default function ConsumablesReportPage() {
         />
       </div>
 
-      {/* ── Data Table ───────────────────────────────────────────────── */}
-      <ReportTable
-        columns={columns}
-        data={data?.data || []}
-        total={data?.total || 0}
-        page={data?.page || 1}
-        pageSize={data?.pageSize || 20}
-        totalPages={data?.totalPages || 1}
-        isLoading={isLoading}
-        onPageChange={(page) => handleFilterChange({ page })}
-        onRowClick={(row) => setSelectedConsumable(row)}
-      />
+      {/* ── View Switcher Header ────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
+        <div className="text-xs text-text-secondary font-medium">
+          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> consumable SKUs
+        </div>
+        <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "table"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+          >
+            <TableIcon className="h-3.5 w-3.5" />
+            <span>Table</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("cards")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "cards"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>Cards</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Data Display: Table or Cards ──────────────────────────────── */}
+      {viewMode === "table" ? (
+        <ReportTable
+          columns={columns}
+          data={data?.data || []}
+          total={data?.total || 0}
+          page={data?.page || 1}
+          pageSize={data?.pageSize || 20}
+          totalPages={data?.totalPages || 1}
+          isLoading={isLoading}
+          onPageChange={(page) => handleFilterChange({ page })}
+          onRowClick={(row) => setSelectedConsumable(row)}
+        />
+      ) : (
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <ConsumableCardSkeleton key={idx} />
+              ))}
+            </div>
+          ) : !data?.data || data.data.length === 0 ? (
+            <div className="rounded-xl border border-border/80 bg-card p-12 text-center">
+              <Package className="h-10 w-10 text-text-secondary/40 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-text">No consumables found</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Try adjusting your search criteria or filter selections.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.data.map((row) => (
+                <div
+                  key={row.id}
+                  onClick={() => setSelectedConsumable(row)}
+                  className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-accent/40 hover:shadow-md transition-all cursor-pointer relative"
+                >
+                  <div>
+                    {/* Top Bar: Code & Health Status */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-accent transition-colors">
+                        <span>{row.itemCode}</span>
+                      </div>
+                      {row.isLowStock ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-status-repair-bg/20 text-status-repair-text border border-status-repair-bg/30 px-2 py-0.5 text-[10px] font-bold">
+                          <AlertTriangle className="h-3 w-3" />
+                          <span>Low Stock</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 px-2 py-0.5 text-[10px] font-bold">
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Optimal</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Consumable Name */}
+                    <h4 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1">
+                      {row.name}
+                    </h4>
+
+                    {/* Category & Classification */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="inline-flex rounded-md bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-semibold text-text capitalize">
+                        {row.category.replace(/_/g, " ")}
+                      </span>
+                      {row.classification && (
+                        <span className="inline-flex rounded-md bg-accent/5 border border-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent capitalize">
+                          {row.classification}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Location Bin */}
+                    {row.location && (
+                      <div className="flex items-center gap-1.5 text-xs text-text-secondary mt-2.5">
+                        <Warehouse className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" />
+                        <span className="text-[11px] truncate">
+                          Bin: <strong className="text-text font-medium">{row.location}</strong>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Stock Metrics Grid */}
+                    <div className="grid grid-cols-3 gap-2 mt-3.5 pt-3 border-t border-border/40">
+                      <div className="p-2 rounded-lg bg-bg-subtle/50 border border-border/50 text-center">
+                        <div className="text-[10px] text-text-secondary uppercase font-semibold">On Hand</div>
+                        <div className={`font-mono font-bold text-xs mt-0.5 ${row.isLowStock ? "text-rose-600" : "text-text"}`}>
+                          {row.currentQty.toLocaleString()} <span className="text-[9px] font-normal text-text-secondary">{row.unit}</span>
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-bg-subtle/50 border border-border/50 text-center">
+                        <div className="text-[10px] text-text-secondary uppercase font-semibold">Available</div>
+                        <div className="font-mono font-bold text-xs text-text mt-0.5">
+                          {row.availableQty} <span className="text-[9px] font-normal text-text-secondary">{row.unit}</span>
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-bg-subtle/50 border border-border/50 text-center">
+                        <div className="text-[10px] text-text-secondary uppercase font-semibold">Threshold</div>
+                        <div className="font-mono text-xs text-text-secondary mt-0.5">
+                          {row.minThreshold}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Footer: Valuation / Unit Cost & View */}
+                  <div className="mt-4 pt-2.5 border-t border-border/50 flex items-center justify-between text-xs">
+                    <div>
+                      {canViewCosts && row.stockValuation != null && row.stockValuation > 0 ? (
+                        <div>
+                          <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">Stock Value</div>
+                          <div className="font-mono font-bold text-text text-sm">
+                            ₱{row.stockValuation.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-text-secondary">
+                          {row.estimatedDaysRemaining != null ? (
+                            <span className={row.estimatedDaysRemaining <= 7 ? "text-rose-600 font-bold" : "font-mono"}>
+                              ~{row.estimatedDaysRemaining} days remaining
+                            </span>
+                          ) : (
+                            <span className="font-mono text-text-secondary">30d use: {row.usage30d}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedConsumable(row);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                    >
+                      <span>Details</span>
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Card View Pagination Footer */}
+          {!isLoading && data && data.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border/80 px-2 py-3">
+              <span className="text-xs text-text-secondary">
+                Page {data.page} of {data.totalPages} ({data.total} total)
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={data.page <= 1}
+                  onClick={() => handleFilterChange({ page: data.page - 1 })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <span>Prev</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={data.page >= data.totalPages}
+                  onClick={() => handleFilterChange({ page: data.page + 1 })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
 

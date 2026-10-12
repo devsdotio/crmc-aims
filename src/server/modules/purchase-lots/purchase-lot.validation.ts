@@ -216,10 +216,13 @@ export const updatePurchaseOrderSchema = z.object({
   unitCost: z.union([z.string(), z.number()]).optional(),
 });
 
-/** Staff scan: release qty from a supplier purchase lot. */
+/** Staff scan / PO "Issue from this lot": release qty from a supplier lot. */
 export const scanReleaseLotSchema = z
   .object({
-    code: z.string().trim().min(1, "code (QR payload or lot code) is required."),
+    /** QR payload or lot code (required for scanner; optional when lotId is set). */
+    code: z.string().trim().min(1).optional(),
+    /** Preferred when releasing from a known PO line — avoids PO/LOT code ambiguity. */
+    lotId: z.string().uuid().optional(),
     quantity: z.number().int().positive("quantity must be positive."),
     reason: z.string().trim().max(500).optional(),
     notes: z.string().trim().max(2000).optional(),
@@ -228,6 +231,13 @@ export const scanReleaseLotSchema = z
     projectId: z.string().uuid().optional(),
   })
   .superRefine((data, ctx) => {
+    if (!data.lotId && !data.code) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide lotId or a QR / lot code.",
+        path: ["code"],
+      });
+    }
     const hasDept = Boolean(data.departmentId);
     const hasProject = Boolean(data.projectId);
     if (hasDept === hasProject) {

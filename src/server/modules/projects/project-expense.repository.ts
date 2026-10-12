@@ -92,11 +92,16 @@ export class ProjectExpenseRepository implements IProjectExpenseRepository {
     const db = this.db(session);
     const resolvedTenantId =
       (data as { tenantId?: string }).tenantId ?? getTenantContext()?.tenantId;
+    if (!resolvedTenantId) {
+      throw new Error(
+        "Project expense create requires tenantId (pass actor.tenantId)."
+      );
+    }
     const [row] = await db
       .insert(projectExpenseLines)
       .values({
         ...data,
-        ...(resolvedTenantId ? { tenantId: resolvedTenantId } : {}),
+        tenantId: resolvedTenantId,
       })
       .returning();
     if (!row) throw new Error("Failed to create project expense line.");

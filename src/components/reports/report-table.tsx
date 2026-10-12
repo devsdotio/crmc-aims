@@ -87,12 +87,36 @@ export function ReportTable<T>({
           <tbody className="divide-y divide-border/50">
             {isLoading ? (
               Array.from({ length: 8 }).map((_, idx) => (
-                <tr key={idx} className="animate-pulse bg-card">
-                  {columns.map((col, cIdx) => (
-                    <td key={cIdx} className="px-4 py-4" colSpan={cIdx === 0 && renderExpandedRow ? 2 : 1}>
-                      <div className="h-4 w-3/4 rounded-md bg-border/40" />
-                    </td>
-                  ))}
+                <tr key={idx} className="bg-card">
+                  {columns.map((col, cIdx) => {
+                    const widthClass =
+                      cIdx === 0
+                        ? "w-24"
+                        : cIdx === 1
+                        ? "w-44"
+                        : col.align === "right"
+                        ? "w-20 ml-auto"
+                        : col.align === "center"
+                        ? "w-16 mx-auto"
+                        : (idx + cIdx) % 2 === 0
+                        ? "w-32"
+                        : "w-28";
+
+                    return (
+                      <td
+                        key={cIdx}
+                        className="px-4 py-3.5"
+                        colSpan={cIdx === 0 && renderExpandedRow ? 2 : 1}
+                      >
+                        <div
+                          className={cn(
+                            "h-4 rounded-md bg-border/40 shimmer-skeleton",
+                            widthClass
+                          )}
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             ) : data.length === 0 ? (
@@ -122,7 +146,7 @@ export function ReportTable<T>({
                     <tr
                       onClick={(e) => {
                         if (renderExpandedRow) {
-                          toggleRow(rowId, e as any);
+                          toggleRow(rowId, e);
                         } else {
                           onRowClick?.(row);
                         }

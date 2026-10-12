@@ -352,7 +352,8 @@ export function useReleaseFromLotMutation(): UseMutationResult<
   LotReleaseResult,
   Error,
   {
-    code: string;
+    code?: string;
+    lotId?: string;
     quantity: number;
     reason?: string;
     notes?: string;
@@ -365,7 +366,8 @@ export function useReleaseFromLotMutation(): UseMutationResult<
   return useMutation({
     mutationFn: (payload) => purchaseLotsApi.scanRelease(payload),
     onSettled: () => {
-      void invalidateDomains(qc, STOCK_DOMAINS);
+      // Stock + PO lists, and projects (project destination writes an expense).
+      void invalidateDomains(qc, [...STOCK_DOMAINS, "projects"]);
     },
   });
 }

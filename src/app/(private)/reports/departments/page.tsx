@@ -8,6 +8,9 @@ import {
   Wrench,
   FolderKanban,
   ChevronRight,
+  ChevronLeft,
+  LayoutGrid,
+  Table as TableIcon,
 } from "lucide-react";
 
 import { useDepartmentReportQuery } from "@/features/reports/client/use-reports";
@@ -20,9 +23,12 @@ import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-fil
 import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { DepartmentDetailDialog } from "@/components/reports/department-detail-dialog";
 import { DepartmentsPrintableReport } from "@/components/reports/print/DepartmentsPrintableReport";
+import { DepartmentCardSkeleton } from "@/components/reports/report-card-skeleton";
+import { cn } from "@/lib/utils";
 
 export default function DepartmentReportsPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
     pageSize: 20,
@@ -269,18 +275,213 @@ export default function DepartmentReportsPage() {
         />
       </div>
 
-      {/* ── Data Table ───────────────────────────────────────────────── */}
-      <ReportTable
-        columns={columns}
-        data={data?.data || []}
-        total={data?.total || 0}
-        page={data?.page || 1}
-        pageSize={data?.pageSize || 20}
-        totalPages={data?.totalPages || 1}
-        isLoading={isLoading}
-        onPageChange={(page) => handleFilterChange({ page })}
-        onRowClick={(row) => setSelectedDepartment(row)}
-      />
+      {/* ── View Mode Switcher Bar ───────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
+        <div className="text-xs text-text-secondary font-medium">
+          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> departments
+        </div>
+
+        <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "table"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+            title="Switch to Table View"
+          >
+            <TableIcon className="h-3.5 w-3.5" />
+            <span>Table</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("cards")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "cards"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+            title="Switch to Card View"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>Cards</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Table or Card View ────────────────────────────────────────── */}
+      {viewMode === "table" ? (
+        <ReportTable
+          columns={columns}
+          data={data?.data || []}
+          total={data?.total || 0}
+          page={data?.page || 1}
+          pageSize={data?.pageSize || 20}
+          totalPages={data?.totalPages || 1}
+          isLoading={isLoading}
+          onPageChange={(page) => handleFilterChange({ page })}
+          onRowClick={(row) => setSelectedDepartment(row)}
+        />
+      ) : (
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <DepartmentCardSkeleton key={idx} />
+              ))}
+            </div>
+          ) : !data?.data || data.data.length === 0 ? (
+            <div className="py-12 text-center text-xs text-text-secondary border border-dashed border-border rounded-2xl bg-card">
+              No departments found matching the search criteria.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {data.data.map((dept) => (
+                  <div
+                    key={dept.id}
+                    onClick={() => setSelectedDepartment(dept)}
+                    className="group rounded-2xl border border-border/80 bg-card p-5 shadow-2xs hover:border-accent/40 hover:shadow-xs transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Department Title & Badge */}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent group-hover:scale-105 transition-transform">
+                            <Building2 className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-bold text-sm text-text truncate group-hover:text-accent transition-colors">
+                              {dept.departmentName}
+                            </h3>
+                            <span className="text-[10px] text-text-secondary font-mono">
+                              Institutional Unit
+                            </span>
+                          </div>
+                        </div>
+                        <div className="p-1 rounded-md text-text-secondary group-hover:text-accent group-hover:translate-x-0.5 transition-all">
+                          <ChevronRight className="h-4 w-4" />
+                        </div>
+                      </div>
+
+                      {/* 4-Stat Metric Grid */}
+                      <div className="grid grid-cols-2 gap-2.5">
+                        {/* Assigned Assets */}
+                        <div className="rounded-xl border border-border/60 bg-bg-subtle/40 p-2.5">
+                          <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-text-secondary mb-0.5">
+                            <Package className="h-3 w-3 text-blue-500" />
+                            <span>Assets</span>
+                          </div>
+                          <div className="text-sm font-mono font-bold text-text">
+                            {dept.assetsAssignedCount.toLocaleString()}
+                          </div>
+                          {canViewCosts && dept.assetsValue != null && (
+                            <div className="text-[10px] font-mono text-text-secondary truncate">
+                              ₱{dept.assetsValue.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Stocks Used */}
+                        <div className="rounded-xl border border-border/60 bg-bg-subtle/40 p-2.5">
+                          <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-text-secondary mb-0.5">
+                            <Layers className="h-3 w-3 text-indigo-500" />
+                            <span>Stocks</span>
+                          </div>
+                          <div className="text-sm font-mono font-bold text-text">
+                            {dept.consumablesConsumedCount.toLocaleString()}
+                          </div>
+                          {canViewCosts && dept.consumablesValue != null && (
+                            <div className="text-[10px] font-mono text-text-secondary truncate">
+                              ₱{dept.consumablesValue.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Maintenance Tickets */}
+                        <div className="rounded-xl border border-border/60 bg-bg-subtle/40 p-2.5">
+                          <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-text-secondary mb-0.5">
+                            <Wrench className="h-3 w-3 text-amber-500" />
+                            <span>Repairs</span>
+                          </div>
+                          <div className="text-sm font-mono font-bold text-text">
+                            {dept.activeMaintenanceCount.toLocaleString()}
+                          </div>
+                          {canViewCosts && dept.maintenanceSummary?.totalRepairSpend != null && (
+                            <div className="text-[10px] font-mono text-text-secondary truncate">
+                              ₱{dept.maintenanceSummary.totalRepairSpend.toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Active Projects */}
+                        <div className="rounded-xl border border-border/60 bg-bg-subtle/40 p-2.5">
+                          <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-text-secondary mb-0.5">
+                            <FolderKanban className="h-3 w-3 text-emerald-500" />
+                            <span>Projects</span>
+                          </div>
+                          <div className="text-sm font-mono font-bold text-text">
+                            {dept.activeProjects.toLocaleString()}
+                          </div>
+                          <div className="text-[10px] text-text-secondary font-medium">
+                            {dept.activeProjects > 0 ? "Active Works" : "None"}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3.5 pt-2.5 border-t border-border/50 flex items-center justify-between text-[11px] text-text-secondary">
+                      <span className="font-medium">Audit Dossier</span>
+                      <span className="text-accent font-semibold group-hover:underline">View Breakdown →</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Card View Pagination Footer */}
+              <div className="flex items-center justify-between rounded-xl border border-border/80 bg-card px-4 py-3 text-xs text-text-secondary shadow-2xs">
+                <div>
+                  Showing{" "}
+                  <span className="font-mono font-bold text-text">
+                    {Math.min(((data.page || 1) - 1) * (data.pageSize || 20) + 1, data.total || 0)}
+                  </span>{" "}
+                  to{" "}
+                  <span className="font-mono font-bold text-text">
+                    {Math.min((data.page || 1) * (data.pageSize || 20), data.total || 0)}
+                  </span>{" "}
+                  of <span className="font-mono font-bold text-text">{data.total || 0}</span> departments
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleFilterChange({ page: (data.page || 1) - 1 })}
+                    disabled={(data.page || 1) <= 1 || isLoading}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span className="px-2 text-xs font-mono font-bold text-text">
+                    {data.page || 1} / {data.totalPages || 1}
+                  </span>
+                  <button
+                    onClick={() => handleFilterChange({ page: (data.page || 1) + 1 })}
+                    disabled={(data.page || 1) >= (data.totalPages || 1) || isLoading}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
     </div>
 

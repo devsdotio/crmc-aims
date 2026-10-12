@@ -523,7 +523,7 @@ export class ReportRepository {
       .where(whereClause);
 
     // Usage totals for period
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const smConditions: SQL[] = [
       eq(stockMovements.direction, "out"),
       ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : []),
@@ -531,7 +531,7 @@ export class ReportRepository {
     if (filters.startDate) {
       smConditions.push(gte(sql`${stockMovements.createdAt}::date`, filters.startDate));
     } else {
-      smConditions.push(gte(stockMovements.createdAt, thirtyDaysAgo));
+      smConditions.push(gte(stockMovements.createdAt, sql`${thirtyDaysAgoIso}::timestamptz`));
     }
     if (filters.endDate) {
       smConditions.push(lte(sql`${stockMovements.createdAt}::date`, filters.endDate));
@@ -626,20 +626,20 @@ export class ReportRepository {
 
     // Query actual 30-day and 90-day outgoing stock movements for listed items
     const now = new Date();
-    const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const d90 = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const d30Iso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const d90Iso = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
 
     const consumableUsageAggregates = await db
       .select({
         consumableId: stockMovements.consumableId,
-        usage30d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d30} then ${stockMovements.qty} else 0 end), 0)::int`,
-        usage90d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d90} then ${stockMovements.qty} else 0 end), 0)::int`,
+        usage30d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d30Iso}::timestamptz then ${stockMovements.qty} else 0 end), 0)::int`,
+        usage90d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d90Iso}::timestamptz then ${stockMovements.qty} else 0 end), 0)::int`,
       })
       .from(stockMovements)
       .where(
         and(
           eq(stockMovements.direction, "out"),
-          gte(stockMovements.createdAt, d90),
+          gte(stockMovements.createdAt, sql`${d90Iso}::timestamptz`),
           ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
         )
       )

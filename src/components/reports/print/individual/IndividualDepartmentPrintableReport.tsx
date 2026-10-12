@@ -26,7 +26,9 @@ export interface IndividualDepartmentAsset {
     repairCost?: number | null;
     totalCost?: number | null;
     resolutionNotes?: string | null;
+    workNotes?: string | null;
     notes?: string;
+    repairParts?: Array<{ name: string; cost?: string | null }>;
   }>;
 }
 
@@ -69,7 +71,9 @@ export interface IndividualDepartmentPrintableReportProps {
       repairCost?: number | null;
       totalCost?: number | null;
       resolutionNotes?: string | null;
+      workNotes?: string | null;
       notes?: string;
+      repairParts?: Array<{ name: string; cost?: string | null }>;
     }>;
   };
   assignedAssets?: IndividualDepartmentAsset[];
@@ -119,8 +123,11 @@ export function IndividualDepartmentPrintableReport({
         dateLogged: log.dateLogged,
         isResolved: log.isResolved,
         repairCost: log.repairCost,
+        totalCost: log.totalCost,
         resolutionNotes: log.resolutionNotes,
+        workNotes: log.workNotes,
         notes: log.notes,
+        repairParts: log.repairParts,
       })),
     })) ||
     [];
@@ -437,9 +444,13 @@ export function IndividualDepartmentPrintableReport({
         <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>4. Department Equipment Maintenance &amp; Work Orders Register</span>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              {effectiveMaintenanceLogs.length} Maintenance Work Orders
-            </span>
+            <div className="flex items-center gap-2 text-[10px] text-neutral-600 font-mono">
+              <span>{effectiveMaintenanceLogs.length} Work Orders</span>
+              <span>·</span>
+              <span className="font-semibold text-teal-900">
+                {effectiveMaintenanceLogs.reduce((sum, l) => sum + (l.repairParts?.length ?? 0), 0)} Parts Installed
+              </span>
+            </div>
           </div>
           <table className="w-full border-collapse text-[11px] table-auto">
             <thead>
@@ -449,48 +460,72 @@ export function IndividualDepartmentPrintableReport({
                 <th className="py-1.5 px-3 text-left whitespace-nowrap">Condition</th>
                 <th className="py-1.5 px-3 text-center whitespace-nowrap w-20">Status</th>
                 <th className="py-1.5 px-3 text-left whitespace-nowrap">Date Logged</th>
+                <th className="py-1.5 px-3 text-left min-w-32">Parts Replaced</th>
                 {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Repair Cost</th>}
                 <th className="py-1.5 px-3 text-left min-w-36">Work Remarks / Resolution</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {effectiveMaintenanceLogs.map((log) => (
-                <tr key={log.logCode}>
-                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">
-                    {log.logCode}
-                  </td>
-                  <td className="py-1.5 px-3 font-medium">
-                    <span className="font-mono font-bold">{log.assetCode || "—"}</span>
-                    {log.assetName && <span className="text-neutral-500 block text-[10px]">{log.assetName}</span>}
-                  </td>
-                  <td className="py-1.5 px-3 capitalize whitespace-nowrap">
-                    {log.condition?.replace(/_/g, " ") || "Serviceable"}
-                  </td>
-                  <td className="py-1.5 px-3 text-center whitespace-nowrap">
-                    <span className={`px-1.5 py-0.5 rounded-xs text-[9.5px] font-bold uppercase ${
-                      log.isResolved ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                    }`}>
-                      {log.isResolved ? "Resolved" : "In Repair"}
-                    </span>
-                  </td>
-                  <td className="py-1.5 px-3 font-mono whitespace-nowrap text-neutral-600">
-                    {log.dateLogged}
-                  </td>
-                  {canViewCosts && (
-                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
-                      {log.totalCost != null || log.repairCost != null
-                        ? `₱${(log.totalCost ?? log.repairCost ?? 0).toLocaleString()}`
-                        : "—"}
+              {effectiveMaintenanceLogs.map((log) => {
+                const partsSnippet =
+                  log.repairParts && log.repairParts.length > 0
+                    ? log.repairParts
+                        .map((p) =>
+                          canViewCosts && p.cost ? `${p.name} (₱${Number(p.cost).toLocaleString()})` : p.name
+                        )
+                        .join(", ")
+                    : null;
+
+                return (
+                  <tr key={log.logCode}>
+                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">
+                      {log.logCode}
                     </td>
-                  )}
-                  <td className="py-1.5 px-3 text-[10px] text-neutral-600 italic">
-                    {log.resolutionNotes || log.notes || "Corrective service order"}
-                  </td>
-                </tr>
-              ))}
+                    <td className="py-1.5 px-3 font-medium">
+                      <span className="font-mono font-bold">{log.assetCode || "—"}</span>
+                      {log.assetName && <span className="text-neutral-500 block text-[10px]">{log.assetName}</span>}
+                    </td>
+                    <td className="py-1.5 px-3 capitalize whitespace-nowrap">
+                      {log.condition?.replace(/_/g, " ") || "Serviceable"}
+                    </td>
+                    <td className="py-1.5 px-3 text-center whitespace-nowrap">
+                      <span className={`px-1.5 py-0.5 rounded-xs text-[9.5px] font-bold uppercase ${
+                        log.isResolved ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
+                      }`}>
+                        {log.isResolved ? "Resolved" : "In Repair"}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-3 font-mono whitespace-nowrap text-neutral-600">
+                      {log.dateLogged}
+                    </td>
+                    <td className="py-1.5 px-3 text-[10px]">
+                      {partsSnippet ? (
+                        <span className="font-semibold text-neutral-900">{partsSnippet}</span>
+                      ) : (
+                        <span className="text-neutral-400 italic">Labor only</span>
+                      )}
+                    </td>
+                    {canViewCosts && (
+                      <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
+                        {log.totalCost != null || log.repairCost != null
+                          ? `₱${(log.totalCost ?? log.repairCost ?? 0).toLocaleString()}`
+                          : "—"}
+                      </td>
+                    )}
+                    <td className="py-1.5 px-3 text-[10px] text-neutral-600 leading-tight">
+                      {log.workNotes && <div className="font-medium text-neutral-800">Work: {log.workNotes}</div>}
+                      {log.resolutionNotes ? (
+                        <div className="italic text-emerald-800">Res: {log.resolutionNotes}</div>
+                      ) : (
+                        log.notes && <div className="italic text-neutral-600">&ldquo;{log.notes}&rdquo;</div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {effectiveMaintenanceLogs.length === 0 && (
                 <tr>
-                  <td colSpan={canViewCosts ? 7 : 6} className="py-2.5 text-center text-neutral-400 italic text-[11px]">
+                  <td colSpan={canViewCosts ? 8 : 7} className="py-2.5 text-center text-neutral-400 italic text-[11px]">
                     No maintenance or repair work orders recorded for this department.
                   </td>
                 </tr>

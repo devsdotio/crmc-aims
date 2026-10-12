@@ -10,6 +10,13 @@ import {
   DollarSign,
   PieChart as PieIcon,
   BarChart3,
+  LayoutGrid,
+  Table as TableIcon,
+  ChevronLeft,
+  ChevronRight,
+  Building2,
+  MapPin,
+  User,
 } from "lucide-react";
 
 import { useAssetRegisterReportQuery } from "@/features/reports/client/use-reports";
@@ -25,8 +32,10 @@ import { ReportExportButton } from "@/components/reports/report-export-button";
 import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-filter";
 import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
+import { AssetCardSkeleton } from "@/components/reports/report-card-skeleton";
 
 import { AssetRegisterPrintableReport } from "@/components/reports/print/AssetRegisterPrintableReport";
+import { cn } from "@/lib/utils";
 
 const CATEGORY_OPTIONS = [
   { label: "Computing", value: "computing" },
@@ -45,6 +54,7 @@ const STATUS_OPTIONS = [
 export default function AssetRegisterReportPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const [filters, setFilters] = useState<BaseReportFilters>({
     page: 1,
     pageSize: 20,
@@ -470,18 +480,211 @@ export default function AssetRegisterReportPage() {
         />
       </div>
 
-      {/* ── Data Table ───────────────────────────────────────────────── */}
-      <ReportTable
-        columns={columns}
-        data={data?.data || []}
-        total={data?.total || 0}
-        page={data?.page || 1}
-        pageSize={data?.pageSize || 20}
-        totalPages={data?.totalPages || 1}
-        isLoading={isLoading}
-        onPageChange={(page) => handleFilterChange({ page })}
-        onRowClick={(row) => setSelectedAssetId(row.id)}
-      />
+      {/* ── View Switcher Header ────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
+        <div className="text-xs text-text-secondary font-medium">
+          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> registered assets
+        </div>
+        <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "table"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+          >
+            <TableIcon className="h-3.5 w-3.5" />
+            <span>Table</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("cards")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-md transition-colors cursor-pointer",
+              viewMode === "cards"
+                ? "bg-card text-text shadow-2xs font-bold"
+                : "text-text-secondary hover:text-text"
+            )}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span>Cards</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Data Display: Table or Cards ──────────────────────────────── */}
+      {viewMode === "table" ? (
+        <ReportTable
+          columns={columns}
+          data={data?.data || []}
+          total={data?.total || 0}
+          page={data?.page || 1}
+          pageSize={data?.pageSize || 20}
+          totalPages={data?.totalPages || 1}
+          isLoading={isLoading}
+          onPageChange={(page) => handleFilterChange({ page })}
+          onRowClick={(row) => setSelectedAssetId(row.id)}
+        />
+      ) : (
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <AssetCardSkeleton key={idx} />
+              ))}
+            </div>
+          ) : !data?.data || data.data.length === 0 ? (
+            <div className="rounded-xl border border-border/80 bg-card p-12 text-center">
+              <Package className="h-10 w-10 text-text-secondary/40 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-text">No registered assets found</h3>
+              <p className="text-xs text-text-secondary mt-1">
+                Try adjusting your search criteria or filter selections.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.data.map((row) => {
+                const isRepair = row.status === "needs_repair";
+                const isOut = row.status === "out_of_service";
+                const isRetired = row.status === "retired";
+
+                return (
+                  <div
+                    key={row.id}
+                    onClick={() => setSelectedAssetId(row.id)}
+                    className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-accent/40 hover:shadow-md transition-all cursor-pointer relative"
+                  >
+                    <div>
+                      {/* Top Bar: Code & Status */}
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-accent transition-colors">
+                          <QrCode className="h-3 w-3 text-text-secondary" />
+                          <span>{row.assetCode}</span>
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border ${
+                            isRepair
+                              ? "bg-status-repair-bg/20 text-status-repair-text border-status-repair-bg/30"
+                              : isOut || isRetired
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : "bg-status-active-bg/20 text-status-active-text border-status-active-bg/30"
+                          }`}
+                        >
+                          {row.status.replace(/_/g, " ")}
+                        </span>
+                      </div>
+
+                      {/* Asset Name & Serial */}
+                      <h4 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1">
+                        {row.name}
+                      </h4>
+                      {row.serialNumber && (
+                        <p className="font-mono text-[10px] text-text-secondary mt-0.5">
+                          SN: {row.serialNumber}
+                        </p>
+                      )}
+
+                      {/* Badges: Category & Classification */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                        <span className="inline-flex rounded-md bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-semibold text-text capitalize">
+                          {row.category}
+                        </span>
+                        {row.classification && (
+                          <span className="inline-flex rounded-md bg-accent/5 border border-accent/20 px-2 py-0.5 text-[10px] font-semibold text-accent capitalize">
+                            {row.classification}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Location & Custody Details */}
+                      <div className="mt-3.5 space-y-1.5 text-xs text-text-secondary border-t border-border/40 pt-2.5">
+                        {(row.location || row.department) && (
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" />
+                            <span className="truncate text-text font-medium text-[11px]">
+                              {row.location || "—"} {row.department ? `(${row.department})` : ""}
+                            </span>
+                          </div>
+                        )}
+                        {row.currentHolder && (
+                          <div className="flex items-center gap-1.5">
+                            <User className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" />
+                            <span className="truncate text-[11px]">
+                              Holder: <strong className="text-text font-medium">{row.currentHolder}</strong>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Footer: Valuation, Acquired Date, Link */}
+                    <div className="mt-4 pt-2.5 border-t border-border/50 flex items-center justify-between text-xs">
+                      <div>
+                        {canViewCosts && row.currentValue != null ? (
+                          <div>
+                            <div className="text-[10px] text-text-secondary uppercase tracking-wider font-semibold">Valuation</div>
+                            <div className="font-mono font-bold text-text text-sm">
+                              ₱{row.currentValue.toLocaleString()}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-text-secondary font-mono">
+                            {row.purchaseDate ? `Acq: ${row.purchaseDate}` : "No date"}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAssetId(row.id);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                      >
+                        <span>Dossier</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Card View Pagination Footer */}
+          {!isLoading && data && data.totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border/80 px-2 py-3">
+              <span className="text-xs text-text-secondary">
+                Page {data.page} of {data.totalPages} ({data.total} total)
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={data.page <= 1}
+                  onClick={() => handleFilterChange({ page: data.page - 1 })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  <span>Prev</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={data.page >= data.totalPages}
+                  onClick={() => handleFilterChange({ page: data.page + 1 })}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
 
