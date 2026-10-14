@@ -26,6 +26,7 @@ import {
   ShoppingCart,
   Wrench,
   FileText,
+  FileSpreadsheet,
   Tags,
   Building2,
   Receipt,
@@ -426,6 +427,12 @@ export default function Sidebar({
           href: "/reports",
           icon: FileText,
           roles: ["admin", "staff"],
+        },
+        {
+          name: "Custom Reports",
+          href: "/custom-reports",
+          icon: FileSpreadsheet,
+          roles: ["admin", "superadmin"],
         },
         {
           name: "Users",
