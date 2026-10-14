@@ -1,11 +1,21 @@
+import { and, asc, eq } from "drizzle-orm";
+
 import { getDb } from "@/server/db";
-import { tenants } from "@/server/db/schema";
-import { eq } from "drizzle-orm";
+import {
+  assets,
+  categories,
+  consumables,
+  departments,
+  projects,
+  tenants,
+} from "@/server/db/schema";
 import { NotFoundError, ValidationError } from "@/server/shared/errors";
 import {
   CUSTOM_REPORT_EXPORT_MAX_ROWS,
   CUSTOM_REPORT_PREVIEW_PAGE_SIZE,
   defaultCustomReportLayout,
+  normalizeCustomReportFilters,
+  type CustomReportFilterOptions,
   type CustomReportFilters,
   type CustomReportRunResult,
   type CustomReportTemplate,
@@ -19,7 +29,7 @@ import {
 import { CustomReportRepository } from "./custom-report.repository";
 import type {
   CreateTemplateInput,
-  ExportReportQuery,
+  ExportReportBody,
   RunReportInput,
   UpdateTemplateInput,
 } from "./custom-report.validation";
@@ -69,7 +79,7 @@ function mapTemplate(row: {
     description: row.description,
     dataset: row.dataset,
     columns: row.columns ?? [],
-    defaultFilters: row.defaultFilters ?? {},
+    defaultFilters: normalizeCustomReportFilters(row.defaultFilters ?? {}),
     layout: row.layout ?? [],
     createdByUserId: row.createdByUserId,
     createdByName: row.createdByName,
@@ -114,6 +124,93 @@ export class CustomReportService {
     return listDatasetMetadata();
   }
 
+  async getFilterOptions(tenantId: string): Promise<CustomReportFilterOptions> {
+    const db = getDb();
+    const [
+      departmentRows,
+      projectRows,
+      categoryRows,
+      assetRows,
+      consumableRows,
+    ] = await Promise.all([
+      db
+        .select({ id: departments.id, name: departments.name, code: departments.code })
+        .from(departments)
+        .where(and(eq(departments.tenantId, tenantId), eq(departments.isSandbox, false)))
+        .orderBy(asc(departments.name)),
+      db
+        .select({ id: projects.id, name: projects.name, code: projects.projectCode })
+        .from(projects)
+        .where(eq(projects.tenantId, tenantId))
+        .orderBy(asc(projects.name)),
+      db
+        .select({
+          id: categories.id,
+          name: categories.name,
+          type: categories.type,
+        })
+        .from(categories)
+        .where(eq(categories.tenantId, tenantId))
+        .orderBy(asc(categories.name)),
+      db
+        .select({
+          id: assets.id,
+          code: assets.assetCode,
+          name: assets.name,
+        })
+        .from(assets)
+        .where(and(eq(assets.tenantId, tenantId), eq(assets.isSandbox, false)))
+        .orderBy(asc(assets.assetCode))
+        .limit(3000),
+      db
+        .select({
+          id: consumables.id,
+          code: consumables.itemCode,
+          name: consumables.name,
+        })
+        .from(consumables)
+        .where(and(eq(consumables.tenantId, tenantId), eq(consumables.isSandbox, false)))
+        .orderBy(asc(consumables.itemCode))
+        .limit(3000),
+    ]);
+
+    const assetCategories = categoryRows
+      .filter((c) => c.type === "asset")
+      .map((c) => ({ id: c.name, label: c.name }));
+    const consumableCategories = categoryRows
+      .filter((c) => c.type === "consumable")
+      .map((c) => ({ id: c.name, label: c.name }));
+    const assetClasses = categoryRows
+      .filter((c) => c.type === "asset_class")
+      .map((c) => ({ id: c.name, label: c.name }));
+    const consumableClasses = categoryRows
+      .filter((c) => c.type === "consumable_class")
+      .map((c) => ({ id: c.name, label: c.name }));
+
+    return {
+      departments: departmentRows.map((d) => ({
+        id: d.id,
+        label: d.code ? `${d.name} (${d.code})` : d.name,
+      })),
+      projects: projectRows.map((p) => ({
+        id: p.id,
+        label: `${p.code} — ${p.name}`,
+      })),
+      assetCategories,
+      consumableCategories,
+      assetClasses,
+      consumableClasses,
+      assets: assetRows.map((a) => ({
+        id: a.id,
+        label: `${a.code} — ${a.name}`,
+      })),
+      consumables: consumableRows.map((c) => ({
+        id: c.id,
+        label: `${c.code} — ${c.name}`,
+      })),
+    };
+  }
+
   async listTemplates(tenantId: string): Promise<CustomReportTemplate[]> {
     const rows = await this.repo.list(tenantId);
     return rows.map(mapTemplate);
@@ -135,6 +232,7 @@ export class CustomReportService {
       input.layout && input.layout.length > 0
         ? input.layout
         : defaultCustomReportLayout(input.name);
+    const defaultFilters = normalizeCustomReportFilters(input.defaultFilters ?? {});
 
     const row = await this.repo.create({
       tenantId,
@@ -142,7 +240,7 @@ export class CustomReportService {
       description: input.description ?? null,
       dataset: input.dataset,
       columns: input.columns,
-      defaultFilters: input.defaultFilters ?? {},
+      defaultFilters,
       layout,
       createdByUserId: actor.userId,
       createdByName: actor.displayName,
@@ -170,7 +268,10 @@ export class CustomReportService {
       description: input.description === undefined ? undefined : input.description,
       dataset: input.dataset,
       columns: input.columns,
-      defaultFilters: input.defaultFilters,
+      defaultFilters:
+        input.defaultFilters !== undefined
+          ? normalizeCustomReportFilters(input.defaultFilters)
+          : undefined,
       layout: input.layout,
       updatedByUserId: actor.userId,
       updatedByName: actor.displayName,
@@ -182,22 +283,27 @@ export class CustomReportService {
     await this.repo.delete(id, tenantId);
   }
 
-  async run(
-    input: RunReportInput,
-    tenantId: string
-  ): Promise<CustomReportRunResult> {
+  async run(input: RunReportInput, tenantId: string): Promise<CustomReportRunResult> {
     let dataset = input.dataset;
     let columns = input.columns;
     let layout = input.layout;
     let templateId: string | null = input.templateId ?? null;
-    let filters: CustomReportFilters = { ...(input.filters ?? {}) };
+    let filters = normalizeCustomReportFilters(input.filters ?? {});
 
     if (input.templateId) {
       const template = await this.getTemplate(input.templateId, tenantId);
       dataset = dataset ?? template.dataset;
       columns = columns ?? template.columns;
       layout = layout ?? template.layout;
-      filters = { ...template.defaultFilters, ...filters };
+      const runner = normalizeCustomReportFilters(input.filters ?? {});
+      filters = { ...normalizeCustomReportFilters(template.defaultFilters) };
+      for (const [key, value] of Object.entries(runner) as Array<
+        [keyof CustomReportFilters, CustomReportFilters[keyof CustomReportFilters]]
+      >) {
+        if (value !== undefined) {
+          (filters as Record<string, unknown>)[key] = value;
+        }
+      }
       templateId = template.id;
     }
 
@@ -238,21 +344,21 @@ export class CustomReportService {
   }
 
   async exportCsv(
-    query: ExportReportQuery,
+    body: ExportReportBody,
     tenantId: string
   ): Promise<{ filename: string; csv: string; templateName: string }> {
-    const template = await this.getTemplate(query.templateId, tenantId);
+    const template = await this.getTemplate(body.templateId, tenantId);
+    const runner = normalizeCustomReportFilters(body.filters ?? {});
     const filters: CustomReportFilters = {
-      ...template.defaultFilters,
-      search: query.search,
-      departmentId: query.departmentId,
-      department: query.department,
-      category: query.category,
-      classification: query.classification,
-      status: query.status,
-      startDate: query.startDate,
-      endDate: query.endDate,
+      ...normalizeCustomReportFilters(template.defaultFilters),
     };
+    for (const [key, value] of Object.entries(runner) as Array<
+      [keyof CustomReportFilters, CustomReportFilters[keyof CustomReportFilters]]
+    >) {
+      if (value !== undefined) {
+        (filters as Record<string, unknown>)[key] = value;
+      }
+    }
 
     const { columns: colDefs, result } = await executeDatasetQuery(
       template.dataset,

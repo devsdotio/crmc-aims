@@ -8,7 +8,7 @@ import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-ev
 import { CustomReportService } from "./custom-report.service";
 import {
   createTemplateSchema,
-  exportReportQuerySchema,
+  exportReportBodySchema,
   printIntentSchema,
   runReportSchema,
   updateTemplateSchema,
@@ -19,19 +19,20 @@ export class CustomReportController {
 
   constructor(private readonly service = new CustomReportService()) {}
 
-  private extractParams(request: Request) {
-    const url = new URL(request.url);
-    const raw: Record<string, string> = {};
-    for (const [key, value] of url.searchParams.entries()) {
-      raw[key] = value;
-    }
-    return raw;
-  }
-
   async listDatasets() {
     try {
       await requireTenantAdmin();
       return ok(this.service.listDatasets());
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+
+  async listFilterOptions() {
+    try {
+      const session = await requireTenantAdmin();
+      const data = await this.service.getFilterOptions(session.actor.tenantId);
+      return ok(data);
     } catch (error) {
       return handleError(error);
     }
@@ -153,21 +154,22 @@ export class CustomReportController {
   async exportCsv(request: NextRequest | Request) {
     try {
       const session = await requireTenantAdmin();
-      const params = exportReportQuerySchema.parse(this.extractParams(request));
-      const result = await this.service.exportCsv(params, session.actor.tenantId);
+      const body = await request.json();
+      const input = exportReportBodySchema.parse(body);
+      const result = await this.service.exportCsv(input, session.actor.tenantId);
 
       await this.auditLogs.log({
         entityType: AUDIT_ENTITY.customReport,
-        entityId: params.templateId,
+        entityId: input.templateId,
         action: AUDIT_ACTION.reportExported,
         actorName: session.actor.displayName,
         actorUserId: session.actor.userId,
         notes: `Exported custom report "${result.templateName}" as CSV.`,
         metadata: {
           source: "custom-reports",
-          templateId: params.templateId,
+          templateId: input.templateId,
           format: "csv",
-          filters: params,
+          filters: input.filters ?? null,
           tenantId: session.actor.tenantId ?? null,
         },
         tenantId: session.actor.tenantId,

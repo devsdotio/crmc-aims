@@ -1,6 +1,7 @@
 import type {
   CustomReportDatasetMeta,
   CustomReportFilters,
+  CustomReportFilterOptions,
   CustomReportLayoutBlock,
   CustomReportRunResult,
   CustomReportTemplate,
@@ -23,6 +24,11 @@ async function parseJson<T>(res: Response): Promise<T> {
 
 export async function fetchCustomReportDatasets(): Promise<CustomReportDatasetMeta[]> {
   const res = await fetch("/api/custom-reports/datasets");
+  return parseJson(res);
+}
+
+export async function fetchCustomReportFilterOptions(): Promise<CustomReportFilterOptions> {
+  const res = await fetch("/api/custom-reports/filter-options");
   return parseJson(res);
 }
 
@@ -93,17 +99,32 @@ export async function runCustomReport(body: {
   return parseJson(res);
 }
 
-export function getCustomReportExportUrl(
+export async function downloadCustomReportCsv(
   templateId: string,
   filters: CustomReportFilters = {}
-): string {
-  const sp = new URLSearchParams({ templateId });
-  for (const [key, value] of Object.entries(filters)) {
-    if (value !== undefined && value !== null && value !== "" && value !== "all") {
-      sp.set(key, String(value));
-    }
+): Promise<void> {
+  const res = await fetch("/api/custom-reports/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId, filters }),
+  });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    const err = (json as { error?: string }).error;
+    throw new Error(typeof err === "string" ? err : "Failed to export CSV");
   }
-  return `/api/custom-reports/export?${sp.toString()}`;
+  const blob = await res.blob();
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? "custom-report.csv";
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export async function logCustomReportPrintIntent(

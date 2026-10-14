@@ -36,18 +36,51 @@ const layoutBlockSchema = z.object({
     .optional(),
 });
 
-const filtersSchema = z
-  .object({
-    search: z.string().optional(),
-    departmentId: z.string().optional(),
-    department: z.string().optional(),
-    category: z.string().optional(),
-    classification: z.string().optional(),
-    status: z.string().optional(),
-    startDate: z.string().optional(),
-    endDate: z.string().optional(),
-  })
-  .default({});
+const stringList = z
+  .union([z.array(z.string()), z.string()])
+  .optional()
+  .transform((value) => {
+    if (value == null || value === "") return undefined;
+    if (Array.isArray(value)) {
+      const out = value.map(String).map((s) => s.trim()).filter(Boolean);
+      return out.length ? out : undefined;
+    }
+    const out = value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return out.length ? out : undefined;
+  });
+
+const filtersObjectSchema = z.object({
+  search: z.string().optional(),
+  departmentIds: stringList,
+  departmentNames: stringList,
+  projectIds: stringList,
+  categories: stringList,
+  classifications: stringList,
+  statuses: stringList,
+  assignmentTypes: stringList,
+  itemTypes: stringList,
+  requestTypes: stringList,
+  assetIds: stringList,
+  consumableIds: stringList,
+  conditions: stringList,
+  reasons: stringList,
+  directions: stringList,
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  // legacy singles
+  departmentId: z.string().optional(),
+  department: z.string().optional(),
+  category: z.string().optional(),
+  classification: z.string().optional(),
+  status: z.string().optional(),
+});
+
+export const filtersSchema = filtersObjectSchema
+  .optional()
+  .transform((value) => value ?? {});
 
 export const createTemplateSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -74,20 +107,12 @@ export const runReportSchema = z.object({
   filters: filtersSchema.optional(),
   layout: z.array(layoutBlockSchema).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  /** Preview defaults to 100; print/export-style runs may request up to 2000. */
   pageSize: z.coerce.number().int().min(1).max(2000).default(100),
 });
 
-export const exportReportQuerySchema = z.object({
+export const exportReportBodySchema = z.object({
   templateId: z.string().uuid(),
-  search: z.string().optional(),
-  departmentId: z.string().optional(),
-  department: z.string().optional(),
-  category: z.string().optional(),
-  classification: z.string().optional(),
-  status: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  filters: filtersSchema.optional(),
 });
 
 export const printIntentSchema = z.object({
@@ -98,4 +123,4 @@ export const printIntentSchema = z.object({
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
 export type RunReportInput = z.infer<typeof runReportSchema>;
-export type ExportReportQuery = z.infer<typeof exportReportQuerySchema>;
+export type ExportReportBody = z.infer<typeof exportReportBodySchema>;

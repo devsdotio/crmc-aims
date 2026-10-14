@@ -7,24 +7,20 @@ import { ArrowLeft, Download, Printer, RefreshCw } from "lucide-react";
 import { useToast } from "@/components/providers/toast-context";
 import { CustomReportFilterFields } from "@/components/custom-reports/filter-fields";
 import {
-  getCustomReportExportUrl,
+  downloadCustomReportCsv,
   logCustomReportPrintIntent,
   useCustomReportDatasetsQuery,
   useCustomReportTemplateQuery,
   useRunCustomReportMutation,
 } from "@/features/custom-reports/client";
-import type { CustomReportFilters, CustomReportRunResult } from "@/types/custom-reports";
+import {
+  summarizeCustomReportFilters,
+  type CustomReportFilters,
+  type CustomReportRunResult,
+} from "@/types/custom-reports";
 
 interface ReportRunnerProps {
   templateId: string;
-}
-
-function filtersSummary(filters: CustomReportFilters): string {
-  const parts: string[] = [];
-  for (const [k, v] of Object.entries(filters)) {
-    if (v !== undefined && v !== null && v !== "") parts.push(`${k}: ${v}`);
-  }
-  return parts.length ? parts.join(" · ") : "None";
 }
 
 export function CustomReportRunner({ templateId }: ReportRunnerProps) {
@@ -68,8 +64,12 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial run once hydrated
   }, [hydrated, template?.id]);
 
-  const handleCsv = () => {
-    window.location.href = getCustomReportExportUrl(templateId, filters);
+  const handleCsv = async () => {
+    try {
+      await downloadCustomReportCsv(templateId, filters);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to export CSV.");
+    }
   };
 
   const handlePrint = async () => {
@@ -137,7 +137,7 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
           </button>
           <button
             type="button"
-            onClick={handleCsv}
+            onClick={() => void handleCsv()}
             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border text-sm font-medium text-text hover:bg-bg-subtle"
           >
             <Download className="size-4" />
@@ -213,7 +213,7 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
         </div>
         {result && (
           <p className="px-4 py-2 text-xs text-text-secondary border-t border-border print:hidden">
-            Applied filters: {filtersSummary(result.filters)}
+            Applied filters: {summarizeCustomReportFilters(result.filters)}
           </p>
         )}
       </section>

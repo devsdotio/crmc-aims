@@ -1,9 +1,10 @@
 "use client";
 
-import type {
-  CustomReportColumnDef,
-  CustomReportFilters,
-  CustomReportLayoutBlock,
+import {
+  summarizeCustomReportFilters,
+  type CustomReportColumnDef,
+  type CustomReportFilters,
+  type CustomReportLayoutBlock,
 } from "@/types/custom-reports";
 
 export interface CustomPrintPayload {
@@ -16,14 +17,6 @@ export interface CustomPrintPayload {
   filters: CustomReportFilters;
   layout: CustomReportLayoutBlock[];
   total?: number;
-}
-
-function filtersSummary(filters: CustomReportFilters): string {
-  const parts: string[] = [];
-  for (const [k, v] of Object.entries(filters)) {
-    if (v !== undefined && v !== null && v !== "") parts.push(`${k}: ${v}`);
-  }
-  return parts.length ? parts.join(" · ") : "None";
 }
 
 interface Props {
@@ -110,7 +103,8 @@ export function CustomPrintableReport({ data }: Props) {
         if (block.type === "filters_summary") {
           return (
             <p key={block.id} className="text-xs text-gray-600 mb-3">
-              <strong>Applied filters:</strong> {filtersSummary(data.filters)}
+              <strong>Applied filters:</strong>{" "}
+              {summarizeCustomReportFilters(data.filters)}
             </p>
           );
         }

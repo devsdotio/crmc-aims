@@ -5,6 +5,7 @@ import {
   eq,
   gte,
   ilike,
+  inArray,
   lte,
   or,
   sql,
@@ -17,17 +18,21 @@ import {
   assets,
   borrowRequests,
   consumables,
+  departments,
   maintenanceLogs,
   projects,
   purchaseLots,
+  stockMovements,
 } from "@/server/db/schema";
 import type {
   CustomReportColumnDef,
   CustomReportColumnKey,
   CustomReportDataset,
   CustomReportDatasetMeta,
+  CustomReportFilterFieldDef,
   CustomReportFilters,
 } from "@/types/custom-reports";
+import { normalizeCustomReportFilters } from "@/types/custom-reports";
 import { ValidationError } from "@/server/shared/errors";
 
 export type DatasetRow = Record<string, string | number | boolean | null>;
@@ -56,11 +61,20 @@ function col(
   return { key, label, type, ...(sensitive ? { sensitive: true } : {}) };
 }
 
-function applySearch(
-  conditions: SQL[],
-  search: string | undefined,
-  fields: AnyColumn[]
-) {
+function field(
+  key: CustomReportFilterFieldDef["key"],
+  label: string,
+  control: CustomReportFilterFieldDef["control"],
+  extra: Partial<CustomReportFilterFieldDef> = {}
+): CustomReportFilterFieldDef {
+  return { key, label, control, ...extra };
+}
+
+function hasValues(values?: string[]): values is string[] {
+  return Array.isArray(values) && values.length > 0;
+}
+
+function applySearch(conditions: SQL[], search: string | undefined, fields: AnyColumn[]) {
   if (!search?.trim()) return;
   const pattern = `%${search.trim()}%`;
   const parts = fields.map((f) => ilike(f, pattern));
@@ -69,6 +83,31 @@ function applySearch(
   } else {
     conditions.push(or(...parts)!);
   }
+}
+
+function applyIn(conditions: SQL[], column: AnyColumn, values?: string[]) {
+  if (hasValues(values)) conditions.push(inArray(column, values));
+}
+
+async function resolveDepartmentNames(
+  tenantId: string,
+  filters: CustomReportFilters
+): Promise<string[]> {
+  const names = new Set(filters.departmentNames ?? []);
+  if (hasValues(filters.departmentIds)) {
+    const db = getDb();
+    const rows = await db
+      .select({ name: departments.name })
+      .from(departments)
+      .where(
+        and(
+          eq(departments.tenantId, tenantId),
+          inArray(departments.id, filters.departmentIds)
+        )
+      );
+    for (const row of rows) names.add(row.name);
+  }
+  return [...names];
 }
 
 function pickColumns(
@@ -116,11 +155,114 @@ function validateColumns(
   return resolved;
 }
 
+const ASSET_STATUS_OPTIONS = [
+  { id: "active", label: "Active" },
+  { id: "needs_repair", label: "Needs repair" },
+  { id: "out_of_service", label: "Out of service" },
+  { id: "retired", label: "Retired" },
+  { id: "missing", label: "Missing" },
+];
+
+const ASSIGNMENT_TYPE_OPTIONS = [
+  { id: "borrowable", label: "Borrowable" },
+  { id: "assignable", label: "Assignable" },
+  { id: "fixed", label: "Fixed" },
+];
+
+const CONSUMABLE_STOCK_STATUS = [
+  { id: "low_stock", label: "Low stock" },
+  { id: "in_stock", label: "In stock (above threshold)" },
+];
+
+const ITEM_TYPE_OPTIONS = [
+  { id: "asset", label: "Asset" },
+  { id: "consumable", label: "Consumable" },
+];
+
+const REQUEST_STATUS_OPTIONS = [
+  { id: "pending", label: "Pending" },
+  { id: "approved", label: "Approved" },
+  { id: "rejected", label: "Rejected" },
+  { id: "released", label: "Released" },
+  { id: "unreleased", label: "Unreleased" },
+  { id: "returned", label: "Returned" },
+  { id: "cancelled", label: "Cancelled" },
+];
+
+const REQUEST_TYPE_OPTIONS = [
+  { id: "borrowable", label: "Borrowable" },
+  { id: "assignable", label: "Assignable" },
+];
+
+const MAINTENANCE_STATUS_OPTIONS = [
+  { id: "open", label: "Open" },
+  { id: "resolved", label: "Resolved" },
+];
+
+const MAINTENANCE_CONDITION_OPTIONS = [
+  { id: "good", label: "Good" },
+  { id: "needs_maintenance", label: "Needs maintenance" },
+  { id: "damaged", label: "Damaged" },
+  { id: "resolved", label: "Resolved" },
+];
+
+const PROJECT_STATUS_OPTIONS = [
+  { id: "draft", label: "Draft" },
+  { id: "active", label: "Active" },
+  { id: "on_hold", label: "On hold" },
+  { id: "completed", label: "Completed" },
+  { id: "cancelled", label: "Cancelled" },
+];
+
+const STOCK_REASON_OPTIONS = [
+  { id: "restock", label: "Restock" },
+  { id: "issue", label: "Issue / consumed" },
+  { id: "adjust", label: "Adjustment" },
+];
+
+const STOCK_DIRECTION_OPTIONS = [
+  { id: "in", label: "In" },
+  { id: "out", label: "Out" },
+];
+
 const assetsDef: DatasetDefinition = {
   key: "assets",
   label: "Assets",
   description: "Capital equipment register",
-  filterKeys: ["search", "department", "category", "classification", "status", "startDate", "endDate"],
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("categories", "Categories", "multi", {
+      filterKey: "categories",
+      optionsSource: "assetCategories",
+      searchable: true,
+    }),
+    field("classifications", "Classes", "multi", {
+      filterKey: "classifications",
+      optionsSource: "assetClasses",
+      searchable: true,
+    }),
+    field("statuses", "Status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: ASSET_STATUS_OPTIONS,
+    }),
+    field("assignmentTypes", "Assignment type", "multi", {
+      filterKey: "assignmentTypes",
+      optionsSource: "static",
+      staticOptions: ASSIGNMENT_TYPE_OPTIONS,
+    }),
+    field("assets", "Specific assets", "multi", {
+      filterKey: "assetIds",
+      optionsSource: "assets",
+      searchable: true,
+    }),
+    field("dateRange", "Purchase date", "dateRange"),
+  ],
   columns: [
     col("assetCode", "Asset code"),
     col("name", "Name"),
@@ -142,10 +284,13 @@ const assetsDef: DatasetDefinition = {
     const db = getDb();
     const conditions: SQL[] = [eq(assets.tenantId, tenantId), eq(assets.isSandbox, false)];
     applySearch(conditions, filters.search, [assets.assetCode, assets.name, assets.serialNumber]);
-    if (filters.department) conditions.push(eq(assets.department, filters.department));
-    if (filters.category) conditions.push(eq(assets.category, filters.category));
-    if (filters.classification) conditions.push(eq(assets.classification, filters.classification));
-    if (filters.status) conditions.push(sql`${assets.status} = ${filters.status}`);
+    const deptNames = await resolveDepartmentNames(tenantId, filters);
+    applyIn(conditions, assets.department, deptNames);
+    applyIn(conditions, assets.category, filters.categories);
+    applyIn(conditions, assets.classification, filters.classifications);
+    applyIn(conditions, assets.status, filters.statuses);
+    applyIn(conditions, assets.assignmentType, filters.assignmentTypes);
+    applyIn(conditions, assets.id, filters.assetIds);
     if (filters.startDate) conditions.push(gte(assets.purchaseDate, filters.startDate));
     if (filters.endDate) conditions.push(lte(assets.purchaseDate, filters.endDate));
 
@@ -195,9 +340,34 @@ const assetsDef: DatasetDefinition = {
 
 const consumablesDef: DatasetDefinition = {
   key: "consumables",
-  label: "Consumables",
-  description: "Stock items and thresholds",
-  filterKeys: ["search", "category", "classification", "status"],
+  label: "Consumables (on-hand)",
+  description: "Current stock levels by item",
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("categories", "Categories", "multi", {
+      filterKey: "categories",
+      optionsSource: "consumableCategories",
+      searchable: true,
+    }),
+    field("classifications", "Supply / material", "multi", {
+      filterKey: "classifications",
+      optionsSource: "static",
+      staticOptions: [
+        { id: "supply", label: "Supply" },
+        { id: "material", label: "Material" },
+      ],
+    }),
+    field("statuses", "Stock status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: CONSUMABLE_STOCK_STATUS,
+    }),
+    field("consumables", "Specific items", "multi", {
+      filterKey: "consumableIds",
+      optionsSource: "consumables",
+      searchable: true,
+    }),
+  ],
   columns: [
     col("itemCode", "Item code"),
     col("name", "Name"),
@@ -217,10 +387,19 @@ const consumablesDef: DatasetDefinition = {
     const db = getDb();
     const conditions: SQL[] = [eq(consumables.tenantId, tenantId), eq(consumables.isSandbox, false)];
     applySearch(conditions, filters.search, [consumables.itemCode, consumables.name]);
-    if (filters.category) conditions.push(eq(consumables.category, filters.category));
-    if (filters.classification) conditions.push(eq(consumables.classification, filters.classification));
-    if (filters.status === "low_stock") {
-      conditions.push(sql`${consumables.currentQty} <= ${consumables.minThreshold}`);
+    applyIn(conditions, consumables.category, filters.categories);
+    applyIn(conditions, consumables.classification, filters.classifications);
+    applyIn(conditions, consumables.id, filters.consumableIds);
+    if (hasValues(filters.statuses)) {
+      const parts: SQL[] = [];
+      if (filters.statuses.includes("low_stock")) {
+        parts.push(sql`${consumables.currentQty} <= ${consumables.minThreshold}`);
+      }
+      if (filters.statuses.includes("in_stock")) {
+        parts.push(sql`${consumables.currentQty} > ${consumables.minThreshold}`);
+      }
+      if (parts.length === 1) conditions.push(parts[0]!);
+      else if (parts.length > 1) conditions.push(or(...parts)!);
     }
 
     const where = and(...conditions);
@@ -264,11 +443,194 @@ const consumablesDef: DatasetDefinition = {
   },
 };
 
+const stockMovementsDef: DatasetDefinition = {
+  key: "stock-movements",
+  label: "Consumable movements",
+  description: "Issues / restocks / adjustments by department or project",
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("projects", "Projects", "multi", {
+      filterKey: "projectIds",
+      optionsSource: "projects",
+      searchable: true,
+    }),
+    field("categories", "Item categories", "multi", {
+      filterKey: "categories",
+      optionsSource: "consumableCategories",
+      searchable: true,
+    }),
+    field("consumables", "Specific items", "multi", {
+      filterKey: "consumableIds",
+      optionsSource: "consumables",
+      searchable: true,
+    }),
+    field("reasons", "Reason", "multi", {
+      filterKey: "reasons",
+      optionsSource: "static",
+      staticOptions: STOCK_REASON_OPTIONS,
+    }),
+    field("directions", "Direction", "multi", {
+      filterKey: "directions",
+      optionsSource: "static",
+      staticOptions: STOCK_DIRECTION_OPTIONS,
+    }),
+    field("dateRange", "Movement date", "dateRange"),
+  ],
+  columns: [
+    col("movementCode", "Movement code"),
+    col("itemCode", "Item code"),
+    col("itemName", "Item name"),
+    col("category", "Category"),
+    col("qty", "Qty", "number"),
+    col("direction", "Direction"),
+    col("reason", "Reason"),
+    col("departmentName", "Department"),
+    col("projectName", "Project"),
+    col("lotCode", "Lot code"),
+    col("unitCost", "Unit cost", "number", true),
+    col("lineTotal", "Line total", "number", true),
+    col("actorName", "Actor"),
+    col("notes", "Notes"),
+    col("createdAt", "Date", "date"),
+  ],
+  async execute(tenantId, filters, columns, limit, offset) {
+    const db = getDb();
+    const conditions: SQL[] = [eq(stockMovements.tenantId, tenantId)];
+    applySearch(conditions, filters.search, [
+      stockMovements.movementCode,
+      stockMovements.lotCode,
+      stockMovements.actorName,
+      consumables.itemCode,
+      consumables.name,
+    ]);
+    applyIn(conditions, stockMovements.departmentId, filters.departmentIds);
+    applyIn(conditions, stockMovements.projectId, filters.projectIds);
+    applyIn(conditions, stockMovements.consumableId, filters.consumableIds);
+    applyIn(conditions, consumables.category, filters.categories);
+    applyIn(conditions, stockMovements.reason, filters.reasons);
+    applyIn(conditions, stockMovements.direction, filters.directions);
+    if (filters.startDate) {
+      conditions.push(gte(stockMovements.createdAt, new Date(filters.startDate)));
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockMovements.createdAt, end));
+    }
+
+    const where = and(...conditions);
+    const [totalRow] = await db
+      .select({ total: count() })
+      .from(stockMovements)
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
+      .where(where);
+
+    const rowsRaw = await db
+      .select({
+        movementCode: stockMovements.movementCode,
+        itemCode: consumables.itemCode,
+        itemName: consumables.name,
+        category: consumables.category,
+        qty: stockMovements.qty,
+        direction: stockMovements.direction,
+        reason: stockMovements.reason,
+        departmentId: stockMovements.departmentId,
+        projectId: stockMovements.projectId,
+        lotCode: stockMovements.lotCode,
+        unitCost: stockMovements.unitCost,
+        lineTotal: stockMovements.lineTotal,
+        actorName: stockMovements.actorName,
+        notes: stockMovements.notes,
+        createdAt: stockMovements.createdAt,
+      })
+      .from(stockMovements)
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
+      .where(where)
+      .orderBy(desc(stockMovements.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const deptIds = [
+      ...new Set(rowsRaw.map((r) => r.departmentId).filter(Boolean) as string[]),
+    ];
+    const projectIds = [
+      ...new Set(rowsRaw.map((r) => r.projectId).filter(Boolean) as string[]),
+    ];
+    const deptMap = new Map<string, string>();
+    const projectMap = new Map<string, string>();
+    if (deptIds.length) {
+      const rows = await db
+        .select({ id: departments.id, name: departments.name })
+        .from(departments)
+        .where(and(eq(departments.tenantId, tenantId), inArray(departments.id, deptIds)));
+      for (const r of rows) deptMap.set(r.id, r.name);
+    }
+    if (projectIds.length) {
+      const rows = await db
+        .select({ id: projects.id, name: projects.name })
+        .from(projects)
+        .where(and(eq(projects.tenantId, tenantId), inArray(projects.id, projectIds)));
+      for (const r of rows) projectMap.set(r.id, r.name);
+    }
+
+    const allow = new Set(stockMovementsDef.columns.map((c) => c.key));
+    return {
+      total: Number(totalRow?.total ?? 0),
+      rows: rowsRaw.map((r) =>
+        pickColumns(
+          {
+            movementCode: r.movementCode,
+            itemCode: r.itemCode,
+            itemName: r.itemName,
+            category: r.category,
+            qty: r.qty,
+            direction: r.direction,
+            reason: r.reason,
+            departmentName: r.departmentId ? deptMap.get(r.departmentId) ?? null : null,
+            projectName: r.projectId ? projectMap.get(r.projectId) ?? null : null,
+            lotCode: r.lotCode,
+            unitCost: r.unitCost != null ? Number(r.unitCost) : null,
+            lineTotal: r.lineTotal != null ? Number(r.lineTotal) : null,
+            actorName: r.actorName,
+            notes: r.notes,
+            createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+          },
+          columns,
+          allow
+        )
+      ),
+    };
+  },
+};
+
 const purchaseOrdersDef: DatasetDefinition = {
   key: "purchase-orders",
   label: "Purchase orders",
   description: "Purchase lots / procurement receipts",
-  filterKeys: ["search", "departmentId", "department", "status", "startDate", "endDate"],
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("projects", "Projects", "multi", {
+      filterKey: "projectIds",
+      optionsSource: "projects",
+      searchable: true,
+    }),
+    field("itemTypes", "Item type", "multi", {
+      filterKey: "itemTypes",
+      optionsSource: "static",
+      staticOptions: ITEM_TYPE_OPTIONS,
+    }),
+    field("dateRange", "Purchased on", "dateRange"),
+  ],
   columns: [
     col("lotCode", "Lot code"),
     col("itemType", "Item type"),
@@ -295,9 +657,9 @@ const purchaseOrdersDef: DatasetDefinition = {
       purchaseLots.itemName,
       purchaseLots.supplierName,
     ]);
-    if (filters.departmentId) conditions.push(eq(purchaseLots.departmentId, filters.departmentId));
-    if (filters.department) conditions.push(eq(purchaseLots.departmentName, filters.department));
-    if (filters.status) conditions.push(sql`${purchaseLots.itemType} = ${filters.status}`);
+    applyIn(conditions, purchaseLots.departmentId, filters.departmentIds);
+    applyIn(conditions, purchaseLots.projectId, filters.projectIds);
+    applyIn(conditions, purchaseLots.itemType, filters.itemTypes);
     if (filters.startDate) conditions.push(gte(purchaseLots.purchasedOn, filters.startDate));
     if (filters.endDate) conditions.push(lte(purchaseLots.purchasedOn, filters.endDate));
 
@@ -349,7 +711,25 @@ const requestsDef: DatasetDefinition = {
   key: "requests",
   label: "Borrow requests",
   description: "Asset borrow / assignment requests",
-  filterKeys: ["search", "department", "departmentId", "status", "startDate", "endDate"],
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("statuses", "Status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: REQUEST_STATUS_OPTIONS,
+    }),
+    field("requestTypes", "Request type", "multi", {
+      filterKey: "requestTypes",
+      optionsSource: "static",
+      staticOptions: REQUEST_TYPE_OPTIONS,
+    }),
+    field("dateRange", "Requested date", "dateRange"),
+  ],
   columns: [
     col("requestCode", "Request code"),
     col("requesterName", "Requester"),
@@ -373,9 +753,13 @@ const requestsDef: DatasetDefinition = {
       borrowRequests.requesterName,
       borrowRequests.purpose,
     ]);
-    if (filters.department) conditions.push(eq(borrowRequests.department, filters.department));
-    if (filters.departmentId) conditions.push(eq(borrowRequests.departmentId, filters.departmentId));
-    if (filters.status) conditions.push(sql`${borrowRequests.status} = ${filters.status}`);
+    applyIn(conditions, borrowRequests.departmentId, filters.departmentIds);
+    const deptNames = await resolveDepartmentNames(tenantId, filters);
+    if (hasValues(deptNames) && !hasValues(filters.departmentIds)) {
+      applyIn(conditions, borrowRequests.department, deptNames);
+    }
+    applyIn(conditions, borrowRequests.status, filters.statuses);
+    applyIn(conditions, borrowRequests.requestType, filters.requestTypes);
     if (filters.startDate) {
       conditions.push(gte(borrowRequests.requestedAt, new Date(filters.startDate)));
     }
@@ -429,12 +813,41 @@ const requestsDef: DatasetDefinition = {
 const maintenanceDef: DatasetDefinition = {
   key: "maintenance",
   label: "Maintenance",
-  description: "Maintenance / repair logs",
-  filterKeys: ["search", "category", "status", "startDate", "endDate"],
+  description: "Maintenance / repair logs (filter by department via linked asset)",
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments (asset)", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("categories", "Categories", "multi", {
+      filterKey: "categories",
+      optionsSource: "assetCategories",
+      searchable: true,
+    }),
+    field("assets", "Specific assets", "multi", {
+      filterKey: "assetIds",
+      optionsSource: "assets",
+      searchable: true,
+    }),
+    field("statuses", "Open / resolved", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: MAINTENANCE_STATUS_OPTIONS,
+    }),
+    field("conditions", "Condition", "multi", {
+      filterKey: "conditions",
+      optionsSource: "static",
+      staticOptions: MAINTENANCE_CONDITION_OPTIONS,
+    }),
+    field("dateRange", "Date logged", "dateRange"),
+  ],
   columns: [
     col("logCode", "Log code"),
     col("assetCode", "Asset code"),
     col("assetName", "Asset name"),
+    col("department", "Department"),
     col("category", "Category"),
     col("condition", "Condition"),
     col("source", "Source"),
@@ -456,22 +869,36 @@ const maintenanceDef: DatasetDefinition = {
       maintenanceLogs.assetCode,
       maintenanceLogs.assetName,
     ]);
-    if (filters.category) conditions.push(eq(maintenanceLogs.category, filters.category));
-    if (filters.status === "open") conditions.push(eq(maintenanceLogs.isResolved, false));
-    if (filters.status === "resolved") conditions.push(eq(maintenanceLogs.isResolved, true));
-    if (filters.status && filters.status !== "open" && filters.status !== "resolved") {
-      conditions.push(sql`${maintenanceLogs.condition} = ${filters.status}`);
+    applyIn(conditions, maintenanceLogs.category, filters.categories);
+    applyIn(conditions, maintenanceLogs.assetId, filters.assetIds);
+    applyIn(conditions, maintenanceLogs.condition, filters.conditions);
+    if (hasValues(filters.statuses)) {
+      const parts: SQL[] = [];
+      if (filters.statuses.includes("open")) parts.push(eq(maintenanceLogs.isResolved, false));
+      if (filters.statuses.includes("resolved")) parts.push(eq(maintenanceLogs.isResolved, true));
+      if (parts.length === 1) conditions.push(parts[0]!);
+      else if (parts.length > 1) conditions.push(or(...parts)!);
+    }
+    const deptNames = await resolveDepartmentNames(tenantId, filters);
+    if (hasValues(deptNames)) {
+      conditions.push(inArray(assets.department, deptNames));
     }
     if (filters.startDate) conditions.push(gte(maintenanceLogs.dateLogged, filters.startDate));
     if (filters.endDate) conditions.push(lte(maintenanceLogs.dateLogged, filters.endDate));
 
     const where = and(...conditions);
-    const [totalRow] = await db.select({ total: count() }).from(maintenanceLogs).where(where);
+    const [totalRow] = await db
+      .select({ total: count() })
+      .from(maintenanceLogs)
+      .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
+      .where(where);
+
     const rowsRaw = await db
       .select({
         logCode: maintenanceLogs.logCode,
         assetCode: maintenanceLogs.assetCode,
         assetName: maintenanceLogs.assetName,
+        department: assets.department,
         category: maintenanceLogs.category,
         condition: maintenanceLogs.condition,
         source: maintenanceLogs.source,
@@ -486,6 +913,7 @@ const maintenanceDef: DatasetDefinition = {
         workNotes: maintenanceLogs.workNotes,
       })
       .from(maintenanceLogs)
+      .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
       .where(where)
       .orderBy(desc(maintenanceLogs.dateLogged))
       .limit(limit)
@@ -512,7 +940,25 @@ const projectsDef: DatasetDefinition = {
   key: "projects",
   label: "Projects",
   description: "Project registry",
-  filterKeys: ["search", "department", "status", "startDate", "endDate"],
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("projects", "Specific projects", "multi", {
+      filterKey: "projectIds",
+      optionsSource: "projects",
+      searchable: true,
+    }),
+    field("statuses", "Status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: PROJECT_STATUS_OPTIONS,
+    }),
+    field("dateRange", "Project dates", "dateRange"),
+  ],
   columns: [
     col("projectCode", "Project code"),
     col("name", "Name"),
@@ -531,8 +977,10 @@ const projectsDef: DatasetDefinition = {
     const db = getDb();
     const conditions: SQL[] = [eq(projects.tenantId, tenantId)];
     applySearch(conditions, filters.search, [projects.projectCode, projects.name, projects.description]);
-    if (filters.department) conditions.push(eq(projects.department, filters.department));
-    if (filters.status) conditions.push(sql`${projects.status} = ${filters.status}`);
+    applyIn(conditions, projects.id, filters.projectIds);
+    const deptNames = await resolveDepartmentNames(tenantId, filters);
+    applyIn(conditions, projects.department, deptNames);
+    applyIn(conditions, projects.status, filters.statuses);
     if (filters.startDate) conditions.push(gte(projects.startDate, filters.startDate));
     if (filters.endDate) conditions.push(lte(projects.endDate, filters.endDate));
 
@@ -580,6 +1028,7 @@ const projectsDef: DatasetDefinition = {
 const DATASET_LIST: DatasetDefinition[] = [
   assetsDef,
   consumablesDef,
+  stockMovementsDef,
   purchaseOrdersDef,
   requestsDef,
   maintenanceDef,
@@ -592,12 +1041,12 @@ const DATASET_MAP = Object.fromEntries(DATASET_LIST.map((d) => [d.key, d])) as R
 >;
 
 export function listDatasetMetadata(): CustomReportDatasetMeta[] {
-  return DATASET_LIST.map(({ key, label, description, columns, filterKeys }) => ({
+  return DATASET_LIST.map(({ key, label, description, columns, filterFields }) => ({
     key,
     label,
     description,
     columns,
-    filterKeys,
+    filterFields,
   }));
 }
 
@@ -624,6 +1073,7 @@ export async function executeDatasetQuery(
 ): Promise<{ columns: CustomReportColumnDef[]; result: DatasetQueryResult }> {
   const resolved = validateColumns(dataset, columns);
   const def = getDatasetDefinition(dataset);
-  const result = await def.execute(tenantId, filters, columns, limit, offset);
+  const normalized = normalizeCustomReportFilters(filters);
+  const result = await def.execute(tenantId, normalized, columns, limit, offset);
   return { columns: resolved, result };
 }

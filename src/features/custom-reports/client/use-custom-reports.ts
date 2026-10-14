@@ -12,6 +12,7 @@ import {
   createCustomReportTemplate,
   deleteCustomReportTemplate,
   fetchCustomReportDatasets,
+  fetchCustomReportFilterOptions,
   fetchCustomReportTemplate,
   fetchCustomReportTemplates,
   runCustomReport,
@@ -21,6 +22,7 @@ import {
 export const customReportKeys = {
   all: ["custom-reports"] as const,
   datasets: () => [...customReportKeys.all, "datasets"] as const,
+  filterOptions: () => [...customReportKeys.all, "filter-options"] as const,
   templates: () => [...customReportKeys.all, "templates"] as const,
   template: (id: string) => [...customReportKeys.all, "template", id] as const,
 };
@@ -29,6 +31,14 @@ export function useCustomReportDatasetsQuery() {
   return useQuery({
     queryKey: customReportKeys.datasets(),
     queryFn: fetchCustomReportDatasets,
+    staleTime: 60_000,
+  });
+}
+
+export function useCustomReportFilterOptionsQuery() {
+  return useQuery({
+    queryKey: customReportKeys.filterOptions(),
+    queryFn: fetchCustomReportFilterOptions,
     staleTime: 60_000,
   });
 }
