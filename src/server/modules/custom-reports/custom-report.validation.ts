@@ -78,9 +78,10 @@ const filtersObjectSchema = z.object({
   status: z.string().optional(),
 });
 
-export const filtersSchema = filtersObjectSchema
-  .optional()
-  .transform((value) => value ?? {});
+export const filtersSchema = z.preprocess(
+  (value) => value ?? {},
+  filtersObjectSchema
+);
 
 export const createTemplateSchema = z.object({
   name: z.string().trim().min(1).max(200),

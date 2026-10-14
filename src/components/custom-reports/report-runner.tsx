@@ -14,6 +14,11 @@ import {
   useRunCustomReportMutation,
 } from "@/features/custom-reports/client";
 import {
+  buildCustomPrintPayload,
+  buildCustomReportPrintUrl,
+  storeCustomPrintPayload,
+} from "@/lib/custom-reports/print-payload";
+import {
   summarizeCustomReportFilters,
   type CustomReportFilters,
   type CustomReportRunResult,
@@ -75,21 +80,24 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
   const handlePrint = async () => {
     try {
       await logCustomReportPrintIntent(templateId, filters);
-      const payload = await runMutation.mutateAsync({
+      const run = await runMutation.mutateAsync({
         templateId,
         filters,
         page: 1,
         pageSize: 2000,
       });
-      sessionStorage.setItem(
-        "custom-report-print",
-        JSON.stringify({
-          ...payload,
-          filters: payload.filters,
-          templateName: template?.name,
-        })
+      const payload = buildCustomPrintPayload(run, template?.name);
+      const key = storeCustomPrintPayload(payload);
+      const opened = window.open(
+        buildCustomReportPrintUrl(key),
+        "_blank",
+        "noopener,noreferrer"
       );
-      window.open("/custom-reports/print", "_blank", "noopener,noreferrer");
+      if (!opened) {
+        toast.error(
+          "Pop-up blocked. Allow pop-ups for this site, then try Print / PDF again."
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to open print view.");
     }
