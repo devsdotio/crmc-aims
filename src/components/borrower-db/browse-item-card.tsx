@@ -2,7 +2,6 @@
 
 import { Tag, MapPin, AlertCircle, PackageX, ShoppingCart, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { displayQty } from "@/lib/qty";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import type { BrowseItem } from "./types";
 import { useBorrowerPortal } from "./context";
@@ -52,7 +51,7 @@ function getStatusBadge(item: BrowseItem) {
           "bg-status-active-bg/20 text-status-active-text border-status-active-bg/30",
       },
       low_stock: {
-        label: `Low Stock (${displayQty(item.currentQty)} ${item.unit})`,
+        label: "Low Stock",
         className:
           "bg-status-repair-bg/20 text-status-repair-text border-status-repair-bg/30",
       },
@@ -114,10 +113,6 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
       : item.classification === "material"
         ? "Material"
         : "Supply";
-  const qtyHint =
-    item.type === "consumable"
-      ? `${displayQty(item.currentQty)} ${item.unit}`
-      : null;
 
   if (viewMode === "list") {
     return (
@@ -160,12 +155,6 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
           </div>
           <div className="flex items-center gap-2 text-xs text-text-secondary">
             <span className="font-mono">{code}</span>
-            {qtyHint ? (
-              <>
-                <span>·</span>
-                <span>{qtyHint} available</span>
-              </>
-            ) : null}
             <span>·</span>
             <MapPin className="h-3 w-3 shrink-0" />
             <span className="truncate">{item.location}</span>
@@ -251,12 +240,6 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
       {/* Meta */}
       <div className="flex items-center gap-1.5 text-xs text-text-secondary mb-1 flex-wrap">
         <span className="font-mono font-semibold">{code}</span>
-        {qtyHint ? (
-          <>
-            <span>·</span>
-            <span>{qtyHint} available</span>
-          </>
-        ) : null}
       </div>
       <div className="flex items-center gap-1 text-xs text-text-secondary mb-3 truncate">
         <MapPin className="h-3 w-3 shrink-0" aria-hidden />

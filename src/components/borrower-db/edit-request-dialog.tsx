@@ -85,7 +85,7 @@ export function EditRequestDialog({
     () =>
       consumablesCatalog.map((c) => ({
         value: c.id,
-        label: `${c.name} (${c.itemCode}) — Available: ${c.availableQty ?? c.currentQty ?? 0} ${c.unit}`,
+        label: `${c.name} (${c.itemCode})${c.unit ? ` · ${c.unit}` : ""}`,
         keywords: `${c.itemCode} ${c.name}`,
       })),
     [consumablesCatalog]

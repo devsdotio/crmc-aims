@@ -26,7 +26,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { displayQty, roundQty } from "@/lib/qty";
+import { roundQty } from "@/lib/qty";
 import { getCategoryStyle } from "@/constants/categories";
 import type {
   BrowseItem,
@@ -933,8 +933,7 @@ function StepSelectConsumables({
                             : "bg-status-outofservice-bg"
                         )}
                       />
-                      {displayQty(item.currentQty)}
-                      {item.unit ? ` ${item.unit}` : ""}
+                      {item.currentQty > 0 ? "In stock" : "Out of stock"}
                     </span>
                   </div>
                 </button>
@@ -1609,15 +1608,14 @@ function StepDetails({
                               <p className="text-xs font-semibold text-text truncate">
                                 {item.name}
                               </p>
-                              {item.type === "consumable" && item.currentQty !== undefined && (
+                              {item.type === "consumable" && (
                                 <p className="text-[10px] text-text-secondary truncate">
-                                  Available: {displayQty(item.currentQty)}{" "}
-                                  {item.unit || "units"}
                                   {item.classification === "material"
-                                    ? " · Material"
+                                    ? "Material"
                                     : item.classification === "supply"
-                                      ? " · Supply"
-                                      : ""}
+                                      ? "Supply"
+                                      : "Consumable"}
+                                  {item.unit ? ` · ${item.unit}` : ""}
                                 </p>
                               )}
                             </div>
