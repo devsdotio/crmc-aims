@@ -23,7 +23,15 @@ import {
   stripPoPurposePrefix,
 } from "@/lib/po-purpose";
 import { groupByPurpose } from "@/lib/request-purpose";
+import { parseUnsignedDecimal, parseUnsignedInt } from "@/lib/numeric-input";
+import { roundQty } from "@/lib/qty";
 import type { PurchaseLot } from "@/types/purchase-lots";
+
+function parseLineQty(itemType: PurchaseLot["itemType"], raw: string): number {
+  return itemType === "asset"
+    ? parseUnsignedInt(raw, 0)
+    : parseUnsignedDecimal(raw, 0);
+}
 
 type EditStep = "items" | "purposes";
 
@@ -161,14 +169,22 @@ export function EditPoLinesDialog({
     for (const li of visibleLines) {
       const draft = drafts[li.id];
       if (!draft) continue;
-      const qty = Number.parseInt(draft.quantity, 10);
+      const qty = parseLineQty(li.itemType, draft.quantity);
       const cost = Number.parseFloat(draft.unitCost);
       if (!draft.itemName.trim()) {
         toast.error(`Name is required for “${li.itemName}”.`);
         return false;
       }
-      if (!Number.isFinite(qty) || qty < 1) {
-        toast.error(`Quantity must be at least 1 for “${li.itemName}”.`);
+      if (
+        !Number.isFinite(qty) ||
+        qty <= 0 ||
+        (li.itemType === "asset" && !Number.isInteger(qty))
+      ) {
+        toast.error(
+          li.itemType === "asset"
+            ? `Quantity must be a whole number of at least 1 for “${li.itemName}”.`
+            : `Quantity must be greater than 0 for “${li.itemName}”.`
+        );
         return false;
       }
       if (!Number.isFinite(cost) || cost < 0) {
@@ -325,7 +341,10 @@ export function EditPoLinesDialog({
       for (const li of visibleLines) {
         const draft = drafts[li.id];
         if (!draft) continue;
-        const qty = Number.parseInt(draft.quantity, 10);
+        const qty =
+          li.itemType === "asset"
+            ? parseLineQty(li.itemType, draft.quantity)
+            : roundQty(parseLineQty(li.itemType, draft.quantity));
         const cost = Number.parseFloat(draft.unitCost);
         const nameChanged = draft.itemName.trim() !== li.itemName;
         const qtyChanged = qty !== li.quantity;
@@ -464,7 +483,7 @@ export function EditPoLinesDialog({
                     quantity: String(li.quantity),
                     unitCost: String(li.unitCost),
                   };
-                  const qty = Number.parseInt(draft.quantity, 10) || 0;
+                  const qty = parseLineQty(li.itemType, draft.quantity) || 0;
                   const cost = Number.parseFloat(draft.unitCost) || 0;
 
                   return (
@@ -509,8 +528,8 @@ export function EditPoLinesDialog({
                           </span>
                           <input
                             type="number"
-                            min={1}
-                            step={1}
+                            min={li.itemType === "asset" ? 1 : 0.01}
+                            step={li.itemType === "asset" ? 1 : 0.01}
                             value={draft.quantity}
                             onChange={(e) =>
                               updateDraft(li.id, { quantity: e.target.value })

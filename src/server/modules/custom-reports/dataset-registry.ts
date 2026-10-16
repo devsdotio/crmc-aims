@@ -433,6 +433,9 @@ const consumablesDef: DatasetDefinition = {
         pickColumns(
           {
             ...r,
+            currentQty: Number(r.currentQty),
+            reservedQty: Number(r.reservedQty),
+            minThreshold: Number(r.minThreshold),
             lastRestocked: r.lastRestocked?.toISOString?.() ?? r.lastRestocked,
           },
           columns,
@@ -588,7 +591,7 @@ const stockMovementsDef: DatasetDefinition = {
             itemCode: r.itemCode,
             itemName: r.itemName,
             category: r.category,
-            qty: r.qty,
+            qty: Number(r.qty),
             direction: r.direction,
             reason: r.reason,
             departmentName: r.departmentId ? deptMap.get(r.departmentId) ?? null : null,
@@ -696,6 +699,8 @@ const purchaseOrdersDef: DatasetDefinition = {
         pickColumns(
           {
             ...r,
+            quantity: Number(r.quantity),
+            quantityRemaining: Number(r.quantityRemaining),
             unitCost: r.unitCost != null ? Number(r.unitCost) : null,
             totalCost: r.totalCost != null ? Number(r.totalCost) : null,
           },

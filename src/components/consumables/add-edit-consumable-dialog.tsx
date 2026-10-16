@@ -14,9 +14,9 @@ import { useSuppliersQuery } from "@/features/suppliers/client";
 import Link from "next/link";
 import {
   filterMoneyInput,
-  filterUnsignedIntInput,
+  filterUnsignedDecimalInput,
   parseMoney,
-  parseUnsignedInt,
+  parseUnsignedDecimal,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -179,7 +179,7 @@ function AddEditConsumableDialogForm({
   const [errorField, setErrorField] = useState<ErrorField | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const qtyValue = parseUnsignedInt(currentQty, 0);
+  const qtyValue = parseUnsignedDecimal(currentQty, 0);
   const needsOpeningLot = !isEditing && qtyValue > 0;
   const costValue = parseMoney(unitCost);
   const openingTotal =
@@ -255,13 +255,16 @@ function AddEditConsumableDialogForm({
       return;
     }
 
-    const threshold = parseUnsignedInt(minThreshold, 0);
-    if (threshold < 1) {
-      setFieldError("minThreshold", "Minimum reorder threshold must be at least 1.");
+    const threshold = parseUnsignedDecimal(minThreshold, 0);
+    if (threshold <= 0) {
+      setFieldError(
+        "minThreshold",
+        "Minimum reorder threshold must be greater than zero."
+      );
       return;
     }
 
-    const qty = parseUnsignedInt(currentQty, 0);
+    const qty = parseUnsignedDecimal(currentQty, 0);
     if (!isEditing && qty > 0) {
       if (!supplierId) {
         setFieldError("supplier", "Select a supplier when adding initial stock.");
@@ -588,10 +591,10 @@ function AddEditConsumableDialogForm({
                 <input
                   id="qty-input"
                   type="text"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   value={currentQty}
                   onChange={(e) => {
-                    const next = filterUnsignedIntInput(e.target.value);
+                    const next = filterUnsignedDecimalInput(e.target.value);
                     if (next !== null) setCurrentQty(next);
                   }}
                   disabled={isSubmitting || isEditing}
@@ -615,10 +618,10 @@ function AddEditConsumableDialogForm({
                 <input
                   id="min-input"
                   type="text"
-                  inputMode="numeric"
+                  inputMode="decimal"
                   value={minThreshold}
                   onChange={(e) => {
-                    const next = filterUnsignedIntInput(e.target.value);
+                    const next = filterUnsignedDecimalInput(e.target.value);
                     if (next !== null) setMinThreshold(next);
                   }}
                   disabled={isSubmitting}

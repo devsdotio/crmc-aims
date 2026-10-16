@@ -47,6 +47,7 @@ import {
   updateConsumableRequestSchema,
 } from "./consumable-request.validation";
 import { summarizePurposes } from "@/lib/request-purpose";
+import { formatQty, qtyEquals, toQty } from "@/lib/qty";
 import {
   loadLinkedRequestSummaries,
   relatedForRow,
@@ -71,7 +72,7 @@ function toLineDTO(row: ConsumableRequestLineRow): ConsumableRequestLineDTO {
     itemName: row.itemName,
     category: row.category,
     unit: row.unit,
-    quantityRequested: row.quantityRequested,
+    quantityRequested: toQty(row.quantityRequested),
     purpose: row.purpose || "General",
     notes: row.notes ?? undefined,
   };
@@ -88,7 +89,7 @@ function toAllocationDTO(
     lotCode: row.lotCode ?? null,
     supplierId: row.supplierId ?? null,
     supplierName: row.supplierName ?? null,
-    quantity: row.quantity,
+    quantity: toQty(row.quantity),
     unitCost: money(row.unitCost),
     lineTotal: money(row.lineTotal),
     releasedAt:
@@ -376,7 +377,7 @@ export class ConsumableRequestService {
           itemName: item.name,
           category: item.category,
           unit: item.unit,
-          quantityRequested: line.quantity,
+          quantityRequested: formatQty(line.quantity),
           purpose: line.purpose.trim(),
           notes: line.notes ?? null,
         })),
@@ -432,7 +433,7 @@ export class ConsumableRequestService {
         );
         if (
           matchingInputLine &&
-          matchingInputLine.quantity !== line.quantityRequested
+          !qtyEquals(matchingInputLine.quantity, toQty(line.quantityRequested))
         ) {
           quantityChanged = true;
           return {
@@ -452,7 +453,13 @@ export class ConsumableRequestService {
           if (line.isModified) {
             await this.repo.updateLine(
               line.id,
-              { quantityRequested: line.quantityRequested },
+              {
+                quantityRequested: formatQty(
+                  typeof line.quantityRequested === "number"
+                    ? line.quantityRequested
+                    : toQty(line.quantityRequested)
+                ),
+              },
               tx
             );
           }
@@ -466,15 +473,21 @@ export class ConsumableRequestService {
           actor.tenantId
         );
         if (!item) throw new NotFoundError("Consumable", line.consumableId);
-        const freeQty = Math.max(0, item.currentQty - (item.reservedQty ?? 0));
-        if (line.quantityRequested > freeQty) {
+        const lineQty = toQty(line.quantityRequested);
+        const freeQty = Math.max(
+          0,
+          toQty(item.currentQty) - toQty(item.reservedQty)
+        );
+        if (lineQty > freeQty) {
           throw new BadRequestError(
-            `Not enough unreserved stock for ${item.itemCode}. Available: ${freeQty} ${item.unit}, requested/approved: ${line.quantityRequested}.`
+            `Not enough unreserved stock for ${item.itemCode}. Available: ${freeQty} ${item.unit}, requested/approved: ${lineQty}.`
           );
         }
         await this.consumables.update(
           item.id,
-          { reservedQty: (item.reservedQty ?? 0) + line.quantityRequested },
+          {
+            reservedQty: formatQty(toQty(item.reservedQty) + lineQty),
+          },
           tx,
           actor.tenantId
         );
@@ -615,9 +628,8 @@ export class ConsumableRequestService {
           await this.consumables.update(
             item.id,
             {
-              reservedQty: Math.max(
-                0,
-                (item.reservedQty ?? 0) - line.quantityRequested
+              reservedQty: formatQty(
+                Math.max(0, toQty(item.reservedQty) - toQty(line.quantityRequested))
               ),
             },
             tx,
@@ -693,9 +705,8 @@ export class ConsumableRequestService {
         await this.consumables.update(
           item.id,
           {
-            reservedQty: Math.max(
-              0,
-              (item.reservedQty ?? 0) - line.quantityRequested
+            reservedQty: formatQty(
+              Math.max(0, toQty(item.reservedQty) - toQty(line.quantityRequested))
             ),
           },
           tx,
@@ -789,7 +800,7 @@ export class ConsumableRequestService {
         lotCode: string | null;
         supplierId: string | null;
         supplierName: string | null;
-        quantity: number;
+        quantity: string;
         unitCost: string;
         lineTotal: string;
         releasedAt: Date;
@@ -808,9 +819,10 @@ export class ConsumableRequestService {
           throw new NotFoundError("Consumable", line.consumableId);
         }
 
-        if (item.currentQty < line.quantityRequested) {
+        const requestedQty = toQty(line.quantityRequested);
+        if (toQty(item.currentQty) < requestedQty) {
           throw new BadRequestError(
-            `Not on hand for ${item.itemCode}. Available: ${item.currentQty} ${item.unit}, requested: ${line.quantityRequested}. Restock or file a purchase order first.`
+            `Not on hand for ${item.itemCode}. Available: ${toQty(item.currentQty)} ${item.unit}, requested: ${requestedQty}. Restock or file a purchase order first.`
           );
         }
 
@@ -820,9 +832,9 @@ export class ConsumableRequestService {
           (sum, a) => sum + a.quantity,
           0
         );
-        if (allocatedQty !== line.quantityRequested) {
+        if (!qtyEquals(allocatedQty, requestedQty)) {
           throw new BadRequestError(
-            `Line ${line.lineNo} (${item.itemCode}): allocations must total ${line.quantityRequested} (got ${allocatedQty}).`
+            `Line ${line.lineNo} (${item.itemCode}): allocations must total ${requestedQty} (got ${allocatedQty}).`
           );
         }
 
@@ -849,10 +861,9 @@ export class ConsumableRequestService {
         await this.consumables.update(
           item.id,
           {
-            currentQty: item.currentQty - line.quantityRequested,
-            reservedQty: Math.max(
-              0,
-              (item.reservedQty ?? 0) - line.quantityRequested
+            currentQty: formatQty(toQty(item.currentQty) - requestedQty),
+            reservedQty: formatQty(
+              Math.max(0, toQty(item.reservedQty) - requestedQty)
             ),
           },
           tx,
@@ -883,7 +894,7 @@ export class ConsumableRequestService {
             lotCode: a.lotCode,
             supplierId: a.supplierId ?? null,
             supplierName: a.supplierName ?? null,
-            quantity: a.quantity,
+            quantity: formatQty(a.quantity),
             unitCost: a.unitCost,
             lineTotal: a.total,
             releasedAt: new Date(),
@@ -1011,7 +1022,7 @@ export class ConsumableRequestService {
             itemName: item.name,
             category: item.category,
             unit: item.unit,
-            quantityRequested: line.quantity,
+            quantityRequested: formatQty(line.quantity),
             purpose: line.purpose.trim(),
             notes: line.notes ?? null,
           };

@@ -22,6 +22,7 @@ import { getTenantContext } from "@/server/shared/tenant-context";
 import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
 import { formatPhp } from "@/components/projects/format-money";
+import { toQty } from "@/lib/qty";
 
 export function invalidateDashboardCache(tenantId?: string): void {
   if (tenantId) {
@@ -691,8 +692,8 @@ export class DashboardService {
         const lowStock: DashboardLowStockItem[] = lowStockConsumables.map((c) => ({
           id: c.id,
           itemName: c.name,
-          currentQty: c.currentQty,
-          minThreshold: c.minThreshold,
+          currentQty: toQty(c.currentQty),
+          minThreshold: toQty(c.minThreshold),
           unit: c.unit,
         }));
 
@@ -918,8 +919,8 @@ export class DashboardService {
           (c) => ({
             id: c.id,
             itemName: c.name,
-            currentQty: c.currentQty,
-            minThreshold: c.minThreshold,
+            currentQty: toQty(c.currentQty),
+            minThreshold: toQty(c.minThreshold),
             unit: c.unit,
           })
         );
@@ -1505,14 +1506,14 @@ export class DashboardService {
           for (const row of inflowRows) {
             const d = row.createdAt;
             if (d >= b.bucketStart && d <= b.bucketEnd) {
-              stockVolume += row.quantity;
+              stockVolume += toQty(row.quantity);
             }
           }
 
           for (const row of consumableOutflow) {
             const d = row.releasedAt;
             if (d && d >= b.bucketStart && d <= b.bucketEnd) {
-              consumeRate += row.quantity;
+              consumeRate += toQty(row.quantity);
             }
           }
 

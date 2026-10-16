@@ -17,6 +17,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roundQty } from "@/lib/qty";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { formatItemDescription } from "@/lib/sanitize-display";
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
@@ -128,7 +129,9 @@ function ApproveRejectConsumableDialogForm({
     setLines((prev) =>
       prev.map((line, idx) => {
         if (idx !== index) return line;
-        const nextQty = Math.max(1, Math.min(99999, line.quantity + delta));
+        const nextQty = roundQty(
+          Math.max(0.01, Math.min(99999, line.quantity + delta))
+        );
         return { ...line, quantity: nextQty };
       })
     );
@@ -138,7 +141,10 @@ function ApproveRejectConsumableDialogForm({
     setLines((prev) =>
       prev.map((line, idx) => {
         if (idx !== index) return line;
-        return { ...line, quantity: Math.max(1, Math.min(99999, val)) };
+        return {
+          ...line,
+          quantity: roundQty(Math.max(0.01, Math.min(99999, val))),
+        };
       })
     );
   };
@@ -314,7 +320,7 @@ function ApproveRejectConsumableDialogForm({
                           <button
                             type="button"
                             onClick={() => adjustQuantity(idx, -1)}
-                            disabled={line.quantity <= 1 || isSubmitting}
+                            disabled={line.quantity <= 0.01 || isSubmitting}
                             className="flex h-6 w-6 items-center justify-center rounded border border-border bg-bg text-text-secondary hover:text-text hover:border-accent/40 hover:bg-accent/10 disabled:opacity-30 cursor-pointer transition-colors"
                             aria-label="Decrease quantity"
                           >
@@ -322,17 +328,21 @@ function ApproveRejectConsumableDialogForm({
                           </button>
                           <input
                             type="number"
-                            min={1}
+                            min={0.01}
+                            step={0.01}
                             max={99999}
                             value={line.quantity}
                             disabled={isSubmitting}
                             onChange={(e) => {
-                              const val = parseInt(e.target.value, 10);
-                              if (!isNaN(val)) setLineQuantity(idx, val);
+                              const val = Number(e.target.value);
+                              if (Number.isFinite(val)) setLineQuantity(idx, val);
                             }}
                             onBlur={(e) => {
-                              const val = parseInt(e.target.value, 10);
-                              setLineQuantity(idx, isNaN(val) || val < 1 ? 1 : val);
+                              const val = Number(e.target.value);
+                              setLineQuantity(
+                                idx,
+                                !Number.isFinite(val) || val <= 0 ? 0.01 : val
+                              );
                             }}
                             className="w-12 h-6 px-1 text-center text-xs font-mono font-bold tabular-nums bg-bg border border-border/80 rounded text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none select-all"
                             aria-label={`Quantity for line ${idx + 1}`}

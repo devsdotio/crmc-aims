@@ -26,8 +26,10 @@ import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
 import {
   filterMoneyInput,
+  filterUnsignedDecimalInput,
   filterUnsignedIntInput,
   parseMoney,
+  parseUnsignedDecimal,
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
@@ -46,6 +48,22 @@ import {
 import type { PurchaseLot } from "@/types/purchase-lots";
 
 type POType = "consumable" | "asset";
+
+function filterPoLineQtyInput(poType: POType, value: string): string | null {
+  return poType === "asset"
+    ? filterUnsignedIntInput(value)
+    : filterUnsignedDecimalInput(value);
+}
+
+function parsePoLineQty(
+  poType: POType,
+  qtyStr: string,
+  fallback = 0
+): number {
+  return poType === "asset"
+    ? parseUnsignedInt(qtyStr, fallback)
+    : parseUnsignedDecimal(qtyStr, fallback);
+}
 
 interface LineDraft {
   id: string;
@@ -268,7 +286,7 @@ export function AddPoLinesDialog({
   }, [assetsList, catalogSearch]);
 
   const runningTotal = items.reduce((sum, item) => {
-    const qty = parseUnsignedInt(item.quantity, 0);
+    const qty = parsePoLineQty(poType, item.quantity, 0);
     const cost = parseMoney(item.unitCost) ?? 0;
     return sum + qty * cost;
   }, 0);
@@ -365,8 +383,12 @@ export function AddPoLinesDialog({
         setErrorMessage(`Item #${index + 1}: name is required.`);
         return false;
       }
-      if (parseUnsignedInt(item.quantity, 0) < 1) {
-        setErrorMessage(`Item #${index + 1}: quantity must be at least 1.`);
+      if (parsePoLineQty(poType, item.quantity, 0) <= 0) {
+        setErrorMessage(
+          `Item #${index + 1}: quantity must be greater than zero${
+            poType === "consumable" ? " (up to 2 decimal places)" : ""
+          }.`
+        );
         return false;
       }
       const cost = parseMoney(item.unitCost);
@@ -430,7 +452,7 @@ export function AddPoLinesDialog({
       minThreshold: item.minThreshold,
       location: item.location,
       assignmentType: item.assignmentType,
-      quantity: parseUnsignedInt(item.quantity, 1),
+      quantity: parsePoLineQty(poType, item.quantity, 1),
       unitCost: parseMoney(item.unitCost) ?? 0,
       suggestedDealer: item.suggestedDealer || undefined,
       supplierId: item.supplierId || undefined,
@@ -757,10 +779,10 @@ export function AddPoLinesDialog({
                     <label className="text-[11px] font-semibold text-text">Quantity</label>
                     <input
                       type="text"
-                      inputMode="numeric"
+                      inputMode={poType === "asset" ? "numeric" : "decimal"}
                       value={item.quantity}
                       onChange={(e) => {
-                        const next = filterUnsignedIntInput(e.target.value);
+                        const next = filterPoLineQtyInput(poType, e.target.value);
                         if (next !== null) updateItem(item.id, { quantity: next });
                       }}
                       className="w-full h-8.5 px-2 text-center font-mono font-bold rounded-lg border border-border bg-bg text-xs"

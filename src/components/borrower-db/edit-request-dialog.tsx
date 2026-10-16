@@ -16,6 +16,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roundQty } from "@/lib/qty";
 import { useCategoriesQuery, useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { useUpdateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
@@ -271,8 +272,10 @@ export function EditRequestDialog({
             setErrorMsg("Please select a valid product for each line.");
             return false;
           }
-          if (line.quantity < 1) {
-            setErrorMsg("Quantity must be at least 1 for each line.");
+          if (line.quantity <= 0) {
+            setErrorMsg(
+              "Quantity must be greater than zero for each line (up to 2 decimal places)."
+            );
             return false;
           }
           if (!(line.purpose || "").trim()) {
@@ -709,13 +712,39 @@ export function EditRequestDialog({
                               </span>
                               <input
                                 type="number"
-                                min={1}
+                                min={0.01}
+                                step={0.01}
                                 max={9999}
                                 value={line.quantity}
                                 onChange={(e) => {
-                                  const val = parseInt(e.target.value, 10) || 1;
+                                  const val = Number(e.target.value);
+                                  if (!Number.isFinite(val)) return;
                                   setSupplyLines((prev) =>
-                                    prev.map((l, i) => (i === idx ? { ...l, quantity: Math.max(1, val) } : l))
+                                    prev.map((l, i) =>
+                                      i === idx
+                                        ? {
+                                            ...l,
+                                            quantity: roundQty(Math.max(0.01, val)),
+                                          }
+                                        : l
+                                    )
+                                  );
+                                }}
+                                onBlur={(e) => {
+                                  const val = Number(e.target.value);
+                                  setSupplyLines((prev) =>
+                                    prev.map((l, i) =>
+                                      i === idx
+                                        ? {
+                                            ...l,
+                                            quantity: roundQty(
+                                              !Number.isFinite(val) || val <= 0
+                                                ? 0.01
+                                                : val
+                                            ),
+                                          }
+                                        : l
+                                    )
                                   );
                                 }}
                                 className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"

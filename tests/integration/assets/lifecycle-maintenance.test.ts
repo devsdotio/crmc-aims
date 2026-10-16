@@ -271,7 +271,9 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
     const codes = lots.map((l) => l.lotCode);
     expect(new Set(codes).size).toBe(codes.length);
     expect(codes.every((c) => LOT_CODE.test(c))).toBe(true);
-    expect(lots.reduce((sum, l) => sum + l.quantityRemaining, 0)).toBe(6);
+    expect(
+      lots.reduce((sum, l) => sum + Number(l.quantityRemaining), 0)
+    ).toBe(6);
   });
 
   it("issues to a department and records an out movement", async () => {

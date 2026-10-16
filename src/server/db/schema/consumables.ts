@@ -2,8 +2,8 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
-  integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -75,10 +75,16 @@ export const consumables = pgTable(
      */
     categoryClass: text("category_class").notNull().default(""),
     unit: text("unit").notNull(),
-    currentQty: integer("current_qty").notNull().default(0),
+    currentQty: numeric("current_qty", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     /** Qty promised to approved supply requests that have not been issued yet. */
-    reservedQty: integer("reserved_qty").notNull().default(0),
-    minThreshold: integer("min_threshold").notNull().default(0),
+    reservedQty: numeric("reserved_qty", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    minThreshold: numeric("min_threshold", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
     location: text("location").notNull(),
     supplier: text("supplier"),
     lastRestocked: timestamp("last_restocked", { withTimezone: true }),

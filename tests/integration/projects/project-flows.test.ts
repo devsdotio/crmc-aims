@@ -231,11 +231,11 @@ describeIntegration("projects milestones / materials / assets", () => {
       (m) =>
         m.direction === "in" &&
         m.reason === "restock" &&
-        m.qty === 3 &&
+        Number(m.qty) === 3 &&
         (m.notes ?? "").toLowerCase().includes("project")
     );
     expect(refund).toBeTruthy();
-    expect(refund!.qty).toBe(3);
+    expect(Number(refund!.qty)).toBe(3);
 
     const asset = await assets.createAsset(
       {

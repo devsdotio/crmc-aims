@@ -26,6 +26,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { roundQty } from "@/lib/qty";
 import { getCategoryStyle } from "@/constants/categories";
 import type {
   BrowseItem,
@@ -1009,9 +1010,12 @@ function StepDetails({
         targetItem?.type === "consumable" && typeof targetItem.currentQty === "number" && targetItem.currentQty > 0
           ? targetItem.currentQty
           : undefined;
-      const clamped = maxAvailable !== undefined
-        ? Math.min(maxAvailable, Math.max(1, quantity))
-        : Math.max(1, quantity);
+      const minQty = 0.01;
+      const clamped = roundQty(
+        maxAvailable !== undefined
+          ? Math.min(maxAvailable, Math.max(minQty, quantity))
+          : Math.max(minQty, quantity)
+      );
       updateBundle(requestType, {
         purposeGroups: bundle.purposeGroups.map((g) =>
           g.id !== groupId
@@ -1608,7 +1612,7 @@ function StepDetails({
                                       line.quantity - 1
                                     )
                                   }
-                                  disabled={line.quantity <= 1}
+                                  disabled={line.quantity <= 0.01}
                                   className="h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text hover:bg-card border border-transparent hover:border-border disabled:opacity-30 cursor-pointer transition-colors"
                                   aria-label={`Decrease quantity for ${item.name}`}
                                 >
@@ -1616,14 +1620,13 @@ function StepDetails({
                                 </button>
                                 <input
                                   type="number"
-                                  min={1}
+                                  min={0.01}
+                                  step={0.01}
                                   max={maxAvailable ?? 99999}
                                   value={line.quantity}
                                   onChange={(e) => {
-                                    const raw = e.target.value;
-                                    if (raw === "") return;
-                                    const val = parseInt(raw, 10);
-                                    if (!isNaN(val)) {
+                                    const val = Number(e.target.value);
+                                    if (Number.isFinite(val)) {
                                       setLineQty(
                                         bundle.requestType,
                                         group.id,
@@ -1633,12 +1636,12 @@ function StepDetails({
                                     }
                                   }}
                                   onBlur={(e) => {
-                                    const val = parseInt(e.target.value, 10);
+                                    const val = Number(e.target.value);
                                     setLineQty(
                                       bundle.requestType,
                                       group.id,
                                       line.itemId,
-                                      isNaN(val) || val < 1 ? 1 : val
+                                      !Number.isFinite(val) || val <= 0 ? 0.01 : val
                                     );
                                   }}
                                   className="w-12 h-6 px-1 text-center text-xs font-mono font-bold tabular-nums bg-bg border border-border/80 rounded text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none select-all"

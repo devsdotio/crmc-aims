@@ -183,9 +183,9 @@ describeIntegration("purchase orders / project delivery intake", () => {
           eq(stockMovements.reason, "issue")
         )
       );
-    expect(moves.some((m) => m.projectId === project.id && m.qty === 2)).toBe(
-      true
-    );
+    expect(
+      moves.some((m) => m.projectId === project.id && Number(m.qty) === 2)
+    ).toBe(true);
 
     const [row] = await getDb()
       .select()

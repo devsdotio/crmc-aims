@@ -16,8 +16,8 @@ import { formatPhp } from "@/components/projects/format-money";
 import { availableQty } from "@/components/consumables/utils";
 import { cn } from "@/lib/utils";
 import {
-  filterUnsignedIntInput,
-  parseUnsignedInt,
+  filterUnsignedDecimalInput,
+  parseUnsignedDecimal,
 } from "@/lib/numeric-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { isInitialStockLot } from "@/types/grouped-purchase-order";
@@ -258,9 +258,9 @@ export function IssueConsumableDialog({
       setError("Select a purchase lot to issue from.");
       return;
     }
-    const qty = parseUnsignedInt(quantity, 0);
-    if (qty < 1) {
-      setError("Quantity must be at least 1.");
+    const qty = parseUnsignedDecimal(quantity, 0);
+    if (qty <= 0) {
+      setError("Quantity must be greater than zero.");
       return;
     }
     if (qty > selectedLot.quantityRemaining) {
@@ -269,7 +269,7 @@ export function IssueConsumableDialog({
       );
       return;
     }
-    if (freeQty < 1) {
+    if (freeQty <= 0) {
       setError(
         (selectedItem.reservedQty ?? 0) > 0
           ? "On-hand stock is reserved for approved supply requests."
@@ -537,10 +537,10 @@ export function IssueConsumableDialog({
             </div>
             <input
               type="text"
-              inputMode="numeric"
+              inputMode="decimal"
               value={quantity}
               onChange={(e) => {
-                const next = filterUnsignedIntInput(e.target.value);
+                const next = filterUnsignedDecimalInput(e.target.value);
                 if (next !== null) setQuantity(next);
               }}
               disabled={!selectedItem || !selectedLot}

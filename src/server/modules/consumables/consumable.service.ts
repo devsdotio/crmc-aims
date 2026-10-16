@@ -50,6 +50,7 @@ import {
   DEFAULT_CONSUMABLE_CLASSIFICATION,
   isConsumableClassification,
 } from "@/lib/consumable-classification";
+import { formatQty, toQty } from "@/lib/qty";
 
 function getStockSeverity(
   currentQty: number,
@@ -60,12 +61,16 @@ function getStockSeverity(
   return "healthy";
 }
 
-function availableQty(row: { currentQty: number; reservedQty?: number | null }): number {
-  return Math.max(0, row.currentQty - (row.reservedQty ?? 0));
+function availableQty(row: {
+  currentQty: string | number;
+  reservedQty?: string | number | null;
+}): number {
+  return Math.max(0, toQty(row.currentQty) - toQty(row.reservedQty));
 }
 
 function toDTO(row: ConsumableRow): ConsumableDTO {
-  const reservedQty = row.reservedQty ?? 0;
+  const currentQty = toQty(row.currentQty);
+  const reservedQty = toQty(row.reservedQty);
   return {
     id: row.id,
     itemCode: row.itemCode,
@@ -76,10 +81,10 @@ function toDTO(row: ConsumableRow): ConsumableDTO {
       : DEFAULT_CONSUMABLE_CLASSIFICATION,
     categoryClass: row.categoryClass || undefined,
     unit: row.unit,
-    currentQty: row.currentQty,
+    currentQty,
     reservedQty,
-    availableQty: availableQty({ currentQty: row.currentQty, reservedQty }),
-    minThreshold: row.minThreshold,
+    availableQty: availableQty({ currentQty, reservedQty }),
+    minThreshold: toQty(row.minThreshold),
     location: row.location,
     supplier: row.supplier ?? undefined,
     lastRestocked: row.lastRestocked
@@ -293,7 +298,7 @@ export class ConsumableService {
       classification: input.classification,
       categoryClass,
       unit: input.unit,
-      minThreshold: input.minThreshold,
+      minThreshold: formatQty(input.minThreshold),
       location: input.location,
       supplier: input.supplier ?? null,
       notes: input.notes ?? null,
@@ -303,7 +308,7 @@ export class ConsumableService {
     if (input.currentQty <= 0) {
       const row = await this.repo.create({
         ...baseRow,
-        currentQty: 0,
+        currentQty: formatQty(0),
         lastRestocked: null,
         history: [],
       });
@@ -339,7 +344,7 @@ export class ConsumableService {
       const row = await this.repo.create(
         {
           ...baseRow,
-          currentQty: 0,
+          currentQty: formatQty(0),
           lastRestocked: null,
           history: [],
         },
@@ -362,7 +367,7 @@ export class ConsumableService {
       const next = await this.repo.update(
         row.id,
         {
-          currentQty: input.currentQty,
+          currentQty: formatQty(input.currentQty),
           lastRestocked: new Date(),
           ...(lot.supplierName ? { supplier: lot.supplierName } : {}),
         },
@@ -471,7 +476,7 @@ export class ConsumableService {
   ): Promise<void> {
     const id = consumableIdSchema.parse(consumableId);
     const row = await this.repo.findById(id, undefined, actor.tenantId);
-    if (!row || row.currentQty <= 0) return;
+    if (!row || toQty(row.currentQty) <= 0) return;
 
     const existing = await this.purchaseLots.list(
       { consumableId: id, itemType: "consumable" },
@@ -483,7 +488,7 @@ export class ConsumableService {
       await this.recordOpeningLot(
         {
           row,
-          quantity: row.currentQty,
+          quantity: toQty(row.currentQty),
           unitCost: "0.00",
           supplierName: row.supplier,
           notes: "Backfilled opening lot for on-hand quantity",
@@ -521,7 +526,7 @@ export class ConsumableService {
         : {}),
       ...(input.unit !== undefined ? { unit: input.unit } : {}),
       ...(input.minThreshold !== undefined
-        ? { minThreshold: input.minThreshold }
+        ? { minThreshold: formatQty(input.minThreshold) }
         : {}),
       ...(input.location !== undefined ? { location: input.location } : {}),
       ...(input.supplier !== undefined ? { supplier: input.supplier } : {}),
@@ -567,7 +572,7 @@ export class ConsumableService {
       const updated = await this.repo.update(
         id,
         {
-          currentQty: existing.currentQty + input.quantity,
+          currentQty: formatQty(toQty(existing.currentQty) + input.quantity),
           lastRestocked: new Date(),
           ...(lot.supplierName ? { supplier: lot.supplierName } : {}),
         },
@@ -680,15 +685,15 @@ export class ConsumableService {
         throw new NotFoundError("Consumable", preview.consumableId);
       }
 
-      if (existing.currentQty < input.quantity) {
+      if (toQty(existing.currentQty) < input.quantity) {
         throw new BadRequestError(
-          `Not on hand for ${existing.itemCode}. Available: ${existing.currentQty} ${existing.unit}. Restock or file a purchase order first.`
+          `Not on hand for ${existing.itemCode}. Available: ${toQty(existing.currentQty)} ${existing.unit}. Restock or file a purchase order first.`
         );
       }
       const freeQty = availableQty(existing);
       if (input.quantity > freeQty) {
         throw new BadRequestError(
-          `Only ${freeQty} ${existing.unit} available to issue for ${existing.itemCode} (${existing.reservedQty ?? 0} reserved for approved supply requests).`
+          `Only ${freeQty} ${existing.unit} available to issue for ${existing.itemCode} (${toQty(existing.reservedQty)} reserved for approved supply requests).`
         );
       }
 
@@ -725,7 +730,7 @@ export class ConsumableService {
       const updated = await this.repo.update(
         existing.id,
         {
-          currentQty: existing.currentQty - input.quantity,
+          currentQty: formatQty(toQty(existing.currentQty) - input.quantity),
         },
         tx
       );
@@ -840,13 +845,13 @@ export class ConsumableService {
       const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
-      const next = existing.currentQty + input.quantityChange;
+      const next = toQty(existing.currentQty) + input.quantityChange;
       if (next < 0) {
         throw new BadRequestError(
-          `Cannot deduct ${Math.abs(input.quantityChange)} ${existing.unit}. Only ${existing.currentQty} ${existing.unit} available in stock.`
+          `Cannot deduct ${Math.abs(input.quantityChange)} ${existing.unit}. Only ${toQty(existing.currentQty)} ${existing.unit} available in stock.`
         );
       }
-      const reservedQty = existing.reservedQty ?? 0;
+      const reservedQty = toQty(existing.reservedQty);
       if (next < reservedQty) {
         throw new BadRequestError(
           `Cannot reduce stock below ${reservedQty} ${existing.unit} reserved for approved supply requests.`
@@ -927,7 +932,7 @@ export class ConsumableService {
 
       const updated = await this.repo.update(
         id,
-        { currentQty: next },
+        { currentQty: formatQty(next) },
         tx
       );
       if (!updated) throw new NotFoundError("Consumable", id);
@@ -984,15 +989,15 @@ export class ConsumableService {
       const existing = await this.repo.findByIdForUpdate(id, tx, actor.tenantId);
       if (!existing) throw new NotFoundError("Consumable", id);
 
-      if (existing.currentQty < input.quantity) {
+      if (toQty(existing.currentQty) < input.quantity) {
         throw new BadRequestError(
-          `Not on hand for ${existing.itemCode}. Available: ${existing.currentQty} ${existing.unit}. Restock first.`
+          `Not on hand for ${existing.itemCode}. Available: ${toQty(existing.currentQty)} ${existing.unit}. Restock first.`
         );
       }
       const freeQty = availableQty(existing);
       if (input.quantity > freeQty) {
         throw new BadRequestError(
-          `Only ${freeQty} ${existing.unit} available to issue for ${existing.itemCode} (${existing.reservedQty ?? 0} reserved for approved supply requests).`
+          `Only ${freeQty} ${existing.unit} available to issue for ${existing.itemCode} (${toQty(existing.reservedQty)} reserved for approved supply requests).`
         );
       }
 
@@ -1040,7 +1045,7 @@ export class ConsumableService {
       const updated = await this.repo.update(
         id,
         {
-          currentQty: existing.currentQty - input.quantity,
+          currentQty: formatQty(toQty(existing.currentQty) - input.quantity),
         },
         tx
       );

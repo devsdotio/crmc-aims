@@ -1,6 +1,5 @@
 import {
   index,
-  integer,
   numeric,
   pgEnum,
   pgTable,
@@ -44,7 +43,7 @@ export const stockMovements = pgTable(
       .notNull()
       .references(() => consumables.id, { onDelete: "restrict" }),
 
-    qty: integer("qty").notNull(),
+    qty: numeric("qty", { precision: 12, scale: 2 }).notNull(),
     direction: stockMovementDirectionEnum("direction").notNull(),
     reason: stockMovementReasonEnum("reason").notNull(),
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { hasPoJustification } from "@/lib/po-purpose";
+import { nonNegativeQtySchema, positiveQtySchema } from "@/lib/qty";
 
 export const purchaseLotItemTypeSchema = z.enum(["consumable", "asset"]);
 
@@ -80,11 +81,11 @@ export const createPurchaseOrderItemSchema = z.object({
   /** Consumables: general category class (Settings consumable_class). */
   categoryClass: z.string().trim().max(120).optional(),
   unit: z.string().trim().optional(),
-  minThreshold: z.number().int().min(0).optional(),
+  minThreshold: nonNegativeQtySchema.optional(),
   location: z.string().trim().optional(),
   assignmentType: z.enum(["borrowable", "assignable"]).optional(),
   model: z.string().trim().optional(),
-  quantity: z.number().int().positive("Quantity must be at least 1."),
+  quantity: positiveQtySchema,
   unitCost: z.union([z.string(), z.number()]),
   purpose: poPurposeRequiredSchema,
   suggestedDealer: z.string().trim().optional(),
@@ -126,6 +127,13 @@ export const createPurchaseOrderSchema = z
           });
         }
       }
+      if (item.itemType === "asset" && !Number.isInteger(item.quantity)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Asset quantity must be a whole number.",
+          path: ["items", index, "quantity"],
+        });
+      }
     });
 
     if (data.projectId) {
@@ -164,7 +172,7 @@ export const updatePurchaseOrderStatusSchema = z
     receiptUrl: z.string().trim().nullable().optional(),
     approvedBy: z.string().trim().max(255).optional(),
     /** Actual qty received on deliver (assets + consumables). Defaults to ordered qty when omitted. */
-    receivedQuantity: z.number().int().positive().optional(),
+    receivedQuantity: positiveQtySchema.optional(),
     /** Required when transitioning to cancelled. */
     cancellationReason: z.string().trim().max(500).optional(),
   })
@@ -212,7 +220,7 @@ export const updatePurchaseOrderSchema = z.object({
   recordedByName: z.string().trim().nullable().optional(),
   /** Editable on non-delivered lines only. */
   itemName: z.string().trim().min(1).max(255).optional(),
-  quantity: z.number().int().positive().optional(),
+  quantity: positiveQtySchema.optional(),
   unitCost: z.union([z.string(), z.number()]).optional(),
 });
 
@@ -223,7 +231,7 @@ export const scanReleaseLotSchema = z
     code: z.string().trim().min(1).optional(),
     /** Preferred when releasing from a known PO line — avoids PO/LOT code ambiguity. */
     lotId: z.string().uuid().optional(),
-    quantity: z.number().int().positive("quantity must be positive."),
+    quantity: positiveQtySchema,
     reason: z.string().trim().max(500).optional(),
     notes: z.string().trim().max(2000).optional(),
     recipientName: z.string().trim().max(255).optional(),

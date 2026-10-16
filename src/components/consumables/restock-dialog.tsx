@@ -23,9 +23,9 @@ import type { Supplier } from "@/types/suppliers";
 import { formatPhp } from "@/components/projects/format-money";
 import {
   filterMoneyInput,
-  filterUnsignedIntInput,
+  filterUnsignedDecimalInput,
   parseMoney,
-  parseUnsignedInt,
+  parseUnsignedDecimal,
 } from "@/lib/numeric-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
@@ -109,7 +109,7 @@ function RestockDialogForm({
   }, [allItems, searchQuery]);
 
   const total = (() => {
-    const qty = parseUnsignedInt(qtyReceived, 0);
+    const qty = parseUnsignedDecimal(qtyReceived, 0);
     const cost = parseMoney(unitCost);
     return qty > 0 && cost !== null && cost >= 0 ? qty * cost : 0;
   })();
@@ -130,7 +130,7 @@ function RestockDialogForm({
       setError("Please select a consumable item to restock.");
       return;
     }
-    const qty = parseUnsignedInt(qtyReceived, 0);
+    const qty = parseUnsignedDecimal(qtyReceived, 0);
     if (qty <= 0) {
       setError("Quantity received must be greater than zero.");
       return;
@@ -464,13 +464,13 @@ function RestockDialogForm({
                     <div>
                       <span className="text-[10px] text-text-secondary block">Adding</span>
                       <span className="font-bold text-status-active-text font-mono">
-                        +{parseUnsignedInt(qtyReceived, 0)} {targetItem.unit}
+                        +{parseUnsignedDecimal(qtyReceived, 0)} {targetItem.unit}
                       </span>
                     </div>
                     <div>
                       <span className="text-[10px] text-text-secondary block">New Total</span>
                       <span className="font-bold text-accent font-mono">
-                        {targetItem.currentQty + parseUnsignedInt(qtyReceived, 0)} {targetItem.unit}
+                        {targetItem.currentQty + parseUnsignedDecimal(qtyReceived, 0)} {targetItem.unit}
                       </span>
                     </div>
                   </div>
@@ -489,10 +489,10 @@ function RestockDialogForm({
                   <input
                     id="qty-received-input"
                     type="text"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     value={qtyReceived}
                     onChange={(e) => {
-                      const next = filterUnsignedIntInput(e.target.value);
+                      const next = filterUnsignedDecimalInput(e.target.value);
                       if (next !== null) {
                         setQtyReceived(next);
                         if (error) setError("");
