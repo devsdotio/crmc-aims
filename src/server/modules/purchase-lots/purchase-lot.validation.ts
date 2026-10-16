@@ -218,10 +218,22 @@ export const updatePurchaseOrderSchema = z.object({
   receiptUrl: z.string().trim().nullable().optional(),
   purchasedOn: z.string().optional(),
   recordedByName: z.string().trim().nullable().optional(),
-  /** Editable on non-delivered lines only. */
+  /** Name/qty: pending → ordered only. Unit cost: any status (incl. delivered / opening). */
   itemName: z.string().trim().min(1).max(255).optional(),
   quantity: positiveQtySchema.optional(),
-  unitCost: z.union([z.string(), z.number()]).optional(),
+  unitCost: z
+    .union([z.string(), z.number()])
+    .optional()
+    .superRefine((value, ctx) => {
+      if (value === undefined) return;
+      const n = typeof value === "number" ? value : Number(value);
+      if (!Number.isFinite(n) || n < 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Unit cost must be a non-negative amount.",
+        });
+      }
+    }),
 });
 
 /** Staff scan / PO "Issue from this lot": release qty from a supplier lot. */

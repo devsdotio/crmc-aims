@@ -264,4 +264,105 @@ describeIntegration("PO lot release → department / project (integration)", () 
     );
     expect(issueMove).toBeTruthy();
   });
+
+  it("corrects a delivered lot unit cost from 0 and propagates to ledger + project charges", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [draft] = await lots.createPurchaseOrder(
+      {
+        poDate: "2026-10-05",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            isNewItem: true,
+            name: "Zero-priced Toner",
+            category: fx.consumableCategory,
+            classification: "supply",
+            unit: "bottle",
+            location: "Store",
+            quantity: 8,
+            unitCost: 0,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+    const delivered = await lots.updatePOStatus(
+      draft.id,
+      { status: "delivered" },
+      fx.actor
+    );
+    expect(Number(delivered.unitCost)).toBe(0);
+    expect(delivered.consumableId).toBeTruthy();
+
+    const project = await projects.create(
+      {
+        name: "Lot Cost Fix Site",
+        description: "Verify zero-cost lot repricing",
+        status: "active",
+      },
+      fx.actor
+    );
+
+    await consumables.releaseFromLot(
+      {
+        lotId: delivered.id,
+        quantity: 2,
+        departmentId: fx.departmentId,
+        recipientName: "Clerk",
+        reason: "Dept issue before cost fix",
+      },
+      fx.actor
+    );
+    await consumables.releaseFromLot(
+      {
+        lotId: delivered.id,
+        quantity: 1.5,
+        projectId: project.id,
+        recipientName: "Foreman",
+        reason: "Project issue before cost fix",
+      },
+      fx.actor
+    );
+
+    const corrected = await lots.updatePurchaseOrder(
+      delivered.id,
+      { unitCost: 45.5 },
+      fx.actor
+    );
+    expect(Number(corrected.unitCost)).toBe(45.5);
+    expect(Number(corrected.totalCost)).toBe(364); // 8 × 45.50
+
+    const ledger = await movements.listByConsumable(
+      delivered.consumableId!,
+      fx.actor.tenantId
+    );
+    const lotMoves = ledger.filter((m) => m.purchaseLotId === delivered.id);
+    expect(lotMoves.length).toBeGreaterThanOrEqual(3); // restock + 2 issues
+    for (const move of lotMoves) {
+      expect(Number(move.unitCost)).toBe(45.5);
+      expect(Number(move.lineTotal)).toBeCloseTo(Number(move.qty) * 45.5, 2);
+    }
+
+    const db = getDb();
+    const expenseRows = await db
+      .select()
+      .from(projectExpenseLines)
+      .where(eq(projectExpenseLines.projectId, project.id));
+    expect(expenseRows.length).toBeGreaterThanOrEqual(1);
+    const charged = expenseRows.find((e) => {
+      const meta = (e.metadata ?? {}) as ProjectExpenseMetadata;
+      return (
+        meta.purchaseLotId === delivered.id ||
+        meta.lotAllocations?.some((a) => a.lotId === delivered.id)
+      );
+    });
+    expect(charged).toBeTruthy();
+    expect(Number(charged!.unitCost)).toBe(45.5);
+    expect(Number(charged!.amount)).toBeCloseTo(1.5 * 45.5, 2);
+  });
 });

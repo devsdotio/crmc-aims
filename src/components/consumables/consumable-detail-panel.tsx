@@ -21,7 +21,10 @@ import {
   StickyNote,
   Printer,
   X,
+  Pencil,
+  Check,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { IndividualConsumablePrintableReport } from "@/components/reports/print/individual/IndividualConsumablePrintableReport";
 import { cn } from "@/lib/utils";
@@ -32,10 +35,14 @@ import { consumableClassificationLabel } from "@/lib/consumable-classification";
 import type { PurchaseLot } from "@/types/purchase-lots";
 import { isInitialStockLot } from "@/types/grouped-purchase-order";
 import { useConsumableQuery } from "@/features/consumables/client/use-consumables";
-import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
+import {
+  usePurchaseLotsQuery,
+  useUpdatePurchaseOrderMutation,
+} from "@/features/purchase-lots/client";
 import { useConsumableMovementsQuery } from "@/features/stock-movements/client";
 import type { StockMovement } from "@/features/stock-movements/client";
 import { formatPhp } from "@/components/projects/format-money";
+import { filterUnsignedDecimalInput } from "@/lib/numeric-input";
 import { StockLevelBar } from "./stock-level-bar";
 import { LotQrCodeDisplay } from "./lot-qr-code-display";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
@@ -141,6 +148,9 @@ export function ConsumableDetailPanel({
   const isBorrower = role === "borrower";
   const [expandedLotId, setExpandedLotId] = useState<string | null>(null);
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+  const [editingLotId, setEditingLotId] = useState<string | null>(null);
+  const [lotCostDraft, setLotCostDraft] = useState("");
+  const updateLotMutation = useUpdatePurchaseOrderMutation();
 
   // List payload omits history for speed — load full record when the panel opens.
   const { data: detailItem, isLoading: detailLoading } = useConsumableQuery(
@@ -455,9 +465,10 @@ export function ConsumableDetailPanel({
             </div>
             {!isBorrower && (
               <p className="text-[11px] text-text-secondary leading-relaxed">
-                Each restock creates a lot with frozen unit cost and supplier.
-                Print the lot QR for shelf tags — staff scan it to release
-                quantity.
+                Each restock creates a lot with supplier and unit cost. Correct a
+                lot&apos;s price later (including from ₱0) — valuation, issues,
+                and project charges update with it. Print the lot QR for shelf
+                tags.
               </p>
             )}
 
@@ -563,6 +574,104 @@ export function ConsumableDetailPanel({
                               }
                               size={128}
                             />
+                          )}
+                          {!isBorrower && (
+                            <div className="rounded-lg border border-border bg-bg-subtle/40 px-3 py-2.5 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-text-secondary">
+                                  Unit cost
+                                </p>
+                                {editingLotId !== lot.id ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingLotId(lot.id);
+                                      setLotCostDraft(
+                                        Number(lot.unitCost).toFixed(2)
+                                      );
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    Edit price
+                                  </button>
+                                ) : null}
+                              </div>
+                              {editingLotId === lot.id ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="relative flex-1">
+                                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-text-secondary">
+                                      ₱
+                                    </span>
+                                    <input
+                                      type="text"
+                                      inputMode="decimal"
+                                      value={lotCostDraft}
+                                      onChange={(e) => {
+                                        const next = filterUnsignedDecimalInput(
+                                          e.target.value
+                                        );
+                                        if (next !== null) setLotCostDraft(next);
+                                      }}
+                                      className="w-full h-9 rounded-lg border border-border bg-card pl-6 pr-3 text-sm text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                      aria-label={`Unit cost for lot ${lot.lotCode}`}
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={updateLotMutation.isPending}
+                                    onClick={async () => {
+                                      const next = Number.parseFloat(
+                                        lotCostDraft.replace(/,/g, "")
+                                      );
+                                      if (!Number.isFinite(next) || next < 0) {
+                                        toast.error(
+                                          "Enter a non-negative unit cost."
+                                        );
+                                        return;
+                                      }
+                                      try {
+                                        await updateLotMutation.mutateAsync({
+                                          id: lot.id,
+                                          payload: { unitCost: next },
+                                        });
+                                        toast.success(
+                                          `Updated ${lot.lotCode} to ${formatPhp(next)}/${displayItem.unit}`
+                                        );
+                                        setEditingLotId(null);
+                                      } catch (err) {
+                                        toast.error(
+                                          err instanceof Error
+                                            ? err.message
+                                            : "Failed to update lot price."
+                                        );
+                                      }
+                                    }}
+                                    className="inline-flex h-9 items-center gap-1 rounded-lg bg-accent px-3 text-xs font-bold text-accent-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={updateLotMutation.isPending}
+                                    onClick={() => setEditingLotId(null)}
+                                    className="inline-flex h-9 items-center rounded-lg border border-border bg-card px-3 text-xs font-semibold text-text-secondary hover:text-text cursor-pointer"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <p className="text-sm font-semibold text-text tabular-nums">
+                                  {formatPhp(Number(lot.unitCost))}
+                                  <span className="text-xs font-normal text-text-secondary">
+                                    {" "}
+                                    / {displayItem.unit}
+                                  </span>
+                                </p>
+                              )}
+                            </div>
                           )}
                           {!depleted && onRelease && (
                             <button

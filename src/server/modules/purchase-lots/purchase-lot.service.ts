@@ -2,12 +2,14 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
+  consumableRequestReleaseAllocations,
   consumables,
   departments,
   projectExpenseLines,
   purchaseLots,
   purchaseOrderDepartments,
   stockMovements,
+  type ProjectExpenseMetadata,
 } from "@/server/db/schema";
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -2262,13 +2264,13 @@ export class PurchaseLotService {
         "approved",
         "ordered",
       ]);
-      const wantsLineEdit =
-        body.itemName !== undefined ||
-        body.quantity !== undefined ||
-        body.unitCost !== undefined;
-      if (wantsLineEdit && !editableStatuses.has(currentMeta.status)) {
+      // Name/qty stay locked after delivery; unit cost may be corrected anytime
+      // (including opening-balance / zero-priced batches) so valuation stays accurate.
+      const wantsStructuralLineEdit =
+        body.itemName !== undefined || body.quantity !== undefined;
+      if (wantsStructuralLineEdit && !editableStatuses.has(currentMeta.status)) {
         throw new BadRequestError(
-          `Line items can only be edited while the purchase order is pending, approved, or ordered (current: ${currentMeta.status.replace(/_/g, " ")}).`
+          `Line name and quantity can only be edited while the purchase order is pending, approved, or ordered (current: ${currentMeta.status.replace(/_/g, " ")}). Unit cost can still be updated.`
         );
       }
 
@@ -2281,6 +2283,9 @@ export class PurchaseLotService {
       const nextTotalCost = formatMoney(
         Number(nextUnitCost) * nextQuantity
       );
+      const costChanged =
+        body.unitCost !== undefined &&
+        formatMoney(lot.unitCost) !== nextUnitCost;
 
       const updated = await this.repo.update(
         lot.id,
@@ -2309,6 +2314,19 @@ export class PurchaseLotService {
         },
         session
       );
+
+      if (costChanged) {
+        await this.cascadeLotUnitCostChange(
+          {
+            lotId: lot.id,
+            assetId: lot.assetId,
+            previousUnitCost: formatMoney(lot.unitCost),
+            nextUnitCost,
+            tenantId: actor.tenantId,
+          },
+          session
+        );
+      }
 
       // Multi-purpose: batch-update purpose on sibling lots by id
       if (body.linePurposes && body.linePurposes.length > 0) {
@@ -2420,6 +2438,11 @@ export class PurchaseLotService {
       }
       if (body.supplierId !== undefined && body.supplierId !== lot.supplierId) {
         updates.push("Supplier changed");
+      }
+      if (costChanged) {
+        updates.push(
+          `Unit cost ${formatMoney(lot.unitCost)} → ${nextUnitCost} (propagated to stock ledger / releases / project charges)`
+        );
       }
       if (body.linePurposes && body.linePurposes.length > 0) {
         updates.push(
@@ -3082,6 +3105,130 @@ export class PurchaseLotService {
     }
 
     return allocations;
+  }
+
+  /**
+   * After a lot unit cost correction, rewrite frozen copies so valuation,
+   * issue history, release accountability, and project spend stay aligned.
+   */
+  private async cascadeLotUnitCostChange(
+    args: {
+      lotId: string;
+      assetId?: string | null;
+      previousUnitCost: string;
+      nextUnitCost: string;
+      tenantId?: string | null;
+    },
+    session: DbSession
+  ): Promise<void> {
+    const { lotId, assetId, nextUnitCost, tenantId } = args;
+    const db = session ?? getDb();
+
+    await db
+      .update(stockMovements)
+      .set({
+        unitCost: nextUnitCost,
+        lineTotal: sql`round((${stockMovements.qty}::numeric * ${nextUnitCost}::numeric), 2)`,
+      })
+      .where(
+        and(
+          eq(stockMovements.purchaseLotId, lotId),
+          byTenantId(stockMovements.tenantId, tenantId)
+        )
+      );
+
+    await db
+      .update(consumableRequestReleaseAllocations)
+      .set({
+        unitCost: nextUnitCost,
+        lineTotal: sql`round((${consumableRequestReleaseAllocations.quantity}::numeric * ${nextUnitCost}::numeric), 2)`,
+      })
+      .where(eq(consumableRequestReleaseAllocations.purchaseLotId, lotId));
+
+    if (assetId) {
+      await db
+        .update(assets)
+        .set({
+          value: nextUnitCost,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(assets.id, assetId),
+            byTenantId(assets.tenantId, tenantId)
+          )
+        );
+    }
+
+    const expenseConditions = [
+      sql`(
+        ${projectExpenseLines.metadata}->>'purchaseLotId' = ${lotId}
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            coalesce(${projectExpenseLines.metadata}->'lotAllocations', '[]'::jsonb)
+          ) AS elem
+          WHERE elem->>'lotId' = ${lotId}
+        )
+      )`,
+    ];
+    if (tenantId) {
+      expenseConditions.push(eq(projectExpenseLines.tenantId, tenantId));
+    }
+
+    const expenseRows = await db
+      .select()
+      .from(projectExpenseLines)
+      .where(and(...expenseConditions));
+
+    for (const expense of expenseRows) {
+      const meta = (expense.metadata ?? {}) as ProjectExpenseMetadata;
+      const allocations = Array.isArray(meta.lotAllocations)
+        ? meta.lotAllocations.map((a) => {
+            if (a.lotId !== lotId) return a;
+            const qty = Number(a.quantity) || 0;
+            const total = formatMoney(qty * Number(nextUnitCost));
+            return {
+              ...a,
+              unitCost: nextUnitCost,
+              total,
+              uncosted: Number(nextUnitCost) <= 0 ? true : undefined,
+            };
+          })
+        : meta.lotAllocations;
+
+      let nextAmount = expense.amount;
+      let nextUnit = expense.unitCost;
+      if (allocations && allocations.length > 0) {
+        const sum = allocations.reduce(
+          (acc, a) => acc + (Number(a.total) || 0),
+          0
+        );
+        nextAmount = formatMoney(sum);
+        const qty = Number(expense.quantity) || 0;
+        nextUnit =
+          qty > 0 ? formatMoney(sum / qty) : nextUnitCost;
+      } else if (meta.purchaseLotId === lotId) {
+        const qty = Number(expense.quantity) || 0;
+        nextUnit = nextUnitCost;
+        nextAmount = formatMoney(qty * Number(nextUnitCost));
+      }
+
+      const nextMeta: ProjectExpenseMetadata = {
+        ...meta,
+        ...(allocations ? { lotAllocations: allocations } : {}),
+      };
+
+      await db
+        .update(projectExpenseLines)
+        .set({
+          amount: nextAmount,
+          unitCost: nextUnit,
+          metadata: nextMeta,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectExpenseLines.id, expense.id));
+    }
   }
 
   /**
