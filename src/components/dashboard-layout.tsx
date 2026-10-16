@@ -58,6 +58,11 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const queryClient = useQueryClient();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  // Close mobile sidebar on route navigation
+  useEffect(() => {
+    setIsMobileOpen(false);
+  }, [pathname]);
+
   // Defer shell metrics until after page data starts — frees the DB pool for
   // /api/assets, /api/consumables, etc. (sidebar badges are non-critical).
   const [shellReady, setShellReady] = useState(false);

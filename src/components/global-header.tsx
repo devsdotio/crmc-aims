@@ -248,8 +248,13 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     subtitle: "Active borrowings, custody overview, and department requests",
     category: "Overview",
   },
+  "/borrower-db/catalog": {
+    title: "Browse Catalog",
+    subtitle: "Explore available equipment and stock consumables",
+    category: "Request",
+  },
   "/borrower-db/assets": {
-    title: "Inventory",
+    title: "Department Assets",
     subtitle: "Assets currently borrowed or assigned to your department",
     category: "Operations",
   },
@@ -264,9 +269,9 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     category: "Operations",
   },
   "/borrower-db/inventory": {
-    title: "Assets",
+    title: "Department Assets",
     subtitle: "Assets currently borrowed or assigned to your department",
-    category: "Overview",
+    category: "Operations",
   },
   "/borrower-db/requests": {
     title: "My Requests",

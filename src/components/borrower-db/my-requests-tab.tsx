@@ -6,6 +6,7 @@ import { Search, ChevronLeft, ChevronRight, ClipboardCheck, Inbox } from "lucide
 import { cn } from "@/lib/utils";
 import { MyRequestItem, MyRequestItemSkeleton } from "./my-request-item";
 import { CancelRequestDialog } from "./cancel-request-dialog";
+import { EditRequestDialog } from "./edit-request-dialog";
 import { RequestDetailSheet } from "./request-detail-sheet";
 import type { PortalBorrowRequest, RequestStatusFilter } from "./types";
 import {
@@ -15,7 +16,11 @@ import {
 } from "./map-portal-request";
 
 import { useBorrowRequests, useCancelBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
+import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-keys";
 import { useConsumableRequests, useCancelConsumableRequestMutation } from "@/features/consumable-requests/client";
+import { consumableRequestQueryKeys } from "@/features/consumable-requests/client/query-keys";
+import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/providers/toast-context";
 
 const STATUS_FILTERS: {
@@ -86,7 +91,9 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<PortalBorrowRequest | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<PortalBorrowRequest | null>(null);
+  const [editingRequest, setEditingRequest] = useState<PortalBorrowRequest | null>(null);
   const [page, setPage] = useState(1);
+  const queryClient = useQueryClient();
 
   const fetchAssets = kind !== "supply";
   const fetchSupplies = kind !== "borrow" && kind !== "assign";
@@ -298,6 +305,8 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
               onViewDetails={(r) => setSelectedRequest(r as any)}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               onCancel={(r) => setCancelTarget(r as any)}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onEdit={(r) => setEditingRequest(r as any)}
             />
           ))
         )}
@@ -350,6 +359,24 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
         />
       )}
 
+      {/* Edit Request Dialog */}
+      {editingRequest && (
+        <EditRequestDialog
+          request={editingRequest}
+          open={Boolean(editingRequest)}
+          onOpenChange={(open) => {
+            if (!open) setEditingRequest(null);
+          }}
+          onSuccess={() => {
+            setEditingRequest(null);
+            setSelectedRequest(null);
+            void queryClient.invalidateQueries({ queryKey: borrowRequestQueryKeys.all });
+            void queryClient.invalidateQueries({ queryKey: consumableRequestQueryKeys.all });
+            void queryClient.invalidateQueries({ queryKey: dashboardQueryKeys.all });
+          }}
+        />
+      )}
+
       {/* Request Detail Sheet */}
       {selectedRequest && (
         <RequestDetailSheet
@@ -361,6 +388,9 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
           onCancel={(req) => {
             setSelectedRequest(null);
             setCancelTarget(req);
+          }}
+          onEdit={(req) => {
+            setEditingRequest(req);
           }}
         />
       )}

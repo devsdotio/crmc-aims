@@ -12,6 +12,7 @@ import {
   Clock,
   ClipboardCheck,
   Layers,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OverdueBadge } from "@/components/ui/overdue-badge";
@@ -23,6 +24,7 @@ import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { calendarDaysUntil } from "@/lib/format-relative-time";
 import { AssetViewToggle } from "@/components/assets/asset-view-toggle";
 import type { ViewMode } from "@/types/assets";
+import { useBorrowerPortal } from "@/components/borrower-db/context";
 
 type CustodyTab = "borrowed" | "assigned";
 
@@ -394,6 +396,7 @@ function SectionEmpty({
   kind: CustodyTab;
   searching: boolean;
 }) {
+  const { openWizard } = useBorrowerPortal();
   const copy =
     kind === "borrowed"
       ? {
@@ -401,12 +404,16 @@ function SectionEmpty({
           body: searching
             ? "No temporary loans match your search."
             : "Due-dated loans released to your department will show up here.",
+          cta: "Request Equipment",
+          action: () => openWizard(null, "borrow"),
         }
       : {
           title: "No assigned equipment",
           body: searching
             ? "No long-term assignments match your search."
             : "Assignable units issued to your department (without a due date) will show up here.",
+          cta: "Request Assignment",
+          action: () => openWizard(null, "assign"),
         };
 
   return (
@@ -418,6 +425,16 @@ function SectionEmpty({
       <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
         {copy.body}
       </p>
+      {!searching && (
+        <button
+          type="button"
+          onClick={copy.action}
+          className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity shadow-xs cursor-pointer"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {copy.cta}
+        </button>
+      )}
     </div>
   );
 }
@@ -506,7 +523,7 @@ export function DepartmentInventoryView() {
       <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-text">Assets</h1>
+            <h1 className="text-xl font-bold tracking-tight text-text">Department Assets</h1>
             <p className="text-xs text-text-secondary mt-0.5 max-w-xl leading-relaxed">
               Assets currently held by{" "}
               <span className="font-semibold text-text">{deptLabel}</span>.
