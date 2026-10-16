@@ -165,14 +165,13 @@ function MilestoneStepIndicator({
   const onlySupply =
     hasConsumable &&
     !hasAsset &&
-    selectedTypes.every((t) => t === "supply" || !isConsumableWizardType(t)) &&
-    selectedTypes.includes("supply") &&
-    !selectedTypes.includes("material");
+    selectedTypes.some((t) => t === "supply") &&
+    !selectedTypes.some((t) => t === "material");
   const onlyMaterial =
     hasConsumable &&
     !hasAsset &&
-    selectedTypes.includes("material") &&
-    !selectedTypes.includes("supply");
+    selectedTypes.some((t) => t === "material") &&
+    !selectedTypes.some((t) => t === "supply");
   const selectLabel =
     hasConsumable && hasAsset
       ? "Select Items"
@@ -496,6 +495,14 @@ function StepType({
 
 // ─── Step 2: Select available equipment units ────────────────────────────────
 
+type WizardEntryType =
+  | "borrow"
+  | "assign"
+  | "requisition"
+  | "supply"
+  | "material"
+  | null;
+
 function StepSelect({
   value,
   onChange,
@@ -503,7 +510,7 @@ function StepSelect({
 }: {
   value: BrowseItem[];
   onChange: (items: BrowseItem[]) => void;
-  initialType?: "borrow" | "assign" | "requisition" | null;
+  initialType?: WizardEntryType;
   requestType?: WizardRequestType | null;
 }) {
   const [search, setSearch] = useState("");
@@ -2063,14 +2070,6 @@ function StepReview({
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────
 
-type WizardEntryType =
-  | "borrow"
-  | "assign"
-  | "requisition"
-  | "supply"
-  | "material"
-  | null;
-
 function resolveInitialWizardTypes(
   initialType: WizardEntryType | undefined,
   prefilledItems?: BrowseItem[]
@@ -2423,9 +2422,7 @@ export function NewBorrowRequestWizard({
             (initialType === "assign" && bundle.requestType === "assignable") ||
             (initialType === "borrow" && bundle.requestType === "borrowable") ||
             (initialType === "supply" && bundle.requestType === "supply") ||
-            (initialType === "material" && bundle.requestType === "material") ||
-            (initialType === "requisition" &&
-              isConsumableWizardType(bundle.requestType));
+            (initialType === "material" && bundle.requestType === "material");
           if (!matchesLock) continue;
         }
         const itemsById = new Map(

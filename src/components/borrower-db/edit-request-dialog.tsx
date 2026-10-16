@@ -35,6 +35,13 @@ interface EditRequestDialogProps {
   onSuccess?: () => void;
 }
 
+function requestPortalKind(
+  request: PortalBorrowRequest | BorrowRequest | null | undefined
+): "supply" | "material" | undefined {
+  if (!request || !("portalKind" in request)) return undefined;
+  return request.portalKind;
+}
+
 type EditStep = "items" | "audit";
 
 const STEPS: { key: EditStep; label: string; stepNumber: number }[] = [
@@ -63,14 +70,7 @@ export function EditRequestDialog({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [supplyLines, setSupplyLines] = useState<any[]>([]);
 
-  const editClassification =
-    request && "portalKind" in request
-      ? request.portalKind === "material"
-        ? ("material" as const)
-        : request.portalKind === "supply"
-          ? ("supply" as const)
-          : undefined
-      : undefined;
+  const editClassification = requestPortalKind(request);
   const { data: consumableData } = useConsumableCatalogQuery({
     catalog: true,
     classification: editClassification,
@@ -274,7 +274,7 @@ export function EditRequestDialog({
       if (isSupply) {
         if (supplyLines.length === 0) {
           setErrorMsg(
-            request?.portalKind === "material"
+            requestPortalKind(request) === "material"
               ? "At least one materials line is required."
               : "At least one supplies line is required."
           );
@@ -362,7 +362,7 @@ export function EditRequestDialog({
           }
         }
         const kindLabel =
-          "portalKind" in request && request.portalKind === "material"
+          requestPortalKind(request) === "material"
             ? "Materials"
             : "Supplies";
         await updateSupplyMutation.mutateAsync({
@@ -685,7 +685,7 @@ export function EditRequestDialog({
                     <Package className="h-4 w-4 text-accent" />
                     <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                       {isSupply
-                        ? request?.portalKind === "material"
+                        ? requestPortalKind(request) === "material"
                           ? "Materials Lines"
                           : "Supplies Lines"
                         : "Requested Asset Items"}
@@ -772,17 +772,17 @@ export function EditRequestDialog({
                               }}
                               options={supplyOptions}
                               placeholder={
-                                request?.portalKind === "material"
+                                requestPortalKind(request) === "material"
                                   ? "Select material…"
                                   : "Select supply…"
                               }
                               clearLabel={
-                                request?.portalKind === "material"
+                                requestPortalKind(request) === "material"
                                   ? "Select material…"
                                   : "Select supply…"
                               }
                               emptyMessage={
-                                request?.portalKind === "material"
+                                requestPortalKind(request) === "material"
                                   ? "No materials available"
                                   : "No supplies available"
                               }
@@ -1023,7 +1023,7 @@ export function EditRequestDialog({
                       {isAssignable
                         ? assignedToName.trim() || "—"
                         : isSupply
-                          ? request?.portalKind === "material"
+                          ? requestPortalKind(request) === "material"
                             ? "Materials"
                             : "Supplies"
                           : ("requestType" in request ? request.requestType : null) ?? "Borrow"}
@@ -1032,7 +1032,7 @@ export function EditRequestDialog({
                       {isAssignable
                         ? "Asset holder"
                         : isSupply
-                          ? request?.portalKind === "material"
+                          ? requestPortalKind(request) === "material"
                             ? "Materials Requisition"
                             : "Supplies Requisition"
                           : "Asset Request"}
