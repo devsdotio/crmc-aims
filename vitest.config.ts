@@ -6,8 +6,8 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./tests/setup/env.ts"],
     include: ["tests/**/*.test.ts"],
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    testTimeout: 120_000,
+    hookTimeout: 180_000,
     fileParallelism: false,
     // Shared DATABASE_URL_TEST cannot safely truncate/seed concurrently.
     maxWorkers: 1,

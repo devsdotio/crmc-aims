@@ -105,7 +105,7 @@ export async function resetTestDatabase(): Promise<void> {
   // Remote poolers can drop or time out mid-TRUNCATE (~21s). Retry and raise
   // statement_timeout inside a transaction so SET LOCAL applies on that connection.
   let lastError: unknown;
-  for (let attempt = 1; attempt <= 5; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     try {
       await db.transaction(async (tx) => {
         await tx.execute(sql.raw(`SET LOCAL statement_timeout = '120s'`));
@@ -118,11 +118,11 @@ export async function resetTestDatabase(): Promise<void> {
       lastError = error;
       const message = collectErrorText(error);
       const retryable =
-        /ETIMEDOUT|ECONNRESET|ECONNREFUSED|CONNECT_TIMEOUT|connection|timeout|canceling statement|deadlock|40P01|57014/i.test(
+        /ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|CONNECT_TIMEOUT|connection|timeout|canceling statement|deadlock|40P01|57014|getaddrinfo/i.test(
           message
         ) || message.trim().length === 0;
-      if (!retryable || attempt === 5) throw error;
-      await new Promise((r) => setTimeout(r, 1500 * attempt));
+      if (!retryable || attempt === 8) throw error;
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
     }
   }
   if (lastError) throw lastError;

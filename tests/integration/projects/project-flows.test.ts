@@ -107,7 +107,9 @@ describeIntegration("projects milestones / materials / assets", () => {
     fx = await seedCoreFixtures();
   });
 
-  it("CRUD project + milestone; inventory material refunds on remove; asset assign/return", async () => {
+  it(
+    "CRUD project + milestone; inventory material refunds on remove; asset assign/return",
+    async () => {
     const project = await projects.create(
       {
         name: "Campus Outreach",
@@ -281,5 +283,7 @@ describeIntegration("projects milestones / materials / assets", () => {
       fx.actor.tenantId
     );
     expect(updated.status).toBe("completed");
-  });
+  },
+    180_000
+  );
 });

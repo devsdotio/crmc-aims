@@ -221,7 +221,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(item).toBeTruthy();
     expect(item.id).toBe(delivered.consumableId);
     expect(item.name).toBe("PO Bond Paper Ream");
-    expect(item.currentQty).toBe(5);
+    expect(Number(item.currentQty)).toBe(5);
     expect(item.classification).toBe("supply");
     expect(item.unit).toBe("ream");
     expect(item.category).toBe(fx.consumableCategory);
@@ -234,8 +234,8 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       .where(eq(purchaseLots.tenantId, fx.actor.tenantId));
     expect(lots).toHaveLength(1);
     expect(lots[0].consumableId).toBe(item.id);
-    expect(lots[0].quantity).toBe(5);
-    expect(lots[0].quantityRemaining).toBe(5);
+    expect(Number(lots[0].quantity)).toBe(5);
+    expect(Number(lots[0].quantityRemaining)).toBe(5);
     expect(Number(lots[0].unitCost)).toBe(250);
 
     const movements = await db
@@ -246,7 +246,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       (m) => m.direction === "in" && m.reason === "restock"
     );
     expect(restock).toBeTruthy();
-    expect(restock!.qty).toBe(5);
+    expect(Number(restock!.qty)).toBe(5);
   });
 
   it("delivers a warehouse material PO into materials inventory with stock movement", async () => {
@@ -300,7 +300,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     expect(item.name).toBe("PO Cement Bags");
     expect(item.classification).toBe("material");
     expect(item.unit).toBe("bag");
-    expect(item.currentQty).toBe(12);
+    expect(Number(item.currentQty)).toBe(12);
 
     const movements = await db
       .select()
@@ -310,7 +310,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       (m) => m.direction === "in" && m.reason === "restock"
     );
     expect(restock).toBeTruthy();
-    expect(restock!.qty).toBe(12);
+    expect(Number(restock!.qty)).toBe(12);
   });
 
   it("intakes actual received quantity for a supply PO (partial delivery)", async () => {
@@ -358,7 +358,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       .select()
       .from(consumables)
       .where(eq(consumables.id, delivered.consumableId!));
-    expect(item.currentQty).toBe(7);
+    expect(Number(item.currentQty)).toBe(7);
     expect(item.unit).toBe("cart");
 
     const movements = await db
@@ -369,7 +369,7 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
       (m) => m.direction === "in" && m.reason === "restock"
     );
     expect(restock).toBeTruthy();
-    expect(restock!.qty).toBe(7);
+    expect(Number(restock!.qty)).toBe(7);
     expect(restock!.notes).toMatch(/received 7 of 10/i);
   });
 

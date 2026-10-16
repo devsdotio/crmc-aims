@@ -102,9 +102,9 @@ describeIntegration("purchase orders / project delivery intake", () => {
       (m) => m.direction === "out" && m.reason === "issue"
     );
     expect(restock).toBeTruthy();
-    expect(restock!.qty).toBe(4);
+    expect(Number(restock!.qty)).toBe(4);
     expect(issue).toBeTruthy();
-    expect(issue!.qty).toBe(4);
+    expect(Number(issue!.qty)).toBe(4);
     expect(issue!.projectId).toBe(project.id);
     expect(issue!.notes).toMatch(/Direct project delivery|Gym Renovation|PO/i);
 

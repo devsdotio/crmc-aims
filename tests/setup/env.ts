@@ -93,33 +93,41 @@ export async function probeTestDatabaseReachability(): Promise<void> {
     return;
   }
 
-  try {
-    await lookup(host);
-  } catch (err) {
-    const code =
-      err && typeof err === "object" && "code" in err
-        ? String((err as { code?: string }).code)
-        : "unknown";
-    const g = globalThis as unknown as { __crmcTestDbUnreachableLogged?: boolean };
-    if (!g.__crmcTestDbUnreachableLogged) {
-      g.__crmcTestDbUnreachableLogged = true;
-      console.error(
-        [
-          `[tests] DATABASE_URL_TEST host “${host}” is unreachable (${code}).`,
-          "Integration suites will skip so lint/typecheck/unit can still pass.",
-          "Fix: in Supabase → Project Settings → Database, copy the **Session pooler**",
-          "URI (host like *.pooler.supabase.com) into DATABASE_URL_TEST — direct",
-          "db.*.supabase.co is often IPv6-only and fails on Windows Node.",
-          "Then: npm run db:migrate:test && npm run test:integration",
-        ].join("\n")
-      );
+  let lastCode = "unknown";
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await lookup(host);
+      return;
+    } catch (err) {
+      lastCode =
+        err && typeof err === "object" && "code" in err
+          ? String((err as { code?: string }).code)
+          : "unknown";
+      if (attempt < 4) {
+        await new Promise((r) => setTimeout(r, 750 * attempt));
+      }
     }
-    hasTestDatabase = false;
-    // Prevent getDb() from hammering a dead host if something imports it anyway.
-    process.env.DATABASE_URL_TEST = "";
-    if (process.env.DATABASE_URL === testUrl) {
-      delete process.env.DATABASE_URL;
-    }
+  }
+
+  const g = globalThis as unknown as { __crmcTestDbUnreachableLogged?: boolean };
+  if (!g.__crmcTestDbUnreachableLogged) {
+    g.__crmcTestDbUnreachableLogged = true;
+    console.error(
+      [
+        `[tests] DATABASE_URL_TEST host “${host}” is unreachable (${lastCode}).`,
+        "Integration suites will skip so lint/typecheck/unit can still pass.",
+        "Fix: in Supabase → Project Settings → Database, copy the **Session pooler**",
+        "URI (host like *.pooler.supabase.com) into DATABASE_URL_TEST — direct",
+        "db.*.supabase.co is often IPv6-only and fails on Windows Node.",
+        "Then: npm run db:migrate:test && npm run test:integration",
+      ].join("\n")
+    );
+  }
+  hasTestDatabase = false;
+  // Prevent getDb() from hammering a dead host if something imports it anyway.
+  process.env.DATABASE_URL_TEST = "";
+  if (process.env.DATABASE_URL === testUrl) {
+    delete process.env.DATABASE_URL;
   }
 }
 
