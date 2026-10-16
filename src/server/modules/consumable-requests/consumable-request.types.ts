@@ -19,6 +19,10 @@ export type ConsumableRequestLineDTO = {
   category: string;
   unit: string;
   quantityRequested: number;
+  /** Sum of release allocations for this line (0 until first issue). */
+  quantityReleased: number;
+  /** quantityRequested − quantityReleased (what can still be issued). */
+  quantityRemaining: number;
   purpose: string;
   notes?: string;
 };

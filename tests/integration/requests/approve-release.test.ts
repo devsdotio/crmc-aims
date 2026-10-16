@@ -465,4 +465,167 @@ describeIntegration("requests approve → release (integration)", () => {
     expect(issue!.departmentId).toBe(fx.departmentId);
     expect(issue!.requestId).toBe(released.id);
   });
+
+  it("partially issues an approved consumable request then finishes the remainder", async () => {
+    const item = await consumables.create(
+      {
+        name: "Partial Issue Paper",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "ream",
+        currentQty: 20,
+        unitCost: 110,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+
+    const pending = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: item.id,
+            quantity: 10,
+            purpose: "Staggered pickup",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    const lineId = pending.lines[0]!.id;
+
+    const approved = await consumableRequests.approve(
+      pending.id,
+      { note: "Reserve all 10" },
+      fx.actor
+    );
+    expect(approved.status).toBe("approved");
+    expect(approved.lines[0]?.quantityReleased).toBe(0);
+    expect(approved.lines[0]?.quantityRemaining).toBe(10);
+
+    const availableLots = await lots.list(
+      { consumableId: item.id },
+      fx.actor.tenantId
+    );
+    const lotId = availableLots[0]!.id;
+
+    const partial = await consumableRequests.release(
+      approved.id,
+      {
+        receivedBy: "First Pickup",
+        note: "Took what fits in the cart",
+        lines: [
+          {
+            lineId,
+            allocations: [{ lotId, quantity: 4 }],
+          },
+        ],
+      },
+      fx.actor
+    );
+    expect(partial.status).toBe("approved");
+    expect(partial.lines[0]?.quantityReleased).toBe(4);
+    expect(partial.lines[0]?.quantityRemaining).toBe(6);
+    expect(partial.allocations).toHaveLength(1);
+    expect(partial.allocations[0]?.quantity).toBe(4);
+
+    const mid = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(mid.currentQty).toBe(16);
+    expect(mid.reservedQty).toBe(6);
+    expect(mid.availableQty).toBe(10);
+
+    await expect(
+      consumableRequests.undoApproval(partial.id, {}, fx.actor)
+    ).rejects.toThrow(/already been issued/i);
+
+    const finished = await consumableRequests.release(
+      partial.id,
+      {
+        receivedBy: "Second Pickup",
+        lines: [
+          {
+            lineId,
+            allocations: [{ lotId, quantity: 6 }],
+          },
+        ],
+      },
+      fx.actor
+    );
+    expect(finished.status).toBe("released");
+    expect(finished.lines[0]?.quantityReleased).toBe(10);
+    expect(finished.lines[0]?.quantityRemaining).toBe(0);
+    expect(finished.allocations).toHaveLength(2);
+
+    const after = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(after.currentQty).toBe(10);
+    expect(after.reservedQty).toBe(0);
+    expect(after.availableQty).toBe(10);
+
+    const lotsAfter = await lots.list(
+      { consumableId: item.id },
+      fx.actor.tenantId
+    );
+    expect(lotsAfter[0]!.quantityRemaining).toBe(10);
+  });
+
+  it("rejects over-issuing beyond remaining approved quantity", async () => {
+    const item = await consumables.create(
+      {
+        name: "Over Issue Guard",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "pcs",
+        currentQty: 15,
+        unitCost: 20,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    const pending = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: item.id,
+            quantity: 5,
+            purpose: "Guard test",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    const approved = await consumableRequests.approve(
+      pending.id,
+      {},
+      fx.actor
+    );
+    const lotId = (
+      await lots.list({ consumableId: item.id }, fx.actor.tenantId)
+    )[0]!.id;
+
+    await expect(
+      consumableRequests.release(
+        approved.id,
+        {
+          receivedBy: "Clerk",
+          lines: [
+            {
+              lineId: pending.lines[0]!.id,
+              allocations: [{ lotId, quantity: 6 }],
+            },
+          ],
+        },
+        fx.actor
+      )
+    ).rejects.toThrow(/remains to issue|only .* remains/i);
+  });
 });

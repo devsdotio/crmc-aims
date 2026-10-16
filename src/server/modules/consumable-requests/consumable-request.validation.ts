@@ -110,16 +110,16 @@ const releaseLineSchema = z.object({
   allocations: z.array(lotAllocationSchema).min(1, "Select a lot for this line."),
 });
 
-export const releaseConsumableRequestSchema = z
-  .object({
-    note: z.string().trim().max(1000).optional(),
-    receivedBy: z
-      .string()
-      .trim()
-      .min(1, "Name of person who received the supplies is required.")
-      .max(255),
-    lines: z.array(releaseLineSchema).min(1),
-  });
+/** One or more lines to issue now (partial or full). Omitted lines stay pending. */
+export const releaseConsumableRequestSchema = z.object({
+  note: z.string().trim().max(1000).optional(),
+  receivedBy: z
+    .string()
+    .trim()
+    .min(1, "Name of person who received the supplies is required.")
+    .max(255),
+  lines: z.array(releaseLineSchema).min(1),
+});
 
 export const updateConsumableRequestSchema = z
   .object({

@@ -253,7 +253,12 @@ export function SupplyRequestDetailPanel({
                       </div>
                       <div className="flex items-center gap-3 mt-0.5 text-xs text-text-secondary">
                         <span className="font-mono">{line.itemCode}</span>
-                        <span className="font-semibold text-text">Qty: {line.quantityRequested} {line.unit || "pcs"}</span>
+                        <span className="font-semibold text-text">
+                          Qty: {line.quantityRequested} {line.unit || "pcs"}
+                          {(line.quantityReleased ?? 0) > 0
+                            ? ` · Issued ${line.quantityReleased} · Left ${line.quantityRemaining ?? Math.max(0, line.quantityRequested - (line.quantityReleased ?? 0))}`
+                            : ""}
+                        </span>
                       </div>
                       {line.notes && <p className="text-xs text-text-secondary mt-1 italic">{line.notes}</p>}
                     </div>

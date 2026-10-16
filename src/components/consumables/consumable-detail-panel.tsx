@@ -24,11 +24,10 @@ import {
   Pencil,
   Check,
 } from "lucide-react";
-import { toast } from "sonner";
-
 import { IndividualConsumablePrintableReport } from "@/components/reports/print/individual/IndividualConsumablePrintableReport";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/providers/loading-context";
+import { useToast } from "@/components/providers/toast-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import type { ConsumableItem } from "@/types/inventory";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
@@ -143,6 +142,7 @@ export function ConsumableDetailPanel({
   onDelete,
 }: ConsumableDetailPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const toast = useToast();
   const { getCategoryStyle } = useCategoryStyleMap();
   const { role } = useAssetOperator();
   const isBorrower = role === "borrower";
