@@ -32,6 +32,7 @@ import {
   Wallet,
   ChevronDown,
   Bug,
+  Search,
 } from "lucide-react";
 import { performSignOut } from "@/lib/auth/sign-out-client";
 import { TextWeightToggle } from "@/components/text-weight-toggle";
@@ -235,6 +236,12 @@ export default function Sidebar({
       label: "Request",
       items: [
         {
+          name: "Browse Catalog",
+          href: "/borrower-db/catalog",
+          icon: Search,
+          roles: ["borrower"],
+        },
+        {
           name: "Assign Request",
           href: "/borrower-db/requests/assignment",
           icon: ClipboardList,
@@ -270,7 +277,7 @@ export default function Sidebar({
           roles: ["admin", "staff"],
         },
         {
-          name: "Assets",
+          name: "Department Assets",
           href: "/borrower-db/inventory",
           icon: Package,
           roles: ["borrower"],

@@ -1003,7 +1003,15 @@ function StepDetails({
     ) => {
       const bundle = values.typeBundles.find((b) => b.requestType === requestType);
       if (!bundle) return;
-      const clamped = Math.max(1, quantity);
+      const targetItem = bundle.selectedItems.find((i) => i.id === itemId);
+      if (targetItem?.type === "asset") return; // Unique serialized assets are strictly single unit
+      const maxAvailable =
+        targetItem?.type === "consumable" && typeof targetItem.currentQty === "number" && targetItem.currentQty > 0
+          ? targetItem.currentQty
+          : undefined;
+      const clamped = maxAvailable !== undefined
+        ? Math.min(maxAvailable, Math.max(1, quantity))
+        : Math.max(1, quantity);
       updateBundle(requestType, {
         purposeGroups: bundle.purposeGroups.map((g) =>
           g.id !== groupId
@@ -1561,6 +1569,11 @@ function StepDetails({
                         if (!item) return null;
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const catMeta = getCategoryStyle(item.category as any);
+                        const isAsset = item.type === "asset";
+                        const maxAvailable =
+                          item.type === "consumable" && typeof item.currentQty === "number" && item.currentQty > 0
+                            ? item.currentQty
+                            : undefined;
                         return (
                           <div
                             key={line.itemId}
@@ -1569,45 +1582,86 @@ function StepDetails({
                             <Tag
                               className={cn("h-3 w-3 shrink-0", catMeta.text)}
                             />
-                            <p className="text-xs font-semibold text-text truncate flex-1 min-w-0">
-                              {item.name}
-                            </p>
-                            <div className="flex items-center rounded-md border border-border bg-bg-subtle p-0.5 shrink-0">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setLineQty(
-                                    bundle.requestType,
-                                    group.id,
-                                    line.itemId,
-                                    line.quantity - 1
-                                  )
-                                }
-                                disabled={line.quantity <= 1}
-                                className="h-5 w-5 rounded flex items-center justify-center text-text-secondary disabled:opacity-30"
-                                aria-label={`Decrease quantity for ${item.name}`}
-                              >
-                                <Minus className="h-3 w-3" />
-                              </button>
-                              <span className="min-w-6 px-0.5 text-center text-xs font-bold">
-                                {line.quantity}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setLineQty(
-                                    bundle.requestType,
-                                    group.id,
-                                    line.itemId,
-                                    line.quantity + 1
-                                  )
-                                }
-                                className="h-5 w-5 rounded flex items-center justify-center text-text-secondary"
-                                aria-label={`Increase quantity for ${item.name}`}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </button>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-text truncate">
+                                {item.name}
+                              </p>
+                              {item.type === "consumable" && item.currentQty !== undefined && (
+                                <p className="text-[10px] text-text-secondary truncate">
+                                  Stock: {item.currentQty} {item.unit || "units"}
+                                </p>
+                              )}
                             </div>
+                            {isAsset ? (
+                              <span className="text-[10px] font-bold text-text-secondary px-2 py-0.5 rounded border border-border bg-bg-subtle shrink-0">
+                                1 unit
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-1 rounded-md border border-border bg-bg-subtle p-0.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLineQty(
+                                      bundle.requestType,
+                                      group.id,
+                                      line.itemId,
+                                      line.quantity - 1
+                                    )
+                                  }
+                                  disabled={line.quantity <= 1}
+                                  className="h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text hover:bg-card border border-transparent hover:border-border disabled:opacity-30 cursor-pointer transition-colors"
+                                  aria-label={`Decrease quantity for ${item.name}`}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={maxAvailable ?? 99999}
+                                  value={line.quantity}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    if (raw === "") return;
+                                    const val = parseInt(raw, 10);
+                                    if (!isNaN(val)) {
+                                      setLineQty(
+                                        bundle.requestType,
+                                        group.id,
+                                        line.itemId,
+                                        val
+                                      );
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    setLineQty(
+                                      bundle.requestType,
+                                      group.id,
+                                      line.itemId,
+                                      isNaN(val) || val < 1 ? 1 : val
+                                    );
+                                  }}
+                                  className="w-12 h-6 px-1 text-center text-xs font-mono font-bold tabular-nums bg-bg border border-border/80 rounded text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none select-all"
+                                  aria-label={`Quantity for ${item.name}`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setLineQty(
+                                      bundle.requestType,
+                                      group.id,
+                                      line.itemId,
+                                      line.quantity + 1
+                                    )
+                                  }
+                                  disabled={maxAvailable !== undefined && line.quantity >= maxAvailable}
+                                  className="h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text hover:bg-card border border-transparent hover:border-border disabled:opacity-30 cursor-pointer transition-colors"
+                                  aria-label={`Increase quantity for ${item.name}`}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </button>
+                              </div>
+                            )}
                             <button
                               type="button"
                               onClick={() =>
@@ -2120,20 +2174,29 @@ export function NewBorrowRequestWizard({
       if (!canAdvanceSelect) return;
       setValues((prev) => ({
         ...prev,
-        typeBundles: prev.typeBundles.map((b) => ({
-          ...b,
-          purposeGroups: b.purposeGroups.map((g, i) =>
-            i === 0 && g.lines.length === 0
-              ? {
-                  ...g,
-                  lines: b.selectedItems.map((item) => ({
-                    itemId: item.id,
-                    quantity: 1,
-                  })),
-                }
-              : g
-          ),
-        })),
+        typeBundles: prev.typeBundles.map((b) => {
+          const assignedIds = new Set(b.purposeGroups.flatMap((g) => g.lines.map((l) => l.itemId)));
+          const unassignedItems = b.selectedItems.filter((item) => !assignedIds.has(item.id));
+          if (unassignedItems.length === 0) return b;
+
+          return {
+            ...b,
+            purposeGroups: b.purposeGroups.map((g, i) =>
+              i === 0
+                ? {
+                    ...g,
+                    lines: [
+                      ...g.lines,
+                      ...unassignedItems.map((item) => ({
+                        itemId: item.id,
+                        quantity: 1,
+                      })),
+                    ],
+                  }
+                : g
+            ),
+          };
+        }),
       }));
       setStep("details");
     } else if (step === "details") {
