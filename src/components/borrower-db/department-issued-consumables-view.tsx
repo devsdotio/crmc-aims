@@ -70,7 +70,7 @@ function IssuedItemCard({
       currentQty: 1,
       location: "",
     };
-    openWizard([item], "requisition");
+    openWizard([item], classification === "material" ? "material" : "supply");
   };
 
   return (

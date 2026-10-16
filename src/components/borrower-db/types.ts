@@ -16,8 +16,8 @@ export interface PortalBorrowRequest extends BorrowRequest {
   releasedStatus?: PortalRequestReleasedStatus;
   requestedDateFrom: string;
   requestedDateTo: string;
-  /** Set when mapped from a consumable requisition (Supplies). */
-  portalKind?: "supply";
+  /** Set when mapped from a consumable requisition (Supplies or Materials). */
+  portalKind?: "supply" | "material";
 }
 
 export type PortalBorrowLogRecord = BorrowLogRecord;
@@ -65,7 +65,17 @@ export type BrowseItem = BrowseAssetItem | BrowseConsumableItem;
 
 export type RequestWizardStep = "type" | "select" | "details" | "review";
 
-export type WizardRequestType = "borrowable" | "assignable" | "consumable";
+export type WizardRequestType =
+  | "borrowable"
+  | "assignable"
+  | "supply"
+  | "material";
+
+export function isConsumableWizardType(
+  t: WizardRequestType
+): t is "supply" | "material" {
+  return t === "supply" || t === "material";
+}
 
 export interface WizardPurposeGroup {
   id: string;

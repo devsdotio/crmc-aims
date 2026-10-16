@@ -63,8 +63,17 @@ export function EditRequestDialog({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [supplyLines, setSupplyLines] = useState<any[]>([]);
 
+  const editClassification =
+    request && "portalKind" in request
+      ? request.portalKind === "material"
+        ? ("material" as const)
+        : request.portalKind === "supply"
+          ? ("supply" as const)
+          : undefined
+      : undefined;
   const { data: consumableData } = useConsumableCatalogQuery({
     catalog: true,
+    classification: editClassification,
   });
 
   const { getCategoryStyle } = useCategoryStyleMap();
@@ -264,7 +273,11 @@ export function EditRequestDialog({
       }
       if (isSupply) {
         if (supplyLines.length === 0) {
-          setErrorMsg("At least one supply product line is required.");
+          setErrorMsg(
+            request?.portalKind === "material"
+              ? "At least one materials line is required."
+              : "At least one supplies line is required."
+          );
           return false;
         }
         for (const line of supplyLines) {
@@ -279,7 +292,7 @@ export function EditRequestDialog({
             return false;
           }
           if (!(line.purpose || "").trim()) {
-            setErrorMsg("Each supply line needs a purpose.");
+            setErrorMsg("Each line needs a purpose.");
             return false;
           }
         }
@@ -326,6 +339,32 @@ export function EditRequestDialog({
 
     try {
       if (isSupply) {
+        const mergedLines = new Map<
+          string,
+          { consumableId: string; quantity: number; purpose: string; notes?: string }
+        >();
+        for (const l of supplyLines) {
+          if (!l.consumableId) continue;
+          const linePurpose = (l.purpose || purpose || "General").trim();
+          const prev = mergedLines.get(l.consumableId);
+          if (prev) {
+            prev.quantity = roundQty(prev.quantity + Number(l.quantity));
+            if (prev.purpose === "General" && linePurpose !== "General") {
+              prev.purpose = linePurpose;
+            }
+          } else {
+            mergedLines.set(l.consumableId, {
+              consumableId: l.consumableId,
+              quantity: roundQty(Number(l.quantity)),
+              purpose: linePurpose,
+              notes: l.notes?.trim() || undefined,
+            });
+          }
+        }
+        const kindLabel =
+          "portalKind" in request && request.portalKind === "material"
+            ? "Materials"
+            : "Supplies";
         await updateSupplyMutation.mutateAsync({
           id: request.id,
           payload: {
@@ -336,16 +375,11 @@ export function EditRequestDialog({
             purpose: purpose.trim(),
             notes: notes.trim() || null,
             requestedByName: requestedByName.trim(),
-            lines: supplyLines.map((l) => ({
-              consumableId: l.consumableId,
-              quantity: roundQty(Number(l.quantity)),
-              purpose: (l.purpose || purpose || "General").trim(),
-              notes: l.notes?.trim() || undefined,
-            })),
+            lines: Array.from(mergedLines.values()),
             editReason: editReason.trim(),
           },
         });
-        toast.success(`Consumable requisition ${request.requestCode} updated successfully.`);
+        toast.success(`${kindLabel} requisition ${request.requestCode} updated successfully.`);
       } else {
         await updateBorrowMutation.mutateAsync({
           id: request.id,
@@ -388,18 +422,34 @@ export function EditRequestDialog({
 
   const handleAddSupplyLine = () => {
     const firstConsumable = consumablesCatalog[0];
-    setSupplyLines((prev) => [
-      ...prev,
-      {
-        id: `line-${Date.now()}`,
-        consumableId: firstConsumable?.id || "",
-        itemName: firstConsumable?.name || "Select item",
-        category: firstConsumable?.category || "office",
-        quantity: 1,
-        notes: "",
-        purpose: purpose.trim() || "General",
-      },
-    ]);
+    const linePurpose = purpose.trim() || "General";
+    setSupplyLines((prev) => {
+      // Same SKU → append qty instead of a duplicate line.
+      if (firstConsumable?.id) {
+        const existingIdx = prev.findIndex(
+          (l) => l.consumableId === firstConsumable.id
+        );
+        if (existingIdx >= 0) {
+          return prev.map((l, i) =>
+            i === existingIdx
+              ? { ...l, quantity: roundQty((l.quantity || 0) + 1) }
+              : l
+          );
+        }
+      }
+      return [
+        ...prev,
+        {
+          id: `line-${Date.now()}`,
+          consumableId: firstConsumable?.id || "",
+          itemName: firstConsumable?.name || "Select item",
+          category: firstConsumable?.category || "office",
+          quantity: 1,
+          notes: "",
+          purpose: linePurpose,
+        },
+      ];
+    });
   };
 
   const handleRemoveSupplyLine = (index: number) => {
@@ -634,7 +684,11 @@ export function EditRequestDialog({
                   <div className="flex items-center gap-2">
                     <Package className="h-4 w-4 text-accent" />
                     <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-                      {isSupply ? "Consumable Supply Lines" : "Requested Asset Items"}
+                      {isSupply
+                        ? request?.portalKind === "material"
+                          ? "Materials Lines"
+                          : "Supplies Lines"
+                        : "Requested Asset Items"}
                     </span>
                     <span className="text-xs font-semibold text-text-secondary bg-bg-subtle border border-border rounded-full px-2 py-0.5">
                       {isSupply ? supplyLines.length : assetItems.length} line{(isSupply ? supplyLines.length : assetItems.length) !== 1 ? "s" : ""}
@@ -684,8 +738,27 @@ export function EditRequestDialog({
                               value={line.consumableId}
                               onValueChange={(newId) => {
                                 const item = consumablesCatalog.find((c) => c.id === newId);
-                                setSupplyLines((prev) =>
-                                  prev.map((l, i) =>
+                                setSupplyLines((prev) => {
+                                  const dupIdx = prev.findIndex(
+                                    (l, i) => i !== idx && l.consumableId === newId
+                                  );
+                                  if (dupIdx >= 0) {
+                                    // Merge into the existing same-SKU line; drop this row.
+                                    return prev
+                                      .map((l, i) =>
+                                        i === dupIdx
+                                          ? {
+                                              ...l,
+                                              quantity: roundQty(
+                                                (l.quantity || 0) +
+                                                  (prev[idx]?.quantity || 1)
+                                              ),
+                                            }
+                                          : l
+                                      )
+                                      .filter((_, i) => i !== idx);
+                                  }
+                                  return prev.map((l, i) =>
                                     i === idx
                                       ? {
                                           ...l,
@@ -694,13 +767,25 @@ export function EditRequestDialog({
                                           category: item?.category || "office",
                                         }
                                       : l
-                                  )
-                                );
+                                  );
+                                });
                               }}
                               options={supplyOptions}
-                              placeholder="Select supply…"
-                              clearLabel="Select supply…"
-                              emptyMessage="No supplies available"
+                              placeholder={
+                                request?.portalKind === "material"
+                                  ? "Select material…"
+                                  : "Select supply…"
+                              }
+                              clearLabel={
+                                request?.portalKind === "material"
+                                  ? "Select material…"
+                                  : "Select supply…"
+                              }
+                              emptyMessage={
+                                request?.portalKind === "material"
+                                  ? "No materials available"
+                                  : "No supplies available"
+                              }
                               inputClassName="h-8 text-xs bg-bg"
                             />
                           </label>
@@ -790,7 +875,7 @@ export function EditRequestDialog({
                     {supplyLines.length === 0 && (
                       <div className="flex flex-col items-center justify-center h-24 rounded-xl border border-dashed border-border text-xs text-text-secondary gap-1.5">
                         <Package className="h-5 w-5 text-text-secondary/50" />
-                        No supply lines. Click &ldquo;Add Line&rdquo; to begin.
+                        No lines yet. Click &ldquo;Add Line&rdquo; to begin.
                       </div>
                     )}
                   </div>
@@ -938,14 +1023,18 @@ export function EditRequestDialog({
                       {isAssignable
                         ? assignedToName.trim() || "—"
                         : isSupply
-                          ? "Supplies"
+                          ? request?.portalKind === "material"
+                            ? "Materials"
+                            : "Supplies"
                           : ("requestType" in request ? request.requestType : null) ?? "Borrow"}
                     </span>
                     <span className="text-[10px] text-text-secondary">
                       {isAssignable
                         ? "Asset holder"
                         : isSupply
-                          ? "Consumable Requisition"
+                          ? request?.portalKind === "material"
+                            ? "Materials Requisition"
+                            : "Supplies Requisition"
                           : "Asset Request"}
                     </span>
                   </div>

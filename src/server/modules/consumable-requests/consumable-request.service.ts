@@ -1,9 +1,12 @@
+import { inArray } from "drizzle-orm";
 import type {
   ConsumableRequestHistoryEntry,
   ConsumableRequestLineRow,
   ConsumableRequestReleaseAllocationRow,
   ConsumableRequestRow,
 } from "@/server/db/schema";
+import { consumables } from "@/server/db/schema";
+import { getDb } from "@/server/db";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import {
   generateOperationalCode,
@@ -65,7 +68,8 @@ function money(value: string | number): string {
 
 function toLineDTO(
   row: ConsumableRequestLineRow,
-  quantityReleased = 0
+  quantityReleased = 0,
+  classification?: "supply" | "material"
 ): ConsumableRequestLineDTO {
   const quantityRequested = toQty(row.quantityRequested);
   const released = roundQty(Math.max(0, quantityReleased));
@@ -80,6 +84,7 @@ function toLineDTO(
     quantityRequested,
     quantityReleased: released,
     quantityRemaining: roundQty(Math.max(0, quantityRequested - released)),
+    classification,
     purpose: row.purpose || "General",
     notes: row.notes ?? undefined,
   };
@@ -124,7 +129,8 @@ function toDTO(
   row: ConsumableRequestRow,
   lines: ConsumableRequestLineRow[],
   allocations: ConsumableRequestReleaseAllocationRow[] = [],
-  relatedRequests: LinkedRequestSummary[] = []
+  relatedRequests: LinkedRequestSummary[] = [],
+  classificationByConsumableId: Map<string, "supply" | "material"> = new Map()
 ): ConsumableRequestDTO {
   const history = Array.isArray(row.history) ? row.history : [];
   const allocDtos = allocations.map(toAllocationDTO);
@@ -152,7 +158,11 @@ function toDTO(
     receivedBy: row.receivedBy ?? undefined,
     history,
     lines: lines.map((line) =>
-      toLineDTO(line, releasedByLine.get(line.id) ?? 0)
+      toLineDTO(
+        line,
+        releasedByLine.get(line.id) ?? 0,
+        classificationByConsumableId.get(line.consumableId)
+      )
     ),
     allocations: allocDtos,
     totalCost: money(totalCost),
@@ -208,22 +218,47 @@ export class ConsumableRequestService {
     private readonly movements = new StockMovementService()
   ) {}
 
+  private async classificationMapForLines(
+    lines: ConsumableRequestLineRow[]
+  ): Promise<Map<string, "supply" | "material">> {
+    const map = new Map<string, "supply" | "material">();
+    const ids = [...new Set(lines.map((l) => l.consumableId))];
+    if (ids.length === 0) return map;
+    const rows = await getDb()
+      .select({
+        id: consumables.id,
+        classification: consumables.classification,
+      })
+      .from(consumables)
+      .where(inArray(consumables.id, ids));
+    for (const row of rows) {
+      map.set(
+        row.id,
+        row.classification === "material" ? "material" : "supply"
+      );
+    }
+    return map;
+  }
+
   private async hydrate(
     row: ConsumableRequestRow,
     tenantId?: string
   ): Promise<ConsumableRequestDTO> {
     const [lines, allocations, linked] = await Promise.all([
       this.repo.listLinesByRequestId(row.id),
-      row.status === "released"
+      row.status === "released" || row.status === "approved"
         ? this.repo.listAllocationsByRequestId(row.id)
         : Promise.resolve([]),
       loadLinkedRequestSummaries([row.submissionGroupId], tenantId),
     ]);
+    const classificationByConsumableId =
+      await this.classificationMapForLines(lines);
     return toDTO(
       row,
       lines,
       allocations,
-      relatedForRow(row.id, row.submissionGroupId, linked)
+      relatedForRow(row.id, row.submissionGroupId, linked),
+      classificationByConsumableId
     );
   }
 
@@ -254,6 +289,8 @@ export class ConsumableRequestService {
       rows.map((row) => row.submissionGroupId),
       actor?.tenantId
     );
+    const classificationByConsumableId =
+      await this.classificationMapForLines(allLines);
 
     return {
       data: rows.map((row) =>
@@ -261,7 +298,8 @@ export class ConsumableRequestService {
           row,
           linesByRequest.get(row.id) ?? [],
           [],
-          relatedForRow(row.id, row.submissionGroupId, linked)
+          relatedForRow(row.id, row.submissionGroupId, linked),
+          classificationByConsumableId
         )
       ),
       meta: {
@@ -407,7 +445,17 @@ export class ConsumableRequestService {
         tx
       );
 
-      return toDTO(created, lines, []);
+      const classificationByConsumableId = new Map<
+        string,
+        "supply" | "material"
+      >();
+      for (const { item } of items) {
+        classificationByConsumableId.set(
+          item.id,
+          item.classification === "material" ? "material" : "supply"
+        );
+      }
+      return toDTO(created, lines, [], [], classificationByConsumableId);
     });
 
     invalidateDashboardCache(actor.tenantId);

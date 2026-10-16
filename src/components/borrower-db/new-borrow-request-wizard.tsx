@@ -39,6 +39,7 @@ import type {
   RequestWizardStep,
   PortalBorrowRequest,
 } from "./types";
+import { isConsumableWizardType } from "./types";
 import { useAssetsQuery } from "@/features/assets/client/use-assets";
 import { isAssetAvailableForRequest } from "@/lib/assets-custody";
 import { useCreateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
@@ -102,6 +103,7 @@ function emptyWizardValues(
 function typeLabel(t: WizardRequestType): string {
   if (t === "borrowable") return "Borrow Equipment";
   if (t === "assignable") return "Assignment";
+  if (t === "material") return "Materials Requisition";
   return "Supplies Requisition";
 }
 
@@ -156,16 +158,31 @@ function MilestoneStepIndicator({
     0,
     steps.findIndex((s) => s.key === current)
   );
-  const hasConsumable = selectedTypes.includes("consumable");
+  const hasConsumable = selectedTypes.some(isConsumableWizardType);
   const hasAsset = selectedTypes.some(
     (t) => t === "borrowable" || t === "assignable"
   );
+  const onlySupply =
+    hasConsumable &&
+    !hasAsset &&
+    selectedTypes.every((t) => t === "supply" || !isConsumableWizardType(t)) &&
+    selectedTypes.includes("supply") &&
+    !selectedTypes.includes("material");
+  const onlyMaterial =
+    hasConsumable &&
+    !hasAsset &&
+    selectedTypes.includes("material") &&
+    !selectedTypes.includes("supply");
   const selectLabel =
     hasConsumable && hasAsset
       ? "Select Items"
-      : hasConsumable
-        ? "Select Supplies"
-        : "Select Equipment";
+      : onlyMaterial
+        ? "Select Materials"
+        : onlySupply
+          ? "Select Supplies"
+          : hasConsumable
+            ? "Select Supplies / Materials"
+            : "Select Equipment";
 
   return (
     <nav aria-label="Request Progress" className="w-full">
@@ -286,12 +303,13 @@ function StepType({
 
   const requisitionGroup = [
     {
-      id: "consumable",
+      id: "supply" as const,
       title: "Supplies Requisition",
-      subtitle: "Consumables & Office Supplies",
-      description: "Request consumable office stationery, printing materials, toner, or inventory supplies.",
+      subtitle: "Office & warehouse supplies",
+      description:
+        "Request consumable office stationery, toner, paper, and other supplies from stock.",
       icon: Layers,
-      badge: "Requisition",
+      badge: "Supplies",
       color: "emerald",
       theme: {
         iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
@@ -300,6 +318,24 @@ function StepType({
         selectedTitle: "text-emerald-600 dark:text-emerald-400",
         selectedRadio: "border-emerald-500 bg-emerald-500 text-white",
         activeIcon: "bg-emerald-600 text-white border-transparent",
+      },
+    },
+    {
+      id: "material" as const,
+      title: "Materials Requisition",
+      subtitle: "Project & construction materials",
+      description:
+        "Request materials such as paint, cement, lumber, and other project stock.",
+      icon: Layers,
+      badge: "Materials",
+      color: "teal",
+      theme: {
+        iconBg: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20",
+        badge: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30",
+        selectedCard: "border-teal-500 bg-teal-500/5 ring-2 ring-teal-500/30 shadow-xs",
+        selectedTitle: "text-teal-600 dark:text-teal-400",
+        selectedRadio: "border-teal-500 bg-teal-500 text-white",
+        activeIcon: "bg-teal-600 text-white border-transparent",
       },
     },
   ] as const;
@@ -393,11 +429,11 @@ function StepType({
             </h3>
           </div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary bg-bg-subtle px-2 py-0.5 rounded-full border border-border">
-            Supplies & Materials
+            Stock Requisition
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {requisitionGroup.map((opt) => {
             const isSelected = value.includes(opt.id);
             const Icon = opt.icon;
@@ -468,7 +504,7 @@ function StepSelect({
   value: BrowseItem[];
   onChange: (items: BrowseItem[]) => void;
   initialType?: "borrow" | "assign" | "requisition" | null;
-  requestType?: "borrowable" | "assignable" | "consumable" | null;
+  requestType?: WizardRequestType | null;
 }) {
   const [search, setSearch] = useState("");
   const assignmentType =
@@ -679,22 +715,31 @@ function StepSelect({
 function StepSelectConsumables({
   value,
   onChange,
+  classification,
 }: {
   value: BrowseItem[];
   onChange: (items: BrowseItem[]) => void;
+  classification: "supply" | "material";
 }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const { data: paginatedData, isLoading } = useConsumableCatalogQuery({
     catalog: true,
+    classification,
   });
   const consumables = useMemo(
     () => paginatedData?.data ?? [],
     [paginatedData?.data]
   );
+  const kindLabel = classification === "material" ? "Materials" : "Supplies";
 
   const supplyItems = useMemo(() => {
     return consumables
+      .filter(
+        (c) =>
+          (c.classification ?? "supply") === classification ||
+          (classification === "supply" && !c.classification)
+      )
       .map((c) => {
         const free = c.availableQty ?? availableQty(c);
         const status: BrowseConsumableItem["status"] =
@@ -707,7 +752,7 @@ function StepSelectConsumables({
           id: c.id,
           name: c.name,
           category: c.category,
-          classification: c.classification,
+          classification: c.classification ?? classification,
           type: "consumable" as const,
           status,
           itemCode: c.itemCode,
@@ -717,7 +762,7 @@ function StepSelectConsumables({
         } satisfies BrowseConsumableItem;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [consumables]);
+  }, [consumables, classification]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -754,7 +799,7 @@ function StepSelectConsumables({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-bold text-text truncate">Supplies</h3>
+        <h3 className="text-sm font-bold text-text truncate">{kindLabel}</h3>
         {value.length > 0 && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-accent/15 text-accent border border-accent/25 shrink-0">
             <Check className="h-3 w-3 stroke-3" />
@@ -778,15 +823,15 @@ function StepSelectConsumables({
           </button>
         )}
         <div className="relative ml-auto w-44 sm:w-56 shrink-0">
-          <label htmlFor="search-supplies" className="sr-only">
-            Search supplies
+          <label htmlFor={`search-${classification}`} className="sr-only">
+            Search {kindLabel.toLowerCase()}
           </label>
           <Search
             className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary"
             aria-hidden
           />
           <input
-            id="search-supplies"
+            id={`search-${classification}`}
             type="search"
             placeholder="Search…"
             value={search}
@@ -849,8 +894,8 @@ function StepSelectConsumables({
           <LoadingState
             variant="inline"
             icon="package"
-            message="Loading supplies..."
-            subtitle="Fetching consumable inventory..."
+            message={`Loading ${kindLabel.toLowerCase()}...`}
+            subtitle={`Fetching ${kindLabel.toLowerCase()} inventory...`}
             className="py-8"
           />
         ) : filtered.length === 0 ? (
@@ -1055,12 +1100,46 @@ function StepDetails({
       if (!itemId) return;
       const bundle = values.typeBundles.find((b) => b.requestType === requestType);
       if (!bundle) return;
+      const targetItem = bundle.selectedItems.find((i) => i.id === itemId);
+      const isConsumable = targetItem?.type === "consumable";
+      // Consumables: same SKU already on this request type → bump qty (never a second line).
+      const existingGroup = isConsumable
+        ? bundle.purposeGroups.find((g) => g.lines.some((l) => l.itemId === itemId))
+        : bundle.purposeGroups.find((g) => g.id === groupId && g.lines.some((l) => l.itemId === itemId));
+      if (existingGroup) {
+        const existing = existingGroup.lines.find((l) => l.itemId === itemId)!;
+        const maxAvailable =
+          isConsumable &&
+          targetItem &&
+          typeof targetItem.currentQty === "number" &&
+          targetItem.currentQty > 0
+            ? targetItem.currentQty
+            : undefined;
+        const nextQty = roundQty(existing.quantity + 1);
+        const clamped =
+          maxAvailable !== undefined
+            ? Math.min(maxAvailable, nextQty)
+            : nextQty;
+        updateBundle(requestType, {
+          purposeGroups: bundle.purposeGroups.map((g) =>
+            g.id !== existingGroup.id
+              ? g
+              : {
+                  ...g,
+                  lines: g.lines.map((l) =>
+                    l.itemId === itemId ? { ...l, quantity: clamped } : l
+                  ),
+                }
+          ),
+        });
+        return;
+      }
       updateBundle(requestType, {
-        purposeGroups: bundle.purposeGroups.map((g) => {
-          if (g.id !== groupId) return g;
-          if (g.lines.some((l) => l.itemId === itemId)) return g;
-          return { ...g, lines: [...g.lines, { itemId, quantity: 1 }] };
-        }),
+        purposeGroups: bundle.purposeGroups.map((g) =>
+          g.id !== groupId
+            ? g
+            : { ...g, lines: [...g.lines, { itemId, quantity: 1 }] }
+        ),
       });
     },
     [updateBundle, values.typeBundles]
@@ -1532,9 +1611,14 @@ function StepDetails({
 
             <div className="space-y-2.5">
               {bundle.purposeGroups.map((group, idx) => {
-                const assignedIds = new Set(group.lines.map((l) => l.itemId));
+                // Consumables may appear only once per request type (qty is adjusted instead).
+                const assignedInBundle = new Set(
+                  isConsumableWizardType(bundle.requestType)
+                    ? bundle.purposeGroups.flatMap((g) => g.lines.map((l) => l.itemId))
+                    : group.lines.map((l) => l.itemId)
+                );
                 const availableToAdd = bundle.selectedItems.filter(
-                  (i) => !assignedIds.has(i.id)
+                  (i) => !assignedInBundle.has(i.id)
                 );
                 const errKey = `${bundle.requestType}_${group.id}`;
                 return (
@@ -1979,11 +2063,52 @@ function StepReview({
 
 // ─── Main Wizard ──────────────────────────────────────────────────────────────
 
+type WizardEntryType =
+  | "borrow"
+  | "assign"
+  | "requisition"
+  | "supply"
+  | "material"
+  | null;
+
+function resolveInitialWizardTypes(
+  initialType: WizardEntryType | undefined,
+  prefilledItems?: BrowseItem[]
+): WizardRequestType[] {
+  if (initialType === "assign") return ["assignable"];
+  if (initialType === "borrow") return ["borrowable"];
+  if (initialType === "supply") return ["supply"];
+  if (initialType === "material") return ["material"];
+  if (initialType === "requisition") {
+    const classes = new Set(
+      (prefilledItems ?? [])
+        .filter((i): i is BrowseConsumableItem => i.type === "consumable")
+        .map((i) => (i.classification === "material" ? "material" : "supply"))
+    );
+    if (classes.size === 0) return ["supply"];
+    return Array.from(classes) as WizardRequestType[];
+  }
+  if (prefilledItems && prefilledItems.length > 0) {
+    const types = new Set<WizardRequestType>();
+    for (const item of prefilledItems) {
+      if (item.type === "asset") {
+        types.add(
+          item.assignmentType === "assignable" ? "assignable" : "borrowable"
+        );
+      } else {
+        types.add(item.classification === "material" ? "material" : "supply");
+      }
+    }
+    return Array.from(types);
+  }
+  return [];
+}
+
 interface NewBorrowRequestWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   prefilledItems?: BrowseItem[];
-  initialType?: "borrow" | "assign" | "requisition" | null;
+  initialType?: WizardEntryType;
   onSuccess: (newRequest: PortalBorrowRequest) => void;
 }
 
@@ -1994,15 +2119,15 @@ export function NewBorrowRequestWizard({
   initialType,
   onSuccess,
 }: NewBorrowRequestWizardProps) {
-  const typeLocked = Boolean(initialType);
-  const initialTypes: WizardRequestType[] =
-    initialType === "requisition"
-      ? ["consumable"]
-      : initialType === "assign"
-        ? ["assignable"]
-        : initialType === "borrow"
-          ? ["borrowable"]
-          : [];
+  const typeLocked =
+    initialType === "borrow" ||
+    initialType === "assign" ||
+    initialType === "supply" ||
+    initialType === "material";
+  const initialTypes: WizardRequestType[] = resolveInitialWizardTypes(
+    initialType,
+    prefilledItems
+  );
 
   const [step, setStep] = useState<RequestWizardStep>(
     prefilledItems && prefilledItems.length > 0
@@ -2046,20 +2171,25 @@ export function NewBorrowRequestWizard({
 
   useEffect(() => {
     if (!open) return;
-    const types: WizardRequestType[] =
-      initialType === "requisition"
-        ? ["consumable"]
-        : initialType === "assign"
-          ? ["assignable"]
-          : initialType === "borrow"
-            ? ["borrowable"]
-            : [];
+    const types = resolveInitialWizardTypes(initialType, prefilledItems);
     const base = emptyWizardValues(types);
-    if (prefilledItems && prefilledItems.length > 0 && base.typeBundles[0]) {
-      base.typeBundles[0] = {
-        ...base.typeBundles[0],
-        selectedItems: prefilledItems,
-      };
+    if (prefilledItems && prefilledItems.length > 0) {
+      base.typeBundles = base.typeBundles.map((bundle) => ({
+        ...bundle,
+        selectedItems: prefilledItems.filter((item) => {
+          if (item.type === "asset") {
+            return (
+              (bundle.requestType === "assignable" &&
+                item.assignmentType === "assignable") ||
+              (bundle.requestType === "borrowable" &&
+                item.assignmentType !== "assignable")
+            );
+          }
+          const kind =
+            item.classification === "material" ? "material" : "supply";
+          return bundle.requestType === kind;
+        }),
+      }));
     }
     setStep(
       prefilledItems && prefilledItems.length > 0
@@ -2288,13 +2418,15 @@ export function NewBorrowRequestWizard({
 
       for (const bundle of values.typeBundles) {
         // Typed request pages lock to one kind — never create sibling types from this entry.
-        if (
-          typeLocked &&
-          ((initialType === "assign" && bundle.requestType !== "assignable") ||
-            (initialType === "borrow" && bundle.requestType !== "borrowable") ||
-            (initialType === "requisition" && bundle.requestType !== "consumable"))
-        ) {
-          continue;
+        if (typeLocked) {
+          const matchesLock =
+            (initialType === "assign" && bundle.requestType === "assignable") ||
+            (initialType === "borrow" && bundle.requestType === "borrowable") ||
+            (initialType === "supply" && bundle.requestType === "supply") ||
+            (initialType === "material" && bundle.requestType === "material") ||
+            (initialType === "requisition" &&
+              isConsumableWizardType(bundle.requestType));
+          if (!matchesLock) continue;
         }
         const itemsById = new Map(
           bundle.selectedItems.map((item) => [item.id, item])
@@ -2325,11 +2457,36 @@ export function NewBorrowRequestWizard({
         );
         const headerPurpose = summarizePurposes(items.map((i) => i.purpose));
 
-        if (bundle.requestType === "consumable") {
-          const supplyLines = items.filter((item) => item.consumableId);
+        if (isConsumableWizardType(bundle.requestType)) {
+          const kindLabel =
+            bundle.requestType === "material" ? "material" : "supply";
+          const rawLines = items.filter((item) => item.consumableId);
+          // Same SKU → one line (qty summed); keep the first non-empty purpose.
+          const merged = new Map<
+            string,
+            { consumableId: string; quantity: number; purpose: string }
+          >();
+          for (const item of rawLines) {
+            const purpose = item.purpose.trim() || "General";
+            const key = item.consumableId!;
+            const prev = merged.get(key);
+            if (prev) {
+              prev.quantity = roundQty(prev.quantity + item.quantity);
+              if (prev.purpose === "General" && purpose !== "General") {
+                prev.purpose = purpose;
+              }
+            } else {
+              merged.set(key, {
+                consumableId: key,
+                quantity: roundQty(item.quantity),
+                purpose,
+              });
+            }
+          }
+          const supplyLines = Array.from(merged.values());
           if (supplyLines.length === 0) {
             setErrorMessage(
-              "Select at least one supply item before submitting."
+              `Select at least one ${kindLabel} item before submitting.`
             );
             return;
           }
@@ -2342,11 +2499,7 @@ export function NewBorrowRequestWizard({
             purpose: headerPurpose,
             notes: values.notes || undefined,
             submissionGroupId,
-            lines: supplyLines.map((item) => ({
-              consumableId: item.consumableId!,
-              quantity: roundQty(item.quantity),
-              purpose: item.purpose,
-            })),
+            lines: supplyLines,
           });
           codes.push(created.requestCode);
           lastPortal = mapConsumableRequestToPortal(created);
@@ -2430,27 +2583,33 @@ export function NewBorrowRequestWizard({
   const headerTitle =
     values.typeBundles.length > 1
       ? "New Multi-Type Request"
-      : values.typeBundles[0]?.requestType === "consumable" ||
-          initialType === "requisition"
-        ? "New Supply Request"
-        : values.typeBundles[0]?.requestType === "assignable" ||
-            initialType === "assign"
-          ? "New Assign Request"
-          : values.typeBundles[0]?.requestType === "borrowable" ||
-              initialType === "borrow"
-            ? "New Borrow Request"
-            : "New Requests";
+      : values.typeBundles[0]?.requestType === "material" ||
+          initialType === "material"
+        ? "New Materials Request"
+        : values.typeBundles[0]?.requestType === "supply" ||
+            initialType === "supply" ||
+            initialType === "requisition"
+          ? "New Supplies Request"
+          : values.typeBundles[0]?.requestType === "assignable" ||
+              initialType === "assign"
+            ? "New Assign Request"
+            : values.typeBundles[0]?.requestType === "borrowable" ||
+                initialType === "borrow"
+              ? "New Borrow Request"
+              : "New Requests";
 
   const categoryBadgeLabel =
     values.typeBundles.length > 1
       ? "Multi"
-      : values.typeBundles[0]?.requestType === "consumable"
-        ? "Supplies"
-        : values.typeBundles[0]?.requestType === "assignable"
-          ? "Assignment"
-          : values.typeBundles[0]
-            ? "Borrow"
-            : "Portal";
+      : values.typeBundles[0]?.requestType === "material"
+        ? "Materials"
+        : values.typeBundles[0]?.requestType === "supply"
+          ? "Supplies"
+          : values.typeBundles[0]?.requestType === "assignable"
+            ? "Assignment"
+            : values.typeBundles[0]
+              ? "Borrow"
+              : "Portal";
 
   return (
     <>
@@ -2557,12 +2716,13 @@ export function NewBorrowRequestWizard({
                     </div>
                   )}
 
-                  {bundle.requestType === "consumable" ? (
+                  {isConsumableWizardType(bundle.requestType) ? (
                     <StepSelectConsumables
                       value={bundle.selectedItems}
                       onChange={(items) =>
-                        updateBundleItems("consumable", items)
+                        updateBundleItems(bundle.requestType, items)
                       }
+                      classification={bundle.requestType}
                     />
                   ) : (
                     <StepSelect

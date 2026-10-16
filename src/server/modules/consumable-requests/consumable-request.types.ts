@@ -23,6 +23,8 @@ export type ConsumableRequestLineDTO = {
   quantityReleased: number;
   /** quantityRequested − quantityReleased (what can still be issued). */
   quantityRemaining: number;
+  /** supply | material — from linked consumable (for requester labeling). */
+  classification?: "supply" | "material";
   purpose: string;
   notes?: string;
 };

@@ -9,23 +9,34 @@ import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-
 import { consumableRequestQueryKeys } from "@/features/consumable-requests/client/query-keys";
 import { borrowLogQueryKeys } from "@/features/borrow-log/client/query-keys";
 
+type WizardOpenType = "borrow" | "assign" | "requisition" | "supply" | "material";
+
 interface BorrowerPortalContextValue {
   cart: BrowseItem[];
   toggleCartItem: (item: BrowseItem) => void;
   clearCart: () => void;
   openWizard: (
     items?: BrowseItem[] | null,
-    type?: "borrow" | "assign" | "requisition"
+    type?: WizardOpenType
   ) => void;
   closeWizard: () => void;
 }
 
 const BorrowerPortalContext = createContext<BorrowerPortalContextValue | undefined>(undefined);
 
+function inferWizardType(items: BrowseItem[]): WizardOpenType {
+  const first = items[0];
+  if (!first) return "borrow";
+  if (first.type === "asset") {
+    return first.assignmentType === "assignable" ? "assign" : "borrow";
+  }
+  return first.classification === "material" ? "material" : "supply";
+}
+
 export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardItems, setWizardItems] = useState<BrowseItem[]>([]);
-  const [wizardType, setWizardType] = useState<"borrow" | "assign" | "requisition" | null>(null);
+  const [wizardType, setWizardType] = useState<WizardOpenType | null>(null);
   const [cart, setCart] = useState<BrowseItem[]>([]);
 
   const toggleCartItem = (item: BrowseItem) => {
@@ -40,13 +51,13 @@ export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
 
   const openWizard = (
     items?: BrowseItem[] | null,
-    type?: "borrow" | "assign" | "requisition"
+    type?: WizardOpenType
   ) => {
     setWizardItems(items || []);
     if (type) {
       setWizardType(type);
     } else if (items && items.length > 0) {
-      setWizardType(items[0].type === "asset" ? "borrow" : "requisition");
+      setWizardType(inferWizardType(items));
     } else {
       setWizardType(null);
     }

@@ -259,11 +259,17 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Supplies & Materials",
+          name: "Supplies Request",
           href: "/borrower-db/requests/supplies",
           icon: Boxes,
           badge: pendingSupplyCount,
           badgeTone: "accent",
+          roles: ["borrower"],
+        },
+        {
+          name: "Materials Request",
+          href: "/borrower-db/requests/materials",
+          icon: Boxes,
           roles: ["borrower"],
         },
       ],
