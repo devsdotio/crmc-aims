@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Search, LayoutGrid, List, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrowseItemCard, BrowseItemCardSkeleton } from "./browse-item-card";
-import type { BrowseItem } from "./types";
+import type { BrowseConsumableItem, BrowseItem } from "./types";
 
 import { useAssetsQuery } from "@/features/assets/client/use-assets";
 import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
@@ -12,25 +12,22 @@ import { useBorrowerPortal } from "./context";
 import { isAssetAvailableForRequest } from "@/lib/assets-custody";
 import { availableQty } from "@/components/consumables/utils";
 
-const CATEGORY_FILTERS = [
-  { key: "all", label: "All" },
-  { key: "transport", label: "Transport" },
-  { key: "computing", label: "Computing" },
-  { key: "av", label: "AV Equipment" },
-  { key: "furniture", label: "Furniture" },
-  { key: "paper", label: "Paper" },
-  { key: "ink_toner", label: "Ink & Toner" },
-  { key: "medical", label: "Medical" },
-] as const;
+type KindFilter = "all" | "asset" | "supply" | "material";
 
-type CategoryKey = (typeof CATEGORY_FILTERS)[number]["key"];
+const KIND_FILTERS: Array<{ key: KindFilter; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "asset", label: "Assets" },
+  { key: "supply", label: "Supplies" },
+  { key: "material", label: "Materials" },
+];
 
 const BROWSE_PAGE_SIZE = 9;
 
 export function BrowseTab() {
   const { cart, openWizard } = useBorrowerPortal();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<CategoryKey>("all");
+  const [kind, setKind] = useState<KindFilter>("all");
+  const [category, setCategory] = useState<string>("all");
   const [availableOnly, setAvailableOnly] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [page, setPage] = useState(1);
@@ -47,38 +44,64 @@ export function BrowseTab() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [search, category, availableOnly]);
+  }, [search, kind, category, availableOnly]);
+
+  // Reset category when kind changes (category list is kind-scoped).
+  useEffect(() => {
+    setCategory("all");
+  }, [kind]);
 
   const items = useMemo(() => {
     return [
       ...assets
-        .filter(a => a.assignmentType === "borrowable")
-        .filter(a => isAssetAvailableForRequest(a))
-        .map(a => ({
-        id: a.id,
-        name: a.name,
-        category: a.category,
-        type: "asset" as const,
-        status: a.status,
-        assetCode: a.assetCode,
-        location: a.location,
-      })),
-      ...consumables.map(c => {
+        .filter((a) => a.assignmentType === "borrowable")
+        .filter((a) => isAssetAvailableForRequest(a))
+        .map((a) => ({
+          id: a.id,
+          name: a.name,
+          category: a.category,
+          type: "asset" as const,
+          status: a.status,
+          assignmentType: a.assignmentType,
+          assetCode: a.assetCode,
+          location: a.location,
+        })),
+      ...consumables.map((c) => {
         const free = c.availableQty ?? availableQty(c);
         return {
-        id: c.id,
-        name: c.name,
-        category: c.category,
-        type: "consumable" as const,
-        status: free <= 0 ? "out_of_stock" : free <= c.minThreshold ? "low_stock" : "available",
-        itemCode: c.itemCode,
-        currentQty: free,
-        unit: c.unit,
-        location: c.location,
-      };
-      })
+          id: c.id,
+          name: c.name,
+          category: c.category,
+          classification: c.classification,
+          type: "consumable" as const,
+          status:
+            free <= 0
+              ? ("out_of_stock" as const)
+              : free <= c.minThreshold
+                ? ("low_stock" as const)
+                : ("available" as const),
+          itemCode: c.itemCode,
+          currentQty: free,
+          unit: c.unit,
+          location: c.location,
+        } satisfies BrowseConsumableItem;
+      }),
     ] as BrowseItem[];
   }, [assets, consumables]);
+
+  const categoryOptions = useMemo(() => {
+    const scoped = items.filter((item) => {
+      if (kind === "all") return true;
+      if (kind === "asset") return item.type === "asset";
+      if (item.type !== "consumable") return false;
+      return item.classification === kind;
+    });
+    const set = new Set<string>();
+    for (const item of scoped) {
+      if (item.category?.trim()) set.add(item.category.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items, kind]);
 
   const filtered = useMemo(() => {
     return items.filter((item) => {
@@ -87,15 +110,21 @@ export function BrowseTab() {
         (item.type === "asset" ? item.assetCode : item.itemCode)
           ?.toLowerCase()
           .includes(search.toLowerCase());
-      const matchesCategory = category === "all" || item.category === category;
+      const matchesKind =
+        kind === "all" ||
+        (kind === "asset" && item.type === "asset") ||
+        (item.type === "consumable" && item.classification === kind);
+      const matchesCategory =
+        category === "all" ||
+        item.category.trim().toLowerCase() === category.toLowerCase();
       const matchesAvailable =
         !availableOnly ||
         (item.type === "asset"
           ? item.status === "active"
           : item.status !== "out_of_stock");
-      return matchesSearch && matchesCategory && matchesAvailable;
+      return matchesSearch && matchesKind && matchesCategory && matchesAvailable;
     });
-  }, [items, search, category, availableOnly]);
+  }, [items, search, kind, category, availableOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / BROWSE_PAGE_SIZE));
   const paginatedItems = useMemo(() => {
@@ -185,21 +214,21 @@ export function BrowseTab() {
         </div>
       </div>
 
-      {/* Category filter chips */}
+      {/* Kind filter chips */}
       <div
         className="flex flex-wrap gap-2"
         role="group"
-        aria-label="Filter by category"
+        aria-label="Filter by item type"
       >
-        {CATEGORY_FILTERS.map((f) => (
+        {KIND_FILTERS.map((f) => (
           <button
             key={f.key}
             type="button"
-            onClick={() => setCategory(f.key)}
-            aria-pressed={category === f.key}
+            onClick={() => setKind(f.key)}
+            aria-pressed={kind === f.key}
             className={cn(
               "px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer",
-              category === f.key
+              kind === f.key
                 ? "bg-accent/15 text-accent border-accent/40 font-bold shadow-2xs"
                 : "bg-white border-border text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle"
             )}
@@ -209,6 +238,45 @@ export function BrowseTab() {
         ))}
       </div>
 
+      {/* Category filter chips — built from live catalog categories */}
+      {categoryOptions.length > 0 && (
+        <div
+          className="flex flex-wrap gap-2"
+          role="group"
+          aria-label="Filter by category"
+        >
+          <button
+            type="button"
+            onClick={() => setCategory("all")}
+            aria-pressed={category === "all"}
+            className={cn(
+              "px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer",
+              category === "all"
+                ? "bg-accent/15 text-accent border-accent/40 font-bold shadow-2xs"
+                : "bg-white border-border text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle"
+            )}
+          >
+            All categories
+          </button>
+          {categoryOptions.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategory(cat)}
+              aria-pressed={category.toLowerCase() === cat.toLowerCase()}
+              className={cn(
+                "px-3 py-1 rounded-full text-xs font-semibold border transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer",
+                category.toLowerCase() === cat.toLowerCase()
+                  ? "bg-accent/15 text-accent border-accent/40 font-bold shadow-2xs"
+                  : "bg-white border-border text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle"
+              )}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Results count & Pagination status */}
       {!loading && (
         <div className="flex items-center justify-between text-xs text-text-secondary">
@@ -217,117 +285,86 @@ export function BrowseTab() {
             <span className="font-semibold text-text">
               {filtered.length > 0 ? (page - 1) * BROWSE_PAGE_SIZE + 1 : 0}
             </span>{" "}
-            to{" "}
+            –{" "}
             <span className="font-semibold text-text">
               {Math.min(page * BROWSE_PAGE_SIZE, filtered.length)}
             </span>{" "}
-            of <span className="font-semibold text-text">{filtered.length}</span> items
+            of{" "}
+            <span className="font-semibold text-text">{filtered.length}</span>
+            {cart.length > 0 && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={() => openWizard()}
+                  className="font-semibold text-accent hover:underline"
+                >
+                  {cart.length} in request cart
+                </button>
+              </>
+            )}
           </p>
         </div>
       )}
 
-      {/* Grid/List */}
+      {/* Grid / list */}
       {loading ? (
-        viewMode === "grid" ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <BrowseItemCardSkeleton key={i} viewMode="grid" />
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <BrowseItemCardSkeleton key={i} viewMode="list" />
-            ))}
-          </div>
-        )
+        <div
+          className={cn(
+            viewMode === "grid"
+              ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+              : "rounded-xl border border-border overflow-hidden bg-card"
+          )}
+        >
+          {Array.from({ length: BROWSE_PAGE_SIZE }).map((_, i) => (
+            <BrowseItemCardSkeleton key={i} viewMode={viewMode} />
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-border bg-card">
-          <div className="h-12 w-12 rounded-full bg-bg-subtle flex items-center justify-center mb-4">
-            <Search className="h-5 w-5 text-text-secondary" aria-hidden />
-          </div>
-          <h3 className="text-sm font-semibold text-text">No items found</h3>
-          <p className="text-xs text-text-secondary mt-1 max-w-xs">
-            Try adjusting your search terms or filters to find what you&apos;re
-            looking for.
+        <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
+          <p className="text-sm font-semibold text-text">No items found</p>
+          <p className="mt-1 text-xs text-text-secondary">
+            Try clearing filters or search — supplies and materials from warehouse
+            inventory appear here alongside borrowable assets.
           </p>
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setCategory("all");
-              setAvailableOnly(false);
-            }}
-            className="mt-4 text-xs text-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          >
-            Clear all filters
-          </button>
         </div>
       ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {paginatedItems.map((item) => (
-            <BrowseItemCard
-              key={item.id}
-              item={item}
-              viewMode="grid"
-            />
+            <BrowseItemCard key={item.id} item={item} viewMode="grid" />
           ))}
         </div>
       ) : (
         <div className="rounded-xl border border-border overflow-hidden bg-card">
           {paginatedItems.map((item) => (
-            <BrowseItemCard
-              key={item.id}
-              item={item}
-              viewMode="list"
-            />
+            <BrowseItemCard key={item.id} item={item} viewMode="list" />
           ))}
         </div>
       )}
 
-      {/* Pagination Controls */}
+      {/* Pagination */}
       {!loading && totalPages > 1 && (
-        <div className="flex items-center justify-between p-4 rounded-xl border border-border bg-card">
-          <p className="text-xs text-text-secondary">
-            Page <span className="font-semibold text-text">{page}</span> of{" "}
-            <span className="font-semibold text-text">{totalPages}</span>
-          </p>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border text-xs font-semibold text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            >
-              Next
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Floating Cart Bar */}
-      {cart.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-card border border-border shadow-2xl rounded-full px-4 py-3 flex items-center gap-4 z-40">
-          <div className="text-sm font-semibold text-text">
-            {cart.length} item{cart.length !== 1 ? "s" : ""} selected
-          </div>
+        <div className="flex items-center justify-center gap-2 pt-2">
           <button
             type="button"
-            onClick={() => openWizard(cart)}
-            className="px-4 py-2 bg-accent text-accent-foreground rounded-full text-xs font-semibold hover:opacity-90 transition-opacity shadow-xs"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text disabled:opacity-40"
+            aria-label="Previous page"
           >
-            Checkout Request
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-xs text-text-secondary tabular-nums">
+            Page {page} / {totalPages}
+          </span>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text disabled:opacity-40"
+            aria-label="Next page"
+          >
+            <ChevronRight className="h-4 w-4" />
           </button>
         </div>
       )}

@@ -108,6 +108,16 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
 
   const code = item.type === "asset" ? item.assetCode : item.itemCode;
   const unavailableReason = item.unavailableReason;
+  const kindLabel =
+    item.type === "asset"
+      ? "Asset"
+      : item.classification === "material"
+        ? "Material"
+        : "Supply";
+  const qtyHint =
+    item.type === "consumable"
+      ? `${displayQty(item.currentQty)} ${item.unit}`
+      : null;
 
   if (viewMode === "list") {
     return (
@@ -133,6 +143,9 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
         <div className="flex-1 min-w-0 space-y-0.5">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold text-text truncate">{item.name}</h3>
+            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase border bg-bg-subtle text-text-secondary border-border">
+              {kindLabel}
+            </span>
             <span
               className={cn(
                 "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase border",
@@ -147,6 +160,12 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
           </div>
           <div className="flex items-center gap-2 text-xs text-text-secondary">
             <span className="font-mono">{code}</span>
+            {qtyHint ? (
+              <>
+                <span>·</span>
+                <span>{qtyHint} available</span>
+              </>
+            ) : null}
             <span>·</span>
             <MapPin className="h-3 w-3 shrink-0" />
             <span className="truncate">{item.location}</span>
@@ -196,22 +215,27 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
           : "bg-bg-subtle/40 border-border opacity-75"
       )}
     >
-      {/* Category + Code */}
+      {/* Kind + Category + Status */}
       <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border bg-bg-subtle text-text-secondary border-border">
+            {kindLabel}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide border",
+              categoryMeta.bg,
+              categoryMeta.text,
+              "border-transparent"
+            )}
+          >
+            <Tag className="h-2.5 w-2.5" />
+            {categoryMeta.label}
+          </span>
+        </div>
         <span
           className={cn(
-            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide border",
-            categoryMeta.bg,
-            categoryMeta.text,
-            "border-transparent"
-          )}
-        >
-          <Tag className="h-2.5 w-2.5" />
-          {categoryMeta.label}
-        </span>
-        <span
-          className={cn(
-            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap",
+            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap shrink-0",
             statusBadge.className
           )}
         >
@@ -225,8 +249,14 @@ export function BrowseItemCard({ item, viewMode }: BrowseItemCardProps) {
       </h3>
 
       {/* Meta */}
-      <div className="flex items-center gap-1.5 text-xs text-text-secondary mb-1">
+      <div className="flex items-center gap-1.5 text-xs text-text-secondary mb-1 flex-wrap">
         <span className="font-mono font-semibold">{code}</span>
+        {qtyHint ? (
+          <>
+            <span>·</span>
+            <span>{qtyHint} available</span>
+          </>
+        ) : null}
       </div>
       <div className="flex items-center gap-1 text-xs text-text-secondary mb-3 truncate">
         <MapPin className="h-3 w-3 shrink-0" aria-hidden />

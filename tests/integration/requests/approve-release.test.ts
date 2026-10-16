@@ -382,4 +382,87 @@ describeIntegration("requests approve → release (integration)", () => {
     expect(issue!.qty).toBe(1.5);
     expect(issue!.requestId).toBe(released.id);
   });
+
+  it("approves then releases a fractional supply request from a lot", async () => {
+    const item = await consumables.create(
+      {
+        name: "Fractional Toner Bottle",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "bottle",
+        currentQty: 5,
+        unitCost: 320,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+
+    const pending = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: item.id,
+            quantity: 0.75,
+            purpose: "Printer top-up",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(pending.lines[0]?.quantityRequested).toBe(0.75);
+    const lineId = pending.lines[0]!.id;
+
+    const approved = await consumableRequests.approve(
+      pending.id,
+      { note: "Fractional supply reserve" },
+      fx.actor
+    );
+    expect(approved.status).toBe("approved");
+
+    const reserved = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(reserved.reservedQty).toBe(0.75);
+    expect(reserved.availableQty).toBe(4.25);
+
+    const availableLots = await lots.list(
+      { consumableId: item.id },
+      fx.actor.tenantId
+    );
+    const lotId = availableLots[0]!.id;
+
+    const released = await consumableRequests.release(
+      approved.id,
+      {
+        receivedBy: "Department Clerk",
+        note: "Three-quarter bottle issue",
+        lines: [
+          {
+            lineId,
+            allocations: [{ lotId, quantity: 0.75 }],
+          },
+        ],
+      },
+      fx.actor
+    );
+    expect(released.status).toBe("released");
+    expect(released.allocations[0]?.quantity).toBe(0.75);
+
+    const after = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(after.currentQty).toBe(4.25);
+    expect(after.reservedQty).toBe(0);
+    expect(after.availableQty).toBe(4.25);
+
+    const ledger = await movements.listByConsumable(item.id, fx.actor.tenantId);
+    const issue = ledger.find(
+      (m) => m.direction === "out" && m.reason === "issue"
+    );
+    expect(issue).toBeTruthy();
+    expect(issue!.qty).toBe(0.75);
+    expect(issue!.departmentId).toBe(fx.departmentId);
+    expect(issue!.requestId).toBe(released.id);
+  });
 });

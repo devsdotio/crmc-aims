@@ -8,7 +8,7 @@ export default function BorrowerCatalogPage() {
       <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs">
         <h1 className="text-xl font-bold tracking-tight text-text">Browse Catalog</h1>
         <p className="text-xs text-text-secondary mt-0.5">
-          Explore equipment and supplies available for department loan or requisition. Select items to submit a request.
+          Explore assets, supplies, and materials available for department loan or requisition. Select items to submit a request.
         </p>
       </div>
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { AssetService } from "@/server/modules/assets/asset.service";
 import { BorrowRequestService } from "@/server/modules/borrow-requests/borrow-request.service";
 import { ConsumableService } from "@/server/modules/consumables/consumable.service";
 import { ConsumableRequestService } from "@/server/modules/consumable-requests/consumable-request.service";
@@ -18,6 +19,7 @@ import {
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
 describeIntegration("requests requester flows", () => {
+  const assets = new AssetService();
   const borrow = new BorrowRequestService();
   const consumables = new ConsumableService();
   const consumableRequests = new ConsumableRequestService();
@@ -224,6 +226,93 @@ describeIntegration("requests requester flows", () => {
         fx.borrower
       )
     ).rejects.toThrow();
+  });
+
+  it("borrower catalog lists warehouse assets, supplies, and materials (parity with admin stock)", async () => {
+    const unit = await assets.createAsset(
+      {
+        name: "Catalog Projector",
+        category: fx.assetCategory,
+        location: "AV Room",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    const supply = await consumables.create(
+      {
+        name: "Catalog Bond Paper",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "ream",
+        currentQty: 12.5,
+        unitCost: 180,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    const material = await consumables.create(
+      {
+        name: "Catalog Paint",
+        category: fx.consumableCategory,
+        classification: "material",
+        unit: "liter",
+        currentQty: 4.25,
+        unitCost: 95,
+        supplierId: fx.supplierId,
+        location: "Yard",
+      },
+      fx.actor
+    );
+
+    const adminConsumables = await consumables.list(
+      {},
+      fx.actor.tenantId,
+      fx.actor
+    );
+    expect(adminConsumables.data.map((r) => r.id)).toEqual(
+      expect.arrayContaining([supply.id, material.id])
+    );
+
+    const emptyWarehouse = await consumables.list(
+      {},
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    expect(emptyWarehouse.data).toHaveLength(0);
+
+    const catalog = await consumables.list(
+      { catalog: true },
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    const catalogIds = catalog.data.map((r) => r.id);
+    expect(catalogIds).toEqual(
+      expect.arrayContaining([supply.id, material.id])
+    );
+    const supplyRow = catalog.data.find((r) => r.id === supply.id)!;
+    const materialRow = catalog.data.find((r) => r.id === material.id)!;
+    expect(supplyRow.classification).toBe("supply");
+    expect(supplyRow.currentQty).toBe(12.5);
+    expect(materialRow.classification).toBe("material");
+    expect(materialRow.currentQty).toBe(4.25);
+    expect(supplyRow.supplier).toBeUndefined();
+    expect(materialRow.history).toEqual([]);
+
+    const assetCatalog = await assets.listAssets(
+      { catalog: true },
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    expect(assetCatalog.some((a) => a.id === unit.id)).toBe(true);
+    expect(assetCatalog.find((a) => a.id === unit.id)?.value).toBeUndefined();
+
+    const deptHeld = await assets.listAssets(
+      {},
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    expect(deptHeld.some((a) => a.id === unit.id)).toBe(false);
   });
 });
 

@@ -259,7 +259,7 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Request Supplies",
+          name: "Supplies & Materials",
           href: "/borrower-db/requests/supplies",
           icon: Boxes,
           badge: pendingSupplyCount,
@@ -286,6 +286,12 @@ export default function Sidebar({
         {
           name: "Issued Supplies",
           href: "/borrower-db/supplies",
+          icon: Boxes,
+          roles: ["borrower"],
+        },
+        {
+          name: "Issued Materials",
+          href: "/borrower-db/materials",
           icon: Boxes,
           roles: ["borrower"],
         },
