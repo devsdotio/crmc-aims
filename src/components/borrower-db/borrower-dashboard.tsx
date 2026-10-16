@@ -11,6 +11,7 @@ import {
   TrendingUp,
   FileText,
   PackageCheck,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -140,6 +141,7 @@ function CustodyItemCard({ record }: { record: BorrowLogRecord }) {
   const categoryMeta = getCategoryStyle(record.category);
   const isOverdue = record.status === "overdue";
   const daysLeft = record.dueDate ? calendarDaysUntil(record.dueDate) : null;
+  const isDueSoon = !isOverdue && daysLeft !== null && daysLeft <= 2 && daysLeft >= 0;
 
   return (
     <div
@@ -147,7 +149,9 @@ function CustodyItemCard({ record }: { record: BorrowLogRecord }) {
         "flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-bg-subtle/50 transition-colors duration-150 border-l-4",
         isOverdue
           ? "border-l-status-outofservice-bg bg-status-outofservice-bg/5"
-          : "border-l-status-active-bg/60"
+          : isDueSoon
+            ? "border-l-status-repair-bg bg-status-repair-bg/5"
+            : "border-l-status-active-bg/60"
       )}
     >
       <div
@@ -166,11 +170,11 @@ function CustodyItemCard({ record }: { record: BorrowLogRecord }) {
           <span className="text-text-secondary/40">·</span>
           <span
             className={cn(
-              "text-xs font-semibold",
+              "text-xs font-semibold inline-flex items-center gap-1",
               isOverdue
-                ? "text-status-outofservice-bg dark:text-status-outofservice-text"
-                : daysLeft !== null && daysLeft <= 2
-                  ? "text-status-repair-text"
+                ? "text-status-outofservice-bg dark:text-status-outofservice-text font-bold"
+                : isDueSoon
+                  ? "text-status-repair-text font-bold"
                   : "text-text-secondary"
             )}
           >
@@ -184,6 +188,11 @@ function CustodyItemCard({ record }: { record: BorrowLogRecord }) {
                     ? "Overdue"
                     : `${daysLeft}d left`}
           </span>
+          {isDueSoon && (
+            <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-bold uppercase bg-status-repair-bg/20 text-status-repair-text border border-status-repair-bg/30">
+              Due soon
+            </span>
+          )}
         </div>
       </div>
 
@@ -465,7 +474,8 @@ export function BorrowerDashboard() {
             onClick={() => openWizard(null)}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
           >
-            Multi-type Request
+            <Plus className="h-4 w-4" aria-hidden />
+            New Request
           </button>
           <Link
             href="/borrower-db/inventory"

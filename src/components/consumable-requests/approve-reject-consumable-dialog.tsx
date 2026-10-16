@@ -134,6 +134,15 @@ function ApproveRejectConsumableDialogForm({
     );
   };
 
+  const setLineQuantity = (index: number, val: number) => {
+    setLines((prev) =>
+      prev.map((line, idx) => {
+        if (idx !== index) return line;
+        return { ...line, quantity: Math.max(1, Math.min(99999, val)) };
+      })
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isApprove && !reason.trim()) {
@@ -311,9 +320,23 @@ function ApproveRejectConsumableDialogForm({
                           >
                             <Minus className="h-3 w-3" />
                           </button>
-                          <span className="min-w-6 text-center text-xs font-bold text-text">
-                            {line.quantity}
-                          </span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={99999}
+                            value={line.quantity}
+                            disabled={isSubmitting}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              if (!isNaN(val)) setLineQuantity(idx, val);
+                            }}
+                            onBlur={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              setLineQuantity(idx, isNaN(val) || val < 1 ? 1 : val);
+                            }}
+                            className="w-12 h-6 px-1 text-center text-xs font-mono font-bold tabular-nums bg-bg border border-border/80 rounded text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none select-all"
+                            aria-label={`Quantity for line ${idx + 1}`}
+                          />
                           <button
                             type="button"
                             onClick={() => adjustQuantity(idx, 1)}
