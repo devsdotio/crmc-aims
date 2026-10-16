@@ -2,12 +2,14 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PurchaseLotRow } from "@/server/db/schema";
 import {
   assets,
+  consumableRequestReleaseAllocations,
   consumables,
   departments,
   projectExpenseLines,
   purchaseLots,
   purchaseOrderDepartments,
   stockMovements,
+  type ProjectExpenseMetadata,
 } from "@/server/db/schema";
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
@@ -29,6 +31,7 @@ import { CategoryRepository } from "@/server/modules/categories/category.reposit
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
 import { hasPoJustification } from "@/lib/po-purpose";
 import { resolvePurchaseUnit } from "@/lib/purchase-unit";
+import { formatQty, toQty } from "@/lib/qty";
 
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import {
@@ -341,9 +344,9 @@ export function toPurchaseLotDTO(row: PurchaseLotRow): PurchaseLotDTO {
     itemName: row.itemName,
     supplierId: row.supplierId ?? null,
     supplierName: row.supplierName ?? null,
-    quantity: row.quantity,
-    quantityRemaining: row.quantityRemaining,
-    orderedQuantity: meta.orderedQuantity ?? row.quantity,
+    quantity: toQty(row.quantity),
+    quantityRemaining: toQty(row.quantityRemaining),
+    orderedQuantity: toQty(meta.orderedQuantity ?? row.quantity),
     receivedQuantity: meta.receivedQuantity ?? null,
     unitCost: formatMoney(row.unitCost),
     totalCost: formatMoney(row.totalCost),
@@ -990,7 +993,7 @@ export class PurchaseLotService {
                   tenantId: actor.tenantId,
                   movementCode: generateOperationalCode("MOV"),
                   consumableId,
-                  qty: item.quantity,
+                  qty: formatQty(item.quantity),
                   direction: "in",
                   reason: "restock",
                   unitCost: unitCostMoney,
@@ -1018,7 +1021,7 @@ export class PurchaseLotService {
                     movementCode: generateOperationalCode("MOV"),
                     consumableId,
                     projectId: targetProjectId,
-                    qty: item.quantity,
+                    qty: formatQty(item.quantity),
                     direction: "out",
                     reason: "issue",
                     unitCost: unitCostMoney,
@@ -1057,7 +1060,9 @@ export class PurchaseLotService {
                 await db
                   .update(consumables)
                   .set({
-                    currentQty: existing.currentQty + item.quantity,
+                    currentQty: formatQty(
+                      toQty(existing.currentQty) + item.quantity
+                    ),
                     lastRestocked: new Date(),
                     updatedAt: new Date(),
                     ...(lineSupplierName ? { supplier: lineSupplierName } : {}),
@@ -1074,7 +1079,7 @@ export class PurchaseLotService {
                   tenantId: actor.tenantId,
                   movementCode: generateOperationalCode("MOV"),
                   consumableId,
-                  qty: item.quantity,
+                  qty: formatQty(item.quantity),
                   direction: "in",
                   reason: "restock",
                   unitCost: unitCostMoney,
@@ -1130,8 +1135,8 @@ export class PurchaseLotService {
                 classification: itemClassification,
                 categoryClass: itemCategoryClass,
                 unit: item.unit || "pcs",
-                currentQty: initialQty,
-                minThreshold: item.minThreshold ?? 5,
+                currentQty: formatQty(initialQty),
+                minThreshold: formatQty(item.minThreshold ?? 5),
                 location: item.location || "Main Property Storage",
                 supplier: lineSupplierName || undefined,
                 lastRestocked: !targetProjectId ? new Date() : undefined,
@@ -1158,7 +1163,7 @@ export class PurchaseLotService {
                 tenantId: actor.tenantId,
                 movementCode: generateOperationalCode("MOV"),
                 consumableId,
-                qty: item.quantity,
+                qty: formatQty(item.quantity),
                 direction: "in",
                 reason: "restock",
                 unitCost: unitCostMoney,
@@ -1186,7 +1191,7 @@ export class PurchaseLotService {
                   movementCode: generateOperationalCode("MOV"),
                   consumableId,
                   projectId: targetProjectId,
-                  qty: item.quantity,
+                  qty: formatQty(item.quantity),
                   direction: "out",
                   reason: "issue",
                   unitCost: unitCostMoney,
@@ -1226,7 +1231,7 @@ export class PurchaseLotService {
                 tenantId: actor.tenantId,
                 movementCode: generateOperationalCode("MOV"),
                 consumableId,
-                qty: item.quantity,
+                qty: formatQty(item.quantity),
                 direction: "in",
                 reason: "restock",
                 unitCost: unitCostMoney,
@@ -1474,8 +1479,11 @@ export class PurchaseLotService {
             departmentName,
             projectId: targetProjectId,
             projectName: targetProjectName,
-            quantity: item.quantity,
-            quantityRemaining: initialStatus === "delivered" ? (targetProjectId ? 0 : item.quantity) : 0,
+            quantity: formatQty(item.quantity),
+            quantityRemaining:
+              initialStatus === "delivered"
+                ? formatQty(targetProjectId ? 0 : item.quantity)
+                : formatQty(0),
             unitCost,
             totalCost,
             purchasedOn: body.poDate,
@@ -1572,8 +1580,8 @@ export class PurchaseLotService {
           : currentMeta.deliveredAt;
 
       // Handle Delivery Stock Intake if transitioning to delivered for the first time
-      let nextRemaining = lot.quantityRemaining;
-      let nextQuantity = lot.quantity;
+      let nextRemaining = toQty(lot.quantityRemaining);
+      let nextQuantity = toQty(lot.quantity);
       let receivedQtyForMeta: number | null = currentMeta.receivedQuantity;
       let orderedQtyForMeta: number | null = currentMeta.orderedQuantity;
       let nextAssetId = lot.assetId;
@@ -1581,7 +1589,7 @@ export class PurchaseLotService {
       let nextItemCode = lot.itemCode;
 
       if (nextStatus === "delivered" && currentMeta.status !== "delivered") {
-        const orderedQty = currentMeta.orderedQuantity ?? lot.quantity;
+        const orderedQty = toQty(currentMeta.orderedQuantity ?? lot.quantity);
         const receivedQty =
           typeof body.receivedQuantity === "number"
             ? body.receivedQuantity
@@ -1645,8 +1653,8 @@ export class PurchaseLotService {
                 classification: itemClassification,
                 categoryClass: itemCategoryClass,
                 unit: draft?.unit || "pcs",
-                currentQty: 0,
-                minThreshold: draft?.minThreshold ?? 5,
+                currentQty: formatQty(0),
+                minThreshold: formatQty(draft?.minThreshold ?? 5),
                 location: draft?.location || "Main Property Storage",
                 supplier:
                   lot.supplierName && !isAggregateSupplierLabel(lot.supplierName)
@@ -1719,7 +1727,7 @@ export class PurchaseLotService {
               consumableId,
               purchaseLotId: lot.id,
               lotCode: lot.lotCode,
-              qty: receivedQty,
+              qty: formatQty(receivedQty),
               direction: "in",
               reason: "restock",
               unitCost: lot.unitCost,
@@ -1751,7 +1759,7 @@ export class PurchaseLotService {
                 projectId: lot.projectId,
                 purchaseLotId: lot.id,
                 lotCode: lot.lotCode,
-                qty: receivedQty,
+                qty: formatQty(receivedQty),
                 direction: "out",
                 reason: "issue",
                 unitCost: lot.unitCost,
@@ -1829,7 +1837,7 @@ export class PurchaseLotService {
               consumableId,
               purchaseLotId: lot.id,
               lotCode: lot.lotCode,
-              qty: receivedQty,
+              qty: formatQty(receivedQty),
               direction: "in",
               reason: "restock",
               unitCost: lot.unitCost,
@@ -2035,8 +2043,8 @@ export class PurchaseLotService {
         lot.id,
         {
           notes: nextNotes,
-          quantity: nextQuantity,
-          quantityRemaining: nextRemaining,
+          quantity: formatQty(nextQuantity),
+          quantityRemaining: formatQty(nextRemaining),
           receiptUrl: nextReceiptUrl,
           ...(nextAssetId && nextAssetId !== lot.assetId
             ? { assetId: nextAssetId }
@@ -2053,7 +2061,7 @@ export class PurchaseLotService {
             : {}),
           ...(nextStatus === "delivered" &&
           currentMeta.status !== "delivered" &&
-          nextQuantity !== lot.quantity
+          nextQuantity !== toQty(lot.quantity)
             ? {
                 totalCost: formatMoney(
                   (Number(lot.unitCost) || 0) * nextQuantity
@@ -2256,18 +2264,18 @@ export class PurchaseLotService {
         "approved",
         "ordered",
       ]);
-      const wantsLineEdit =
-        body.itemName !== undefined ||
-        body.quantity !== undefined ||
-        body.unitCost !== undefined;
-      if (wantsLineEdit && !editableStatuses.has(currentMeta.status)) {
+      // Name/qty stay locked after delivery; unit cost may be corrected anytime
+      // (including opening-balance / zero-priced batches) so valuation stays accurate.
+      const wantsStructuralLineEdit =
+        body.itemName !== undefined || body.quantity !== undefined;
+      if (wantsStructuralLineEdit && !editableStatuses.has(currentMeta.status)) {
         throw new BadRequestError(
-          `Line items can only be edited while the purchase order is pending, approved, or ordered (current: ${currentMeta.status.replace(/_/g, " ")}).`
+          `Line name and quantity can only be edited while the purchase order is pending, approved, or ordered (current: ${currentMeta.status.replace(/_/g, " ")}). Unit cost can still be updated.`
         );
       }
 
       const nextQuantity =
-        body.quantity !== undefined ? body.quantity : lot.quantity;
+        body.quantity !== undefined ? toQty(body.quantity) : toQty(lot.quantity);
       const nextUnitCost =
         body.unitCost !== undefined
           ? formatMoney(body.unitCost)
@@ -2275,6 +2283,9 @@ export class PurchaseLotService {
       const nextTotalCost = formatMoney(
         Number(nextUnitCost) * nextQuantity
       );
+      const costChanged =
+        body.unitCost !== undefined &&
+        formatMoney(lot.unitCost) !== nextUnitCost;
 
       const updated = await this.repo.update(
         lot.id,
@@ -2289,12 +2300,12 @@ export class PurchaseLotService {
           ...(body.itemName !== undefined ? { itemName: body.itemName } : {}),
           ...(body.quantity !== undefined
             ? {
-                quantity: nextQuantity,
+                quantity: formatQty(nextQuantity),
                 // Non-delivered lines keep remaining at 0 until intake.
                 quantityRemaining:
                   currentMeta.status === "delivered"
                     ? lot.quantityRemaining
-                    : 0,
+                    : formatQty(0),
               }
             : {}),
           ...(body.unitCost !== undefined || body.quantity !== undefined
@@ -2303,6 +2314,19 @@ export class PurchaseLotService {
         },
         session
       );
+
+      if (costChanged) {
+        await this.cascadeLotUnitCostChange(
+          {
+            lotId: lot.id,
+            assetId: lot.assetId,
+            previousUnitCost: formatMoney(lot.unitCost),
+            nextUnitCost,
+            tenantId: actor.tenantId,
+          },
+          session
+        );
+      }
 
       // Multi-purpose: batch-update purpose on sibling lots by id
       if (body.linePurposes && body.linePurposes.length > 0) {
@@ -2414,6 +2438,11 @@ export class PurchaseLotService {
       }
       if (body.supplierId !== undefined && body.supplierId !== lot.supplierId) {
         updates.push("Supplier changed");
+      }
+      if (costChanged) {
+        updates.push(
+          `Unit cost ${formatMoney(lot.unitCost)} → ${nextUnitCost} (propagated to stock ledger / releases / project charges)`
+        );
       }
       if (body.linePurposes && body.linePurposes.length > 0) {
         updates.push(
@@ -2693,8 +2722,8 @@ export class PurchaseLotService {
             departmentName: anchor.departmentName,
             projectId: targetProjectId,
             projectName: targetProjectName,
-            quantity: item.quantity,
-            quantityRemaining: 0,
+            quantity: formatQty(item.quantity),
+            quantityRemaining: formatQty(0),
             unitCost,
             totalCost,
             purchasedOn: anchor.purchasedOn,
@@ -2755,7 +2784,10 @@ export class PurchaseLotService {
       const meta = parseNotesMetadata(lot.notes);
 
       // If delivered and already drawn down, prevent hard delete
-      if (meta.status === "delivered" && lot.quantityRemaining < lot.quantity) {
+      if (
+        meta.status === "delivered" &&
+        toQty(lot.quantityRemaining) < toQty(lot.quantity)
+      ) {
         throw new BadRequestError(
           "Cannot delete a delivered PO that has already been drawn or issued. Cancel the order instead."
         );
@@ -2912,15 +2944,15 @@ export class PurchaseLotService {
       );
     }
 
-    if (lot.quantityRemaining < quantity) {
+    if (toQty(lot.quantityRemaining) < quantity) {
       throw new BadRequestError(
-        `Insufficient remaining in lot ${lot.lotCode}. Available: ${lot.quantityRemaining}.`
+        `Insufficient remaining in lot ${lot.lotCode}. Available: ${toQty(lot.quantityRemaining)}.`
       );
     }
 
     await this.repo.updateRemaining(
       lot.id,
-      lot.quantityRemaining - quantity,
+      toQty(lot.quantityRemaining) - quantity,
       session,
       tenantId
     );
@@ -2991,8 +3023,8 @@ export class PurchaseLotService {
       );
     }
 
-    const nextQty = lot.quantity + quantity;
-    const nextRemaining = lot.quantityRemaining + quantity;
+    const nextQty = toQty(lot.quantity) + quantity;
+    const nextRemaining = toQty(lot.quantityRemaining) + quantity;
     await this.repo.updateQuantities(lot.id, nextQty, nextRemaining, session, scope);
 
     const unit = Number(lot.unitCost);
@@ -3037,7 +3069,7 @@ export class PurchaseLotService {
 
     for (const lot of available) {
       if (remaining <= 0) break;
-      const take = Math.min(remaining, lot.quantityRemaining);
+      const take = Math.min(remaining, toQty(lot.quantityRemaining));
       if (take <= 0) continue;
 
       const unit = Number(lot.unitCost);
@@ -3054,7 +3086,7 @@ export class PurchaseLotService {
 
       await this.repo.updateRemaining(
         lot.id,
-        lot.quantityRemaining - take,
+        toQty(lot.quantityRemaining) - take,
         session,
         scope
       );
@@ -3073,6 +3105,130 @@ export class PurchaseLotService {
     }
 
     return allocations;
+  }
+
+  /**
+   * After a lot unit cost correction, rewrite frozen copies so valuation,
+   * issue history, release accountability, and project spend stay aligned.
+   */
+  private async cascadeLotUnitCostChange(
+    args: {
+      lotId: string;
+      assetId?: string | null;
+      previousUnitCost: string;
+      nextUnitCost: string;
+      tenantId?: string | null;
+    },
+    session: DbSession
+  ): Promise<void> {
+    const { lotId, assetId, nextUnitCost, tenantId } = args;
+    const db = session ?? getDb();
+
+    await db
+      .update(stockMovements)
+      .set({
+        unitCost: nextUnitCost,
+        lineTotal: sql`round((${stockMovements.qty}::numeric * ${nextUnitCost}::numeric), 2)`,
+      })
+      .where(
+        and(
+          eq(stockMovements.purchaseLotId, lotId),
+          byTenantId(stockMovements.tenantId, tenantId)
+        )
+      );
+
+    await db
+      .update(consumableRequestReleaseAllocations)
+      .set({
+        unitCost: nextUnitCost,
+        lineTotal: sql`round((${consumableRequestReleaseAllocations.quantity}::numeric * ${nextUnitCost}::numeric), 2)`,
+      })
+      .where(eq(consumableRequestReleaseAllocations.purchaseLotId, lotId));
+
+    if (assetId) {
+      await db
+        .update(assets)
+        .set({
+          value: nextUnitCost,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(assets.id, assetId),
+            byTenantId(assets.tenantId, tenantId)
+          )
+        );
+    }
+
+    const expenseConditions = [
+      sql`(
+        ${projectExpenseLines.metadata}->>'purchaseLotId' = ${lotId}
+        OR EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(
+            coalesce(${projectExpenseLines.metadata}->'lotAllocations', '[]'::jsonb)
+          ) AS elem
+          WHERE elem->>'lotId' = ${lotId}
+        )
+      )`,
+    ];
+    if (tenantId) {
+      expenseConditions.push(eq(projectExpenseLines.tenantId, tenantId));
+    }
+
+    const expenseRows = await db
+      .select()
+      .from(projectExpenseLines)
+      .where(and(...expenseConditions));
+
+    for (const expense of expenseRows) {
+      const meta = (expense.metadata ?? {}) as ProjectExpenseMetadata;
+      const allocations = Array.isArray(meta.lotAllocations)
+        ? meta.lotAllocations.map((a) => {
+            if (a.lotId !== lotId) return a;
+            const qty = Number(a.quantity) || 0;
+            const total = formatMoney(qty * Number(nextUnitCost));
+            return {
+              ...a,
+              unitCost: nextUnitCost,
+              total,
+              uncosted: Number(nextUnitCost) <= 0 ? true : undefined,
+            };
+          })
+        : meta.lotAllocations;
+
+      let nextAmount = expense.amount;
+      let nextUnit = expense.unitCost;
+      if (allocations && allocations.length > 0) {
+        const sum = allocations.reduce(
+          (acc, a) => acc + (Number(a.total) || 0),
+          0
+        );
+        nextAmount = formatMoney(sum);
+        const qty = Number(expense.quantity) || 0;
+        nextUnit =
+          qty > 0 ? formatMoney(sum / qty) : nextUnitCost;
+      } else if (meta.purchaseLotId === lotId) {
+        const qty = Number(expense.quantity) || 0;
+        nextUnit = nextUnitCost;
+        nextAmount = formatMoney(qty * Number(nextUnitCost));
+      }
+
+      const nextMeta: ProjectExpenseMetadata = {
+        ...meta,
+        ...(allocations ? { lotAllocations: allocations } : {}),
+      };
+
+      await db
+        .update(projectExpenseLines)
+        .set({
+          amount: nextAmount,
+          unitCost: nextUnit,
+          metadata: nextMeta,
+          updatedAt: new Date(),
+        })
+        .where(eq(projectExpenseLines.id, expense.id));
+    }
   }
 
   /**
@@ -3126,8 +3282,9 @@ export class PurchaseLotService {
         itemName: input.itemName,
         supplierId,
         supplierName,
-        quantity: input.quantity,
-        quantityRemaining: status === "delivered" ? input.quantity : 0,
+        quantity: formatQty(input.quantity),
+        quantityRemaining:
+          status === "delivered" ? formatQty(input.quantity) : formatQty(0),
         unitCost,
         totalCost: total,
         purchasedOn: input.purchasedOn,

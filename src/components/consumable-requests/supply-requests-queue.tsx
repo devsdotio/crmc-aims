@@ -332,8 +332,12 @@ export function SupplyRequestsQueue({
     row: ConsumableRequest,
     payload: ReleaseConsumableRequestPayload
   ) => {
-    await release.mutateAsync({ id: row.id, payload });
-    toast.success(`${row.requestCode} issued. Stock deducted.`);
+    const updated = await release.mutateAsync({ id: row.id, payload });
+    toast.success(
+      updated.status === "released"
+        ? `${row.requestCode} fully issued. Stock deducted.`
+        : `${row.requestCode} partially issued. Remaining lines stay approved.`
+    );
     setReleaseTarget(null);
   };
 
@@ -556,17 +560,19 @@ export function SupplyRequestsQueue({
                     {/* Inline Actions for Approved */}
                     {canOperate && row.status === "approved" && (
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleOpenUndoApproval(row); }}
-                          disabled={cancel.isPending || isUndoingApproval}
-                          aria-label={`Undo approval for request ${row.requestCode}`}
-                          title="Undo approval and return to Pending Review"
-                          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <RotateCcw className="h-3.5 w-3.5" />
-                          Undo
-                        </button>
+                        {(row.allocations?.length ?? 0) === 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleOpenUndoApproval(row); }}
+                            disabled={cancel.isPending || isUndoingApproval}
+                            aria-label={`Undo approval for request ${row.requestCode}`}
+                            title="Undo approval and return to Pending Review"
+                            className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-text-secondary hover:border-accent/40 hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Undo
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setReleaseTarget(row); }}
@@ -580,7 +586,9 @@ export function SupplyRequestsQueue({
                           )}
                         >
                           <Send className="h-3.5 w-3.5" strokeWidth={2} />
-                          Issue…
+                          {(row.allocations?.length ?? 0) > 0
+                            ? "Issue more…"
+                            : "Issue…"}
                         </button>
                         <button
                           type="button"

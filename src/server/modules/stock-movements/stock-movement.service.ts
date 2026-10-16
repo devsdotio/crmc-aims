@@ -21,6 +21,7 @@ import {
 } from "@/lib/assets-custody";
 import { ConsumableRepository } from "@/server/modules/consumables/consumable.repository";
 import { consumableIdSchema } from "@/server/modules/consumables/consumable.validation";
+import { formatQty, toQty } from "@/lib/qty";
 
 import {
   StockMovementRepository,
@@ -212,7 +213,7 @@ function toDTO(
     itemCode: listed.itemCode,
     itemName: listed.itemName,
     unit: listed.unit,
-    qty: row.qty,
+    qty: toQty(row.qty),
     direction: row.direction,
     reason: row.reason,
     departmentId: row.departmentId,
@@ -250,7 +251,7 @@ export class StockMovementService {
         tenantId: input.actor.tenantId,
         movementCode: generateOperationalCode("MOV"),
         consumableId: input.consumableId,
-        qty: line.qty,
+        qty: formatQty(line.qty),
         direction: input.direction,
         reason: input.reason,
         departmentId: input.departmentId ?? null,
@@ -405,7 +406,7 @@ export class StockMovementService {
         if (lot) {
           await this.lots.updateRemaining(
             lot.id,
-            lot.quantityRemaining + existing.qty,
+            toQty(lot.quantityRemaining) + toQty(existing.qty),
             tx,
             actor.tenantId
           );
@@ -414,7 +415,9 @@ export class StockMovementService {
 
       await this.consumables.update(
         item.id,
-        { currentQty: item.currentQty + existing.qty },
+        {
+          currentQty: formatQty(toQty(item.currentQty) + toQty(existing.qty)),
+        },
         tx,
         actor.tenantId
       );
@@ -427,7 +430,7 @@ export class StockMovementService {
           tenantId: existing.tenantId ?? actor.tenantId,
           movementCode: generateOperationalCode("MOV"),
           consumableId: existing.consumableId,
-          qty: existing.qty,
+          qty: formatQty(toQty(existing.qty)),
           direction: "in",
           reason: "restock",
           departmentId: existing.departmentId,
@@ -505,18 +508,19 @@ export class StockMovementService {
         if (!linkedIds.includes(movement.id)) return false;
         // Multi-lot charge: only drop when this MOV covers the full expense qty.
         if (linkedIds.length > 1) {
-          return Math.round(Number(e.quantity ?? 0)) === movement.qty;
+          return toQty(e.quantity ?? 0) === toQty(movement.qty);
         }
         return true;
       }
 
-      if (Math.round(Number(e.quantity ?? 0)) !== movement.qty) return false;
+      if (toQty(e.quantity ?? 0) !== toQty(movement.qty)) return false;
 
       const allocs = meta.lotAllocations ?? [];
       if (movement.purchaseLotId && allocs.length > 0) {
         return allocs.some(
           (a) =>
-            a.lotId === movement.purchaseLotId && a.quantity === movement.qty
+            a.lotId === movement.purchaseLotId &&
+            toQty(a.quantity) === toQty(movement.qty)
         );
       }
 

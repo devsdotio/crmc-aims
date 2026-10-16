@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gt, ilike, inArray, or } from "drizzle-orm";
 
+import { formatQty } from "@/lib/qty";
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
 import { getTenantContext } from "@/server/shared/tenant-context";
@@ -199,7 +200,7 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
     const conditions = [
       eq(purchaseLots.consumableId, consumableId),
       eq(purchaseLots.itemType, "consumable"),
-      gt(purchaseLots.quantityRemaining, 0)
+      gt(purchaseLots.quantityRemaining, "0")
     ];
     if (resolvedTenantId) conditions.push(eq(purchaseLots.tenantId, resolvedTenantId));
 
@@ -224,7 +225,7 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
 
     const [row] = await db
       .update(purchaseLots)
-      .set({ quantityRemaining, updatedAt: new Date() })
+      .set({ quantityRemaining: formatQty(quantityRemaining), updatedAt: new Date() })
       .where(and(...conditions))
       .returning();
     return row ?? null;
@@ -245,7 +246,11 @@ export class PurchaseLotRepository implements IPurchaseLotRepository {
 
     const [row] = await db
       .update(purchaseLots)
-      .set({ quantity, quantityRemaining, updatedAt: new Date() })
+      .set({
+        quantity: formatQty(quantity),
+        quantityRemaining: formatQty(quantityRemaining),
+        updatedAt: new Date(),
+      })
       .where(and(...conditions))
       .returning();
     return row ?? null;

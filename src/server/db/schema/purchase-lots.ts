@@ -1,7 +1,6 @@
 import {
   date,
   index,
-  integer,
   numeric,
   pgEnum,
   pgTable,
@@ -67,9 +66,12 @@ export const purchaseLots = pgTable(
     projectName: text("project_name"),
 
     /** Original received quantity (assets = 1). */
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
     /** Remaining quantity for FIFO (assets typically 1 until written off). */
-    quantityRemaining: integer("quantity_remaining").notNull(),
+    quantityRemaining: numeric("quantity_remaining", {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
 
     unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull(),
     totalCost: numeric("total_cost", { precision: 14, scale: 2 }).notNull(),

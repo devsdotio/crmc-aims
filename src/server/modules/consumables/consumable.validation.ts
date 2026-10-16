@@ -3,6 +3,12 @@ import {
   CONSUMABLE_CLASSIFICATIONS,
   DEFAULT_CONSUMABLE_CLASSIFICATION,
 } from "@/lib/consumable-classification";
+import {
+  nonNegativeQtySchema,
+  positiveQtySchema,
+  qtyEquals,
+  signedQtyChangeSchema,
+} from "@/lib/qty";
 
 /** Free-text category name (must match Settings → Consumable categories). */
 export const consumableCategorySchema = z
@@ -53,22 +59,8 @@ export const createConsumableSchema = z
     /** Optional general class; otherwise derived from the category's parent class. */
     categoryClass: z.string().trim().max(120).optional(),
     unit: z.string().trim().min(1).max(40),
-    currentQty: z
-      .union([z.number(), z.string()])
-      .optional()
-      .transform((value, ctx) => {
-        if (value === undefined || value === "") return 0;
-        const n = typeof value === "number" ? value : Number(value);
-        if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
-          ctx.addIssue({
-            code: "custom",
-            message: "Opening quantity must be a whole number of 0 or more.",
-          });
-          return z.NEVER;
-        }
-        return n;
-      }),
-    minThreshold: z.number().int().min(0).optional().default(0),
+    currentQty: nonNegativeQtySchema.optional().default(0),
+    minThreshold: nonNegativeQtySchema.optional().default(0),
     location: z.string().trim().min(1).max(120),
     supplier: z.string().trim().max(255).optional(),
     supplierId: z.string().uuid().optional().nullable(),
@@ -114,7 +106,7 @@ export const updateConsumableSchema = z
     classification: z.enum(CONSUMABLE_CLASSIFICATIONS).optional(),
     categoryClass: z.string().trim().max(120).optional(),
     unit: z.string().trim().min(1).max(40).optional(),
-    minThreshold: z.number().int().min(0).optional(),
+    minThreshold: nonNegativeQtySchema.optional(),
     location: z.string().trim().min(1).max(120).optional(),
     supplier: z.string().trim().max(255).nullable().optional(),
     notes: z.string().trim().max(2000).nullable().optional(),
@@ -126,7 +118,7 @@ export const updateConsumableSchema = z
 
 export const stockMovementSchema = z
   .object({
-    quantity: z.number().int().positive("quantity must be positive."),
+    quantity: positiveQtySchema,
     reason: z.string().trim().max(500).optional(),
     notes: z.string().trim().max(2000).optional(),
     departmentId: z.string().uuid().optional(),
@@ -150,7 +142,7 @@ export const stockMovementSchema = z
  * `unitCost` is required so project spend can later price inventory use correctly.
  */
 export const restockSchema = z.object({
-  quantity: z.number().int().positive("quantity must be positive."),
+  quantity: positiveQtySchema,
   unitCost: z
     .union([z.string(), z.number()])
     .transform((value, ctx) => {
@@ -176,10 +168,7 @@ export const restockSchema = z.object({
 /** Adjustment can increase or decrease; quantityChange signed. Must stay lot-synced. */
 export const stockAdjustSchema = z
   .object({
-    quantityChange: z
-      .number()
-      .int()
-      .refine((n) => n !== 0, "quantityChange cannot be zero."),
+    quantityChange: signedQtyChangeSchema,
     reason: z.string().trim().min(1).max(500),
     notes: z.string().trim().max(2000).optional(),
     /**
@@ -196,7 +185,7 @@ export const stockAdjustSchema = z
           .object({
             lotId: z.string().uuid().optional(),
             lotCode: z.string().trim().min(1).max(64).optional(),
-            quantity: z.number().int().positive(),
+            quantity: positiveQtySchema,
           })
           .refine((a) => Boolean(a.lotId || a.lotCode), {
             message: "Each allocation needs lotId or lotCode.",
@@ -242,7 +231,7 @@ export const stockAdjustSchema = z
       }
       if (hasAllocations) {
         const sum = body.allocations!.reduce((s, a) => s + a.quantity, 0);
-        if (sum !== need) {
+        if (!qtyEquals(sum, need)) {
           ctx.addIssue({
             code: "custom",
             path: ["allocations"],
@@ -272,7 +261,7 @@ export const consumableIdSchema = z.string().uuid("Invalid consumable id.");
 /** Admin walk-up issue from on-hand stock. Lot must be chosen (no FIFO). */
 export const issueConsumableSchema = z
   .object({
-    quantity: z.number().int().positive("quantity must be positive."),
+    quantity: positiveQtySchema,
     departmentId: z.string().uuid().optional(),
     projectId: z.string().uuid().optional(),
     lotId: z.string().uuid().optional(),

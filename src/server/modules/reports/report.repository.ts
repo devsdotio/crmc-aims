@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
 
+import { toQty } from "@/lib/qty";
 import { getDb } from "@/server/db";
 import {
   assets,
@@ -105,7 +106,7 @@ export class ReportRepository {
         .where(
           and(
             eq(purchaseLots.itemType, "consumable"),
-            gte(purchaseLots.quantityRemaining, 0),
+            gte(purchaseLots.quantityRemaining, "0"),
             ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
           )
         ),
@@ -554,7 +555,7 @@ export class ReportRepository {
       .where(
         and(
           eq(purchaseLots.itemType, "consumable"),
-          gte(purchaseLots.quantityRemaining, 0),
+          gte(purchaseLots.quantityRemaining, "0"),
           ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
         )
       );
@@ -659,8 +660,11 @@ export class ReportRepository {
 
     return {
       data: rows.map((r) => {
-        const available = Math.max(0, r.currentQty - r.reservedQty);
-        const isLow = r.currentQty <= r.minThreshold;
+        const currentQty = toQty(r.currentQty);
+        const reservedQty = toQty(r.reservedQty);
+        const minThreshold = toQty(r.minThreshold);
+        const available = Math.max(0, currentQty - reservedQty);
+        const isLow = currentQty <= minThreshold;
         
         // Real velocity burn from aggregated stock movements
         const itemUsage = usageMap.get(r.id);
@@ -671,7 +675,7 @@ export class ReportRepository {
 
         const lotInfo = lotMap.get(r.id);
         const unitCost = lotInfo?.latestUnitCost ?? null;
-        const stockValuation = lotInfo && lotInfo.valuation > 0 ? lotInfo.valuation : (unitCost ? r.currentQty * unitCost : null);
+        const stockValuation = lotInfo && lotInfo.valuation > 0 ? lotInfo.valuation : (unitCost ? currentQty * unitCost : null);
 
         return {
           id: r.id,
@@ -680,10 +684,10 @@ export class ReportRepository {
           category: r.category,
           classification: r.classification,
           unit: r.unit,
-          currentQty: r.currentQty,
-          reservedQty: r.reservedQty,
+          currentQty,
+          reservedQty,
           availableQty: available,
-          minThreshold: r.minThreshold,
+          minThreshold,
           location: r.location,
           unitCost: unitCost as number | null,
           stockValuation: stockValuation as number | null,
@@ -704,7 +708,7 @@ export class ReportRepository {
         totalInventoryValuation:
           consumableValuation?.totalValuation && consumableValuation.totalValuation > 0
             ? consumableValuation.totalValuation
-            : rows.reduce((sum, r) => sum + ((lotMap.get(r.id)?.valuation) ?? (r.currentQty * (lotMap.get(r.id)?.latestUnitCost ?? 0))), 0),
+            : rows.reduce((sum, r) => sum + ((lotMap.get(r.id)?.valuation) ?? (toQty(r.currentQty) * (lotMap.get(r.id)?.latestUnitCost ?? 0))), 0),
         totalDispatched30d: dispatchSummary?.totalQty ?? 0,
         totalDispatchedValue30d: dispatchSummary?.totalVal ?? 0,
         topConsumingDepartments: topDeptRows,

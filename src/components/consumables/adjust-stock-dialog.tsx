@@ -14,7 +14,11 @@ import type { ConsumableItem } from "@/types/inventory";
 import type { StockAdjustPayload } from "@/features/consumables/client";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client";
 import { formatPhp } from "@/components/projects/format-money";
-import { filterMoneyInput } from "@/lib/numeric-input";
+import {
+  filterMoneyInput,
+  filterSignedDecimalInput,
+  parseSignedDecimal,
+} from "@/lib/numeric-input";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export interface AdjustStockDialogProps {
@@ -46,14 +50,8 @@ function AdjustStockDialogForm({
   const [deltaInput, setDeltaInput] = useState<string>(
     item.currentQty > 0 ? "-1" : "1"
   );
-  const parsedDelta = Number(deltaInput);
-  const adjustmentDelta =
-    deltaInput.trim() === "" ||
-    deltaInput.trim() === "-" ||
-    deltaInput.trim() === "+" ||
-    Number.isNaN(parsedDelta)
-      ? 0
-      : parsedDelta;
+  const parsedDelta = parseSignedDecimal(deltaInput);
+  const adjustmentDelta = parsedDelta ?? 0;
   const [reason, setReason] = useState(ADJUSTMENT_REASONS[0]);
 
   const reasonOptions = useMemo(
@@ -332,16 +330,16 @@ function AdjustStockDialogForm({
                   <input
                     id="adjustment-delta-input"
                     type="text"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     value={deltaInput}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      if (/^[+-]?\d*$/.test(val)) {
-                        setDeltaInput(val);
+                      const next = filterSignedDecimalInput(e.target.value);
+                      if (next !== null) {
+                        setDeltaInput(next);
                         if (error) setError("");
                       }
                     }}
-                    placeholder="e.g. -5 or +10"
+                    placeholder="e.g. -5.5 or +10.25"
                     className={cn(
                       "w-full h-9 px-3 text-xs bg-bg border rounded-lg font-bold font-mono text-text focus:outline-none focus:ring-2",
                       isExceedingTotalStock

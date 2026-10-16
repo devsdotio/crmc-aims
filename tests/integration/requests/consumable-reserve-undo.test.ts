@@ -184,4 +184,22 @@ describeIntegration("consumable reservedQty undo / cancel (integration)", () => 
     const after = await consumables.getById(item.id, fx.actor.tenantId);
     expect(after.reservedQty).toBe(0);
   });
+
+  it("reserves and frees fractional quantities on undo", async () => {
+    const { item, approved } = await seedItemAndApprovedRequest(2.75, 10);
+
+    const reserved = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(reserved.reservedQty).toBe(2.75);
+    expect(reserved.availableQty).toBe(7.25);
+
+    await consumableRequests.undoApproval(
+      approved.id,
+      { note: "Wrong fractional qty" },
+      fx.actor
+    );
+
+    const after = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(after.reservedQty).toBe(0);
+    expect(after.availableQty).toBe(10);
+  });
 });

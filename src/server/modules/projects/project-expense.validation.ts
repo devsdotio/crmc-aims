@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { positiveQtySchema } from "@/lib/qty";
 
 /** Manual writable line types (inventory/asset write-offs use dedicated endpoints). */
 export const MANUAL_LINE_TYPES = [
@@ -151,7 +152,7 @@ export const expenseIdSchema = z.string().uuid("Invalid expense id.");
 /** Charge inventory stock onto a project (lot-selected or FIFO cost). */
 export const useConsumableOnProjectSchema = z.object({
   consumableId: z.string().uuid("Invalid consumable id."),
-  quantity: z.number().int().positive("Quantity must be a positive integer."),
+  quantity: positiveQtySchema,
   /** When set, deduct entirely from this purchase lot. Otherwise FIFO. */
   purchaseLotId: z.string().uuid("Invalid purchase lot id.").optional(),
   description: z.string().trim().max(500).optional().nullable(),

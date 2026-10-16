@@ -25,3 +25,4 @@ export * from "./petty-cash";
 export * from "./petty-cash-departments";
 export * from "./tenants";
 export * from "./project-progress-indicators";
+export * from "./report-templates";

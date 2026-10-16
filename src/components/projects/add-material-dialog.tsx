@@ -17,6 +17,7 @@ import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purcha
 import { formatPhp } from "./format-money";
 import { availableQty } from "@/components/consumables/utils";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { roundQty } from "@/lib/qty";
 
 export type MaterialFormInput = {
   consumableId: string;
@@ -164,18 +165,21 @@ export function AddMaterialDialog({
       setError("Select a purchase lot to issue from.");
       return;
     }
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      setError("Quantity must be a positive whole number.");
+    const qty = roundQty(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError(
+        "Quantity must be a positive number with at most 2 decimal places."
+      );
       return;
     }
-    if (quantity > selectedLot.quantityRemaining) {
+    if (qty > selectedLot.quantityRemaining) {
       setError(
         `Selected lot only has ${selectedLot.quantityRemaining} ${selected.unit} remaining.`
       );
       return;
     }
     const free = availableQty(selected);
-    if (quantity > free) {
+    if (qty > free) {
       setError(
         `Only ${free} ${selected.unit} available (${selected.reservedQty ?? 0} reserved for approved supply requests).`
       );
@@ -188,7 +192,7 @@ export function AddMaterialDialog({
       await onSubmit({
         consumableId: selected.id,
         purchaseLotId,
-        quantity,
+        quantity: qty,
         notes: notes.trim(),
       });
       onClose();
@@ -340,11 +344,14 @@ export function AddMaterialDialog({
               <input
                 id="mat-qty"
                 type="number"
-                min={1}
+                min={0.01}
                 max={maxQty}
-                step={1}
+                step={0.01}
                 value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (Number.isFinite(n)) setQuantity(n);
+                }}
                 className={cn(fieldClass, "pl-8.5 font-mono tabular-nums")}
               />
             </div>

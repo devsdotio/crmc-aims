@@ -276,6 +276,7 @@ function mapSnapshotPendingToPortal(
 
 function requestKindHref(kind: ReturnType<typeof portalRequestKindLabel>) {
   if (kind === "Supplies") return "/borrower-db/requests/supplies";
+  if (kind === "Materials") return "/borrower-db/requests/materials";
   if (kind === "Assignment") return "/borrower-db/requests/assignment";
   return "/borrower-db/requests/borrow";
 }
@@ -285,9 +286,11 @@ function PendingRequestCard({ request }: { request: PortalBorrowRequest }) {
   const kindClass =
     kind === "Supplies"
       ? "bg-amber-50 text-amber-800 border-amber-200"
-      : kind === "Assignment"
-        ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-        : "bg-blue-50 text-blue-800 border-blue-200";
+      : kind === "Materials"
+        ? "bg-teal-50 text-teal-800 border-teal-200"
+        : kind === "Assignment"
+          ? "bg-indigo-50 text-indigo-800 border-indigo-200"
+          : "bg-blue-50 text-blue-800 border-blue-200";
 
   return (
     <Link
@@ -447,7 +450,7 @@ export function BorrowerDashboard() {
             {me?.department ? `${me.department} Requester Portal` : "Requester Portal"}
           </h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Submit and track equipment, borrow, and supply requests for your department. You have{" "}
+            Submit and track equipment, borrow, supplies, and materials requests for your department. You have{" "}
             {statsLoading || custodyLoading ? (
               <span className="inline-block w-12 h-3.5 bg-border animate-pulse rounded align-middle" />
             ) : (

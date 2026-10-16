@@ -271,7 +271,9 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
     const codes = lots.map((l) => l.lotCode);
     expect(new Set(codes).size).toBe(codes.length);
     expect(codes.every((c) => LOT_CODE.test(c))).toBe(true);
-    expect(lots.reduce((sum, l) => sum + l.quantityRemaining, 0)).toBe(6);
+    expect(
+      lots.reduce((sum, l) => sum + Number(l.quantityRemaining), 0)
+    ).toBe(6);
   });
 
   it("issues to a department and records an out movement", async () => {
@@ -293,7 +295,7 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       .from(purchaseLots)
       .where(eq(purchaseLots.consumableId, item.id));
     expect(lots).toHaveLength(1);
-    expect(lots[0].quantityRemaining).toBe(10);
+    expect(Number(lots[0].quantityRemaining)).toBe(10);
 
     await consumables.issue(
       item.id,
@@ -317,7 +319,7 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       (m) => m.direction === "out" && m.reason === "issue"
     );
     expect(issue).toBeTruthy();
-    expect(issue!.qty).toBe(2);
+    expect(Number(issue!.qty)).toBe(2);
     expect(issue!.departmentId).toBe(fx.departmentId);
     expect(issue!.purchaseLotId).toBe(lots[0].id);
 
@@ -325,6 +327,6 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
       .select()
       .from(purchaseLots)
       .where(eq(purchaseLots.consumableId, item.id));
-    expect(lotsAfter[0].quantityRemaining).toBe(8);
+    expect(Number(lotsAfter[0].quantityRemaining)).toBe(8);
   });
 });

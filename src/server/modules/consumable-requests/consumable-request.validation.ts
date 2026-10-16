@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { positiveQtySchema } from "@/lib/qty";
 
 export const consumableRequestStatusSchema = z.enum([
   "pending",
@@ -35,7 +36,7 @@ export const listConsumableRequestsQuerySchema = z.object({
 
 const requestLineInputSchema = z.object({
   consumableId: z.string().uuid("Invalid consumable id."),
-  quantity: z.number().int().min(1).max(999_999),
+  quantity: positiveQtySchema,
   purpose: z.string().trim().min(1).max(1000),
   notes: z.string().trim().max(1000).optional(),
 });
@@ -73,7 +74,7 @@ export const createConsumableRequestSchema = z
 const approveConsumableLineSchema = z.object({
   lineId: z.string().uuid().optional(),
   consumableId: z.string().uuid(),
-  quantity: z.number().int().min(1).max(99999),
+  quantity: positiveQtySchema,
 });
 
 export const approveConsumableRequestSchema = z.object({
@@ -98,7 +99,7 @@ const lotAllocationSchema = z
   .object({
     lotId: z.string().uuid().optional(),
     lotCode: z.string().trim().min(1).max(64).optional(),
-    quantity: z.number().int().positive(),
+    quantity: positiveQtySchema,
   })
   .refine((a) => Boolean(a.lotId || a.lotCode), {
     message: "Each allocation needs lotId or lotCode.",
@@ -109,16 +110,16 @@ const releaseLineSchema = z.object({
   allocations: z.array(lotAllocationSchema).min(1, "Select a lot for this line."),
 });
 
-export const releaseConsumableRequestSchema = z
-  .object({
-    note: z.string().trim().max(1000).optional(),
-    receivedBy: z
-      .string()
-      .trim()
-      .min(1, "Name of person who received the supplies is required.")
-      .max(255),
-    lines: z.array(releaseLineSchema).min(1),
-  });
+/** One or more lines to issue now (partial or full). Omitted lines stay pending. */
+export const releaseConsumableRequestSchema = z.object({
+  note: z.string().trim().max(1000).optional(),
+  receivedBy: z
+    .string()
+    .trim()
+    .min(1, "Name of person who received the supplies is required.")
+    .max(255),
+  lines: z.array(releaseLineSchema).min(1),
+});
 
 export const updateConsumableRequestSchema = z
   .object({

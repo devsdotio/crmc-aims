@@ -379,6 +379,20 @@
       "when": 1786388000000,
       "tag": "0053_fixed_asset_assignment_type",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1786389000000,
+      "tag": "0054_report_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1786390000000,
+      "tag": "0055_fractional_consumable_qty",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@ const COPY: Record<
   all: {
     title: "Requests",
     subtitle:
-      "Track borrow, assignment, and supply requests in one place. Status updates appear as staff act on them.",
+      "Track borrow, assignment, supplies, and materials requests in one place. Status updates appear as staff act on them.",
     cta: "New Request",
   },
   borrow: {
@@ -25,18 +25,24 @@ const COPY: Record<
     cta: "New Assign Request",
   },
   supply: {
-    title: "Supply Requests",
-    subtitle: "Consumable requisitions issued from stock when approved.",
-    cta: "New Supply Request",
+    title: "Supplies Requests",
+    subtitle: "Office and warehouse supplies requisitions issued from stock when approved.",
+    cta: "New Supplies Request",
+  },
+  material: {
+    title: "Materials Requests",
+    subtitle: "Project and construction materials requisitions issued from stock when approved.",
+    cta: "New Materials Request",
   },
 };
 
 function wizardTypeForKind(
   kind: RequestKindFilter
-): "borrow" | "assign" | "requisition" | undefined {
+): "borrow" | "assign" | "supply" | "material" | undefined {
   if (kind === "borrow") return "borrow";
   if (kind === "assign") return "assign";
-  if (kind === "supply") return "requisition";
+  if (kind === "supply") return "supply";
+  if (kind === "material") return "material";
   return undefined;
 }
 
@@ -66,7 +72,7 @@ export function RequestsPage({ kind }: { kind: RequestKindFilter }) {
               <button
                 type="button"
                 onClick={() => openWizard(null)}
-                title="File borrow, assignment, and/or supply in one submission"
+                title="File borrow, assignment, supplies, and/or materials in one submission"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-border bg-bg text-text text-xs font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
               >
                 <Layers className="h-3.5 w-3.5" aria-hidden />

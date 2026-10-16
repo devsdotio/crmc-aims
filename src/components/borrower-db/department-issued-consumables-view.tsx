@@ -18,6 +18,7 @@ import {
 } from "@/features/stock-movements/client";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import type { ConsumableClassification } from "@/lib/consumable-classification";
+import { displayQty } from "@/lib/qty";
 
 function formatDisplayDate(iso?: string | null): string {
   if (!iso) return "—";
@@ -51,7 +52,7 @@ function IssuedItemCard({
   classification: ConsumableClassification;
 }) {
   const { openWizard } = useBorrowerPortal();
-  const qtyLabel = `${row.direction === "out" ? "−" : "+"}${row.qty}${
+  const qtyLabel = `${row.direction === "out" ? "−" : "+"}${displayQty(row.qty)}${
     row.unit ? ` ${row.unit}` : ""
   }`;
   const canRequestAgain = !row.voided && !row.isReversal && Boolean(row.consumableId);
@@ -62,13 +63,14 @@ function IssuedItemCard({
       id: row.consumableId,
       name: row.itemName ?? "Consumable",
       category: classification === "material" ? "Material" : "Supply",
+      classification,
       status: "available",
       itemCode: row.itemCode ?? "",
       unit: row.unit ?? "unit",
       currentQty: 1,
       location: "",
     };
-    openWizard([item], "requisition");
+    openWizard([item], classification === "material" ? "material" : "supply");
   };
 
   return (
@@ -133,7 +135,7 @@ export function DepartmentIssuedConsumablesView({
   const title = isSupply ? "Issued Supplies" : "Issued Materials";
   const subtitle = isSupply
     ? "Supplies already released to your department. Request again to ask for the same item."
-    : "Materials issued for projects and the department. Request again starts a supply request for that item.";
+    : "Materials issued for projects and the department. Request again to ask for the same item.";
 
   const { data: me, isLoading: meLoading } = useMeQuery();
   const {

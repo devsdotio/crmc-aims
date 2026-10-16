@@ -44,8 +44,10 @@ import { useConfirm } from "@/components/providers/confirm-context";
 import { cn } from "@/lib/utils";
 import {
   filterMoneyInput,
+  filterUnsignedDecimalInput,
   filterUnsignedIntInput,
   parseMoney,
+  parseUnsignedDecimal,
   parseUnsignedInt,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
@@ -77,6 +79,22 @@ interface FileNewPODialogProps {
 }
 
 export type POType = "consumable" | "asset";
+
+function filterPoLineQtyInput(poType: POType, value: string): string | null {
+  return poType === "asset"
+    ? filterUnsignedIntInput(value)
+    : filterUnsignedDecimalInput(value);
+}
+
+function parsePoLineQty(
+  poType: POType,
+  qtyStr: string,
+  fallback = 0
+): number {
+  return poType === "asset"
+    ? parseUnsignedInt(qtyStr, fallback)
+    : parseUnsignedDecimal(qtyStr, fallback);
+}
 
 interface POLineItemForm {
   id: string;
@@ -912,7 +930,7 @@ export function FileNewPODialog({
         const strVal = String(value);
 
         if (field === "quantity") {
-          const next = filterUnsignedIntInput(strVal);
+          const next = filterPoLineQtyInput(poType, strVal);
           return next === null ? item : { ...item, quantity: next };
         }
 
@@ -945,7 +963,7 @@ export function FileNewPODialog({
   };
 
   const totalEstimatedAmount = items.reduce((sum, item) => {
-    const qty = parseUnsignedInt(item.quantity, 0);
+    const qty = parsePoLineQty(poType, item.quantity, 0);
     const unitPrice = parseMoney(item.unitCost) ?? 0;
     return sum + qty * unitPrice;
   }, 0);
@@ -1054,9 +1072,13 @@ export function FileNewPODialog({
         setErrorMessage(`${idxStr}: Item name / selection is required.`);
         return false;
       }
-      const qty = parseUnsignedInt(item.quantity, 0);
-      if (qty < 1) {
-        setErrorMessage(`${idxStr}: Quantity must be at least 1.`);
+      const qty = parsePoLineQty(poType, item.quantity, 0);
+      if (qty <= 0) {
+        setErrorMessage(
+          `${idxStr}: Quantity must be greater than zero${
+            poType === "consumable" ? " (up to 2 decimal places)" : ""
+          }.`
+        );
         return false;
       }
       const unitCost = parseMoney(item.unitCost);
@@ -1264,7 +1286,7 @@ export function FileNewPODialog({
 
       const formattedItems = items.map((item) => {
         const isAsset = poType === "asset";
-        const qty = parseUnsignedInt(item.quantity, 1);
+        const qty = parsePoLineQty(poType, item.quantity, 1);
         const unitCostNum = parseMoney(item.unitCost) ?? 0;
         const linePurpose =
           purposeByLineId.get(item.id) ||
@@ -2270,7 +2292,7 @@ export function FileNewPODialog({
 
                 {items.map((item, idx) => {
                   const lineTotal =
-                    parseUnsignedInt(item.quantity, 0) *
+                    parsePoLineQty(poType, item.quantity, 0) *
                     (parseMoney(item.unitCost) ?? 0);
 
                   return (
@@ -2432,7 +2454,7 @@ export function FileNewPODialog({
                             <div className="flex items-center gap-1.5">
                               <input
                                 type="text"
-                                inputMode="numeric"
+                                inputMode={poType === "asset" ? "numeric" : "decimal"}
                                 value={item.quantity}
                                 onChange={(e) =>
                                   handleItemFieldChange(item.id, "quantity", e.target.value)
@@ -2956,7 +2978,7 @@ export function FileNewPODialog({
                     </thead>
                     <tbody className="divide-y divide-border">
                       {items.map((item) => {
-                        const qty = parseUnsignedInt(item.quantity, 0);
+                        const qty = parsePoLineQty(poType, item.quantity, 0);
                         const unitCost = parseMoney(item.unitCost) ?? 0;
                         const subtotal = qty * unitCost;
 

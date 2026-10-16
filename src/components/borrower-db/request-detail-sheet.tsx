@@ -326,7 +326,13 @@ export function RequestDetailSheet({
 
           <div className="flex items-center justify-between text-xs text-text-secondary pt-0.5 gap-2 flex-wrap">
             <span className="font-bold text-text">
-              {isConsumable ? "Supplies Requisition" : isAssignRequest ? "Assignment Request" : "Borrow Request"}
+              {isConsumable
+                ? request.portalKind === "material"
+                  ? "Materials Requisition"
+                  : "Supplies Requisition"
+                : isAssignRequest
+                  ? "Assignment Request"
+                  : "Borrow Request"}
             </span>
             <span>
               Submitted {new Date(request.requestedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
@@ -614,7 +620,9 @@ export function RequestDetailSheet({
                       Non-returnable
                     </span>
                     <span className="text-[10px] text-text-secondary font-medium">
-                      Consumable supplies requisition
+                      {request.portalKind === "material"
+                        ? "Materials requisition"
+                        : "Supplies requisition"}
                     </span>
                   </div>
                 </div>

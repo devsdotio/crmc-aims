@@ -76,12 +76,13 @@ const STATUS_FILTERS: {
 
 const REQUESTS_PAGE_SIZE = 10;
 
-export type RequestKindFilter = "all" | "borrow" | "assign" | "supply";
+export type RequestKindFilter = "all" | "borrow" | "assign" | "supply" | "material";
 
 function matchesKind(request: PortalBorrowRequest, kind: RequestKindFilter) {
   if (kind === "all") return true;
   const label = portalRequestKindLabel(request);
   if (kind === "supply") return label === "Supplies";
+  if (kind === "material") return label === "Materials";
   if (kind === "assign") return label === "Assignment";
   return label === "Borrow";
 }
@@ -95,7 +96,7 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
 
-  const fetchAssets = kind !== "supply";
+  const fetchAssets = kind !== "supply" && kind !== "material";
   const fetchSupplies = kind !== "borrow" && kind !== "assign";
 
   const { data: response, isLoading: loadingAssets } = useBorrowRequests({
@@ -286,12 +287,14 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
               {statusFilter === "all"
                 ? kind === "supply"
-                  ? "You haven't submitted any supply requisitions yet."
-                  : kind === "assign"
-                    ? "You haven't submitted any assignment requests yet."
-                    : kind === "borrow"
-                      ? "You haven't submitted any borrow requests yet."
-                      : "You haven't submitted any borrow, assignment, or supply requests yet."
+                  ? "You haven't submitted any supplies requisitions yet."
+                  : kind === "material"
+                    ? "You haven't submitted any materials requisitions yet."
+                    : kind === "assign"
+                      ? "You haven't submitted any assignment requests yet."
+                      : kind === "borrow"
+                        ? "You haven't submitted any borrow requests yet."
+                        : "You haven't submitted any borrow, assignment, supplies, or materials requests yet."
                 : "No requests match the selected status filter."}
             </p>
           </div>

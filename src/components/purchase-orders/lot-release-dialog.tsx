@@ -14,8 +14,8 @@ import { useProjectsQuery } from "@/features/projects/client";
 import { useToast } from "@/components/providers/toast-context";
 import { cn } from "@/lib/utils";
 import {
-  filterUnsignedIntInput,
-  parseUnsignedInt,
+  filterUnsignedDecimalInput,
+  parseUnsignedDecimal,
 } from "@/lib/numeric-input";
 import { formatPhp } from "@/components/projects/format-money";
 import { SearchableSelect } from "@/components/ui/searchable-select";
@@ -185,7 +185,7 @@ export function LotReleaseDialog({
   if (!isOpen || !activeLot) return null;
 
   const maxQty = activeLot.quantityRemaining;
-  const qtyValue = parseUnsignedInt(quantity, 0);
+  const qtyValue = parseUnsignedDecimal(quantity, 0);
   const unitCostNum = parseFloat(activeLot.unitCost) || 0;
   const totalReleaseValue = qtyValue * unitCostNum;
 
@@ -204,8 +204,8 @@ export function LotReleaseDialog({
       return;
     }
 
-    if (qtyValue < 1) {
-      setErrorMsg("Please enter a valid quantity of at least 1.");
+    if (qtyValue <= 0) {
+      setErrorMsg("Please enter a valid quantity greater than zero.");
       return;
     }
 
@@ -445,10 +445,10 @@ export function LotReleaseDialog({
             <input
               id="release-qty"
               type="text"
-              inputMode="numeric"
+              inputMode="decimal"
               value={quantity}
               onChange={(e) => {
-                const next = filterUnsignedIntInput(e.target.value);
+                const next = filterUnsignedDecimalInput(e.target.value);
                 if (next !== null) setQuantity(next);
               }}
               placeholder="1"

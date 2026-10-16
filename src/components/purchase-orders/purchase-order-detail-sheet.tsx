@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolvePurchaseUnit } from "@/lib/purchase-unit";
+import { parseUnsignedDecimal, parseUnsignedInt } from "@/lib/numeric-input";
+import { roundQty } from "@/lib/qty";
 import type { PurchaseLot, PurchaseOrderStatus } from "@/types/purchase-lots";
 import { formatPhp } from "@/components/projects/format-money";
 import {
@@ -226,14 +228,25 @@ export function PurchaseOrderDetailSheet({
   };
 
   const handleSaveLine = async (li: PurchaseLot) => {
-    const qty = Number.parseInt(lineDraft.quantity, 10);
+    const qty =
+      li.itemType === "asset"
+        ? parseUnsignedInt(lineDraft.quantity, 0)
+        : roundQty(parseUnsignedDecimal(lineDraft.quantity, 0));
     const cost = Number.parseFloat(lineDraft.unitCost);
     if (!lineDraft.itemName.trim()) {
       toast.error("Item name is required.");
       return;
     }
-    if (!Number.isFinite(qty) || qty < 1) {
-      toast.error("Quantity must be at least 1.");
+    if (
+      !Number.isFinite(qty) ||
+      qty <= 0 ||
+      (li.itemType === "asset" && !Number.isInteger(qty))
+    ) {
+      toast.error(
+        li.itemType === "asset"
+          ? "Quantity must be a whole number of at least 1."
+          : "Quantity must be greater than 0."
+      );
       return;
     }
     if (!Number.isFinite(cost) || cost < 0) {
@@ -436,15 +449,20 @@ export function PurchaseOrderDetailSheet({
       if (nextStatus === "delivered") {
         for (const li of targets) {
           const ordered = li.orderedQuantity ?? li.quantity;
-          const parsed = Number.parseInt(
-            receivedQuantities[li.id] || String(ordered),
-            10
-          );
-          if (!Number.isFinite(parsed) || parsed < 1) {
+          const raw = receivedQuantities[li.id] || String(ordered);
+          const parsed =
+            li.itemType === "asset"
+              ? parseUnsignedInt(raw, 0)
+              : roundQty(parseUnsignedDecimal(raw, 0));
+          if (
+            !Number.isFinite(parsed) ||
+            parsed <= 0 ||
+            (li.itemType === "asset" && !Number.isInteger(parsed))
+          ) {
             toast.error(
               targets.length > 1
-                ? `Enter a valid received quantity (at least 1) for "${li.itemName}".`
-                : "Enter a valid received quantity (at least 1)."
+                ? `Enter a valid received quantity for "${li.itemName}".`
+                : "Enter a valid received quantity."
             );
             setIsUpdatingStatus(false);
             return;
@@ -1348,8 +1366,8 @@ export function PurchaseOrderDetailSheet({
                       {editingLineId === lot.id ? (
                         <input
                           type="number"
-                          min={1}
-                          step={1}
+                          min={lot.itemType === "asset" ? 1 : 0.01}
+                          step={lot.itemType === "asset" ? 1 : 0.01}
                           value={lineDraft.quantity}
                           onChange={(e) =>
                             setLineDraft((d) => ({ ...d, quantity: e.target.value }))
@@ -2144,8 +2162,8 @@ export function PurchaseOrderDetailSheet({
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
-                                min={1}
-                                step={1}
+                                min={li.itemType === "asset" ? 1 : 0.01}
+                                step={li.itemType === "asset" ? 1 : 0.01}
                                 value={receivedQuantities[li.id] ?? String(ordered)}
                                 onChange={(e) =>
                                   setReceivedQuantities((prev) => ({

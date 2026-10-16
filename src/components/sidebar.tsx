@@ -26,6 +26,7 @@ import {
   ShoppingCart,
   Wrench,
   FileText,
+  FileSpreadsheet,
   Tags,
   Building2,
   Receipt,
@@ -258,11 +259,17 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Request Supplies",
+          name: "Supplies Request",
           href: "/borrower-db/requests/supplies",
           icon: Boxes,
           badge: pendingSupplyCount,
           badgeTone: "accent",
+          roles: ["borrower"],
+        },
+        {
+          name: "Materials Request",
+          href: "/borrower-db/requests/materials",
+          icon: Boxes,
           roles: ["borrower"],
         },
       ],
@@ -285,6 +292,12 @@ export default function Sidebar({
         {
           name: "Issued Supplies",
           href: "/borrower-db/supplies",
+          icon: Boxes,
+          roles: ["borrower"],
+        },
+        {
+          name: "Issued Materials",
+          href: "/borrower-db/materials",
           icon: Boxes,
           roles: ["borrower"],
         },
@@ -433,6 +446,12 @@ export default function Sidebar({
           href: "/reports",
           icon: FileText,
           roles: ["admin", "staff"],
+        },
+        {
+          name: "Custom Reports",
+          href: "/custom-reports",
+          icon: FileSpreadsheet,
+          roles: ["admin", "superadmin"],
         },
         {
           name: "Users",

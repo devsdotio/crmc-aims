@@ -144,7 +144,10 @@ export const consumableRequestLines = pgTable(
     category: text("category").notNull(),
     unit: text("unit").notNull(),
 
-    quantityRequested: integer("quantity_requested").notNull(),
+    quantityRequested: numeric("quantity_requested", {
+      precision: 12,
+      scale: 2,
+    }).notNull(),
     /** Purpose / justification for this line (supports multi-purpose requests). */
     purpose: text("purpose").notNull().default("General"),
     notes: text("notes"),
@@ -188,7 +191,7 @@ export const consumableRequestReleaseAllocations = pgTable(
     supplierId: uuid("supplier_id"),
     supplierName: text("supplier_name"),
 
-    quantity: integer("quantity").notNull(),
+    quantity: numeric("quantity", { precision: 12, scale: 2 }).notNull(),
     unitCost: numeric("unit_cost", { precision: 14, scale: 2 }).notNull(),
     lineTotal: numeric("line_total", { precision: 14, scale: 2 }).notNull(),
 

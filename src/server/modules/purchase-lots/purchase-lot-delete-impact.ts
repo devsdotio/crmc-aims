@@ -32,6 +32,7 @@ import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { isVoidedNotes } from "@/server/modules/stock-movements/stock-movement.repository";
 import { findActivePoDisbursement } from "./po-disbursement";
 import { deletePoDepartmentLinks } from "./po-departments";
+import { formatQty, toQty } from "@/lib/qty";
 import { PurchaseLotRepository } from "./purchase-lot.repository";
 import type {
   PoDeleteAssetUnit,
@@ -81,7 +82,7 @@ function receivedQtyForLot(lot: PurchaseLotRow): number {
   if (typeof meta.receivedQuantity === "number" && meta.receivedQuantity > 0) {
     return meta.receivedQuantity;
   }
-  return lot.quantity;
+  return toQty(lot.quantity);
 }
 
 function lotStatus(lot: PurchaseLotRow): PurchaseOrderStatus {
@@ -89,11 +90,12 @@ function lotStatus(lot: PurchaseLotRow): PurchaseOrderStatus {
 }
 
 function signedOnHandQty(
-  movs: { direction: string; qty: number }[]
+  movs: { direction: string; qty: string | number }[]
 ): number {
   let net = 0;
   for (const m of movs) {
-    net += m.direction === "in" ? m.qty : -m.qty;
+    const q = toQty(m.qty);
+    net += m.direction === "in" ? q : -q;
   }
   return net;
 }
@@ -400,7 +402,7 @@ async function buildLineImpact(
           .from(consumables)
           .where(eq(consumables.id, lot.consumableId))
           .limit(1);
-        if (cons && cons.currentQty < netOnHand) {
+        if (cons && toQty(cons.currentQty) < netOnHand) {
           blockers.push({
             lotId: lot.id,
             itemName: lot.itemName,
@@ -427,12 +429,12 @@ async function buildLineImpact(
         "Delete purchase lot (delivered but never linked to stock — on-hand unchanged)"
       );
     } else {
-      if (lot.quantityRemaining < lot.quantity) {
+      if (toQty(lot.quantityRemaining) < toQty(lot.quantity)) {
         blockers.push({
           lotId: lot.id,
           itemName: lot.itemName,
           code: "lot_drawn",
-          message: `"${lot.itemName}" has been drawn or issued (${lot.quantityRemaining} of ${lot.quantity} remaining). Return stock to this lot before deleting.`,
+          message: `"${lot.itemName}" has been drawn or issued (${toQty(lot.quantityRemaining)} of ${toQty(lot.quantity)} remaining). Return stock to this lot before deleting.`,
         });
       } else {
         qtyToReverse = receivedQty;
@@ -442,7 +444,7 @@ async function buildLineImpact(
             .from(consumables)
             .where(eq(consumables.id, lot.consumableId))
             .limit(1);
-          if (cons && cons.currentQty < receivedQty) {
+          if (cons && toQty(cons.currentQty) < receivedQty) {
             blockers.push({
               lotId: lot.id,
               itemName: lot.itemName,
@@ -585,7 +587,7 @@ async function revertLine(
           .for("update")
           .limit(1);
         if (cons) {
-          const next = cons.currentQty - netOnHand;
+          const next = toQty(cons.currentQty) - netOnHand;
           if (next < 0) {
             throw new ConflictError(
               `Cannot reverse "${lot.itemName}": on-hand would go negative.`
@@ -593,7 +595,7 @@ async function revertLine(
           }
           await db
             .update(consumables)
-            .set({ currentQty: next, updatedAt: new Date() })
+            .set({ currentQty: formatQty(next), updatedAt: new Date() })
             .where(eq(consumables.id, lot.consumableId));
         }
       }
@@ -609,7 +611,7 @@ async function revertLine(
           .for("update")
           .limit(1);
         if (cons) {
-          const next = cons.currentQty - receivedQty;
+          const next = toQty(cons.currentQty) - receivedQty;
           if (next < 0) {
             throw new ConflictError(
               `Cannot reverse "${lot.itemName}": on-hand would go negative.`
@@ -617,7 +619,7 @@ async function revertLine(
           }
           await db
             .update(consumables)
-            .set({ currentQty: next, updatedAt: new Date() })
+            .set({ currentQty: formatQty(next), updatedAt: new Date() })
             .where(eq(consumables.id, lot.consumableId));
         }
       }

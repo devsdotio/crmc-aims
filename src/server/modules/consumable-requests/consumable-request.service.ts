@@ -1,9 +1,12 @@
+import { inArray } from "drizzle-orm";
 import type {
   ConsumableRequestHistoryEntry,
   ConsumableRequestLineRow,
   ConsumableRequestReleaseAllocationRow,
   ConsumableRequestRow,
 } from "@/server/db/schema";
+import { consumables } from "@/server/db/schema";
+import { getDb } from "@/server/db";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import {
   generateOperationalCode,
@@ -47,6 +50,7 @@ import {
   updateConsumableRequestSchema,
 } from "./consumable-request.validation";
 import { summarizePurposes } from "@/lib/request-purpose";
+import { displayQty, formatQty, qtyEquals, roundQty, toQty } from "@/lib/qty";
 import {
   loadLinkedRequestSummaries,
   relatedForRow,
@@ -62,7 +66,13 @@ function money(value: string | number): string {
   return n.toFixed(2);
 }
 
-function toLineDTO(row: ConsumableRequestLineRow): ConsumableRequestLineDTO {
+function toLineDTO(
+  row: ConsumableRequestLineRow,
+  quantityReleased = 0,
+  classification?: "supply" | "material"
+): ConsumableRequestLineDTO {
+  const quantityRequested = toQty(row.quantityRequested);
+  const released = roundQty(Math.max(0, quantityReleased));
   return {
     id: row.id,
     lineNo: row.lineNo,
@@ -71,10 +81,26 @@ function toLineDTO(row: ConsumableRequestLineRow): ConsumableRequestLineDTO {
     itemName: row.itemName,
     category: row.category,
     unit: row.unit,
-    quantityRequested: row.quantityRequested,
+    quantityRequested,
+    quantityReleased: released,
+    quantityRemaining: roundQty(Math.max(0, quantityRequested - released)),
+    classification,
     purpose: row.purpose || "General",
     notes: row.notes ?? undefined,
   };
+}
+
+function releasedQtyByLineId(
+  allocations: ConsumableRequestReleaseAllocationRow[]
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const a of allocations) {
+    map.set(
+      a.requestLineId,
+      roundQty((map.get(a.requestLineId) ?? 0) + toQty(a.quantity))
+    );
+  }
+  return map;
 }
 
 function toAllocationDTO(
@@ -88,7 +114,7 @@ function toAllocationDTO(
     lotCode: row.lotCode ?? null,
     supplierId: row.supplierId ?? null,
     supplierName: row.supplierName ?? null,
-    quantity: row.quantity,
+    quantity: toQty(row.quantity),
     unitCost: money(row.unitCost),
     lineTotal: money(row.lineTotal),
     releasedAt:
@@ -103,11 +129,13 @@ function toDTO(
   row: ConsumableRequestRow,
   lines: ConsumableRequestLineRow[],
   allocations: ConsumableRequestReleaseAllocationRow[] = [],
-  relatedRequests: LinkedRequestSummary[] = []
+  relatedRequests: LinkedRequestSummary[] = [],
+  classificationByConsumableId: Map<string, "supply" | "material"> = new Map()
 ): ConsumableRequestDTO {
   const history = Array.isArray(row.history) ? row.history : [];
   const allocDtos = allocations.map(toAllocationDTO);
   const totalCost = allocDtos.reduce((sum, a) => sum + Number(a.lineTotal), 0);
+  const releasedByLine = releasedQtyByLineId(allocations);
   return {
     id: row.id,
     requestCode: row.requestCode,
@@ -129,7 +157,13 @@ function toDTO(
     cancellationReason: row.cancellationReason ?? undefined,
     receivedBy: row.receivedBy ?? undefined,
     history,
-    lines: lines.map(toLineDTO),
+    lines: lines.map((line) =>
+      toLineDTO(
+        line,
+        releasedByLine.get(line.id) ?? 0,
+        classificationByConsumableId.get(line.consumableId)
+      )
+    ),
     allocations: allocDtos,
     totalCost: money(totalCost),
     approvedAt: row.approvedAt
@@ -184,22 +218,47 @@ export class ConsumableRequestService {
     private readonly movements = new StockMovementService()
   ) {}
 
+  private async classificationMapForLines(
+    lines: ConsumableRequestLineRow[]
+  ): Promise<Map<string, "supply" | "material">> {
+    const map = new Map<string, "supply" | "material">();
+    const ids = [...new Set(lines.map((l) => l.consumableId))];
+    if (ids.length === 0) return map;
+    const rows = await getDb()
+      .select({
+        id: consumables.id,
+        classification: consumables.classification,
+      })
+      .from(consumables)
+      .where(inArray(consumables.id, ids));
+    for (const row of rows) {
+      map.set(
+        row.id,
+        row.classification === "material" ? "material" : "supply"
+      );
+    }
+    return map;
+  }
+
   private async hydrate(
     row: ConsumableRequestRow,
     tenantId?: string
   ): Promise<ConsumableRequestDTO> {
     const [lines, allocations, linked] = await Promise.all([
       this.repo.listLinesByRequestId(row.id),
-      row.status === "released"
+      row.status === "released" || row.status === "approved"
         ? this.repo.listAllocationsByRequestId(row.id)
         : Promise.resolve([]),
       loadLinkedRequestSummaries([row.submissionGroupId], tenantId),
     ]);
+    const classificationByConsumableId =
+      await this.classificationMapForLines(lines);
     return toDTO(
       row,
       lines,
       allocations,
-      relatedForRow(row.id, row.submissionGroupId, linked)
+      relatedForRow(row.id, row.submissionGroupId, linked),
+      classificationByConsumableId
     );
   }
 
@@ -230,6 +289,8 @@ export class ConsumableRequestService {
       rows.map((row) => row.submissionGroupId),
       actor?.tenantId
     );
+    const classificationByConsumableId =
+      await this.classificationMapForLines(allLines);
 
     return {
       data: rows.map((row) =>
@@ -237,7 +298,8 @@ export class ConsumableRequestService {
           row,
           linesByRequest.get(row.id) ?? [],
           [],
-          relatedForRow(row.id, row.submissionGroupId, linked)
+          relatedForRow(row.id, row.submissionGroupId, linked),
+          classificationByConsumableId
         )
       ),
       meta: {
@@ -376,14 +438,24 @@ export class ConsumableRequestService {
           itemName: item.name,
           category: item.category,
           unit: item.unit,
-          quantityRequested: line.quantity,
+          quantityRequested: formatQty(line.quantity),
           purpose: line.purpose.trim(),
           notes: line.notes ?? null,
         })),
         tx
       );
 
-      return toDTO(created, lines, []);
+      const classificationByConsumableId = new Map<
+        string,
+        "supply" | "material"
+      >();
+      for (const { item } of items) {
+        classificationByConsumableId.set(
+          item.id,
+          item.classification === "material" ? "material" : "supply"
+        );
+      }
+      return toDTO(created, lines, [], [], classificationByConsumableId);
     });
 
     invalidateDashboardCache(actor.tenantId);
@@ -432,7 +504,7 @@ export class ConsumableRequestService {
         );
         if (
           matchingInputLine &&
-          matchingInputLine.quantity !== line.quantityRequested
+          !qtyEquals(matchingInputLine.quantity, toQty(line.quantityRequested))
         ) {
           quantityChanged = true;
           return {
@@ -452,7 +524,13 @@ export class ConsumableRequestService {
           if (line.isModified) {
             await this.repo.updateLine(
               line.id,
-              { quantityRequested: line.quantityRequested },
+              {
+                quantityRequested: formatQty(
+                  typeof line.quantityRequested === "number"
+                    ? line.quantityRequested
+                    : toQty(line.quantityRequested)
+                ),
+              },
               tx
             );
           }
@@ -466,15 +544,21 @@ export class ConsumableRequestService {
           actor.tenantId
         );
         if (!item) throw new NotFoundError("Consumable", line.consumableId);
-        const freeQty = Math.max(0, item.currentQty - (item.reservedQty ?? 0));
-        if (line.quantityRequested > freeQty) {
+        const lineQty = toQty(line.quantityRequested);
+        const freeQty = Math.max(
+          0,
+          toQty(item.currentQty) - toQty(item.reservedQty)
+        );
+        if (lineQty > freeQty) {
           throw new BadRequestError(
-            `Not enough unreserved stock for ${item.itemCode}. Available: ${freeQty} ${item.unit}, requested/approved: ${line.quantityRequested}.`
+            `Not enough unreserved stock for ${item.itemCode}. Available: ${freeQty} ${item.unit}, requested/approved: ${lineQty}.`
           );
         }
         await this.consumables.update(
           item.id,
-          { reservedQty: (item.reservedQty ?? 0) + line.quantityRequested },
+          {
+            reservedQty: formatQty(toQty(item.reservedQty) + lineQty),
+          },
           tx,
           actor.tenantId
         );
@@ -605,7 +689,19 @@ export class ConsumableRequestService {
     const updated = await withTransaction(async (tx) => {
       if (existing.status === "approved") {
         const lines = await this.repo.listLinesByRequestId(id, tx);
+        const priorAllocations = await this.repo.listAllocationsByRequestId(
+          id,
+          tx
+        );
+        const releasedByLine = releasedQtyByLineId(priorAllocations);
         for (const line of lines) {
+          const remaining = roundQty(
+            Math.max(
+              0,
+              toQty(line.quantityRequested) - (releasedByLine.get(line.id) ?? 0)
+            )
+          );
+          if (remaining <= 0) continue;
           const item = await this.consumables.findByIdForUpdate(
             line.consumableId,
             tx,
@@ -615,9 +711,8 @@ export class ConsumableRequestService {
           await this.consumables.update(
             item.id,
             {
-              reservedQty: Math.max(
-                0,
-                (item.reservedQty ?? 0) - line.quantityRequested
+              reservedQty: formatQty(
+                Math.max(0, toQty(item.reservedQty) - remaining)
               ),
             },
             tx,
@@ -672,6 +767,13 @@ export class ConsumableRequestService {
       throw new ForbiddenError("Only an operator can undo request approval.");
     }
 
+    const priorAllocations = await this.repo.listAllocationsByRequestId(id);
+    if (priorAllocations.length > 0) {
+      throw new ConflictError(
+        "Cannot undo approval after stock has already been issued. Cancel the remaining balance instead, or finish issuing."
+      );
+    }
+
     const noteText = input.note?.trim()
       ? `Approval undone: ${input.note.trim()}`
       : "Approval undone and returned to Pending Review";
@@ -693,9 +795,8 @@ export class ConsumableRequestService {
         await this.consumables.update(
           item.id,
           {
-            reservedQty: Math.max(
-              0,
-              (item.reservedQty ?? 0) - line.quantityRequested
+            reservedQty: formatQty(
+              Math.max(0, toQty(item.reservedQty) - toQty(line.quantityRequested))
             ),
           },
           tx,
@@ -736,8 +837,9 @@ export class ConsumableRequestService {
   }
 
   /**
-   * Full issue: every request line must be covered exactly once.
-   * Admin picks lots (no FIFO). Deducts lot remainders + item qty.
+   * Issue stock against an approved request (full or partial).
+   * Admin picks lots; issued qty may be less than remaining on any line.
+   * Status stays `approved` until every line is fully issued, then `released`.
    */
   async release(
     rawId: string,
@@ -763,18 +865,18 @@ export class ConsumableRequestService {
     if (releaseByLineId.size !== input.lines.length) {
       throw new BadRequestError("Duplicate lineId in release payload.");
     }
-    if (releaseByLineId.size !== dbLines.length) {
-      throw new BadRequestError(
-        `Release must include every request line exactly once (${dbLines.length} expected).`
-      );
-    }
-    for (const line of dbLines) {
-      if (!releaseByLineId.has(line.id)) {
+
+    const lineById = new Map(dbLines.map((l) => [l.id, l] as const));
+    for (const lineId of releaseByLineId.keys()) {
+      if (!lineById.has(lineId)) {
         throw new BadRequestError(
-          `Missing release allocations for line ${line.lineNo} (${line.itemCode}).`
+          `Line ${lineId} is not part of this consumable request.`
         );
       }
     }
+
+    const priorAllocations = await this.repo.listAllocationsByRequestId(id);
+    const alreadyReleasedByLine = releasedQtyByLineId(priorAllocations);
 
     const noteWithReceiver = input.note
       ? `Released to: ${input.receivedBy}. ${input.note}`
@@ -789,7 +891,7 @@ export class ConsumableRequestService {
         lotCode: string | null;
         supplierId: string | null;
         supplierName: string | null;
-        quantity: number;
+        quantity: string;
         unitCost: string;
         lineTotal: string;
         releasedAt: Date;
@@ -797,8 +899,10 @@ export class ConsumableRequestService {
         releasedByName: string;
       }> = [];
 
-      for (const line of dbLines) {
-        const releaseLine = releaseByLineId.get(line.id)!;
+      let waveIssuedQty = 0;
+
+      for (const [lineId, releaseLine] of releaseByLineId) {
+        const line = lineById.get(lineId)!;
         const item = await this.consumables.findByIdForUpdate(
           line.consumableId,
           tx,
@@ -808,24 +912,39 @@ export class ConsumableRequestService {
           throw new NotFoundError("Consumable", line.consumableId);
         }
 
-        if (item.currentQty < line.quantityRequested) {
+        const requestedQty = toQty(line.quantityRequested);
+        const alreadyReleased = alreadyReleasedByLine.get(line.id) ?? 0;
+        const remainingQty = roundQty(
+          Math.max(0, requestedQty - alreadyReleased)
+        );
+        if (remainingQty <= 0) {
           throw new BadRequestError(
-            `Not on hand for ${item.itemCode}. Available: ${item.currentQty} ${item.unit}, requested: ${line.quantityRequested}. Restock or file a purchase order first.`
+            `Line ${line.lineNo} (${item.itemCode}) is already fully issued.`
+          );
+        }
+
+        const allocations = releaseLine.allocations ?? [];
+        const allocatedQty = roundQty(
+          allocations.reduce((sum, a) => sum + a.quantity, 0)
+        );
+        if (allocatedQty <= 0) {
+          throw new BadRequestError(
+            `Line ${line.lineNo} (${item.itemCode}): issue quantity must be positive.`
+          );
+        }
+        if (allocatedQty - remainingQty > 1e-9) {
+          throw new BadRequestError(
+            `Line ${line.lineNo} (${item.itemCode}): allocations total ${allocatedQty} but only ${remainingQty} remains to issue.`
+          );
+        }
+
+        if (toQty(item.currentQty) + 1e-9 < allocatedQty) {
+          throw new BadRequestError(
+            `Not on hand for ${item.itemCode}. Available: ${toQty(item.currentQty)} ${item.unit}, issuing: ${allocatedQty}. Restock or file a purchase order first.`
           );
         }
 
         const lotAllocations: LotCostAllocation[] = [];
-        const allocations = releaseLine.allocations ?? [];
-        const allocatedQty = allocations.reduce(
-          (sum, a) => sum + a.quantity,
-          0
-        );
-        if (allocatedQty !== line.quantityRequested) {
-          throw new BadRequestError(
-            `Line ${line.lineNo} (${item.itemCode}): allocations must total ${line.quantityRequested} (got ${allocatedQty}).`
-          );
-        }
-
         for (const alloc of allocations) {
           const result = alloc.lotId
             ? await this.purchaseLots.consumeFromLotId(
@@ -849,10 +968,9 @@ export class ConsumableRequestService {
         await this.consumables.update(
           item.id,
           {
-            currentQty: item.currentQty - line.quantityRequested,
-            reservedQty: Math.max(
-              0,
-              (item.reservedQty ?? 0) - line.quantityRequested
+            currentQty: formatQty(toQty(item.currentQty) - allocatedQty),
+            reservedQty: formatQty(
+              Math.max(0, toQty(item.reservedQty) - allocatedQty)
             ),
           },
           tx,
@@ -883,7 +1001,7 @@ export class ConsumableRequestService {
             lotCode: a.lotCode,
             supplierId: a.supplierId ?? null,
             supplierName: a.supplierName ?? null,
-            quantity: a.quantity,
+            quantity: formatQty(a.quantity),
             unitCost: a.unitCost,
             lineTotal: a.total,
             releasedAt: new Date(),
@@ -891,24 +1009,44 @@ export class ConsumableRequestService {
             releasedByName: actor.displayName,
           });
         }
+
+        alreadyReleasedByLine.set(
+          line.id,
+          roundQty(alreadyReleased + allocatedQty)
+        );
+        waveIssuedQty = roundQty(waveIssuedQty + allocatedQty);
+      }
+
+      if (allocationRows.length === 0 || waveIssuedQty <= 0) {
+        throw new BadRequestError("Select at least one line quantity to issue.");
       }
 
       const savedAllocations = await this.repo.createAllocations(
         allocationRows,
         tx
       );
+      const allAllocations = [...priorAllocations, ...savedAllocations];
+      const fullyIssued = dbLines.every((line) => {
+        const released = alreadyReleasedByLine.get(line.id) ?? 0;
+        return qtyEquals(released, toQty(line.quantityRequested));
+      });
 
+      const historyNote = fullyIssued
+        ? noteWithReceiver
+        : `Partial issue (${displayQty(waveIssuedQty)}). ${noteWithReceiver}`;
       const history = [
         ...(Array.isArray(existing.history) ? existing.history : []),
-        historyEntry("released", actor.displayName, noteWithReceiver),
+        historyEntry("released", actor.displayName, historyNote),
       ];
 
       const up = await this.repo.update(
         id,
         {
-          status: "released",
+          status: fullyIssued ? "released" : "approved",
           receivedBy: input.receivedBy,
-          releasedAt: new Date(),
+          releasedAt: fullyIssued
+            ? new Date()
+            : existing.releasedAt ?? new Date(),
           releasedByUserId: actor.userId,
           releasedByName: actor.displayName,
           history,
@@ -919,7 +1057,7 @@ export class ConsumableRequestService {
       if (!up) throw new NotFoundError("Consumable request", id);
 
       const lines = await this.repo.listLinesByRequestId(id, tx);
-      return toDTO(up, lines, savedAllocations);
+      return toDTO(up, lines, allAllocations);
     });
 
     await this.auditLogs.log({
@@ -928,12 +1066,16 @@ export class ConsumableRequestService {
       action: AUDIT_ACTION.released,
       actorName: actor.displayName,
       actorUserId: actor.userId,
-      notes: `Released consumable request ${dto.requestCode}.`,
+      notes:
+        dto.status === "released"
+          ? `Released consumable request ${dto.requestCode}.`
+          : `Partially issued consumable request ${dto.requestCode}.`,
       metadata: {
         requestCode: dto.requestCode,
         receivedBy: input.receivedBy,
         allocationCount: dto.allocations.length,
         totalCost: dto.totalCost,
+        fullyIssued: dto.status === "released",
       },
     });
     return dto;
@@ -1011,7 +1153,7 @@ export class ConsumableRequestService {
             itemName: item.name,
             category: item.category,
             unit: item.unit,
-            quantityRequested: line.quantity,
+            quantityRequested: formatQty(line.quantity),
             purpose: line.purpose.trim(),
             notes: line.notes ?? null,
           };

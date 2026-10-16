@@ -13,10 +13,23 @@ export function mapBorrowRequestToPortal(
   };
 }
 
+function portalKindFromConsumableRequest(
+  row: ConsumableRequest
+): "supply" | "material" {
+  const classes = (row.lines ?? [])
+    .map((l) => l.classification)
+    .filter((c): c is "supply" | "material" => c === "supply" || c === "material");
+  if (classes.length > 0 && classes.every((c) => c === "material")) {
+    return "material";
+  }
+  return "supply";
+}
+
 export function mapConsumableRequestToPortal(
   row: ConsumableRequest
 ): PortalBorrowRequest {
   const requestedAt = row.requestedAt ?? "";
+  const portalKind = portalKindFromConsumableRequest(row);
   return {
     id: row.id,
     requestCode: row.requestCode,
@@ -60,15 +73,16 @@ export function mapConsumableRequestToPortal(
     })),
     requestedDateFrom: requestedAt.slice(0, 10),
     requestedDateTo: requestedAt.slice(0, 10),
-    portalKind: "supply",
+    portalKind,
   };
 }
 
 export function portalRequestKindLabel(request: {
   requestType?: "borrowable" | "assignable" | null;
   items?: Array<{ itemType?: "asset" | "consumable" }>;
-  portalKind?: "supply" | "borrow" | "assign";
-}): "Supplies" | "Assignment" | "Borrow" {
+  portalKind?: "supply" | "material" | "borrow" | "assign";
+}): "Supplies" | "Materials" | "Assignment" | "Borrow" {
+  if (request.portalKind === "material") return "Materials";
   if (request.portalKind === "supply") return "Supplies";
   const items = request.items ?? [];
   const allConsumable =

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { AssetService } from "@/server/modules/assets/asset.service";
 import { BorrowRequestService } from "@/server/modules/borrow-requests/borrow-request.service";
 import { ConsumableService } from "@/server/modules/consumables/consumable.service";
 import { ConsumableRequestService } from "@/server/modules/consumable-requests/consumable-request.service";
@@ -18,6 +19,7 @@ import {
 const describeIntegration = hasTestDatabase ? describe : describe.skip;
 
 describeIntegration("requests requester flows", () => {
+  const assets = new AssetService();
   const borrow = new BorrowRequestService();
   const consumables = new ConsumableService();
   const consumableRequests = new ConsumableRequestService();
@@ -135,6 +137,182 @@ describeIntegration("requests requester flows", () => {
     );
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.cancellationReason).toBe("Already have stock");
+  });
+
+  it("requester can create fractional supply and material requests", async () => {
+    const supply = await consumables.create(
+      {
+        name: "Fractional Toner",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "bottle",
+        currentQty: 10,
+        unitCost: 250,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    const material = await consumables.create(
+      {
+        name: "Fractional Cement",
+        category: fx.consumableCategory,
+        classification: "material",
+        unit: "kg",
+        currentQty: 25.5,
+        unitCost: 15,
+        supplierId: fx.supplierId,
+        location: "Yard",
+      },
+      fx.actor
+    );
+    expect(material.currentQty).toBe(25.5);
+    expect(material.classification).toBe("material");
+
+    const supplyReq = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: supply.id,
+            quantity: 1.25,
+            purpose: "Printer refill",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(supplyReq.status).toBe("pending");
+    expect(supplyReq.lines[0]?.quantityRequested).toBe(1.25);
+
+    const materialReq = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: material.id,
+            quantity: 0.5,
+            purpose: "Patch work",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(materialReq.status).toBe("pending");
+    expect(materialReq.lines[0]?.quantityRequested).toBe(0.5);
+    expect(materialReq.lines[0]?.consumableId).toBe(material.id);
+
+    await expect(
+      consumableRequests.create(
+        {
+          requesterName: fx.borrower.displayName,
+          requesterEmail: fx.borrower.email!,
+          departmentId: fx.departmentId,
+          lines: [
+            {
+              consumableId: supply.id,
+              quantity: 1.234,
+              purpose: "Too many decimals",
+            },
+          ],
+          requesterUserId: fx.borrower.userId,
+        },
+        fx.borrower
+      )
+    ).rejects.toThrow();
+  });
+
+  it("borrower catalog lists warehouse assets, supplies, and materials (parity with admin stock)", async () => {
+    const unit = await assets.createAsset(
+      {
+        name: "Catalog Projector",
+        category: fx.assetCategory,
+        location: "AV Room",
+        assignmentType: "borrowable",
+      },
+      fx.actor
+    );
+    const supply = await consumables.create(
+      {
+        name: "Catalog Bond Paper",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "ream",
+        currentQty: 12.5,
+        unitCost: 180,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    const material = await consumables.create(
+      {
+        name: "Catalog Paint",
+        category: fx.consumableCategory,
+        classification: "material",
+        unit: "liter",
+        currentQty: 4.25,
+        unitCost: 95,
+        supplierId: fx.supplierId,
+        location: "Yard",
+      },
+      fx.actor
+    );
+
+    const adminConsumables = await consumables.list(
+      {},
+      fx.actor.tenantId,
+      fx.actor
+    );
+    expect(adminConsumables.data.map((r) => r.id)).toEqual(
+      expect.arrayContaining([supply.id, material.id])
+    );
+
+    const emptyWarehouse = await consumables.list(
+      {},
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    expect(emptyWarehouse.data).toHaveLength(0);
+
+    const catalog = await consumables.list(
+      { catalog: true },
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    const catalogIds = catalog.data.map((r) => r.id);
+    expect(catalogIds).toEqual(
+      expect.arrayContaining([supply.id, material.id])
+    );
+    const supplyRow = catalog.data.find((r) => r.id === supply.id)!;
+    const materialRow = catalog.data.find((r) => r.id === material.id)!;
+    expect(supplyRow.classification).toBe("supply");
+    expect(supplyRow.currentQty).toBe(12.5);
+    expect(materialRow.classification).toBe("material");
+    expect(materialRow.currentQty).toBe(4.25);
+    expect(supplyRow.supplier).toBeUndefined();
+    expect(materialRow.history).toEqual([]);
+
+    const assetCatalog = await assets.listAssets(
+      { catalog: true },
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    expect(assetCatalog.some((a) => a.id === unit.id)).toBe(true);
+    expect(assetCatalog.find((a) => a.id === unit.id)?.value).toBeUndefined();
+
+    const deptHeld = await assets.listAssets(
+      {},
+      fx.borrower.tenantId,
+      fx.borrower
+    );
+    expect(deptHeld.some((a) => a.id === unit.id)).toBe(false);
   });
 });
 

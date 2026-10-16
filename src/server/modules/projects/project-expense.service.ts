@@ -35,6 +35,7 @@ import {
 } from "./project-expense.validation";
 
 import { projectIdSchema } from "./project.validation";
+import { formatQty, toQty } from "@/lib/qty";
 
 function formatMoney(value: string | null | undefined): string | null {
   if (value === null || value === undefined || value === "") return null;
@@ -269,15 +270,18 @@ export class ProjectExpenseService {
       );
       if (!item) throw new NotFoundError("Consumable", input.consumableId);
 
-      if (item.currentQty < input.quantity) {
+      if (toQty(item.currentQty) < input.quantity) {
         throw new BadRequestError(
-          `Insufficient stock. Available: ${item.currentQty} ${item.unit}.`
+          `Insufficient stock. Available: ${toQty(item.currentQty)} ${item.unit}.`
         );
       }
-      const freeQty = Math.max(0, item.currentQty - (item.reservedQty ?? 0));
+      const freeQty = Math.max(
+        0,
+        toQty(item.currentQty) - toQty(item.reservedQty)
+      );
       if (input.quantity > freeQty) {
         throw new BadRequestError(
-          `Only ${freeQty} ${item.unit} available (${item.reservedQty ?? 0} reserved for approved supply requests).`
+          `Only ${freeQty} ${item.unit} available (${toQty(item.reservedQty)} reserved for approved supply requests).`
         );
       }
 
@@ -299,9 +303,9 @@ export class ProjectExpenseService {
             "Selected purchase lot does not belong to this consumable."
           );
         }
-        if (lot.quantityRemaining < input.quantity) {
+        if (toQty(lot.quantityRemaining) < input.quantity) {
           throw new BadRequestError(
-            `Selected lot only has ${lot.quantityRemaining} ${item.unit} remaining.`
+            `Selected lot only has ${toQty(lot.quantityRemaining)} ${item.unit} remaining.`
           );
         }
 
@@ -318,7 +322,7 @@ export class ProjectExpenseService {
 
         await this.lots.updateRemaining(
           lot.id,
-          lot.quantityRemaining - input.quantity,
+          toQty(lot.quantityRemaining) - input.quantity,
           tx,
           actor.tenantId
         );
@@ -332,7 +336,7 @@ export class ProjectExpenseService {
 
         for (const lot of availableLots) {
           if (remaining <= 0) break;
-          const take = Math.min(remaining, lot.quantityRemaining);
+          const take = Math.min(remaining, toQty(lot.quantityRemaining));
           if (take <= 0) continue;
 
           const unit = Number(lot.unitCost);
@@ -348,7 +352,7 @@ export class ProjectExpenseService {
 
           await this.lots.updateRemaining(
             lot.id,
-            lot.quantityRemaining - take,
+            toQty(lot.quantityRemaining) - take,
             tx,
             actor.tenantId
           );
@@ -380,7 +384,7 @@ export class ProjectExpenseService {
       await this.consumables.update(
         item.id,
         {
-          currentQty: item.currentQty - input.quantity,
+          currentQty: formatQty(toQty(item.currentQty) - input.quantity),
         },
         tx
       );
@@ -598,7 +602,7 @@ export class ProjectExpenseService {
     existing: ProjectExpenseLineRow,
     actor: ActorContext
   ): Promise<void> {
-    const qty = Math.round(Number(existing.quantity ?? 0));
+    const qty = toQty(existing.quantity ?? 0);
     if (!existing.consumableId || !Number.isFinite(qty) || qty <= 0) {
       await this.expenses.delete(existing.id, undefined, actor.tenantId);
       return;
@@ -655,7 +659,7 @@ export class ProjectExpenseService {
         if (!lot) continue;
         await this.lots.updateRemaining(
           lot.id,
-          lot.quantityRemaining + alloc.quantity,
+          toQty(lot.quantityRemaining) + alloc.quantity,
           tx,
           actor.tenantId
         );
@@ -672,7 +676,7 @@ export class ProjectExpenseService {
       await this.consumables.update(
         item.id,
         {
-          currentQty: item.currentQty + qty,
+          currentQty: formatQty(toQty(item.currentQty) + qty),
         },
         tx,
         actor.tenantId

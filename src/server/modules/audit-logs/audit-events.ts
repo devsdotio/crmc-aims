@@ -6,6 +6,7 @@ export const AUDIT_ENTITY = {
   consumableRequest: "consumable_request",
   purchaseOrder: "purchase_order",
   report: "report",
+  customReport: "custom_report",
   user: "user",
   voucher: "voucher",
   pettyCash: "petty_cash",

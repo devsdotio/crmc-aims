@@ -10,12 +10,19 @@ export default function HistoryPage() {
         <div>
           <h1 className="text-xl font-bold tracking-tight text-text">Equipment History</h1>
           <p className="text-xs text-text-secondary mt-0.5">
-            Past equipment loans, active custody, and returns. Supply issues are listed under{" "}
+            Past equipment loans, active custody, and returns. Issues are listed under{" "}
             <Link
               href="/borrower-db/supplies"
               className="font-semibold text-accent hover:underline"
             >
               Issued Supplies
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/borrower-db/materials"
+              className="font-semibold text-accent hover:underline"
+            >
+              Issued Materials
             </Link>
             .
           </p>
