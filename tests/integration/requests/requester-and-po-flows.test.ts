@@ -136,6 +136,95 @@ describeIntegration("requests requester flows", () => {
     expect(cancelled.status).toBe("cancelled");
     expect(cancelled.cancellationReason).toBe("Already have stock");
   });
+
+  it("requester can create fractional supply and material requests", async () => {
+    const supply = await consumables.create(
+      {
+        name: "Fractional Toner",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "bottle",
+        currentQty: 10,
+        unitCost: 250,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    const material = await consumables.create(
+      {
+        name: "Fractional Cement",
+        category: fx.consumableCategory,
+        classification: "material",
+        unit: "kg",
+        currentQty: 25.5,
+        unitCost: 15,
+        supplierId: fx.supplierId,
+        location: "Yard",
+      },
+      fx.actor
+    );
+    expect(material.currentQty).toBe(25.5);
+    expect(material.classification).toBe("material");
+
+    const supplyReq = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: supply.id,
+            quantity: 1.25,
+            purpose: "Printer refill",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(supplyReq.status).toBe("pending");
+    expect(supplyReq.lines[0]?.quantityRequested).toBe(1.25);
+
+    const materialReq = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: material.id,
+            quantity: 0.5,
+            purpose: "Patch work",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(materialReq.status).toBe("pending");
+    expect(materialReq.lines[0]?.quantityRequested).toBe(0.5);
+    expect(materialReq.lines[0]?.consumableId).toBe(material.id);
+
+    await expect(
+      consumableRequests.create(
+        {
+          requesterName: fx.borrower.displayName,
+          requesterEmail: fx.borrower.email!,
+          departmentId: fx.departmentId,
+          lines: [
+            {
+              consumableId: supply.id,
+              quantity: 1.234,
+              purpose: "Too many decimals",
+            },
+          ],
+          requesterUserId: fx.borrower.userId,
+        },
+        fx.borrower
+      )
+    ).rejects.toThrow();
+  });
 });
 
 describeIntegration("purchase order status flows", () => {

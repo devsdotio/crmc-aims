@@ -2,6 +2,7 @@
 
 import { Tag, MapPin, AlertCircle, PackageX, ShoppingCart, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { displayQty } from "@/lib/qty";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import type { BrowseItem } from "./types";
 import { useBorrowerPortal } from "./context";
@@ -51,7 +52,7 @@ function getStatusBadge(item: BrowseItem) {
           "bg-status-active-bg/20 text-status-active-text border-status-active-bg/30",
       },
       low_stock: {
-        label: `Low Stock (${item.currentQty} ${item.unit}s)`,
+        label: `Low Stock (${displayQty(item.currentQty)} ${item.unit})`,
         className:
           "bg-status-repair-bg/20 text-status-repair-text border-status-repair-bg/30",
       },

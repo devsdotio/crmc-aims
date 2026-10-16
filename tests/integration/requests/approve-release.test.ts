@@ -292,4 +292,94 @@ describeIntegration("requests approve → release (integration)", () => {
     expect(logs[0].actorUserId).toBe(fx.actor.userId);
     expect(logs[0].notes).toMatch(/released/i);
   });
+
+  it("approves then releases a fractional material request from a lot", async () => {
+    const item = await consumables.create(
+      {
+        name: "Fractional Paint",
+        category: fx.consumableCategory,
+        classification: "material",
+        unit: "liter",
+        currentQty: 8,
+        unitCost: 90,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+
+    const pending = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: item.id,
+            quantity: 1.5,
+            purpose: "Touch-up",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(pending.lines[0]?.quantityRequested).toBe(1.5);
+    const lineId = pending.lines[0]!.id;
+
+    const approved = await consumableRequests.approve(
+      pending.id,
+      { note: "Fractional reserve" },
+      fx.actor
+    );
+    expect(approved.status).toBe("approved");
+
+    const reserved = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(reserved.currentQty).toBe(8);
+    expect(reserved.reservedQty).toBe(1.5);
+    expect(reserved.availableQty).toBe(6.5);
+
+    const availableLots = await lots.list(
+      { consumableId: item.id },
+      fx.actor.tenantId
+    );
+    const lotId = availableLots[0]!.id;
+    expect(availableLots[0]!.quantityRemaining).toBe(8);
+
+    const released = await consumableRequests.release(
+      approved.id,
+      {
+        receivedBy: "Site Foreman",
+        note: "Partial liter issue",
+        lines: [
+          {
+            lineId,
+            allocations: [{ lotId, quantity: 1.5 }],
+          },
+        ],
+      },
+      fx.actor
+    );
+    expect(released.status).toBe("released");
+    expect(released.allocations[0]?.quantity).toBe(1.5);
+
+    const after = await consumables.getById(item.id, fx.actor.tenantId);
+    expect(after.currentQty).toBe(6.5);
+    expect(after.reservedQty).toBe(0);
+    expect(after.availableQty).toBe(6.5);
+
+    const lotsAfter = await lots.list(
+      { consumableId: item.id },
+      fx.actor.tenantId
+    );
+    expect(lotsAfter[0]!.quantityRemaining).toBe(6.5);
+
+    const ledger = await movements.listByConsumable(item.id, fx.actor.tenantId);
+    const issue = ledger.find(
+      (m) => m.direction === "out" && m.reason === "issue"
+    );
+    expect(issue).toBeTruthy();
+    expect(issue!.qty).toBe(1.5);
+    expect(issue!.requestId).toBe(released.id);
+  });
 });

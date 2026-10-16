@@ -338,7 +338,7 @@ export function EditRequestDialog({
             requestedByName: requestedByName.trim(),
             lines: supplyLines.map((l) => ({
               consumableId: l.consumableId,
-              quantity: Number(l.quantity),
+              quantity: roundQty(Number(l.quantity)),
               purpose: (l.purpose || purpose || "General").trim(),
               notes: l.notes?.trim() || undefined,
             })),

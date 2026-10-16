@@ -47,9 +47,12 @@ export interface BrowseConsumableItem {
   id: string;
   name: string;
   category: string;
+  /** supply | material — both are requestable from the portal catalog. */
+  classification?: "supply" | "material";
   status: "available" | "low_stock" | "out_of_stock";
   itemCode: string;
   unit: string;
+  /** Available (free) qty for requesting — already excludes reserved. */
   currentQty: number;
   location: string;
   notes?: string;

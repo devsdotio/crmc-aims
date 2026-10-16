@@ -225,4 +225,43 @@ describeIntegration("PO lot release → department / project (integration)", () 
       )
     ).rejects.toThrow(/department or project/i);
   });
+
+  it("issues a fractional quantity from a PO lot to a department", async () => {
+    const { lotA } = await deliverTwoLotsForItem();
+    const before = await consumables.getById(
+      lotA.consumableId!,
+      fx.actor.tenantId
+    );
+
+    const result = await consumables.releaseFromLot(
+      {
+        lotId: lotA.id,
+        quantity: 0.75,
+        departmentId: fx.departmentId,
+        recipientName: "Counter Staff",
+        reason: "Fractional walk-up issue",
+      },
+      fx.actor
+    );
+
+    expect(result.allocation.quantity).toBe(0.75);
+    expect(result.consumable.currentQty).toBe(before.currentQty - 0.75);
+
+    const afterLot = await lots.getById(lotA.id, fx.actor.tenantId);
+    expect(afterLot.quantityRemaining).toBe(lotA.quantityRemaining - 0.75);
+
+    const ledger = await movements.listByConsumable(
+      lotA.consumableId!,
+      fx.actor.tenantId
+    );
+    const issueMove = ledger.find(
+      (m) =>
+        m.direction === "out" &&
+        m.reason === "issue" &&
+        m.purchaseLotId === lotA.id &&
+        m.qty === 0.75 &&
+        !isVoidedNotes(m.notes)
+    );
+    expect(issueMove).toBeTruthy();
+  });
 });

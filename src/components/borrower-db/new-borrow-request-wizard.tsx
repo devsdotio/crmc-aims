@@ -26,7 +26,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { roundQty } from "@/lib/qty";
+import { displayQty, roundQty } from "@/lib/qty";
 import { getCategoryStyle } from "@/constants/categories";
 import type {
   BrowseItem,
@@ -697,17 +697,24 @@ function StepSelectConsumables({
     return consumables
       .map((c) => {
         const free = c.availableQty ?? availableQty(c);
+        const status: BrowseConsumableItem["status"] =
+          free <= 0
+            ? "out_of_stock"
+            : free <= (c.minThreshold ?? 0)
+              ? "low_stock"
+              : "available";
         return {
           id: c.id,
           name: c.name,
           category: c.category,
+          classification: c.classification,
           type: "consumable" as const,
-          status: "available" as const,
+          status,
           itemCode: c.itemCode,
           unit: c.unit,
           currentQty: free,
           location: c.location,
-        };
+        } satisfies BrowseConsumableItem;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [consumables]);
@@ -911,11 +918,23 @@ function StepSelectConsumables({
                         style.text
                       )}
                     >
-                      {item.category || "Consumable"}
+                      {item.classification === "material"
+                        ? "Material"
+                        : item.classification === "supply"
+                          ? "Supply"
+                          : item.category || "Consumable"}
                     </span>
                     <span className="text-text-secondary font-medium flex items-center gap-1 shrink-0">
-                      <span className="h-1.5 w-1.5 rounded-full bg-status-active-bg" />
-                      {item.unit ? `Per ${item.unit}` : "Available"}
+                      <span
+                        className={cn(
+                          "h-1.5 w-1.5 rounded-full",
+                          item.currentQty > 0
+                            ? "bg-status-active-bg"
+                            : "bg-status-outofservice-bg"
+                        )}
+                      />
+                      {displayQty(item.currentQty)}
+                      {item.unit ? ` ${item.unit}` : ""}
                     </span>
                   </div>
                 </button>
@@ -1592,7 +1611,13 @@ function StepDetails({
                               </p>
                               {item.type === "consumable" && item.currentQty !== undefined && (
                                 <p className="text-[10px] text-text-secondary truncate">
-                                  Stock: {item.currentQty} {item.unit || "units"}
+                                  Available: {displayQty(item.currentQty)}{" "}
+                                  {item.unit || "units"}
+                                  {item.classification === "material"
+                                    ? " · Material"
+                                    : item.classification === "supply"
+                                      ? " · Supply"
+                                      : ""}
                                 </p>
                               )}
                             </div>
@@ -2321,7 +2346,7 @@ export function NewBorrowRequestWizard({
             submissionGroupId,
             lines: supplyLines.map((item) => ({
               consumableId: item.consumableId!,
-              quantity: item.quantity,
+              quantity: roundQty(item.quantity),
               purpose: item.purpose,
             })),
           });
