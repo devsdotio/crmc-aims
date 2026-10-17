@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import {
   requireActor,
 } from "@/server/shared/auth";
+import { BadRequestError } from "@/server/shared/errors";
 import {
   handleError,
   ok,
@@ -20,7 +21,14 @@ export class AuthController {
   /** JSON email/password sign-in — sets session cookies + returns access token. */
   async signIn(request: Request) {
     try {
-      const body = await request.json();
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        throw new BadRequestError(
+          "Request body must be JSON with email and password."
+        );
+      }
       const data = await this.authService.signIn(body);
       return ok(data);
     } catch (error) {

@@ -48,9 +48,17 @@ function getRedirectErrorMessage(errorKey: string | null): string | null {
 }
 
 /** Map API / network failures into plain-language recovery guidance. */
-function mapSignInFailure(serverError: string | undefined, offline: boolean): string {
+function mapSignInFailure(
+  serverError: string | undefined,
+  offline: boolean,
+  status?: number
+): string {
   if (offline) {
     return 'You appear to be offline. Check your connection, then try signing in again.';
+  }
+
+  if (status === 404) {
+    return 'Sign-in is still starting up on the server. Wait a moment and try again.';
   }
 
   const raw = (serverError || '').trim();
@@ -236,7 +244,8 @@ export function SignInForm() {
       if (!res.ok || !body?.data?.profile) {
         const errorMessage = mapSignInFailure(
           body?.error,
-          typeof navigator !== 'undefined' && !navigator.onLine
+          typeof navigator !== 'undefined' && !navigator.onLine,
+          res.status
         );
         setFormState({
           isLoading: false,
