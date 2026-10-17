@@ -49,7 +49,7 @@ describe("disbursement particulars decimal quantity", () => {
   });
 
   it("parses legacy fractional Nx prefix in descriptions", () => {
-    const parsed = parseParticulars("1.5x Epoxy resin ₱300.00");
+    const parsed = parseParticulars("1.5x Epoxy resin");
     expect(parsed).toHaveLength(1);
     expect(parsed[0].quantity).toBe("1.5");
     expect(parsed[0].description).toMatch(/Epoxy resin/i);

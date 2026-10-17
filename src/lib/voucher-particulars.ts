@@ -122,8 +122,9 @@ export function parseParticulars(
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
+      // Require whitespace after "1." / "2)" so "1.5x Item" is not treated as a list marker.
       const withoutBullet = line
-        .replace(/^(\s*[-*•]|\s*\d+[\.\)])\s*/, "")
+        .replace(/^(?:[-*•]|\d+[.)])\s+/, "")
         .trim();
       const moneyMatch = withoutBullet.match(MONEY_TRAILING);
       if (moneyMatch) {
