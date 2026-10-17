@@ -50,6 +50,7 @@ import {
   parseUnsignedDecimal,
   parseUnsignedInt,
 } from "@/lib/numeric-input";
+import { roundQty } from "@/lib/qty";
 import { formatPhp } from "@/components/projects/format-money";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
@@ -940,8 +941,13 @@ export function FileNewPODialog({
         }
 
         if (field === "minThreshold") {
-          const num = typeof value === "number" ? value : parseInt(strVal, 10) || 0;
-          return { ...item, minThreshold: num };
+          const next = filterUnsignedDecimalInput(strVal);
+          if (next === null) return item;
+          const num = next === "" || next === "." ? 0 : Number(next);
+          return {
+            ...item,
+            minThreshold: Number.isFinite(num) ? roundQty(num) : 0,
+          };
         }
 
         if (field === "suggestedDealer") {

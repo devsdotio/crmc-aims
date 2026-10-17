@@ -24,7 +24,7 @@ type Params = { params: Promise<{ id: string }> };
  *             type: object
  *             required: [quantityChange, reason]
  *             properties:
- *               quantityChange: { type: integer }
+ *               quantityChange: { type: number, description: "Signed qty delta (max 2 decimal places)" }
  *               reason: { type: string }
  *               notes: { type: string }
  *               allocations:
@@ -34,7 +34,7 @@ type Params = { params: Promise<{ id: string }> };
  *                   properties:
  *                     lotId: { type: string, format: uuid }
  *                     lotCode: { type: string }
- *                     quantity: { type: integer }
+ *                     quantity: { type: number, description: "Positive qty (max 2 decimal places)" }
  *               attachLotId: { type: string, format: uuid }
  *               attachLotCode: { type: string }
  *               createCorrectionLot: { type: boolean }

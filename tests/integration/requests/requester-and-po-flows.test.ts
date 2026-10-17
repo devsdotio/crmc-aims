@@ -228,6 +228,66 @@ describeIntegration("requests requester flows", () => {
     ).rejects.toThrow();
   });
 
+  it("accepts a single fractional line after same-SKU slip merge", async () => {
+    const supply = await consumables.create(
+      {
+        name: "Merged Slip Paper",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "ream",
+        currentQty: 20,
+        unitCost: 180,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+
+    // Requisition slip / wizard merge 0.5 + 1.25 into one line before POST.
+    const req = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: supply.id,
+            quantity: 1.75,
+            purpose: "Office restock",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    expect(req.lines).toHaveLength(1);
+    expect(req.lines[0]?.quantityRequested).toBe(1.75);
+
+    await expect(
+      consumableRequests.create(
+        {
+          requesterName: fx.borrower.displayName,
+          requesterEmail: fx.borrower.email!,
+          departmentId: fx.departmentId,
+          lines: [
+            {
+              consumableId: supply.id,
+              quantity: 0.5,
+              purpose: "Office restock",
+            },
+            {
+              consumableId: supply.id,
+              quantity: 1.25,
+              purpose: "Office restock",
+            },
+          ],
+          requesterUserId: fx.borrower.userId,
+        },
+        fx.borrower
+      )
+    ).rejects.toThrow(/duplicate/i);
+  });
+
   it("borrower catalog lists warehouse assets, supplies, and materials (parity with admin stock)", async () => {
     const unit = await assets.createAsset(
       {

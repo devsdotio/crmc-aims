@@ -2119,11 +2119,12 @@ export function PurchaseOrderDetailSheet({
               receivableLots.length > 0 ? receivableLots : lotsToUpdate;
             const receivedTotal = deliverTargets.reduce((sum, li) => {
               const ordered = li.orderedQuantity ?? li.quantity;
-              const parsed = Number.parseInt(
-                receivedQuantities[li.id] || String(ordered),
-                10
-              );
-              return sum + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+              const raw = receivedQuantities[li.id] || String(ordered);
+              const parsed =
+                li.itemType === "asset"
+                  ? parseUnsignedInt(raw, 0)
+                  : roundQty(parseUnsignedDecimal(raw, 0));
+              return sum + (parsed > 0 ? parsed : 0);
             }, 0);
             return (
               <>

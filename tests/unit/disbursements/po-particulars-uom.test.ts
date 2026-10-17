@@ -71,4 +71,20 @@ describe("PO → disbursement UoM mapping", () => {
     expect(draft.lines[1].unitOfMeasure).toBe("unit");
     expect(draft.lines[0].unitOfMeasure).not.toBe("pcs");
   });
+
+  it("preserves fractional quantities from PO lines into particulars", () => {
+    const items = particularsFromPurchaseOrderLines([
+      {
+        itemName: "Paint",
+        quantity: 2.5,
+        unit: "L",
+        unitCost: 400,
+        totalCost: 1000,
+        purpose: "[Facilities] Touch-up",
+      },
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0].quantity).toBe("2.5");
+    expect(items[0].amount).toBe("1000.00");
+  });
 });

@@ -1,5 +1,7 @@
 import { authController } from "@/server/modules/auth";
 
+export const dynamic = "force-dynamic";
+
 /**
  * @swagger
  * /api/auth/sign-in:

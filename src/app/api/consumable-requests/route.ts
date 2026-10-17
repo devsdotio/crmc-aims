@@ -52,7 +52,7 @@ import { consumableRequestController } from "@/server/modules/consumable-request
  *                   required: [consumableId, quantity]
  *                   properties:
  *                     consumableId: { type: string, format: uuid }
- *                     quantity: { type: integer, minimum: 1 }
+ *                     quantity: { type: number, minimum: 0.01, description: "Positive qty (max 2 decimal places)" }
  *                     notes: { type: string }
  *     responses:
  *       201:
