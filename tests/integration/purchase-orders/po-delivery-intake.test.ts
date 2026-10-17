@@ -610,6 +610,63 @@ describeIntegration("purchase orders / delivery intake (integration)", () => {
     }
   });
 
+  it("intakes fractional received quantity for a supply PO", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [lot] = await pos.createPurchaseOrder(
+      {
+        poDate: "2026-09-13",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            name: "PO Fractional Ink",
+            category: fx.consumableCategory,
+            classification: "supply",
+            unit: "L",
+            location: "Store Room",
+            quantity: 10,
+            unitCost: 450,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    expect(lot.quantity).toBe(10);
+
+    const delivered = await pos.updatePOStatus(
+      lot.id,
+      { status: "delivered", receivedQuantity: 3.75 },
+      fx.actor
+    );
+    expect(delivered.status).toBe("delivered");
+    expect(delivered.quantity).toBe(3.75);
+    expect(delivered.quantityRemaining).toBe(3.75);
+    expect(delivered.orderedQuantity).toBe(10);
+    expect(delivered.receivedQuantity).toBe(3.75);
+
+    const db = getDb();
+    const [item] = await db
+      .select()
+      .from(consumables)
+      .where(eq(consumables.id, delivered.consumableId!));
+    expect(Number(item.currentQty)).toBe(3.75);
+
+    const movements = await db
+      .select()
+      .from(stockMovements)
+      .where(eq(stockMovements.consumableId, item.id));
+    const restock = movements.find(
+      (m) => m.direction === "in" && m.reason === "restock"
+    );
+    expect(restock).toBeTruthy();
+    expect(Number(restock!.qty)).toBe(3.75);
+  });
+
   it("stores consumable general classification on undelivered draft PO lines", async () => {
     const purpose = testPoPurpose(fx.departmentName);
     const [lot] = await pos.createPurchaseOrder(

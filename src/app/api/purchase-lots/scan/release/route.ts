@@ -33,9 +33,10 @@ import { purchaseLotController } from "@/server/modules/purchase-lots";
  *                 example: "CRMC-AIMS-LOT:LOT-2026-ABCD1234"
  *                 description: QR payload or lot code (required when lotId is omitted)
  *               quantity:
- *                 type: integer
- *                 minimum: 1
- *                 example: 5
+ *                 type: number
+ *                 minimum: 0.01
+ *                 description: Positive qty (max 2 decimal places)
+ *                 example: 5.5
  *               departmentId:
  *                 type: string
  *                 format: uuid

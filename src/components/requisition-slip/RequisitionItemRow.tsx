@@ -32,10 +32,17 @@ export function RequisitionItemRow({
       <div className="w-20 shrink">
         <input
           type="number"
-          min={1}
+          min={0.01}
+          step={0.01}
           placeholder="QTY"
           value={item.qty ?? ""}
-          onChange={(e) => onChange(item.id, "qty", e.target.value ? Number(e.target.value) : null)}
+          onChange={(e) =>
+            onChange(
+              item.id,
+              "qty",
+              e.target.value ? Number(e.target.value) : null
+            )
+          }
           className="w-full h-8 px-2 text-sm bg-transparent border-b border-transparent focus:border-primary focus:outline-none transition-colors"
         />
       </div>

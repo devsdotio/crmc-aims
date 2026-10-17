@@ -10,6 +10,7 @@ import { useCreateConsumableRequestMutation } from "@/features/consumable-reques
 import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { useMeQuery } from "@/features/users/client/use-users";
 import { useToast } from "@/components/providers/toast-context";
+import { roundQty } from "@/lib/qty";
 import { summarizePurposes } from "@/lib/request-purpose";
 
 function generateEmptyRow(): RequisitionItem {
@@ -140,7 +141,7 @@ export function RequisitionSlip({
         item.estimatedCost != null ? `est. ${item.estimatedCost}` : null,
       ].filter(Boolean);
       const existing = linesByKey.get(key);
-      const quantity = (existing?.quantity ?? 0) + (item.qty ?? 1);
+      const quantity = roundQty((existing?.quantity ?? 0) + (item.qty ?? 1));
       const notes = [
         ...(existing?.notes ? [existing.notes] : []),
         ...extra,
@@ -181,7 +182,7 @@ export function RequisitionSlip({
         notes: notesParts.join(" · ") || undefined,
         lines: [...linesByKey.values()].map((line) => ({
           consumableId: line.consumableId,
-          quantity: line.quantity,
+          quantity: roundQty(line.quantity),
           purpose: line.purpose,
           notes: line.notes,
         })),

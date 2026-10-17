@@ -60,3 +60,18 @@ describe("formatQuantityWithUnit (fractional)", () => {
     expect(formatQuantityWithUnit(1, "ream", "consumable")).toBe("1 ream");
   });
 });
+
+describe("numeric-input decimal qty filters", () => {
+  it("allows clearing and up to 2 decimal places", async () => {
+    const {
+      filterUnsignedDecimalInput,
+      parseUnsignedDecimal,
+    } = await import("@/lib/numeric-input");
+    expect(filterUnsignedDecimalInput("")).toBe("");
+    expect(filterUnsignedDecimalInput("0.5")).toBe("0.5");
+    expect(filterUnsignedDecimalInput("1.25")).toBe("1.25");
+    expect(filterUnsignedDecimalInput("1.234")).toBeNull();
+    expect(parseUnsignedDecimal("2.5", 0)).toBe(2.5);
+    expect(parseUnsignedDecimal(".", 0)).toBe(0);
+  });
+});

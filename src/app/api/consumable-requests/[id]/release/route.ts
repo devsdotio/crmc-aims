@@ -39,7 +39,7 @@ import { consumableRequestController } from "@/server/modules/consumable-request
  *                         properties:
  *                           lotId: { type: string, format: uuid }
  *                           lotCode: { type: string }
- *                           quantity: { type: integer, minimum: 1 }
+ *                           quantity: { type: number, minimum: 0.01, description: "Positive qty (max 2 decimal places)" }
  *     responses:
  *       200:
  *         description: Request released with frozen cost allocations

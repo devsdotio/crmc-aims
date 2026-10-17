@@ -1,4 +1,8 @@
-import { filterMoneyInput, filterUnsignedIntInput } from "@/lib/numeric-input";
+import {
+  filterMoneyInput,
+  filterUnsignedDecimalInput,
+} from "@/lib/numeric-input";
+import { displayQty, roundQty } from "@/lib/qty";
 import { stripPoPurposePrefix } from "@/lib/po-purpose";
 import { groupByPurpose, purposePreviewLabel, summarizePurposes } from "@/lib/request-purpose";
 
@@ -13,7 +17,7 @@ import { groupByPurpose, purposePreviewLabel, summarizePurposes } from "@/lib/re
 
 export type ParticularLineItem = {
   description: string;
-  /** Whole units. Empty when the line has no quantity yet. */
+  /** Quantity (up to 2 decimal places). Empty when the line has no quantity yet. */
   quantity: string;
   /** Unit of measure (e.g., pcs, box, kg, ream). Optional. */
   unitOfMeasure?: string;
@@ -166,7 +170,7 @@ export function patchParticularLine(
     return { ...item, [field]: raw };
   }
   if (field === "quantity") {
-    const quantity = filterUnsignedIntInput(raw);
+    const quantity = filterUnsignedDecimalInput(raw);
     if (quantity === null) return null;
     return recomputeParticularLine({ ...item, quantity });
   }
@@ -202,10 +206,10 @@ export function formatPurposeParticularsPreview(
 
 function normalizeQuantity(value: string): string {
   const trimmed = value.trim().replace(/,/g, "");
-  if (!trimmed) return "";
+  if (!trimmed || trimmed === ".") return "";
   const n = Number(trimmed);
   if (!Number.isFinite(n) || n < 0) return "";
-  return String(Math.trunc(n));
+  return displayQty(roundQty(n));
 }
 
 function recomputeParticularLine(item: ParticularLineItem): ParticularLineItem {
@@ -223,11 +227,11 @@ function splitLegacyParticular(
   description: string,
   amount: string
 ): ParticularLineItem {
-  const match = description.match(/^(\d+)\s*x\s+/i);
+  const match = description.match(/^(\d+(?:\.\d{1,2})?)\s*x\s+/i);
   if (!match) {
     return { description, quantity: "", unitCost: "", amount };
   }
-  const quantity = match[1];
+  const quantity = displayQty(roundQty(Number(match[1])));
   const rest = description.slice(match[0].length).trim();
   const qty = Number(quantity);
   const line = Number(amount);
@@ -417,7 +421,7 @@ export function particularsFromPurchaseOrderLines(
       const unitOfMeasure = resolveParticularUnitOfMeasure(li);
       return {
         description: (li.itemName || "").trim(),
-        quantity: qtyNum > 0 ? String(Math.trunc(qtyNum)) : "",
+        quantity: qtyNum > 0 ? displayQty(roundQty(qtyNum)) : "",
         ...(unitOfMeasure ? { unitOfMeasure } : {}),
         unitCost: unit > 0 ? unit.toFixed(2) : "",
         amount: lineAmount,
