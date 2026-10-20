@@ -174,12 +174,6 @@ export async function POST(request: Request) {
         .returning();
     } catch (error) {
       const mapped = appErrorFromUnknown(error);
-      if (
-        mapped instanceof ConflictError &&
-        mapped.message.includes("already used")
-      ) {
-        throw mapped;
-      }
       if (mapped instanceof ConflictError) {
         throw new ConflictError(
           `Category “${name}” already exists for this type.`
