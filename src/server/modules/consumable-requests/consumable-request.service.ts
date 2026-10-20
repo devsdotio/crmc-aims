@@ -278,12 +278,30 @@ export class ConsumableRequestService {
       this.repo.countByStatus(countFilters, undefined, actor?.tenantId),
     ]);
 
-    const allLines = await this.repo.listLinesByRequestIds(rows.map((r) => r.id));
+    const requestIds = rows.map((r) => r.id);
+    const allLines = await this.repo.listLinesByRequestIds(requestIds);
     const linesByRequest = new Map<string, ConsumableRequestLineRow[]>();
     for (const line of allLines) {
       const list = linesByRequest.get(line.requestId) ?? [];
       list.push(line);
       linesByRequest.set(line.requestId, list);
+    }
+    // Include release allocations so quantityReleased / quantityRemaining are
+    // correct for approved + partially issued requests in queue UIs.
+    const needsAllocations = rows.some(
+      (row) => row.status === "approved" || row.status === "released"
+    );
+    const allAllocations = needsAllocations
+      ? await this.repo.listAllocationsByRequestIds(requestIds)
+      : [];
+    const allocationsByRequest = new Map<
+      string,
+      ConsumableRequestReleaseAllocationRow[]
+    >();
+    for (const allocation of allAllocations) {
+      const list = allocationsByRequest.get(allocation.requestId) ?? [];
+      list.push(allocation);
+      allocationsByRequest.set(allocation.requestId, list);
     }
     const linked = await loadLinkedRequestSummaries(
       rows.map((row) => row.submissionGroupId),
@@ -297,7 +315,7 @@ export class ConsumableRequestService {
         toDTO(
           row,
           linesByRequest.get(row.id) ?? [],
-          [],
+          allocationsByRequest.get(row.id) ?? [],
           relatedForRow(row.id, row.submissionGroupId, linked),
           classificationByConsumableId
         )
@@ -917,16 +935,18 @@ export class ConsumableRequestService {
         const remainingQty = roundQty(
           Math.max(0, requestedQty - alreadyReleased)
         );
-        if (remainingQty <= 0) {
-          throw new BadRequestError(
-            `Line ${line.lineNo} (${item.itemCode}) is already fully issued.`
-          );
-        }
 
         const allocations = releaseLine.allocations ?? [];
         const allocatedQty = roundQty(
           allocations.reduce((sum, a) => sum + a.quantity, 0)
         );
+        if (remainingQty <= 0) {
+          // Ignore stale fully-issued lines with no positive allocation.
+          if (allocatedQty <= 0) continue;
+          throw new BadRequestError(
+            `Line ${line.lineNo} (${item.itemCode}) is already fully issued.`
+          );
+        }
         if (allocatedQty <= 0) {
           throw new BadRequestError(
             `Line ${line.lineNo} (${item.itemCode}): issue quantity must be positive.`

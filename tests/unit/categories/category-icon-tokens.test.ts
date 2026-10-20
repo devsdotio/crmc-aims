@@ -8,7 +8,7 @@ import {
 } from "@/lib/category-icon-tokens";
 
 describe("category icon tokens", () => {
-  it("keeps a palette large enough for exclusive icons", () => {
+  it("keeps a stable palette of known Lucide ids (icons may be shared)", () => {
     expect(CATEGORY_ICON_IDS.length).toBe(80);
     expect(new Set(CATEGORY_ICON_IDS).size).toBe(CATEGORY_ICON_IDS.length);
     expect(isCategoryIconId("monitor")).toBe(true);

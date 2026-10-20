@@ -123,4 +123,7 @@ export interface IConsumableRequestRepository {
   listAllocationsByRequestId(
     requestId: string
   ): Promise<ConsumableRequestReleaseAllocationRow[]>;
+  listAllocationsByRequestIds(
+    requestIds: string[]
+  ): Promise<ConsumableRequestReleaseAllocationRow[]>;
 }

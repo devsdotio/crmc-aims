@@ -393,6 +393,13 @@
       "when": 1786390000000,
       "tag": "0055_fractional_consumable_qty",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1786391000000,
+      "tag": "0056_drop_category_icon_token_unique",
+      "breakpoints": true
     }
   ]
 }
