@@ -21,7 +21,7 @@ export interface AddEditCategoryDialogProps {
   assetClasses?: CategoryItem[];
   /** Available consumable classes when editing/creating a specific consumable category. */
   consumableClasses?: CategoryItem[];
-  /** Every category and class in the tenant, used to keep icons exclusive. */
+  /** Every category and class in the tenant (used to prefer an unused default icon). */
   existingCategories?: CategoryItem[];
   onClose: () => void;
   onSave: (categoryData: Partial<CategoryItem>) => void | Promise<void>;
@@ -76,23 +76,20 @@ export function AddEditCategoryDialog({
   if (isOpen !== prevOpenKey.isOpen || initialCategory?.id !== prevOpenKey.id) {
     setPrevOpenKey({ isOpen, id: initialCategory?.id });
     if (isOpen) {
-      const freeIcon = nextFreeIconToken(takenIcons);
+      // Prefer an unused icon when adding; icons may still be shared.
+      const preferredIcon = nextFreeIconToken(takenIcons) ?? "monitor";
       if (initialCategory) {
         setName(initialCategory.name);
         setColorToken(initialCategory.colorToken || "blue");
-        setIconToken(initialCategory.iconToken || freeIcon || "monitor");
+        setIconToken(initialCategory.iconToken || preferredIcon);
         setParentId(initialCategory.parentId || "");
         setError("");
       } else {
         setName("");
         setColorToken("blue");
-        setIconToken(freeIcon || "monitor");
+        setIconToken(preferredIcon);
         setParentId("");
-        setError(
-          freeIcon
-            ? ""
-            : "Every icon is already used. Remove a category before adding another."
-        );
+        setError("");
       }
     }
   }
@@ -342,26 +339,21 @@ export function AddEditCategoryDialog({
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 max-h-52 overflow-y-auto p-1">
               {AVAILABLE_CATEGORY_ICONS.map((icon) => {
                 const isSelected = iconToken === icon.id;
-                const isTaken = takenIcons.has(icon.id);
+                const isShared = takenIcons.has(icon.id);
                 return (
                   <button
                     key={icon.id}
                     type="button"
-                    disabled={isTaken}
                     onClick={() => setIconToken(icon.id)}
                     className={cn(
-                      "flex flex-col items-center justify-center p-2 rounded-xl border transition-all select-none",
-                      isTaken
-                        ? "cursor-not-allowed border-border/40 bg-bg-subtle/40 text-text-secondary/35"
-                        : "cursor-pointer",
+                      "flex flex-col items-center justify-center p-2 rounded-xl border transition-all select-none cursor-pointer",
                       isSelected
                         ? "border-primary ring-2 ring-primary/30 bg-bg shadow-xs font-bold text-primary"
-                        : !isTaken &&
-                            "border-border/60 hover:border-border hover:bg-bg-subtle/50 text-text-secondary",
+                        : "border-border/60 hover:border-border hover:bg-bg-subtle/50 text-text-secondary",
                     )}
                     title={
-                      isTaken
-                        ? `${icon.name} is already used`
+                      isShared
+                        ? `${icon.name} (also used by another category)`
                         : icon.name
                     }
                   >

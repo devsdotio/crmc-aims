@@ -573,6 +573,128 @@ describeIntegration("requests approve → release (integration)", () => {
     expect(lotsAfter[0]!.quantityRemaining).toBe(10);
   });
 
+  it("lists approved requests with released qty so fully-issued lines are not re-offered", async () => {
+    const itemA = await consumables.create(
+      {
+        name: "List Partial Toner A",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "cart",
+        currentQty: 20,
+        unitCost: 90,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    const itemB = await consumables.create(
+      {
+        name: "List Partial Toner B",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "cart",
+        currentQty: 20,
+        unitCost: 95,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+
+    const pending = await consumableRequests.create(
+      {
+        requesterName: fx.borrower.displayName,
+        requesterEmail: fx.borrower.email!,
+        departmentId: fx.departmentId,
+        lines: [
+          {
+            consumableId: itemA.id,
+            quantity: 5,
+            purpose: "Line A",
+          },
+          {
+            consumableId: itemB.id,
+            quantity: 3,
+            purpose: "Line B",
+          },
+        ],
+        requesterUserId: fx.borrower.userId,
+      },
+      fx.borrower
+    );
+    const lineA = pending.lines[0]!.id;
+    const lineB = pending.lines[1]!.id;
+
+    await consumableRequests.approve(pending.id, {}, fx.actor);
+    const lotA = (
+      await lots.list({ consumableId: itemA.id }, fx.actor.tenantId)
+    )[0]!.id;
+    const lotB = (
+      await lots.list({ consumableId: itemB.id }, fx.actor.tenantId)
+    )[0]!.id;
+
+    // Fully issue line B; leave line A open.
+    await consumableRequests.release(
+      pending.id,
+      {
+        receivedBy: "Clerk",
+        lines: [
+          {
+            lineId: lineB,
+            allocations: [{ lotId: lotB, quantity: 3 }],
+          },
+        ],
+      },
+      fx.actor
+    );
+
+    const listed = await consumableRequests.list(
+      { status: "approved", limit: 50 },
+      fx.actor
+    );
+    const row = listed.data.find((r) => r.id === pending.id);
+    expect(row).toBeTruthy();
+    const listedA = row!.lines.find((l) => l.id === lineA);
+    const listedB = row!.lines.find((l) => l.id === lineB);
+    expect(listedA?.quantityReleased).toBe(0);
+    expect(listedA?.quantityRemaining).toBe(5);
+    expect(listedB?.quantityReleased).toBe(3);
+    expect(listedB?.quantityRemaining).toBe(0);
+
+    // Issuing only the remaining line must succeed; including a fully-issued
+    // line with a positive allocation is still rejected.
+    await expect(
+      consumableRequests.release(
+        pending.id,
+        {
+          receivedBy: "Clerk",
+          lines: [
+            {
+              lineId: lineB,
+              allocations: [{ lotId: lotB, quantity: 1 }],
+            },
+          ],
+        },
+        fx.actor
+      )
+    ).rejects.toThrow(/already fully issued/i);
+
+    const finished = await consumableRequests.release(
+      pending.id,
+      {
+        receivedBy: "Clerk",
+        lines: [
+          {
+            lineId: lineA,
+            allocations: [{ lotId: lotA, quantity: 5 }],
+          },
+        ],
+      },
+      fx.actor
+    );
+    expect(finished.status).toBe("released");
+  });
+
   it("rejects over-issuing beyond remaining approved quantity", async () => {
     const item = await consumables.create(
       {

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
+import { CATEGORY_ICON_IDS } from "@/lib/category-icon-tokens";
 import { getDb } from "@/server/db";
 import { categories, locations, profiles, tenants } from "@/server/db/schema";
 import { CategoryRepository } from "@/server/modules/categories/category.repository";
@@ -517,7 +518,7 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     ).rejects.toBeInstanceOf(ConflictError);
   });
 
-  it("rejects a duplicate icon and allows a row to keep its own icon", async () => {
+  it("allows shared icons across categories and rejects unknown icon ids", async () => {
     const db = getDb();
     const [first] = await db
       .insert(categories)
@@ -549,14 +550,15 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
     );
     expect(kept?.iconToken).toBe("keyboard");
 
-    await expect(
-      categoryRepo.updateAndCascade(
-        second.id,
-        { name: "Keyboards", type: "asset", iconToken: "monitor" },
-        undefined,
-        fx.actor.tenantId
-      )
-    ).rejects.toBeInstanceOf(ConflictError);
+    // Icons may be reused — same token as another category is fine.
+    const shared = await categoryRepo.updateAndCascade(
+      second.id,
+      { name: "Keyboards", type: "asset", iconToken: "monitor" },
+      undefined,
+      fx.actor.tenantId
+    );
+    expect(shared?.iconToken).toBe("monitor");
+    expect(first.iconToken).toBe("monitor");
 
     await expect(
       categoryRepo.updateAndCascade(
@@ -567,6 +569,20 @@ describeIntegration("categories / departments / suppliers CRUD", () => {
       )
     ).rejects.toThrow(/icon set/i);
 
-    expect(first.iconToken).toBe("monitor");
+    // Create still works when every palette icon is already taken.
+    for (const icon of CATEGORY_ICON_IDS) {
+      await db.insert(categories).values({
+        tenantId: fx.actor.tenantId,
+        name: `Cat ${icon}`,
+        type: "asset",
+        iconToken: icon,
+        createdByUserId: fx.actor.userId,
+      });
+    }
+    const overflow = await categoryRepo.resolveIconTokenForCreate(
+      fx.actor.tenantId,
+      null
+    );
+    expect(CATEGORY_ICON_IDS).toContain(overflow);
   });
 });

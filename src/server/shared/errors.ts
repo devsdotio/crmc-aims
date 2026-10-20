@@ -170,11 +170,6 @@ export function isConnectivityError(error: unknown): boolean {
 export function appErrorFromUnknown(error: unknown): AppError | null {
   const code = postgresErrorCode(error);
   if (code === "23505") {
-    if (postgresConstraintName(error) === "categories_tenant_icon_token_uidx") {
-      return new ConflictError(
-        "That icon is already used. Pick a different icon."
-      );
-    }
     return new ConflictError(
       "A record with this name already exists. Choose a different name."
     );

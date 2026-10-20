@@ -307,4 +307,20 @@ export class ConsumableRequestRepository
       .where(eq(consumableRequestReleaseAllocations.requestId, requestId))
       .orderBy(asc(consumableRequestReleaseAllocations.createdAt));
   }
+
+  async listAllocationsByRequestIds(
+    requestIds: string[],
+    session?: DbSession
+  ): Promise<ConsumableRequestReleaseAllocationRow[]> {
+    if (requestIds.length === 0) return [];
+    const db = this.db(session);
+    return db
+      .select()
+      .from(consumableRequestReleaseAllocations)
+      .where(inArray(consumableRequestReleaseAllocations.requestId, requestIds))
+      .orderBy(
+        asc(consumableRequestReleaseAllocations.requestId),
+        asc(consumableRequestReleaseAllocations.createdAt)
+      );
+  }
 }
