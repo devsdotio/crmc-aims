@@ -10,12 +10,12 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import { CheckCircle, XCircle, AlertTriangle, Info, X, RefreshCw } from "lucide-react";
+import { CheckCircle, XCircle, AlertTriangle, Info, X, RefreshCw, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ToastVariant = "success" | "error" | "warning" | "info";
+type ToastVariant = "success" | "error" | "warning" | "info" | "loading";
 
 export interface ToastAction {
   label: string;
@@ -40,6 +40,8 @@ export interface ToastContextValue {
   error: (message: string, options?: ToastOptions) => void;
   warning: (message: string, options?: ToastOptions) => void;
   info: (message: string, options?: ToastOptions) => void;
+  loading: (message: string, options?: ToastOptions) => void;
+  dismiss: (id?: string) => void;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -89,6 +91,12 @@ const variantStyles: Record<
     icon: "text-blue-600",
     textColor: "text-zinc-900",
     IconComponent: Info,
+  },
+  loading: {
+    wrapper: "bg-white border border-primary/40 shadow-xl",
+    icon: "text-primary animate-spin",
+    textColor: "text-zinc-900",
+    IconComponent: Loader2,
   },
 };
 
@@ -173,7 +181,7 @@ function ToastItem({
         onClick={dismiss}
         className={cn(
           "shrink-0 transition-colors cursor-pointer p-0.5 rounded-md",
-          toast.variant === "info"
+          toast.variant === "info" || toast.variant === "loading"
             ? "text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100"
             : "text-white/80 hover:text-white hover:bg-white/15"
         )}
@@ -197,8 +205,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         if (prev.some((t) => t.message === message && t.variant === variant)) {
           return prev;
         }
+
+        // When a new loading toast arrives, replace any previous loading toast
+        const filtered =
+          variant === "loading"
+            ? prev.filter((t) => t.variant !== "loading")
+            : prev;
+
         return [
-          ...prev,
+          ...filtered,
           {
             id: crypto.randomUUID(),
             variant,
@@ -214,6 +229,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const remove = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  const dismiss = useCallback((id?: string) => {
+    if (id) {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    } else {
+      setToasts([]);
+    }
   }, []);
 
   const success = useCallback(
@@ -232,10 +255,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (msg: string, opts?: ToastOptions) => add("info", msg, opts),
     [add]
   );
+  const loading = useCallback(
+    (msg: string, opts?: ToastOptions) => add("loading", msg, opts),
+    [add]
+  );
 
   const value = useMemo<ToastContextValue>(
-    () => ({ success, error, warning, info }),
-    [success, error, warning, info]
+    () => ({ success, error, warning, info, loading, dismiss }),
+    [success, error, warning, info, loading, dismiss]
   );
 
   return (

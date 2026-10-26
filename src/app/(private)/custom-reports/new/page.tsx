@@ -4,7 +4,7 @@ import { CustomReportTemplateDesigner } from "@/components/custom-reports/templa
 
 export default function NewCustomReportPage() {
   return (
-    <div className="w-full max-w-5xl mx-auto px-4 md:px-6 py-4">
+    <div className="w-full">
       <CustomReportTemplateDesigner mode="create" />
     </div>
   );

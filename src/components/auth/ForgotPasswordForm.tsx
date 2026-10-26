@@ -203,7 +203,7 @@ export function ForgotPasswordForm() {
           <div className="pt-4 border-t border-border text-center">
             <Link
               href="/sign-in"
-              className="inline-flex items-center justify-center gap-2 text-xs font-semibold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md py-1 px-2 transition-colors"
+              className="inline-flex items-center justify-center gap-2 text-xs font-semibold text-[#FF4E45] hover:text-[#D83D35] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45] rounded-md py-1 px-2 transition-colors"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Back to Sign In</span>

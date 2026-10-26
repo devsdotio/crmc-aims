@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { Loader2, ArrowRight, User } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { AuthCard } from './AuthCard';
 import { PasswordInput } from './PasswordInput';
@@ -297,18 +297,24 @@ export function SignInForm() {
 
   return (
     <AuthCard>
-      <div className="space-y-7">
-        {/* Title */}
-        <div className="space-y-2">
-          <div className="inline-flex items-center rounded-full border border-[#FF4E45]/20 bg-[#FF4E45]/6 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-[#D83D35]">
-            Staff access
-          </div>
-          <h2 className="text-3xl font-bold tracking-tight text-foreground">
-            Welcome back
+      <div className="space-y-6">
+        {/* Title & Subtitle */}
+        <div className="space-y-1">
+          <h2 className="text-3xl font-bold tracking-tight text-[#1B2140] dark:text-white">
+            Log In
           </h2>
-          <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">
-            Sign in to continue to your AIMS workspace.
-          </p>
+          <div className="text-xs sm:text-sm text-muted-foreground pt-0.5">
+            <span>Don&apos;t have an account? </span>
+            <Link
+              href="/forgot-password"
+              className="font-semibold text-[#FF4E45] hover:text-[#D83D35] hover:underline"
+            >
+              Request an account
+            </Link>
+            <p className="mt-0.5 text-[11px] text-muted-foreground/75">
+              It will take less than a minute.
+            </p>
+          </div>
         </div>
 
         {/* Global Error/Success Alert — single status region (visibility + recovery) */}
@@ -326,74 +332,69 @@ export function SignInForm() {
         <form
           onSubmit={handleSubmit}
           noValidate
-          className="relative space-y-5"
+          className="space-y-5"
           aria-describedby={displayErrorMessage ? 'sign-in-status' : undefined}
         >
-          
           {/* Inputs Container */}
-          <div className="space-y-5">
-            {/* Email Field */}
+          <div className="space-y-4">
+            {/* Username / Email Field with Persistent Micro-Label */}
             <div className="space-y-1.5">
               <label
                 htmlFor="email"
-                className="block text-xs font-semibold tracking-wide text-foreground"
+                className="block text-xs font-semibold text-[#1B2140] dark:text-white/90 tracking-wide"
               >
-                Email Address
+                Username or Institutional Email
               </label>
-              <input
-                id="email"
-                type="email"
-                inputMode="email"
-                ref={emailInputRef}
-                value={formValues.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                onBlur={() => handleBlur('email')}
-                placeholder="name@crmc.edu.ph"
-                autoComplete="username"
-                disabled={formState.isLoading}
-                aria-invalid={Boolean(errors.email && touched.email)}
-                aria-describedby={
-                  errors.email && touched.email ? 'email-error' : undefined
-                }
-                className={`flex h-12 w-full rounded-xl border bg-background px-3.5 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45]/25 disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${
-                  errors.email && touched.email
-                    ? 'border-red-500'
-                    : 'border-border'
-                }`}
-              />
+              <div className="relative flex items-center w-full">
+                <input
+                  id="email"
+                  type="email"
+                  inputMode="email"
+                  ref={emailInputRef}
+                  value={formValues.email}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  onBlur={() => handleBlur('email')}
+                  placeholder="name@crmc.edu.ph"
+                  autoComplete="username"
+                  disabled={formState.isLoading}
+                  aria-invalid={Boolean(errors.email && touched.email)}
+                  aria-describedby={
+                    errors.email && touched.email ? 'email-error' : undefined
+                  }
+                  className={`flex h-11 w-full border-0 border-b bg-transparent px-0 py-2.5 pr-8 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50 transition-colors ${
+                    errors.email && touched.email
+                      ? 'border-red-500 focus:border-red-500'
+                      : 'border-slate-200 dark:border-zinc-700 focus:border-[#FF4E45]'
+                  }`}
+                />
+                <User className="absolute right-0 w-4 h-4 text-muted-foreground/50 pointer-events-none" />
+              </div>
               {errors.email && touched.email && (
                 <p
                   id="email-error"
-                  className="text-xs text-red-500 font-medium animate-in fade-in-50"
+                  className="text-xs text-red-500 font-medium animate-in fade-in-50 pt-0.5"
                 >
                   {errors.email}
                 </p>
               )}
             </div>
 
-            {/* Password Field */}
+            {/* Password Field with Persistent Micro-Label */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="password"
-                  className="block text-xs font-semibold tracking-wide text-foreground"
-                >
-                  Password
-                </label>
-                <Link
-                  href="/forgot-password"
-                  className="rounded-sm text-xs font-semibold text-[#D83D35] hover:text-[#FF4E45] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  Forgot your password?
-                </Link>
-              </div>
+              <label
+                htmlFor="password"
+                className="block text-xs font-semibold text-[#1B2140] dark:text-white/90 tracking-wide"
+              >
+                Password
+              </label>
               <PasswordInput
                 id="password"
+                variant="underline"
                 ref={passwordInputRef}
                 value={formValues.password}
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 autoComplete="current-password"
                 disabled={formState.isLoading}
                 error={Boolean(errors.password && touched.password)}
@@ -405,57 +406,56 @@ export function SignInForm() {
               {errors.password && touched.password && (
                 <p
                   id="password-error"
-                  className="text-xs text-red-500 font-medium animate-in fade-in-50"
+                  className="text-xs text-red-500 font-medium animate-in fade-in-50 pt-0.5"
                 >
                   {errors.password}
                 </p>
               )}
             </div>
-
-            {/* Remember Me Checkbox */}
-            <div className="flex items-center justify-between pt-0.5">
-              <label className="flex items-center gap-2.5 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none">
-                <input
-                  type="checkbox"
-                  checked={formValues.rememberMe}
-                  onChange={(e) => handleChange('rememberMe', e.target.checked)}
-                  disabled={formState.isLoading}
-                  className="w-4 h-4 rounded border-border text-[#FF4E45] focus:ring-ring focus:ring-offset-0 disabled:opacity-50 accent-[#FF4E45]"
-                />
-                <span>Remember me on this device</span>
-              </label>
-            </div>
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={formState.isLoading}
-            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#f15a29] text-sm font-semibold text-white shadow-lg shadow-[#2A3260]/20 transition-all hover:bg-[#f15a45] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99]"
-          >
-            {formState.isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Signing in...</span>
-              </>
-            ) : (
-              <>
-                <span>Sign In to System</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
+          {/* Utility Row: Remember Me & Forgot Password */}
+          <div className="flex items-center justify-between pt-1 text-xs">
+            <label className="flex items-center gap-2 cursor-pointer font-medium text-muted-foreground hover:text-foreground transition-colors select-none py-1">
+              <input
+                type="checkbox"
+                checked={formValues.rememberMe}
+                onChange={(e) => handleChange('rememberMe', e.target.checked)}
+                disabled={formState.isLoading}
+                className="w-4 h-4 rounded border-slate-300 dark:border-zinc-700 text-[#FF4E45] focus:ring-[#FF4E45] focus:ring-offset-0 disabled:opacity-50 accent-[#FF4E45] cursor-pointer"
+              />
+              <span>Remember me</span>
+            </label>
 
-        {/* Footer Support Info */}
-        <div className="space-y-1.5 border-t border-border pt-5 text-center">
-          <p className="text-xs font-semibold text-foreground/70">
-            AIMS &bull; Asset & Inventory Management System
-          </p>
-          <p className="text-[11px] text-muted-foreground/80">
-            For account access requests, contact your System Administrator.
-          </p>
-        </div>
+            <Link
+              href="/forgot-password"
+              className="font-semibold text-[#FF4E45] hover:text-[#D83D35] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45] rounded py-1 transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          {/* Primary Action CTA (Von Restorff Effect) */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={formState.isLoading}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#FF4E45] text-sm font-semibold text-white shadow-lg shadow-[#FF4E45]/20 transition-all hover:bg-[#E03E36] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF4E45]/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.99] cursor-pointer"
+            >
+              {formState.isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Signing in to workspace…</span>
+                </>
+              ) : (
+                <>
+                  <span>Sign In to System</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </AuthCard>
   );

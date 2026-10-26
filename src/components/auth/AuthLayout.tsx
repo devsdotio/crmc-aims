@@ -1,100 +1,193 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { ArrowUpRight, Building2, Check, ShieldCheck } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import {
+  TargetIllustration,
+  InventoryIllustration,
+  SecurityIllustration,
+} from "./AuthIllustration";
 
 interface AuthLayoutProps {
   children: React.ReactNode;
 }
 
+const SLIDES = [
+  {
+    id: "accountability",
+    title: "Welcome!",
+    description:
+      "Manage, audit, and track institutional physical assets and departmental inventory in one unified workspace.",
+    illustration: <TargetIllustration />,
+  },
+  {
+    id: "inventory",
+    title: "Smart Inventory Tracking",
+    description:
+      "Real-time equipment monitoring, fast requisitions, and accountable department custody records.",
+    illustration: <InventoryIllustration />,
+  },
+  {
+    id: "audit",
+    title: "Institutional Audit Ready",
+    description:
+      "Comprehensive asset histories, preventative maintenance schedules, and role-based operational security.",
+    illustration: <SecurityIllustration />,
+  },
+];
+
 export function AuthLayout({ children }: AuthLayoutProps) {
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
+
+  const nextSlide = useCallback(() => {
+    setCurrentSlide((prev) => (prev + 1) % SLIDES.length);
+  }, []);
+
+  // Auto-scroll slides every 4.5 seconds (halt if hovered or if reduced-motion preferred)
+  useEffect(() => {
+    if (isPaused || shouldReduceMotion) return;
+    const interval = setInterval(nextSlide, 4500);
+    return () => clearInterval(interval);
+  }, [isPaused, shouldReduceMotion, nextSlide]);
+
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-bg-subtle text-foreground">
-      <div className="flex h-full w-full flex-col overflow-hidden bg-card lg:flex-row">
-        {/* Left/Top Branding Panel */}
-        <div className="relative flex w-full shrink-0 flex-col justify-between overflow-hidden bg-text p-6 text-white sm:p-8 lg:w-[47%] lg:p-12 xl:p-16">
-          {/* Background Decorative Accent Elements */}
-          <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-[#FF4E45]/15 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-32 -right-24 h-md w-md rounded-full bg-blue-500/15 blur-3xl" />
-          <div className="pointer-events-none absolute left-1/2 top-1/2 hidden h-125 w-125 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/5 bg-white/2 lg:block" />
-
-          {/* Header / Logo */}
-          <div className="relative z-10 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-lg shadow-black/20">
-              <Image
-                src="/aims-logo.svg"
-                alt="AIMS Logo"
-                width={36}
-                height={36}
-                className="w-full h-full object-contain"
-                priority
-              />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold leading-tight tracking-[0.18em] text-white">
-                AIMS
-              </h1>
-              <p className="text-xs font-medium text-white/70">
-                Asset & Inventory Management
-              </p>
-            </div>
-            </div>
-            <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-white/70">
-              Secure
-            </span>
+    <div className="flex min-h-screen lg:h-screen w-full flex-col lg:flex-row overflow-x-hidden bg-white dark:bg-card text-foreground">
+      
+      {/* Mobile-Only Header (< lg): Compact branded banner so form is above the fold */}
+      <div className="flex lg:hidden items-center justify-between bg-gradient-to-r from-[#1B2140] via-[#242C52] to-[#14182E] px-6 py-4 text-white shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white p-1.5 shadow-sm">
+            <Image
+              src="/aims-logo.svg"
+              alt="AIMS Logo"
+              width={26}
+              height={26}
+              className="w-full h-full object-contain"
+              priority
+            />
           </div>
-
-          <div className="relative z-10 my-8 space-y-6 lg:my-0">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 backdrop-blur-sm">
-              <Building2 className="h-3.5 w-3.5 text-[#FF4E45]" />
-              <span>Enterprise Workspace</span>
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="max-w-xl text-2xl font-bold leading-tight tracking-tight text-white lg:text-4xl">
-                Keep every asset accounted for.
-              </h2>
-              <p className="max-w-lg text-sm font-normal leading-relaxed text-white/75 lg:text-base">
-                A single workspace for physical asset tracking, equipment borrowing,
-                maintenance, and accountable inventory operations.
-              </p>
-            </div>
-
-            {/* Highlights */}
-            <div className="grid grid-cols-1 gap-2.5 pt-2 text-xs text-white/80 sm:grid-cols-2">
-              <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#FF4E45]/15">
-                  <Check className="h-3 w-3 text-[#FF6B62]" />
-                </span>
-                <span>Institutional audit ready</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#FF4E45]/15">
-                  <ShieldCheck className="h-3 w-3 text-[#FF6B62]" />
-                </span>
-                <span>Role-based access</span>
-              </div>
-            </div>
+          <div>
+            <h1 className="text-base font-bold leading-tight tracking-[0.14em] text-white">
+              CRMC AIMS
+            </h1>
+            <p className="text-[10px] font-medium text-white/70">
+              Asset &amp; Inventory Management
+            </p>
           </div>
+        </div>
+        <span className="rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white/80">
+          Portal
+        </span>
+      </div>
 
-          {/* Footer info */}
-          <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/50">
-            <span>&copy; {new Date().getFullYear()} AIMS</span>
-            <span className="inline-flex items-center gap-1">
-              Operations portal <ArrowUpRight className="h-3 w-3" />
-            </span>
+      {/* Desktop Left Branding & Illustration Hero Panel (>= lg, 55% width) */}
+      <section
+        role="region"
+        aria-roledescription="carousel"
+        aria-label="AIMS Platform Highlights"
+        aria-live={isPaused ? "polite" : "off"}
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        className="relative hidden lg:flex h-full w-full shrink-0 flex-col justify-between overflow-hidden bg-gradient-to-br from-[#1B2140] via-[#242C52] to-[#14182E] p-8 sm:p-10 lg:w-[55%] lg:p-14 xl:p-16 text-white select-none"
+      >
+        {/* Bottom subtle ambient accent */}
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-96 w-96 rounded-full bg-blue-500/10 blur-3xl" />
+
+        {/* Header / Logo */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-md shadow-black/20">
+            <Image
+              src="/aims-logo.svg"
+              alt="AIMS Logo"
+              width={32}
+              height={32}
+              className="w-full h-full object-contain"
+              priority
+            />
+          </div>
+          <div>
+            <h1 className="text-base sm:text-lg font-bold leading-tight tracking-[0.16em] text-white">
+              CRMC AIMS
+            </h1>
+            <p className="text-[11px] font-medium text-white/70">
+              Asset &amp; Inventory Management
+            </p>
           </div>
         </div>
 
-        {/* Right/Bottom Form Panel */}
-        <main className="flex h-full w-full flex-1 flex-col justify-center overflow-y-auto bg-card px-6 py-10 sm:px-10 lg:w-[53%] lg:px-16">
-          <div className="mx-auto flex h-full w-full max-w-md flex-col justify-center">
-            {children}
+        {/* Middle Auto-Scrolling Illustration */}
+        <div className="relative z-10 my-auto py-6 flex items-center justify-center min-h-[340px]">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentSlide}
+              initial={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.94, x: shouldReduceMotion ? 0 : 25 }}
+              animate={{ opacity: 1, scale: 1, x: 0 }}
+              exit={{ opacity: 0, scale: shouldReduceMotion ? 1 : 0.94, x: shouldReduceMotion ? 0 : -25 }}
+              transition={{ duration: shouldReduceMotion ? 0.2 : 0.45, ease: "easeInOut" }}
+              className="flex items-center justify-center w-full"
+            >
+              {SLIDES[currentSlide].illustration}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Bottom Welcome Content & Interactive Dots */}
+        <div className="relative z-10 space-y-3.5">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentSlide}
+              initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -12 }}
+              transition={{ duration: shouldReduceMotion ? 0.2 : 0.35, ease: "easeInOut" }}
+              className="space-y-1.5"
+            >
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                {SLIDES[currentSlide].title}
+              </h2>
+              <p className="mt-1 max-w-lg text-xs sm:text-sm font-normal leading-relaxed text-white/80">
+                {SLIDES[currentSlide].description}
+              </p>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Accessible Pagination / Slider Dots with >= 44px hitboxes */}
+          <div className="flex items-center gap-1 pt-1" role="tablist" aria-label="Slide selectors">
+            {SLIDES.map((slide, idx) => (
+              <button
+                key={slide.id}
+                type="button"
+                role="tab"
+                aria-selected={currentSlide === idx}
+                aria-label={`Slide ${idx + 1}: ${slide.title}`}
+                onClick={() => setCurrentSlide(idx)}
+                className="flex h-11 items-center justify-center px-1.5 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-full"
+              >
+                <span
+                  className={`h-2.5 transition-all duration-300 rounded-full ${
+                    currentSlide === idx
+                      ? "w-8 bg-[#FF4E45] ring-4 ring-[#FF4E45]/25"
+                      : "w-2.5 bg-white/40 hover:bg-white/60"
+                  }`}
+                />
+              </button>
+            ))}
           </div>
-        </main>
-      </div>
+        </div>
+      </section>
+
+      {/* Right Form Panel (45% on desktop, 100% on mobile) */}
+      <main className="flex min-h-[calc(100vh-68px)] lg:min-h-screen w-full flex-1 flex-col justify-center items-center overflow-y-auto bg-white dark:bg-card px-6 sm:px-10 lg:w-[45%] lg:px-10 xl:px-16 py-8 sm:py-12">
+        <div className="w-full max-w-md mx-auto">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }
+
+
+
