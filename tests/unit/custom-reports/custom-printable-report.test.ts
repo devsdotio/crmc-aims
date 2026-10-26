@@ -8,11 +8,9 @@ describe("CustomPrintableReport signatories", () => {
   it("renders signatories names in uppercase / capslock", () => {
     const payload: CustomPrintPayload = {
       templateName: "Test Report",
-      columns: [{ key: "id", label: "ID" }],
+      columns: [{ key: "id", label: "ID", type: "string" }],
       rows: [{ id: "1" }],
       total: 1,
-      page: 1,
-      pageSize: 50,
       filters: {},
       layout: [
         {
@@ -26,7 +24,6 @@ describe("CustomPrintableReport signatories", () => {
           },
         },
       ],
-      createdAt: Date.now(),
     };
 
     const html = renderToStaticMarkup(React.createElement(CustomPrintableReport, { data: payload }));
