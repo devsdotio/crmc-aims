@@ -90,7 +90,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
       <div className="flex flex-wrap gap-2 items-start">
         {hasSearch && (
           <label className="flex flex-col gap-1 text-xs text-text-secondary min-w-[200px] flex-1">
-            Search
+            <span>Search</span>
             <input
               className={inputClass}
               value={filters.search ?? ""}
@@ -129,7 +129,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
       {hasDateRange && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
           <label className="flex flex-col gap-1 text-xs text-text-secondary">
-            Start date
+            <span>Start date</span>
             <input
               type="date"
               className={inputClass}
@@ -138,7 +138,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-text-secondary">
-            End date
+            <span>End date</span>
             <input
               type="date"
               className={inputClass}
