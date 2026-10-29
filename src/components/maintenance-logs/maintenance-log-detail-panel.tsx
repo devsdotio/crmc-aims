@@ -20,6 +20,7 @@ import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
 import { ConditionTag } from "./condition-tag";
 import { DocumentMaintenanceDialog } from "./document-maintenance-dialog";
 import { useUpdateMaintenanceLogMutation } from "@/features/maintenance-logs/client";
+import { parseConditionNotes } from "@/lib/custom-condition";
 
 export interface MaintenanceLogDetailPanelProps {
   record: MaintenanceLogRecord | null;
@@ -98,7 +99,8 @@ export function MaintenanceLogDetailPanel({
 
   const categoryMeta = getCategoryStyle(record.category);
   const effectiveCondition = record.isResolved ? "resolved" : record.condition;
-  const notesDisplay = record.notes?.trim() || "No notes provided.";
+  const { customCondition, notes: cleanNotes } = parseConditionNotes(record.notes);
+  const notesDisplay = cleanNotes || "No notes provided.";
   const parts = record.repairParts ?? [];
   const hasDocs =
     Boolean(record.workNotes?.trim()) ||
@@ -149,7 +151,10 @@ export function MaintenanceLogDetailPanel({
             >
               {record.assetName}
             </h2>
-            <ConditionTag condition={effectiveCondition} />
+            <ConditionTag
+              condition={effectiveCondition}
+              customLabel={customCondition || undefined}
+            />
           </div>
 
           <div className="flex items-center justify-end gap-2 shrink-0">
@@ -354,10 +359,18 @@ export function MaintenanceLogDetailPanel({
           </section>
 
           <section className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-status-repair-text flex items-center gap-1.5">
-              <FileText className="h-3.5 w-3.5" />
-              Issue description
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-status-repair-text flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Issue description
+              </h3>
+              {customCondition && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                  <Tag className="h-3 w-3" />
+                  {customCondition}
+                </span>
+              )}
+            </div>
             <div className="p-3.5 rounded-xl border border-status-repair-bg/35 bg-status-repair-bg/10 text-sm font-semibold text-text leading-relaxed whitespace-pre-wrap shadow-xs">
               {notesDisplay}
             </div>

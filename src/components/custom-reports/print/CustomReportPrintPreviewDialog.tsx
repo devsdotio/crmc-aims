@@ -236,7 +236,7 @@ export function CustomReportPrintPreviewDialog({
                 id="print-dialog-title"
                 className="text-xs sm:text-sm font-bold text-text leading-tight flex items-center gap-2 flex-wrap min-w-0"
               >
-                <span className="truncate max-w-[180px] sm:max-w-xs md:max-w-md">
+                <span className="truncate max-w-45 sm:max-w-xs md:max-w-md">
                   {templateName || payload.templateName || "Custom Report"}
                 </span>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0 whitespace-nowrap">

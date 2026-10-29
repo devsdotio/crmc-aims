@@ -205,7 +205,7 @@ export function CustomReportTemplateDesigner({ mode, templateId }: TemplateDesig
             Custom Reports
           </Link>
           <ChevronRight className="size-3 text-text-secondary/60 shrink-0" />
-          <span className="font-semibold text-text px-2 py-0.5 rounded-md bg-bg-subtle border border-border/80 truncate max-w-[200px] sm:max-w-xs md:max-w-md">
+          <span className="font-semibold text-text px-2 py-0.5 rounded-md bg-bg-subtle border border-border/80 truncate max-w-50 sm:max-w-xs md:max-w-md">
             {mode === "create" ? "New Report Template" : name || "Edit Template"}
           </span>
         </nav>
@@ -327,7 +327,7 @@ export function CustomReportTemplateDesigner({ mode, templateId }: TemplateDesig
         <label className="flex flex-col gap-1.5 text-xs font-medium text-text">
           <span>Description / Auditor Notes (Optional)</span>
           <textarea
-            className="min-h-[64px] rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+            className="min-h-16 rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Document the purpose, retention period, or compliance guidelines for this report..."
@@ -412,7 +412,7 @@ export function CustomReportTemplateDesigner({ mode, templateId }: TemplateDesig
                       : "border-border bg-bg"
                   }`}
                 >
-                  {checked && <Check className="size-3 stroke-[3]" />}
+                  {checked && <Check className="size-3 stroke-3" />}
                 </span>
                 <span className="flex-1 truncate">{col.label}</span>
                 {col.sensitive && (

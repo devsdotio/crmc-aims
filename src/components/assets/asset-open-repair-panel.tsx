@@ -8,10 +8,12 @@ import {
   FilePenLine,
   Loader2,
   Wrench,
+  Tag,
 } from "lucide-react";
 import type { MaintenanceLogRecord } from "@/types/maintenance-logs";
 import { useOpenMaintenanceLogForAssetQuery } from "@/features/maintenance-logs/client";
 import { DocumentMaintenanceDialog } from "@/components/maintenance-logs/document-maintenance-dialog";
+import { parseConditionNotes } from "@/lib/custom-condition";
 
 function formatPhp(value: string | number | null | undefined): string {
   if (value == null || value === "") return "—";
@@ -85,6 +87,7 @@ export function AssetOpenRepairPanel({
 
   const record = openLog as MaintenanceLogRecord;
   const parts = openLog.repairParts ?? [];
+  const { customCondition, notes: cleanNotes } = parseConditionNotes(openLog.notes);
   const hasDocs =
     Boolean(openLog.workNotes?.trim()) ||
     parts.length > 0 ||
@@ -107,6 +110,12 @@ export function AssetOpenRepairPanel({
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-status-repair-bg/20 text-status-repair-text border border-status-repair-bg/30">
                   Logged {openLog.dateLogged}
                 </span>
+                {customCondition && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                    <Tag className="h-2.5 w-2.5" />
+                    {customCondition}
+                  </span>
+                )}
                 {openLog.scheduledDate && (
                   <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-accent/15 text-accent border border-accent/25">
                     Target {openLog.scheduledDate}
@@ -126,11 +135,19 @@ export function AssetOpenRepairPanel({
 
         <div className="px-4 py-3 space-y-3">
           <div className="rounded-xl border border-status-repair-bg/35 bg-bg p-3 shadow-xs">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-status-repair-text mb-1">
-              Issue
-            </p>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-status-repair-text">
+                Issue
+              </p>
+              {customCondition && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 dark:text-amber-400">
+                  <Tag className="h-3 w-3" />
+                  {customCondition}
+                </span>
+              )}
+            </div>
             <p className="text-sm font-bold text-text leading-snug whitespace-pre-wrap">
-              {openLog.notes?.trim() || "No issue notes recorded."}
+              {cleanNotes || "No issue notes recorded."}
             </p>
           </div>
 

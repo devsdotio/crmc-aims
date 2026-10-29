@@ -23,6 +23,7 @@ import { ProjectAssetAssignmentRepository } from "@/server/modules/projects/proj
 import { CategoryRepository } from "@/server/modules/categories/category.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
+import { formatConditionNotes } from "@/lib/custom-condition";
 
 import { AssetLifecycleService } from "./asset.lifecycle.service";
 import { buildAssetFieldChanges } from "./asset.lifecycle.types";
@@ -1460,6 +1461,9 @@ export class AssetService {
       );
       if (!next) throw new NotFoundError("Asset", id);
 
+      const customCondition = input.customCondition?.trim() || null;
+      const maintenanceNotes = formatConditionNotes(notes, customCondition);
+
       const mntCode = generateOperationalCode("MNT");
       await this.maintenanceRepo.create(
         {
@@ -1474,7 +1478,7 @@ export class AssetService {
           dateLogged: todayDateString(),
           loggedByUserId: actor.userId,
           loggedByName: actor.displayName,
-          notes,
+          notes: maintenanceNotes,
           isResolved: false,
           resolutionDate: null,
           resolutionNotes: null,
@@ -1502,6 +1506,7 @@ export class AssetService {
           payload: {
             via: "manual_flag",
             notes,
+            customCondition,
             maintenanceLogCode: mntCode,
             assignedToName,
           },

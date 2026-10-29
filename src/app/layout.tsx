@@ -4,6 +4,7 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import { ToastProvider } from "@/components/providers/toast-context";
 import { LoadingProvider } from "@/components/providers/loading-context";
 import { ConfirmProvider } from "@/components/providers/confirm-context";
+import { WhatsNewProvider } from "@/features/whats-new";
 import { WeightedTextSync } from "@/components/providers/text-weight-sync";
 import { weightedTextBootScript } from "@/lib/text-weight";
 import "./globals.css";
@@ -56,7 +57,9 @@ export default function RootLayout({
         <ToastProvider>
           <ConfirmProvider>
             <LoadingProvider>
-              <QueryProvider>{children}</QueryProvider>
+              <WhatsNewProvider>
+                <QueryProvider>{children}</QueryProvider>
+              </WhatsNewProvider>
             </LoadingProvider>
           </ConfirmProvider>
         </ToastProvider>

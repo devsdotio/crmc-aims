@@ -317,7 +317,7 @@ export function LayoutBlockEditor({ blocks, onChange }: LayoutBlockEditorProps) 
                     Narrative Text / Legal Disclaimer
                   </label>
                   <textarea
-                    className="w-full min-h-[64px] rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    className="w-full min-h-16 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs text-text focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     placeholder="Enter instructions, notes, or certification clauses..."
                     value={block.props?.text ?? ""}
                     onChange={(e) => update(index, { props: { text: e.target.value } })}
