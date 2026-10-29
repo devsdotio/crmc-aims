@@ -1299,7 +1299,10 @@ export function AssetDetailPanel({
 
   useEffect(() => {
     if (isOpen && !isBorrower && !isFeatureSeen("asset-sheet-button-layout")) {
-      openWhatsNew("asset-sheet-button-layout");
+      const timer = setTimeout(() => {
+        openWhatsNew("asset-sheet-button-layout");
+      }, 350);
+      return () => clearTimeout(timer);
     }
   }, [isOpen, isBorrower, openWhatsNew]);
 
@@ -1431,15 +1434,6 @@ export function AssetDetailPanel({
 
           {!isBorrower && (
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => openWhatsNew("asset-sheet-button-layout")}
-                aria-label="What's New in Asset Details"
-                title="What's New: Tour button layout"
-                className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-bg hover:bg-bg-subtle text-text-secondary hover:text-accent transition-colors cursor-pointer shadow-2xs shrink-0"
-              >
-                <Sparkles className="h-4 w-4 text-accent" />
-              </button>
               <button
                 type="button"
                 onClick={() => window.print()}
