@@ -1,5 +1,6 @@
 "use client";
 
+import { QRCodeSVG } from "qrcode.react";
 import {
   PrintMetricBar,
   PrintStatusBadge,
@@ -103,13 +104,14 @@ export function IndividualAssetPrintableReport({
     : null;
 
   return (
-    <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
+    <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2.5 p-6 sm:p-8">
       <style>{`
         @page {
-          size: 14in 8.5in;
-          margin: 10mm;
+          size: portrait;
+          margin: 12mm 14mm;
         }
         @media print {
+          html,
           body {
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -125,8 +127,9 @@ export function IndividualAssetPrintableReport({
           .print-page {
             width: 100% !important;
             max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
+            box-sizing: border-box !important;
+            margin: 0 auto !important;
+            padding: 10mm 12mm !important;
             color: #000000 !important;
             background: #ffffff !important;
             vertical-align: top;
@@ -137,6 +140,10 @@ export function IndividualAssetPrintableReport({
           .print-page img {
             filter: none !important;
             -webkit-filter: none !important;
+          }
+          .avoid-break {
+            break-inside: avoid;
+            page-break-inside: avoid;
           }
           table {
             break-inside: auto;
@@ -154,20 +161,20 @@ export function IndividualAssetPrintableReport({
       `}</style>
 
       {/* ─── Institutional Header (Pure Black Ink) ───────────────────────── */}
-      <header className="avoid-break border-b-2 border-black pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
+      <header className="avoid-break border-b-2 border-black pb-2.5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/CRMC%20LOGO.png"
               alt="CRMC Seal"
-              className="h-11 w-11 object-contain shrink-0"
+              className="h-12 w-12 object-contain shrink-0"
             />
-            <div className="space-y-0.5">
+            <div className="space-y-0.5 min-w-0">
               <h1 className="text-base font-extrabold tracking-tight text-black uppercase">
                 CRMC-AIMS
               </h1>
-              <div className="text-[10.5px] font-semibold text-black">
+              <div className="text-[10.5px] font-semibold text-black leading-tight">
                 Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
               </div>
               <div className="text-[9px] font-medium text-black">
@@ -175,31 +182,44 @@ export function IndividualAssetPrintableReport({
               </div>
             </div>
           </div>
-          <div suppressHydrationWarning className="rounded-xs border border-black bg-white px-2.5 py-1 text-right font-mono text-[9px] space-y-0.5 shrink-0 text-black">
-            <div>
-              <span>Generated:</span>{" "}
-              <span className="font-bold">{formattedDate}, {formattedTime}</span>
+
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="p-1 rounded-xs border border-black bg-white shrink-0">
+              <QRCodeSVG
+                value={asset.assetCode || asset.id}
+                size={44}
+                level="M"
+              />
             </div>
-            <div>
-              <span>Doc ID:</span>{" "}
-              <span className="font-bold">
-                AST-DOS-{asset.assetCode || asset.id}
-              </span>
+            <div
+              suppressHydrationWarning
+              className="rounded-xs border border-black bg-white px-2.5 py-1 text-right font-mono text-[9px] space-y-0.5 shrink-0 text-black"
+            >
+              <div>
+                <span>Generated:</span>{" "}
+                <span className="font-bold">{formattedDate}, {formattedTime}</span>
+              </div>
+              <div>
+                <span>Doc ID:</span>{" "}
+                <span className="font-bold">
+                  AST-DOS-{asset.assetCode || asset.id}
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-2 flex items-baseline justify-between border-t border-black pt-1.5">
+        <div className="mt-2.5 flex items-baseline justify-between border-t border-black pt-1.5">
           <div>
             <h2 className="text-sm font-extrabold text-black tracking-tight uppercase">
               Individual Asset Dossier &amp; Equipment Audit
             </h2>
             <div className="text-[9.5px] text-black mt-0.5 font-mono">
-              Asset Tag: <span className="font-bold">{asset.assetCode || asset.id}</span> · Serial: {asset.serialNumber || "N/A"}
+              Asset Tag: <span className="font-bold">{asset.assetCode || asset.id}</span> · Serial: {asset.serialNumber || "UNRECORDED"}
             </div>
           </div>
           <span className="text-[9px] font-bold font-mono tracking-wider text-black uppercase border border-black px-2 py-0.5 rounded-xs">
-            Equipment Dossier
+            Official Equipment Dossier
           </span>
         </div>
       </header>
@@ -442,6 +462,54 @@ export function IndividualAssetPrintableReport({
               )}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      {/* ─── Institutional Signatory & Audit Verification ──────────────── */}
+      <section className="avoid-break pt-1">
+        <div className="rounded-xs border border-black bg-white p-3">
+          <div className="text-[9px] font-bold uppercase tracking-wider text-black border-b border-black/40 pb-1 mb-5">
+            Institutional Audit &amp; Custody Verification Signatories
+          </div>
+          <div className="grid grid-cols-3 gap-6 text-[9.5px]">
+            <div className="space-y-6">
+              <div className="text-[8.5px] font-bold uppercase tracking-wide text-black/80">
+                Prepared &amp; Audited By:
+              </div>
+              <div className="border-b border-black text-center pb-1">
+                <div className="font-bold text-[10px] uppercase">Property Custodian</div>
+              </div>
+              <div className="text-[8px] text-center text-black/70">
+                Property &amp; Supply Custody Division
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="text-[8.5px] font-bold uppercase tracking-wide text-black/80">
+                Inspected &amp; Evaluated By:
+              </div>
+              <div className="border-b border-black text-center pb-1">
+                <div className="font-bold text-[10px] uppercase">Maintenance / IT Lead</div>
+              </div>
+              <div className="text-[8px] text-center text-black/70">
+                Technical Services Division
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="text-[8.5px] font-bold uppercase tracking-wide text-black/80">
+                Acknowledged Custody:
+              </div>
+              <div className="border-b border-black text-center pb-1">
+                <div className="font-bold text-[10px] uppercase truncate">
+                  {asset.currentHolder || "Institutional Pool"}
+                </div>
+              </div>
+              <div className="text-[8px] text-center text-black/70 truncate">
+                {asset.department || "Department Custodian"}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
