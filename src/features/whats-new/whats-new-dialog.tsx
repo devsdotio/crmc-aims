@@ -19,10 +19,12 @@ import {
   ListFilter,
   Calendar,
   ExternalLink,
+  Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WhatsNewFeature, WhatsNewStep } from "./types";
 import { WHATS_NEW_REGISTRY } from "./registry";
+import { SheetSpotlightTour } from "./sheet-spotlight-tour";
 
 function SheetButtonsMockup({
   highlight,
@@ -30,113 +32,115 @@ function SheetButtonsMockup({
   highlight?: "footer-primary" | "footer-destructive" | "footer-contextual" | "header";
 }) {
   return (
-    <div className="rounded-xl border border-border bg-bg shadow-inner p-3 space-y-2 relative overflow-hidden text-xs">
+    <div className="rounded-xl border border-border bg-bg shadow-sm p-4 space-y-3 relative overflow-hidden text-xs">
       {/* Header */}
       <div
         className={cn(
-          "p-2.5 rounded-lg border transition-all duration-300 flex items-center justify-between gap-2",
+          "p-3 rounded-xl border transition-all duration-300 flex items-center justify-between gap-3",
           highlight === "header"
-            ? "border-accent bg-accent/10 shadow-sm ring-2 ring-accent/30"
-            : "border-border/60 bg-bg-subtle/40"
+            ? "border-amber-500 bg-amber-500/10 shadow-sm ring-2 ring-amber-400/50"
+            : "border-border/60 bg-bg-subtle/50"
         )}
       >
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-28 bg-text/80 rounded-xs" />
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-status-active-bg text-white">
+        <div className="space-y-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-text text-xs sm:text-sm truncate">
+              Dell Latitude 5520 Core i7
+            </span>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-status-active-bg text-white">
               Active
             </span>
-            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/25">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/25">
               Available
             </span>
           </div>
-          <div className="h-2 w-20 bg-text-secondary/40 rounded-xs font-mono text-[9px]">
+          <p className="text-xs text-text-secondary font-mono tracking-tight">
             AST-EM-003 · Equipment
-          </div>
+          </p>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <div
             className={cn(
-              "flex items-center justify-center h-6 w-6 rounded border transition-colors",
+              "flex items-center justify-center h-8 w-8 rounded-lg border transition-colors",
               highlight === "header"
-                ? "border-accent bg-accent/20 text-accent font-bold ring-1 ring-accent"
+                ? "border-amber-400 bg-amber-400/20 text-amber-500 font-bold ring-2 ring-amber-400/50"
                 : "border-border bg-bg text-text-secondary"
             )}
             title="Print Dossier (PDF)"
           >
-            <Printer className="h-3.5 w-3.5" />
+            <Printer className="h-4 w-4" />
           </div>
         </div>
       </div>
 
       {/* Body Area */}
-      <div className="p-2 space-y-1.5 opacity-60">
-        <div className="grid grid-cols-3 gap-1.5">
-          <div className="h-7 rounded border border-border/40 bg-bg-subtle/40 p-1">
-            <div className="h-1.5 w-8 bg-text-secondary/40 rounded-xs mb-1" />
-            <div className="h-2 w-12 bg-text/50 rounded-xs" />
+      <div className="p-3 rounded-lg border border-border/50 bg-bg-subtle/30 space-y-2.5">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="p-2 rounded border border-border/60 bg-bg space-y-0.5">
+            <div className="text-[9px] font-bold uppercase text-text-secondary">Category</div>
+            <div className="text-xs font-semibold text-text truncate">IT Equipment</div>
           </div>
-          <div className="h-7 rounded border border-border/40 bg-bg-subtle/40 p-1">
-            <div className="h-1.5 w-8 bg-text-secondary/40 rounded-xs mb-1" />
-            <div className="h-2 w-12 bg-text/50 rounded-xs" />
+          <div className="p-2 rounded border border-border/60 bg-bg space-y-0.5">
+            <div className="text-[9px] font-bold uppercase text-text-secondary">Custodian</div>
+            <div className="text-xs font-semibold text-text truncate">Main Vault</div>
           </div>
-          <div className="h-7 rounded border border-border/40 bg-bg-subtle/40 p-1">
-            <div className="h-1.5 w-8 bg-text-secondary/40 rounded-xs mb-1" />
-            <div className="h-2 w-12 bg-text/50 rounded-xs" />
+          <div className="p-2 rounded border border-border/60 bg-bg space-y-0.5">
+            <div className="text-[9px] font-bold uppercase text-text-secondary">Condition</div>
+            <div className="text-xs font-semibold text-text truncate">Good</div>
           </div>
         </div>
-        <div className="h-8 rounded border border-dashed border-border/50 bg-bg-subtle/20 p-1.5 flex items-center justify-center">
-          <span className="text-[9px] text-text-secondary italic">
-            Scrollable asset specifications, timeline &amp; custody
+        <div className="p-2 rounded border border-dashed border-border/60 bg-bg/50 text-center">
+          <span className="text-[10px] text-text-secondary italic">
+            Scrollable asset specifications, maintenance timeline &amp; custody log
           </span>
         </div>
       </div>
 
       {/* Sticky Bottom Bar */}
-      <div className="pt-1.5 border-t border-border flex items-center justify-between gap-2">
+      <div className="pt-2 border-t border-border flex items-center justify-between gap-3">
         {/* Left Destructive */}
         <div
           className={cn(
-            "flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold transition-all duration-300",
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-300",
             highlight === "footer-destructive"
-              ? "border border-status-outofservice-text bg-status-outofservice-bg/15 text-status-outofservice-text shadow-sm ring-2 ring-status-outofservice-text/30"
-              : "text-status-outofservice-text/70 border border-transparent"
+              ? "border border-status-outofservice-text bg-status-outofservice-bg/20 text-status-outofservice-text shadow-sm ring-2 ring-status-outofservice-text/40"
+              : "text-status-outofservice-text/80 border border-transparent hover:bg-status-outofservice-bg/10"
           )}
         >
-          <Trash2 className="h-3 w-3" />
+          <Trash2 className="h-3.5 w-3.5" />
           <span>Delete</span>
         </div>
 
         {/* Right Operations */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           <div
             className={cn(
-              "flex items-center gap-1 px-2.5 py-1 rounded-md border text-[10px] font-semibold transition-all duration-300",
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all duration-300",
               highlight === "footer-primary"
-                ? "border-accent bg-accent/15 text-accent font-bold ring-1 ring-accent"
+                ? "border-accent bg-accent/15 text-accent font-bold ring-2 ring-accent/30"
                 : "border-border bg-bg text-text"
             )}
           >
-            <Edit3 className="h-2.5 w-2.5 text-text-secondary" />
+            <Edit3 className="h-3.5 w-3.5 text-text-secondary" />
             <span>Edit</span>
           </div>
 
           {highlight === "footer-contextual" ? (
-            <div className="flex items-center gap-1 px-3 py-1 rounded-md text-[10px] font-bold bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-500/40 animate-pulse">
-              <PackageMinus className="h-3 w-3" />
+            <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs ring-4 ring-emerald-500/40 animate-pulse">
+              <PackageMinus className="h-3.5 w-3.5" />
               <span>Issue Asset</span>
             </div>
           ) : (
             <div
               className={cn(
-                "flex items-center gap-1 px-3 py-1 rounded-md text-[10px] font-bold text-white transition-all duration-300",
+                "flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition-all duration-300",
                 highlight === "footer-primary"
                   ? "bg-accent shadow-xs ring-2 ring-accent/40"
                   : "bg-emerald-600/90"
               )}
             >
-              <PackageMinus className="h-3 w-3" />
+              <PackageMinus className="h-3.5 w-3.5" />
               <span>Primary CTA</span>
             </div>
           )}
@@ -289,6 +293,18 @@ export function WhatsNewDialog({
     }
     onClose();
   };
+
+  // Dedicated interactive Spotlight Tour with "Why We Changed This" rationale & spotlight beams
+  if (viewMode === "tour" && activeFeature.id === "asset-sheet-button-layout") {
+    return (
+      <SheetSpotlightTour
+        isOpen={isOpen}
+        onClose={handleClose}
+        onFinish={() => onMarkSeen?.(activeFeature.id)}
+        onViewCatalog={() => setViewMode("catalog")}
+      />
+    );
+  }
 
   const handleNext = () => {
     if (isLastStep) {

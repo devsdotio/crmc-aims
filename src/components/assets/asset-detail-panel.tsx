@@ -1391,7 +1391,10 @@ export function AssetDetailPanel({
           )}
         >
         {/* Panel Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
+        <div
+          data-tour-target="sheet-header"
+          className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-bg-subtle/50 shrink-0 gap-3"
+        >
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h2
@@ -1776,7 +1779,10 @@ export function AssetDetailPanel({
         </div>
 
         {/* Sticky Action Footer */}
-        <footer className="px-5 py-3.5 border-t border-border bg-bg/95 backdrop-blur-md flex items-center justify-between shrink-0 gap-3">
+        <footer
+          data-tour-target="sheet-footer-bar"
+          className="px-5 py-3.5 border-t border-border bg-bg/95 backdrop-blur-md flex items-center justify-between shrink-0 gap-3"
+        >
           {isBorrower ? (
             <div className="flex items-center justify-between w-full">
               <span className="text-xs text-text-secondary">Read-only view</span>
@@ -1795,6 +1801,7 @@ export function AssetDetailPanel({
                 {onDelete ? (
                   <button
                     type="button"
+                    data-tour-target="sheet-delete-btn"
                     onClick={() => onDelete(asset)}
                     aria-label={`Delete ${asset.name}`}
                     className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg text-status-outofservice-text hover:bg-status-outofservice-bg/10 border border-transparent hover:border-status-outofservice-text/25 transition-colors cursor-pointer shrink-0"
@@ -1811,6 +1818,7 @@ export function AssetDetailPanel({
                 {onEdit && (
                   <button
                     type="button"
+                    data-tour-target="sheet-edit-btn"
                     onClick={() => onEdit(asset)}
                     aria-label="Edit asset details"
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-border bg-bg hover:bg-bg-subtle text-text transition-colors cursor-pointer shadow-xs shrink-0"
@@ -1824,6 +1832,7 @@ export function AssetDetailPanel({
                 {asset.status === "needs_repair" ? (
                   <Link
                     href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
+                    data-tour-target="sheet-primary-btn"
                     className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-status-repair-bg hover:opacity-90 text-white transition-opacity cursor-pointer shadow-xs shrink-0"
                   >
                     <Wrench className="h-4 w-4" />
@@ -1837,6 +1846,7 @@ export function AssetDetailPanel({
                       (asset.assignmentType === "fixed" || asset.currentHolder || !onIssue ? (
                         <button
                           type="button"
+                          data-tour-target="sheet-primary-btn"
                           onClick={() => {
                             if (canFlagMaintenance && onFlagMaintenance) {
                               onFlagMaintenance(asset);
@@ -1873,6 +1883,7 @@ export function AssetDetailPanel({
                       asset.status === "active" && (
                         <button
                           type="button"
+                          data-tour-target="sheet-primary-btn"
                           onClick={() => onIssue(asset)}
                           aria-label="Issue asset"
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-xs shrink-0"
