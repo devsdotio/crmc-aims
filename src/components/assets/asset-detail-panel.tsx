@@ -1417,8 +1417,8 @@ export function AssetDetailPanel({
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {!isBorrower && (
+          {!isBorrower && (
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => window.print()}
@@ -1428,17 +1428,8 @@ export function AssetDetailPanel({
               >
                 <Printer className="h-4 w-4" />
               </button>
-            )}
-            <div className="h-4 w-px bg-border shrink-0 mx-0.5" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close asset details"
-              className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-text-secondary hover:text-text hover:bg-border/60 transition-colors cursor-pointer shrink-0"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Body */}
