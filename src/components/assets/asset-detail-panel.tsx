@@ -1304,6 +1304,15 @@ export function AssetDetailPanel({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   if (isLoading || !asset) {
@@ -1373,161 +1382,62 @@ export function AssetDetailPanel({
           )}
         >
         {/* Panel Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
-          <div className="min-w-0 flex-1 flex items-center gap-2 overflow-hidden">
-            {isBorrower ? (
-              <>
-                <h2
-                  id="asset-detail-heading"
-                  className="text-base font-extrabold tracking-tight text-primary truncate min-w-0"
-                >
-                  {asset.name}
-                </h2>
-                <span
-                  className={cn(
-                    "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide shrink-0 whitespace-nowrap",
-                    statusMeta.bg,
-                    statusMeta.text
-                  )}
-                >
-                  {statusMeta.label}
-                </span>
-                {asset.currentHolder ? (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 shrink-0 whitespace-nowrap">
-                    In use
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 shrink-0 whitespace-nowrap">
-                    Available
-                  </span>
-                )}
-              </>
-            ) : (
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border bg-bg-subtle/50 shrink-0 gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2
                 id="asset-detail-heading"
-                className="text-lg font-extrabold tracking-tight text-primary truncate min-w-0 leading-tight"
+                className="text-base sm:text-lg font-extrabold tracking-tight text-primary truncate min-w-0 leading-tight"
+                title={asset.name}
               >
                 {asset.name}
               </h2>
-            )}
+              <span
+                className={cn(
+                  "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0",
+                  statusMeta.bg,
+                  statusMeta.text
+                )}
+              >
+                {statusMeta.label}
+              </span>
+              {asset.currentHolder ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20 shrink-0">
+                  In use
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 shrink-0">
+                  Available
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-text-secondary font-mono tracking-tight mt-0.5 truncate">
+              {asset.assetCode}
+              {asset.category ? ` · ${asset.category}` : ""}
+            </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2 shrink-0">
-            {!isBorrower && showMaintenanceAction &&
-              (asset.status === "needs_repair" ? (
-                <Link
-                  href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
-                  aria-label="Open maintenance log to mark serviceable"
-                  className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-status-repair-bg hover:opacity-90 text-white transition-opacity cursor-pointer shadow-xs shrink-0"
-                >
-                  <Wrench className="h-4 w-4" />
-                  <span
-                    role="tooltip"
-                    className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
-                  >
-                    Mark Serviceable
-                  </span>
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (canFlagMaintenance && onFlagMaintenance) {
-                      onFlagMaintenance(asset);
-                    }
-                  }}
-                  disabled={!canFlagMaintenance}
-                  aria-label={
-                    canFlagMaintenance
-                      ? "Flag asset for maintenance"
-                      : maintenanceDisabledReason ??
-                        "Flag for maintenance unavailable"
-                  }
-                  className={cn(
-                    "relative group inline-flex items-center justify-center p-1.5 rounded-md text-white shadow-xs shrink-0",
-                    canFlagMaintenance
-                      ? "bg-status-repair-bg hover:opacity-90 cursor-pointer transition-opacity"
-                      : "bg-status-repair-bg/55 cursor-not-allowed"
-                  )}
-                >
-                  <Wrench className="h-4 w-4" />
-                  <span
-                    role="tooltip"
-                    className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 max-w-56 whitespace-normal text-center rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
-                  >
-                    {canFlagMaintenance
-                      ? "Flag for Maintenance"
-                      : maintenanceDisabledReason ?? "Unavailable"}
-                  </span>
-                </button>
-              ))}
-            {onIssue &&
-              asset.assignmentType !== "fixed" &&
-              !asset.currentHolder &&
-              asset.status === "active" && (
-              <button
-                type="button"
-                onClick={() => onIssue(asset)}
-                aria-label="Issue asset to department or project"
-                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-xs shrink-0"
-              >
-                <PackageMinus className="h-4 w-4" />
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
-                >
-                  Issue Asset
-                </span>
-              </button>
-            )}
-            {onEdit && (
-              <button
-                type="button"
-                onClick={() => onEdit(asset)}
-                aria-label="Edit asset details"
-                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer shadow-xs shrink-0"
-              >
-                <Edit3 className="h-4 w-4" />
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
-                >
-                  Edit Details
-                </span>
-              </button>
-            )}
+          <div className="flex items-center gap-1.5 shrink-0">
             {!isBorrower && (
               <button
                 type="button"
                 onClick={() => window.print()}
                 aria-label="Print Asset Dossier Report"
-                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-teal-700 hover:bg-teal-800 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+                title="Print Dossier (PDF)"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-bg hover:bg-bg-subtle text-text-secondary hover:text-text transition-colors cursor-pointer shadow-2xs shrink-0"
               >
                 <Printer className="h-4 w-4" />
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150"
-                >
-                  Print Dossier (PDF)
-                </span>
               </button>
             )}
-            {onDelete && (
-              <button
-                type="button"
-                onClick={() => onDelete(asset)}
-                aria-label="Delete asset"
-                className="relative group inline-flex items-center justify-center p-1.5 rounded-md bg-destructive text-white hover:bg-destructive/90 transition-colors cursor-pointer shadow-xs shrink-0"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute top-full mt-1.5 right-0 z-50 whitespace-nowrap rounded-md bg-neutral-900/95 dark:bg-neutral-800/95 backdrop-blur-xs text-white px-2 py-0.5 text-[10px] font-semibold tracking-wide shadow-md border border-white/10 opacity-0 group-hover:opacity-100 translate-y-0.5 group-hover:translate-y-0 scale-95 group-hover:scale-100 transition-all duration-150 origin-top-right"
-                >
-                  Delete Asset
-                </span>
-              </button>
-            )}
+            <div className="h-4 w-px bg-border shrink-0 mx-0.5" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close asset details"
+              className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-text-secondary hover:text-text hover:bg-border/60 transition-colors cursor-pointer shrink-0"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
         </div>
 
@@ -1855,6 +1765,119 @@ export function AssetDetailPanel({
             </>
           )}
         </div>
+
+        {/* Sticky Action Footer */}
+        <footer className="px-5 py-3.5 border-t border-border bg-bg/95 backdrop-blur-md flex items-center justify-between shrink-0 gap-3">
+          {isBorrower ? (
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-text-secondary">Read-only view</span>
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold rounded-lg border border-border bg-bg hover:bg-bg-subtle text-text transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Destructive Action on the Left */}
+              <div>
+                {onDelete ? (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(asset)}
+                    aria-label={`Delete ${asset.name}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg text-status-outofservice-text hover:bg-status-outofservice-bg/10 border border-transparent hover:border-status-outofservice-text/25 transition-colors cursor-pointer shrink-0"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    <span>Delete</span>
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Action Group on the Right (Secondary + Primary) */}
+              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                {/* Secondary Action: Edit */}
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onEdit(asset)}
+                    aria-label="Edit asset details"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg border border-border bg-bg hover:bg-bg-subtle text-text transition-colors cursor-pointer shadow-xs shrink-0"
+                  >
+                    <Edit3 className="h-3.5 w-3.5 text-text-secondary" />
+                    <span>Edit</span>
+                  </button>
+                )}
+
+                {/* Primary CTA: Contextual */}
+                {asset.status === "needs_repair" ? (
+                  <Link
+                    href={`/maintenance-logs?assetCode=${encodeURIComponent(asset.assetCode)}`}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-status-repair-bg hover:opacity-90 text-white transition-opacity cursor-pointer shadow-xs shrink-0"
+                  >
+                    <Wrench className="h-4 w-4" />
+                    <span>Mark Serviceable</span>
+                  </Link>
+                ) : (
+                  <>
+                    {/* Maintenance Flag Action */}
+                    {showMaintenanceAction &&
+                      canFlagMaintenance &&
+                      (asset.assignmentType === "fixed" || asset.currentHolder || !onIssue ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (canFlagMaintenance && onFlagMaintenance) {
+                              onFlagMaintenance(asset);
+                            }
+                          }}
+                          disabled={!canFlagMaintenance}
+                          title={maintenanceDisabledReason ?? undefined}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-status-repair-bg hover:opacity-90 text-white transition-opacity cursor-pointer shadow-xs shrink-0"
+                        >
+                          <Wrench className="h-4 w-4" />
+                          <span>Flag for Maintenance</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (canFlagMaintenance && onFlagMaintenance) {
+                              onFlagMaintenance(asset);
+                            }
+                          }}
+                          disabled={!canFlagMaintenance}
+                          title={maintenanceDisabledReason ?? undefined}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-status-repair-bg/30 bg-status-repair-bg/10 hover:bg-status-repair-bg/20 text-status-repair-text transition-colors cursor-pointer shadow-xs shrink-0"
+                        >
+                          <Wrench className="h-4 w-4 text-status-repair-text" />
+                          <span>Flag Maintenance</span>
+                        </button>
+                      ))}
+
+                    {/* Issue Asset Primary Action */}
+                    {onIssue &&
+                      asset.assignmentType !== "fixed" &&
+                      !asset.currentHolder &&
+                      asset.status === "active" && (
+                        <button
+                          type="button"
+                          onClick={() => onIssue(asset)}
+                          aria-label="Issue asset"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-xs shrink-0"
+                        >
+                          <PackageMinus className="h-4 w-4" />
+                          <span>Issue Asset</span>
+                        </button>
+                      )}
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </footer>
       </aside>
     </div>
 
