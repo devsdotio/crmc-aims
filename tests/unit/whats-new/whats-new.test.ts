@@ -22,7 +22,7 @@ describe("WhatsNew Feature Registry", () => {
     const feature = getFeatureById("asset-sheet-button-layout");
     expect(feature).toBeDefined();
     expect(feature?.title).toContain("Sticky Action Bar");
-    expect(feature?.steps.length).toBe(4);
+    expect(feature?.steps.length).toBe(5);
   });
 
   it("returns undefined for non-existent feature IDs", () => {

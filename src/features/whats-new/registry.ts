@@ -40,7 +40,7 @@ export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
         mockupHighlight: "footer-destructive",
       },
       {
-        badge: "Step 3 of 4 · Contextual CTAs",
+        badge: "Step 3 of 5 · Contextual CTAs",
         title: "Adaptive Primary Call-to-Action",
         subtitle: "The main button reflects the asset's current state",
         description:
@@ -54,7 +54,20 @@ export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
         mockupHighlight: "footer-contextual",
       },
       {
-        badge: "Step 4 of 4 · Clean Header",
+        badge: "Step 4 of 5 · Custom Conditions",
+        title: "Custom Conditions during Maintenance",
+        subtitle: "Flag defects with granular condition tags",
+        description:
+          "Clicking Flag Maintenance allows you to enter specific equipment conditions like 'Calibration Required', 'Overheating', or 'Sensor Drift' rather than generic labels, while seamlessly preserving system SLA integrity.",
+        highlights: [
+          "Enter real-world condition tags with instant suggestions",
+          "Frequently used condition tags are saved for 1-click selection",
+          "Maintains accurate baseline reporting for SLA tracking",
+        ],
+        mockupType: "custom-condition",
+      },
+      {
+        badge: "Step 5 of 5 · Clean Header",
         title: "De-cluttered Header & Print Utility",
         subtitle: "Focused on orientation and document generation",
         description:
@@ -77,7 +90,7 @@ export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
     tagline: "Define custom defect and damage states with baseline severity mappings.",
     category: "Maintenance",
     badge: "Operational",
-    isNew: false,
+    isNew: true,
     steps: [
       {
         badge: "Step 1 of 2 · Flexible Tagging",

@@ -16,11 +16,17 @@ import {
   MousePointerClick,
   Info,
   ListFilter,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface SpotlightStep {
-  target: "sheet-footer-bar" | "sheet-delete-btn" | "sheet-primary-btn" | "sheet-header";
+  target:
+    | "sheet-footer-bar"
+    | "sheet-delete-btn"
+    | "sheet-primary-btn"
+    | "sheet-maintenance-btn"
+    | "sheet-header";
   badge: string;
   title: string;
   whyChanged: string;
@@ -32,7 +38,7 @@ export interface SpotlightStep {
 export const SHEET_SPOTLIGHT_STEPS: SpotlightStep[] = [
   {
     target: "sheet-footer-bar",
-    badge: "Step 1 of 4 · Docked Action Bar",
+    badge: "Step 1 of 5 · Docked Action Bar",
     title: "Sticky Bottom Action Bar",
     whyChanged:
       "Previously, buttons were placed at the very top of the drawer. When reviewing long specifications, custody logs, or audit timelines, you had to scroll all the way back up to act. Now, primary actions are permanently pinned to the bottom of your screen.",
@@ -47,7 +53,7 @@ export const SHEET_SPOTLIGHT_STEPS: SpotlightStep[] = [
   },
   {
     target: "sheet-delete-btn",
-    badge: "Step 2 of 4 · Safety Separation",
+    badge: "Step 2 of 5 · Safety Separation",
     title: "Isolated Destructive Action",
     whyChanged:
       "Previously, Delete was packed directly beside daily utility buttons (Print and Edit) in the header, risking accidental clicks. We anchored Delete far to the bottom-left with a cautious outline style.",
@@ -62,7 +68,7 @@ export const SHEET_SPOTLIGHT_STEPS: SpotlightStep[] = [
   },
   {
     target: "sheet-primary-btn",
-    badge: "Step 3 of 4 · Context-Aware CTA",
+    badge: "Step 3 of 5 · Context-Aware CTA",
     title: "Adaptive Primary Button",
     whyChanged:
       "Different asset states require different next steps. Instead of forcing you to hunt through multiple icons, the primary button dynamically shows the single most relevant action for this asset.",
@@ -76,8 +82,23 @@ export const SHEET_SPOTLIGHT_STEPS: SpotlightStep[] = [
     haloColor: "success",
   },
   {
+    target: "sheet-maintenance-btn",
+    badge: "Step 4 of 5 · Custom Conditions",
+    title: "Custom Conditions during Maintenance",
+    whyChanged:
+      "Assets often need maintenance for nuanced reasons (e.g., 'Calibration Required', 'Overheating', or 'Sensor Drift') rather than generic 'Damaged' or 'Needs Repair'. Clicking Flag Maintenance now lets you assign custom defect tags that preserve official SLA reporting while accurately describing the real issue.",
+    description:
+      "Flag maintenance with custom tags while maintaining baseline status integrity:",
+    benefits: [
+      "Enter exact real-world condition notes with auto-suggestions",
+      "Frequently used conditions are remembered as 1-click chips",
+      "Automatically maps to baseline repair severity for SLA reporting",
+    ],
+    haloColor: "amber",
+  },
+  {
     target: "sheet-header",
-    badge: "Step 4 of 4 · Clean Header",
+    badge: "Step 5 of 5 · Clean Header",
     title: "De-cluttered Header & Instant Print",
     whyChanged:
       "We eliminated the cramped 5-icon toolbar from the top bar. The header is now focused purely on asset orientation, with a dedicated 1-click Print Dossier utility.",
@@ -88,7 +109,7 @@ export const SHEET_SPOTLIGHT_STEPS: SpotlightStep[] = [
       "1-click access to official portrait equipment dossier",
       "Close drawer anytime with backdrop click, Esc, or footer",
     ],
-    haloColor: "amber",
+    haloColor: "accent",
   },
 ];
 
@@ -108,15 +129,59 @@ export function SheetSpotlightTour({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [isInSitu, setIsInSitu] = useState(false);
+  const prevIsOpenRef = useRef(false);
 
   const step = SHEET_SPOTLIGHT_STEPS[currentStepIndex];
   const isLast = currentStepIndex === SHEET_SPOTLIGHT_STEPS.length - 1;
 
+  // Handlers declared before useEffect hooks to ensure proper access
+  const handleDismiss = useCallback(() => {
+    onFinish?.();
+    onClose();
+  }, [onFinish, onClose]);
+
+  const handleNext = useCallback(() => {
+    if (isLast) {
+      handleDismiss();
+    } else {
+      setCurrentStepIndex((prev) => prev + 1);
+    }
+  }, [isLast, handleDismiss]);
+
+  const handlePrev = useCallback(() => {
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex((prev) => prev - 1);
+    }
+  }, [currentStepIndex]);
+
+  const handleSelectStep = useCallback((idx: number) => {
+    setCurrentStepIndex(idx);
+  }, []);
+
+  // Reset to step 0 only on initial open transition
+  useEffect(() => {
+    if (isOpen && !prevIsOpenRef.current) {
+      setCurrentStepIndex(0);
+    }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
+
   // Measure target element position
   const updateTargetRect = useCallback(() => {
     if (!isOpen) return;
-    const currentTarget = SHEET_SPOTLIGHT_STEPS[currentStepIndex].target;
-    const element = document.querySelector(`[data-tour-target="${currentTarget}"]`);
+    const currentTarget = SHEET_SPOTLIGHT_STEPS[currentStepIndex]?.target;
+    if (!currentTarget) return;
+
+    let element = document.querySelector(`[data-tour-target="${currentTarget}"]`);
+    // Fallback: if individual button isn't visible, fall back to the sheet footer bar
+    if (
+      !element &&
+      (currentTarget === "sheet-delete-btn" ||
+        currentTarget === "sheet-primary-btn" ||
+        currentTarget === "sheet-maintenance-btn")
+    ) {
+      element = document.querySelector(`[data-tour-target="sheet-footer-bar"]`);
+    }
 
     if (element) {
       // Target exists on page (In-Situ Mode)
@@ -131,24 +196,18 @@ export function SheetSpotlightTour({
     }
   }, [isOpen, currentStepIndex]);
 
+  // Recalculate target rect on open, step change, resize or scroll
   useEffect(() => {
-    if (isOpen) {
-      setCurrentStepIndex(0);
-      updateTargetRect();
-    }
+    if (!isOpen) return;
+    updateTargetRect();
+    const handleResizeOrScroll = () => updateTargetRect();
+    window.addEventListener("resize", handleResizeOrScroll);
+    window.addEventListener("scroll", handleResizeOrScroll, true);
+    return () => {
+      window.removeEventListener("resize", handleResizeOrScroll);
+      window.removeEventListener("scroll", handleResizeOrScroll, true);
+    };
   }, [isOpen, updateTargetRect]);
-
-  useEffect(() => {
-    if (isOpen) {
-      updateTargetRect();
-      window.addEventListener("resize", updateTargetRect);
-      window.addEventListener("scroll", updateTargetRect, true);
-      return () => {
-        window.removeEventListener("resize", updateTargetRect);
-        window.removeEventListener("scroll", updateTargetRect, true);
-      };
-    }
-  }, [isOpen, currentStepIndex, updateTargetRect]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -168,28 +227,9 @@ export function SheetSpotlightTour({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, currentStepIndex]);
+  }, [isOpen, currentStepIndex, handleDismiss]);
 
   if (!isOpen) return null;
-
-  const handleDismiss = () => {
-    onFinish?.();
-    onClose();
-  };
-
-  const handleNext = () => {
-    if (isLast) {
-      handleDismiss();
-    } else {
-      setCurrentStepIndex((prev) => prev + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex((prev) => prev - 1);
-    }
-  };
 
   // ─── MODE A: IN-SITU SPOTLIGHT (Real sheet is visible on screen) ───────
   if (isInSitu && targetRect) {
@@ -201,14 +241,18 @@ export function SheetSpotlightTour({
       height: targetRect.height + pad * 2,
     };
 
-    // Card placement calculation: if target is in bottom half of screen, popover goes above target; else below
+    // Card placement calculation: if target is in bottom half of screen, popover goes cleanly ABOVE target with clearance
     const isBottom = targetRect.top > window.innerHeight / 2;
-    const cardTop = isBottom
-      ? Math.max(16, targetRect.top - 380)
-      : Math.min(window.innerHeight - 380, targetRect.bottom + 16);
+    const clearance = 32; // Clearance between card and spotlighted element
+
+    // When target is at bottom (e.g. footer bar, delete, primary CTA), anchor bottom edge above target
+    const cardBottom = window.innerHeight - targetRect.top + clearance;
+    const cardTop = targetRect.bottom + 20;
+
+    const cardWidth = 420;
     const cardLeft = Math.min(
-      window.innerWidth - 440,
-      Math.max(16, targetRect.left - (420 - targetRect.width) / 2)
+      window.innerWidth - cardWidth - 16,
+      Math.max(16, targetRect.right - cardWidth)
     );
 
     return (
@@ -267,13 +311,22 @@ export function SheetSpotlightTour({
           }}
         />
 
-        {/* Floating Explanation Card */}
+        {/* Floating Explanation Card (Elevated with guaranteed clearance) */}
         <div
-          className="fixed z-80 w-[420px] max-w-[calc(100vw-32px)] bg-bg border border-border/80 shadow-2xl rounded-2xl overflow-hidden p-5 space-y-4 animate-in fade-in-50 zoom-in-95 duration-200 pointer-events-auto"
-          style={{
-            top: `${cardTop}px`,
-            left: `${cardLeft}px`,
-          }}
+          className="fixed z-80 w-105 max-w-[calc(100vw-32px)] bg-bg border border-border/80 shadow-2xl rounded-2xl overflow-y-auto p-5 space-y-4 animate-in fade-in-50 zoom-in-95 duration-200 pointer-events-auto"
+          style={
+            isBottom
+              ? {
+                  bottom: `${cardBottom}px`,
+                  left: `${cardLeft}px`,
+                  maxHeight: `calc(${targetRect.top}px - ${clearance + 16}px)`,
+                }
+              : {
+                  top: `${cardTop}px`,
+                  left: `${cardLeft}px`,
+                  maxHeight: `calc(100vh - ${targetRect.bottom}px - 32px)`,
+                }
+          }
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
@@ -342,7 +395,7 @@ export function SheetSpotlightTour({
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => setCurrentStepIndex(idx)}
+                  onClick={() => handleSelectStep(idx)}
                   aria-label={`Go to step ${idx + 1}`}
                   className={cn(
                     "h-1.5 rounded-full transition-all cursor-pointer",
@@ -531,6 +584,19 @@ export function SheetSpotlightTour({
                   <span>Edit</span>
                 </div>
 
+                {/* Flag Maintenance Button with Custom Condition Spotlight */}
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-300",
+                    step.target === "sheet-maintenance-btn"
+                      ? "border border-amber-400 bg-amber-400/20 text-amber-700 dark:text-amber-300 ring-4 ring-amber-400/40 shadow-lg font-bold animate-pulse"
+                      : "border border-amber-400/30 bg-amber-400/10 text-amber-700 dark:text-amber-400"
+                  )}
+                >
+                  <Wrench className="h-3.5 w-3.5" />
+                  <span>Flag Maintenance</span>
+                </div>
+
                 <div
                   className={cn(
                     "flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold text-white shadow-xs transition-all duration-300",
@@ -587,7 +653,7 @@ export function SheetSpotlightTour({
               <button
                 key={idx}
                 type="button"
-                onClick={() => setCurrentStepIndex(idx)}
+                onClick={() => handleSelectStep(idx)}
                 aria-label={`Go to step ${idx + 1}`}
                 className={cn(
                   "h-1.5 rounded-full transition-all cursor-pointer",

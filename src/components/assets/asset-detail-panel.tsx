@@ -1846,7 +1846,7 @@ export function AssetDetailPanel({
                       (asset.assignmentType === "fixed" || asset.currentHolder || !onIssue ? (
                         <button
                           type="button"
-                          data-tour-target="sheet-primary-btn"
+                          data-tour-target="sheet-maintenance-btn"
                           onClick={() => {
                             if (canFlagMaintenance && onFlagMaintenance) {
                               onFlagMaintenance(asset);
@@ -1862,6 +1862,7 @@ export function AssetDetailPanel({
                       ) : (
                         <button
                           type="button"
+                          data-tour-target="sheet-maintenance-btn"
                           onClick={() => {
                             if (canFlagMaintenance && onFlagMaintenance) {
                               onFlagMaintenance(asset);
