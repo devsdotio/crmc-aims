@@ -89,7 +89,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
 
       <div className="flex flex-wrap gap-2 items-start">
         {hasSearch && (
-          <label className="flex flex-col gap-1 text-xs text-text-secondary min-w-[200px] flex-1">
+          <label className="flex flex-col gap-1 text-xs text-text-secondary min-w-50 flex-1">
             <span>Search</span>
             <input
               className={inputClass}
@@ -109,7 +109,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
           const filterKey = field.filterKey;
           if (!filterKey) return null;
           return (
-            <div key={field.key} className="min-w-[200px] flex flex-col gap-1">
+            <div key={field.key} className="min-w-50 flex flex-col gap-1">
               <span className="text-xs text-text-secondary">{field.label}</span>
               <MultiSelectDropdown
                 label={field.label}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Sparkles,
   ArrowRight,
@@ -276,6 +276,13 @@ export function WhatsNewDialog({
   const currentStep = steps[currentStepIndex] || steps[0];
   const isLastStep = currentStepIndex === steps.length - 1;
 
+  const handleClose = useCallback(() => {
+    if (activeFeature) {
+      onMarkSeen?.(activeFeature.id);
+    }
+    onClose();
+  }, [activeFeature, onMarkSeen, onClose]);
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (!isOpen) return;
@@ -295,16 +302,9 @@ export function WhatsNewDialog({
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, viewMode, currentStepIndex, steps.length]);
+  }, [isOpen, viewMode, currentStepIndex, steps.length, handleClose]);
 
   if (!isOpen || !activeFeature) return null;
-
-  const handleClose = () => {
-    if (activeFeature) {
-      onMarkSeen?.(activeFeature.id);
-    }
-    onClose();
-  };
 
   // Dedicated interactive Spotlight Tour with "Why We Changed This" rationale & spotlight beams
   if (viewMode === "tour" && activeFeature.id === "asset-sheet-button-layout") {

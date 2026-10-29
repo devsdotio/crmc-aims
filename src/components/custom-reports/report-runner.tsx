@@ -312,7 +312,7 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
             Custom Reports
           </Link>
           <ChevronRight className="size-3 text-text-secondary/60 shrink-0" />
-          <span className="font-semibold text-text px-2 py-0.5 rounded-md bg-bg-subtle border border-border/80 truncate max-w-[200px] sm:max-w-xs md:max-w-sm">
+          <span className="font-semibold text-text px-2 py-0.5 rounded-md bg-bg-subtle border border-border/80 truncate max-w-50 sm:max-w-xs md:max-w-sm">
             {template.name}
           </span>
           <ChevronRight className="size-3 text-text-secondary/60 shrink-0" />
@@ -417,7 +417,7 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
 
         {/* Filter Action Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t border-border mt-1 min-w-0">
-          <p className="text-xs text-text-secondary min-w-0 flex-1 break-words">
+          <p className="text-xs text-text-secondary min-w-0 flex-1 wrap-break-word">
             Applied: <span className="text-text font-medium">{summarizeCustomReportFilters(appliedFilters)}</span>
           </p>
           <div className="flex items-center gap-2 shrink-0">
