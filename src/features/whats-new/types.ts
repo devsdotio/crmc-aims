@@ -31,6 +31,7 @@ export interface WhatsNewContextValue {
   activeFeatureId: string | null;
   allFeatures: WhatsNewFeature[];
   unseenCount: number;
+  hasUnseenNew: boolean;
   openWhatsNew: (featureId?: string) => void;
   closeWhatsNew: () => void;
   isFeatureSeen: (featureId: string) => boolean;

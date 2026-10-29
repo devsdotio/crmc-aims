@@ -109,7 +109,7 @@ export default function Sidebar({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-  const { openWhatsNew, unseenCount } = useWhatsNew();
+  const { openWhatsNew, unseenCount, hasUnseenNew } = useWhatsNew();
 
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
 
@@ -1053,10 +1053,10 @@ export default function Sidebar({
             <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-white/10 text-white shrink-0">
               <User className="w-4.5 h-4.5" />
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-status-active-bg ring-2 ring-primary" />
-              {unseenCount > 0 && (
+              {hasUnseenNew && unseenCount > 0 && (
                 <span
                   className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-amber-400 ring-2 ring-primary animate-pulse"
-                  title={`${unseenCount} new platform updates`}
+                  title={`${unseenCount} new platform update${unseenCount === 1 ? "" : "s"}`}
                 />
               )}
             </div>
@@ -1138,10 +1138,17 @@ export default function Sidebar({
                   className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm text-white/90 hover:bg-white/10 hover:text-white transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center gap-2.5">
-                    <Sparkles className="w-4 h-4 text-amber-400 group-hover:text-amber-300 transition-colors" />
+                    <Sparkles
+                      className={cn(
+                        "w-4 h-4 transition-colors",
+                        hasUnseenNew
+                          ? "text-amber-400 group-hover:text-amber-300"
+                          : "text-white/60 group-hover:text-white"
+                      )}
+                    />
                     <span className="font-medium">What&apos;s New</span>
                   </div>
-                  {unseenCount > 0 && (
+                  {hasUnseenNew && unseenCount > 0 && (
                     <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-accent text-white">
                       {unseenCount}
                     </span>

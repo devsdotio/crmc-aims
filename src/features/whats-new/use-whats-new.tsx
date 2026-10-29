@@ -14,7 +14,9 @@ import {
   isFeatureSeen,
   markFeatureSeen,
   markAllFeaturesSeen,
-  getUnseenFeaturesCount,
+  getUnseenNewFeaturesCount,
+  hasUnseenNewFeatures,
+  WHATS_NEW_UPDATE_EVENT,
 } from "./storage";
 import { WhatsNewDialog } from "./whats-new-dialog";
 
@@ -24,14 +26,29 @@ export function WhatsNewProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeFeatureId, setActiveFeatureId] = useState<string | null>(null);
   const [unseenCount, setUnseenCount] = useState(0);
+  const [hasUnseenNew, setHasUnseenNew] = useState(false);
 
-  // Sync unseen count on client mount
+  // Sync unseen count on client mount and when updates occur
   const refreshUnseenCount = useCallback(() => {
-    setUnseenCount(getUnseenFeaturesCount());
+    setUnseenCount(getUnseenNewFeaturesCount());
+    setHasUnseenNew(hasUnseenNewFeatures());
   }, []);
 
   useEffect(() => {
     refreshUnseenCount();
+
+    function handleUpdate() {
+      refreshUnseenCount();
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", handleUpdate);
+      window.addEventListener(WHATS_NEW_UPDATE_EVENT, handleUpdate);
+      return () => {
+        window.removeEventListener("storage", handleUpdate);
+        window.removeEventListener(WHATS_NEW_UPDATE_EVENT, handleUpdate);
+      };
+    }
   }, [refreshUnseenCount]);
 
   const openWhatsNew = useCallback(
@@ -70,6 +87,7 @@ export function WhatsNewProvider({ children }: { children: ReactNode }) {
     activeFeatureId,
     allFeatures: WHATS_NEW_REGISTRY,
     unseenCount,
+    hasUnseenNew,
     openWhatsNew,
     closeWhatsNew,
     isFeatureSeen,

@@ -91,7 +91,7 @@ export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
     tagline: "Define custom defect and damage states with baseline severity mappings.",
     category: "Maintenance",
     badge: "Operational",
-    isNew: true,
+    isNew: false,
     steps: [
       {
         badge: "Step 1 of 2 · Flexible Tagging",

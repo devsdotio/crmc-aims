@@ -10,6 +10,8 @@ import {
   markAllFeaturesSeen,
   resetSeenFeatures,
   getUnseenFeaturesCount,
+  getUnseenNewFeaturesCount,
+  hasUnseenNewFeatures,
   WHATS_NEW_SEEN_KEY,
 } from "@/features/whats-new/storage";
 
@@ -82,9 +84,21 @@ describe("WhatsNew Storage & Seen State", () => {
     expect(getUnseenFeaturesCount()).toBe(total - 1);
   });
 
+  it("detects unseen new features and removes badge after viewing", () => {
+    // Before viewing: unseen new features exist
+    expect(hasUnseenNewFeatures()).toBe(true);
+    expect(getUnseenNewFeaturesCount()).toBe(1);
+
+    // After viewing the new feature (e.g. via tour or dialog)
+    markFeatureSeen("asset-sheet-button-layout");
+    expect(hasUnseenNewFeatures()).toBe(false);
+    expect(getUnseenNewFeaturesCount()).toBe(0);
+  });
+
   it("marks all features as seen", () => {
     markAllFeaturesSeen();
     expect(getUnseenFeaturesCount()).toBe(0);
+    expect(hasUnseenNewFeatures()).toBe(false);
     for (const feature of WHATS_NEW_REGISTRY) {
       expect(isFeatureSeen(feature.id)).toBe(true);
     }
@@ -93,8 +107,10 @@ describe("WhatsNew Storage & Seen State", () => {
   it("resets seen features properly", () => {
     markAllFeaturesSeen();
     expect(getUnseenFeaturesCount()).toBe(0);
+    expect(hasUnseenNewFeatures()).toBe(false);
 
     resetSeenFeatures();
     expect(getUnseenFeaturesCount()).toBe(WHATS_NEW_REGISTRY.length);
+    expect(hasUnseenNewFeatures()).toBe(true);
   });
 });

@@ -260,6 +260,12 @@ export function WhatsNewDialog({
     initialFeatureId ? "tour" : "tour"
   );
 
+  const activeFeature =
+    features.find((f) => f.id === selectedFeatureId) || features[0];
+  const steps = activeFeature?.steps || [];
+  const currentStep = steps[currentStepIndex] || steps[0];
+  const isLastStep = currentStepIndex === steps.length - 1;
+
   useEffect(() => {
     if (isOpen) {
       if (initialFeatureId) {
@@ -267,14 +273,11 @@ export function WhatsNewDialog({
         setViewMode("tour");
       }
       setCurrentStepIndex(0);
+      if (activeFeature) {
+        onMarkSeen?.(activeFeature.id);
+      }
     }
-  }, [isOpen, initialFeatureId]);
-
-  const activeFeature =
-    features.find((f) => f.id === selectedFeatureId) || features[0];
-  const steps = activeFeature?.steps || [];
-  const currentStep = steps[currentStepIndex] || steps[0];
-  const isLastStep = currentStepIndex === steps.length - 1;
+  }, [isOpen, initialFeatureId, activeFeature, onMarkSeen]);
 
   const handleClose = useCallback(() => {
     if (activeFeature) {
