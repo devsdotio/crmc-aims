@@ -20,6 +20,7 @@ import {
   Calendar,
   ExternalLink,
   Lightbulb,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WhatsNewFeature, WhatsNewStep } from "./types";
@@ -153,6 +154,17 @@ function SheetButtonsMockup({
 function CustomConditionMockup() {
   return (
     <div className="rounded-xl border border-border bg-bg shadow-inner p-3 space-y-2.5 text-xs">
+      {/* Dialog Header with '+ Add custom condition' link */}
+      <div className="flex items-center justify-between pb-1.5 border-b border-border/60">
+        <span className="text-[11px] font-semibold text-text">
+          Condition <span className="text-accent">*</span>
+        </span>
+        <div className="inline-flex items-center gap-1 text-[11px] font-bold text-accent bg-accent/10 px-2 py-0.5 rounded-md border border-accent/30 shadow-2xs">
+          <Plus className="h-3 w-3" />
+          <span>Add custom condition</span>
+        </div>
+      </div>
+
       <div className="p-2.5 rounded-lg border border-accent/40 bg-accent/5 space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-accent flex items-center gap-1">

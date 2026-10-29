@@ -17,6 +17,7 @@ import {
   Info,
   ListFilter,
   Wrench,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -84,15 +85,15 @@ export const SHEET_SPOTLIGHT_STEPS: SpotlightStep[] = [
   {
     target: "sheet-maintenance-btn",
     badge: "Step 4 of 5 · Custom Conditions",
-    title: "Custom Conditions during Maintenance",
+    title: "+ Add Custom Condition during Maintenance",
     whyChanged:
-      "Assets often need maintenance for nuanced reasons (e.g., 'Calibration Required', 'Overheating', or 'Sensor Drift') rather than generic 'Damaged' or 'Needs Repair'. Clicking Flag Maintenance now lets you assign custom defect tags that preserve official SLA reporting while accurately describing the real issue.",
+      "When clicking 'Flag Maintenance', you can now click '+ Add custom condition' to specify real-world defect states like 'Calibration Required', 'Overheating', or 'Sensor Drift' rather than being restricted to generic labels, while preserving official SLA tracking.",
     description:
-      "Flag maintenance with custom tags while maintaining baseline status integrity:",
+      "Click '+ Add custom condition' in the maintenance dialog to assign custom defect tags:",
     benefits: [
-      "Enter exact real-world condition notes with auto-suggestions",
-      "Frequently used conditions are remembered as 1-click chips",
-      "Automatically maps to baseline repair severity for SLA reporting",
+      "Click '+ Add custom condition' to unlock granular equipment condition tagging",
+      "Type any defect note with automatic suggestion chips for 1-click reuse",
+      "Automatically maps to baseline repair severity for SLA and inventory tracking",
     ],
     haloColor: "amber",
   },
@@ -378,6 +379,24 @@ export function SheetSpotlightTour({
             </p>
           </div>
 
+          {/* Dedicated '+ Add custom condition' Trigger Preview */}
+          {step.target === "sheet-maintenance-btn" && (
+            <div className="p-3 rounded-xl border border-accent/40 bg-accent/10 flex items-center justify-between text-xs animate-in fade-in-50 duration-200">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">
+                  Maintenance Action
+                </span>
+                <span className="text-xs font-semibold text-text">
+                  In Flag Maintenance dialog:
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-accent bg-bg px-3 py-1.5 rounded-lg border border-accent/40 shadow-xs ring-2 ring-accent/20">
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add custom condition</span>
+              </div>
+            </div>
+          )}
+
           {/* Key Benefits */}
           <div className="space-y-1.5">
             {step.benefits.map((benefit, idx) => (
@@ -634,6 +653,24 @@ export function SheetSpotlightTour({
               {step.whyChanged}
             </p>
           </div>
+
+          {/* Dedicated '+ Add custom condition' Trigger Preview */}
+          {step.target === "sheet-maintenance-btn" && (
+            <div className="p-3 rounded-xl border border-accent/40 bg-accent/10 flex items-center justify-between text-xs animate-in fade-in-50 duration-200">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">
+                  Maintenance Action
+                </span>
+                <span className="text-xs font-semibold text-text">
+                  In Flag Maintenance dialog:
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-accent bg-bg px-3 py-1.5 rounded-lg border border-accent/40 shadow-xs ring-2 ring-accent/20">
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add custom condition</span>
+              </div>
+            </div>
+          )}
 
           {/* Benefits List */}
           <div className="space-y-1.5">

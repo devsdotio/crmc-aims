@@ -55,14 +55,15 @@ export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
       },
       {
         badge: "Step 4 of 5 · Custom Conditions",
-        title: "Custom Conditions during Maintenance",
-        subtitle: "Flag defects with granular condition tags",
+        title: "+ Add Custom Condition during Maintenance",
+        subtitle: "Click '+ Add custom condition' to flag defects with granular tags",
         description:
-          "Clicking Flag Maintenance allows you to enter specific equipment conditions like 'Calibration Required', 'Overheating', or 'Sensor Drift' rather than generic labels, while seamlessly preserving system SLA integrity.",
+          "When flagging equipment for maintenance, click '+ Add custom condition' to enter specific defect states like 'Calibration Required', 'Overheating', or 'Sensor Drift' rather than generic labels, while preserving SLA integrity.",
         highlights: [
-          "Enter real-world condition tags with instant suggestions",
-          "Frequently used condition tags are saved for 1-click selection",
-          "Maintains accurate baseline reporting for SLA tracking",
+          "Click '+ Add custom condition' directly in the maintenance dialog",
+          "Enter real-world condition tags with instant auto-suggestions",
+          "Frequently used conditions are saved as 1-click suggestion chips",
+          "Automatically links to baseline repair severity for SLA tracking",
         ],
         mockupType: "custom-condition",
       },
