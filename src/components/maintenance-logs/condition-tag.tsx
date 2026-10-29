@@ -8,6 +8,7 @@ export interface ConditionTagProps {
   condition: ConditionState;
   className?: string;
   showIcon?: boolean;
+  customLabel?: string;
 }
 
 const CONDITION_META: Record<
@@ -44,9 +45,11 @@ export function ConditionTag({
   condition,
   className,
   showIcon = true,
+  customLabel,
 }: ConditionTagProps) {
   const meta = CONDITION_META[condition];
   const Icon = meta.icon;
+  const displayLabel = customLabel?.trim() ? customLabel.trim() : meta.label;
 
   return (
     <span
@@ -56,9 +59,10 @@ export function ConditionTag({
         meta.text,
         className
       )}
+      title={customLabel?.trim() ? `${meta.label}: ${customLabel.trim()}` : meta.label}
     >
       {showIcon && <Icon className="h-3 w-3 shrink-0" />}
-      <span>{meta.label}</span>
+      <span className="truncate max-w-40">{displayLabel}</span>
     </span>
   );
 }

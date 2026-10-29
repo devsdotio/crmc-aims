@@ -132,6 +132,7 @@ export const flagMaintenanceSchema = z.object({
     .min(1, "Issue description is required.")
     .max(2000),
   condition: z.enum(["needs_maintenance", "damaged"]).optional(),
+  customCondition: z.string().trim().max(120).optional(),
   scheduledDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)

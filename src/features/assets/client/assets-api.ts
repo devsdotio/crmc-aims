@@ -75,6 +75,7 @@ export type FlagMaintenanceInput = {
   description?: string;
   notes: string;
   condition?: "needs_maintenance" | "damaged";
+  customCondition?: string;
   scheduledDate?: string;
 };
 

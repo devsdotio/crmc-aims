@@ -18,6 +18,8 @@ function sourceLabel(source: MaintenanceLogRecord["source"]): string {
   return "Manual flag";
 }
 
+import { parseConditionNotes } from "@/lib/custom-condition";
+
 export function MaintenanceLogTableRow({
   record,
   onSelect,
@@ -26,6 +28,7 @@ export function MaintenanceLogTableRow({
   const { getCategoryStyle } = useCategoryStyleMap();
   const categoryMeta = getCategoryStyle(record.category);
   const effectiveCondition = record.isResolved ? "resolved" : record.condition;
+  const { customCondition, notes: cleanNotes } = parseConditionNotes(record.notes);
 
   return (
     <tr
@@ -80,7 +83,10 @@ export function MaintenanceLogTableRow({
       </td>
 
       <td className="px-3 py-3.5">
-        <ConditionTag condition={effectiveCondition} />
+        <ConditionTag
+          condition={effectiveCondition}
+          customLabel={customCondition || undefined}
+        />
       </td>
 
       <td className="px-3 py-3.5 hidden lg:table-cell">
@@ -91,7 +97,7 @@ export function MaintenanceLogTableRow({
 
       <td className="px-3 py-3.5 hidden sm:table-cell">
         <p className="text-xs text-text-secondary line-clamp-2 max-w-64">
-          {record.notes?.trim() || "—"}
+          {cleanNotes || "—"}
         </p>
       </td>
 
