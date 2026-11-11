@@ -56,11 +56,14 @@ export function requireTestDatabase(): void {
 
 /** Bind ALS/process tenant context used by repositories that fall back to getTenantContext(). */
 export function bindTestTenant(tenantId = DEFAULT_TENANT_ID): void {
-  setTenantContext({
-    tenantId,
-    tenantSlug: DEFAULT_TENANT_SLUG,
-    tenantName: DEFAULT_TENANT_NAME,
-  });
+  setTenantContext(
+    {
+      tenantId,
+      tenantSlug: DEFAULT_TENANT_SLUG,
+      tenantName: DEFAULT_TENANT_NAME,
+    },
+    { allowProcessFallback: true }
+  );
 }
 
 /**

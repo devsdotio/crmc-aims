@@ -38,3 +38,18 @@ Assertions target real DTO fields (codes, status, qty, holders, ledger reasons, 
 ```bash
 npm run check   # lint:gate + typecheck + test + build
 ```
+
+
+## Requester Portal, Classification & Authz Additions
+- Unit: `tests/unit/consumables/consumable-classification.test.ts` (`deriveConsumableRequestKind`, `splitByConsumableClassification`, supply/material/mixed derivation)
+- Unit: `tests/unit/consumables/issue-movement-helpers.test.ts` (`combineIssueMovementNotes`, `stockMovementToDTO` classification & `requestCode` mapping)
+- Unit: `tests/unit/borrower-db/browse-availability.test.ts` (out-of-stock requestability for supplies & materials)
+- Unit: `tests/unit/borrower-db/map-portal-request.test.ts` (portal kind mapping, mixed labels, empty-items guard)
+- Unit: `tests/unit/requests/requester-authz.test.ts` (borrower dept lock, owner & admin pending edits, non-owner/staff edit block)
+- Unit: `tests/unit/reports/report-service.test.ts` (split supply/material summary & cost masking, CSV columns & print/export audit logs)
+- Unit: `tests/unit/reports/report-classification-ui.test.ts` (badge normalization, nav omission of Requisitions tab, 2-part Consumables & separated Executive/Procurement/Individual prints)
+- Unit: `tests/unit/custom-reports/dataset-registry.test.ts` (`consumable-requests` dataset, normalized `supply`/`material`/`mixed` filters, `runtimeFiltersSchema` clears, filter summary labels)
+- Integration: `tests/integration/requests/supplies-materials-edit.test.ts` (`?classification=supply|material|mixed` filter, pending edit permissions against PostgreSQL)
+- Integration: `tests/integration/purchase-orders/lot-release-issue.test.ts` (lot-cost release/issue, combined movement notes, `Departments` report direct inventory issue aggregation & void exclusion)
+- Integration: `tests/integration/reports/reports-consumables-separation.test.ts` (end-to-end Supply vs Material separation across Executive, Consumables, POs, Requests, Departments, Projects & void exclusion)
+- Integration: `tests/integration/custom-reports/datasets.test.ts` (`executeDatasetQuery` separation across `consumables`, `stock-movements`, `purchase-orders`, and `consumable-requests`)
