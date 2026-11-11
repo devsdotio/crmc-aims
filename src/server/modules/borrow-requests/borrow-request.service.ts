@@ -176,11 +176,13 @@ export class BorrowRequestService {
 
   private async toDTOWithLinked(
     row: BorrowRequestRow,
-    tenantId?: string
+    tenantId?: string,
+    requesterUserId?: string
   ): Promise<BorrowRequestDTO> {
     const linked = await loadLinkedRequestSummaries(
       [row.submissionGroupId],
-      tenantId
+      tenantId,
+      requesterUserId
     );
     return toDTO(row, relatedForRow(row.id, row.submissionGroupId, linked));
   }
@@ -230,7 +232,8 @@ export class BorrowRequestService {
     ]);
     const linked = await loadLinkedRequestSummaries(
       rows.map((row) => row.submissionGroupId),
-      actor?.tenantId
+      actor?.tenantId,
+      actor && !isAssetOperatorRole(actor.role) ? actor.userId : undefined
     );
 
     return {
@@ -254,7 +257,11 @@ export class BorrowRequestService {
     if (actor && !isAssetOperatorRole(actor.role) && row.requesterUserId !== actor.userId) {
       throw new ForbiddenError("You are not allowed to view this request.");
     }
-    return this.toDTOWithLinked(row, actor?.tenantId);
+    return this.toDTOWithLinked(
+      row,
+      actor?.tenantId,
+      actor && !isAssetOperatorRole(actor.role) ? actor.userId : undefined
+    );
   }
 
   async create(rawInput: unknown, actor: ActorContext): Promise<BorrowRequestDTO> {
@@ -331,7 +338,11 @@ export class BorrowRequestService {
         departmentId: row.departmentId,
       },
     });
-    return this.toDTOWithLinked(row, actor.tenantId);
+    return this.toDTOWithLinked(
+      row,
+      actor.tenantId,
+      !isAssetOperatorRole(actor.role) ? actor.userId : undefined
+    );
   }
 
   async approve(

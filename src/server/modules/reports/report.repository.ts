@@ -243,10 +243,16 @@ export class ReportRepository {
         })
         .from(purchaseLots)
         .leftJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
+        .leftJoin(assets, eq(purchaseLots.assetId, assets.id))
         .where(
           and(
             ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : []),
-            ...(includeSandbox ? [] : [or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!])
+            ...(includeSandbox
+              ? []
+              : [
+                  or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!,
+                  or(isNull(purchaseLots.assetId), eq(assets.isSandbox, false))!,
+                ])
           )
         ),
       db
@@ -256,7 +262,15 @@ export class ReportRepository {
           updatedAt: borrowRequests.updatedAt,
         })
         .from(borrowRequests)
-        .where(tenantId ? eq(borrowRequests.tenantId, tenantId) : undefined),
+        .leftJoin(departments, eq(borrowRequests.departmentId, departments.id))
+        .where(
+          and(
+            ...(tenantId ? [eq(borrowRequests.tenantId, tenantId)] : []),
+            ...(includeSandbox
+              ? []
+              : [or(isNull(borrowRequests.departmentId), eq(departments.isSandbox, false))!])
+          )
+        ),
       db
         .select({
           id: consumableRequests.id,
@@ -266,7 +280,15 @@ export class ReportRepository {
           releasedAt: consumableRequests.releasedAt,
         })
         .from(consumableRequests)
-        .where(tenantId ? eq(consumableRequests.tenantId, tenantId) : undefined),
+        .leftJoin(departments, eq(consumableRequests.departmentId, departments.id))
+        .where(
+          and(
+            ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
+            ...(includeSandbox
+              ? []
+              : [or(isNull(consumableRequests.departmentId), eq(departments.isSandbox, false))!])
+          )
+        ),
       db
         .select({
           requestId: consumableRequestLines.requestId,
@@ -275,10 +297,17 @@ export class ReportRepository {
         .from(consumableRequestLines)
         .innerJoin(consumableRequests, eq(consumableRequestLines.requestId, consumableRequests.id))
         .innerJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
+        .leftJoin(departments, eq(consumableRequests.departmentId, departments.id))
         .where(
           and(
             eq(consumableRequests.status, "pending"),
-            ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : [])
+            ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
+            ...(includeSandbox
+              ? []
+              : [
+                  or(isNull(consumableRequests.departmentId), eq(departments.isSandbox, false))!,
+                  eq(consumables.isSandbox, false),
+                ])
           )
         ),
       db
@@ -652,7 +681,7 @@ export class ReportRepository {
       .leftJoin(suppliers, eq(assets.supplierId, suppliers.id))
       .where(
         and(
-          or(eq(assets.id, assetId), eq(assets.assetCode, assetId)),
+          isUuid(assetId) ? eq(assets.id, assetId) : eq(assets.assetCode, assetId),
           ...(tenantId ? [eq(assets.tenantId, tenantId)] : [])
         )
       )
@@ -1060,7 +1089,8 @@ export class ReportRepository {
     }
     if (!filters.includeSandbox) {
       conditions.push(
-        or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!
+        or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!,
+        or(isNull(purchaseLots.assetId), eq(assets.isSandbox, false))!
       );
     }
     if (
@@ -1116,6 +1146,7 @@ export class ReportRepository {
       })
       .from(purchaseLots)
       .leftJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
+      .leftJoin(assets, eq(purchaseLots.assetId, assets.id))
       .where(whereClause)
       .orderBy(desc(purchaseLots.purchasedOn), desc(purchaseLots.createdAt));
 
@@ -1432,6 +1463,7 @@ export class ReportRepository {
       string,
       Array<{ itemName: string; qty: string; classification: string }>
     >();
+    const requestIdsWithAnyLine = new Set<string>();
     if (consIds.length > 0) {
       const lineRows = await db
         .select({
@@ -1439,16 +1471,19 @@ export class ReportRepository {
           itemName: consumables.name,
           qty: consumableRequestLines.quantityRequested,
           classification: consumables.classification,
+          isSandbox: consumables.isSandbox,
         })
         .from(consumableRequestLines)
         .innerJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
         .where(
           and(
             inArray(consumableRequestLines.requestId, consIds),
-            ...(filters.includeSandbox ? [] : [eq(consumables.isSandbox, false)])
+            ...(tenantId ? [eq(consumables.tenantId, tenantId)] : [])
           )
         );
       for (const l of lineRows) {
+        requestIdsWithAnyLine.add(l.requestId);
+        if (!filters.includeSandbox && l.isSandbox) continue;
         const list = linesByRequest.get(l.requestId) ?? [];
         list.push({
           itemName: l.itemName,
@@ -1493,7 +1528,13 @@ export class ReportRepository {
       };
     });
 
-    const mappedConsumableRows = filteredConsumableRows.map((r) => {
+    const mappedConsumableRows = filteredConsumableRows
+      .filter(
+        (r) =>
+          !requestIdsWithAnyLine.has(r.id) ||
+          (linesByRequest.get(r.id)?.length ?? 0) > 0
+      )
+      .map((r) => {
       const lineItems = linesByRequest.get(r.id) ?? [];
       const kind = deriveConsumableRequestKind(
         lineItems.map((l) => l.classification)
@@ -1816,7 +1857,12 @@ export class ReportRepository {
         const [deptRow] = await db
           .select({ name: departments.name, code: departments.code })
           .from(departments)
-          .where(eq(departments.id, deptVal))
+          .where(
+            and(
+              eq(departments.id, deptVal),
+              ...(tenantId ? [eq(departments.tenantId, tenantId)] : [])
+            )
+          )
           .limit(1);
         if (deptRow) {
           conditions.push(
@@ -2583,6 +2629,7 @@ export class ReportRepository {
           and(
             eq(maintenanceLogs.isResolved, false),
             sql`${assets.department} is not null`,
+            ...(filters.includeSandbox ? [] : [eq(assets.isSandbox, false)]),
             ...(tenantId
               ? [eq(maintenanceLogs.tenantId, tenantId), eq(assets.tenantId, tenantId)]
               : []),

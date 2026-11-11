@@ -952,7 +952,10 @@ const requestsDef: DatasetDefinition = {
   ],
   async execute(tenantId, filters, columns, limit, offset) {
     const db = getDb();
-    const conditions: SQL[] = [eq(borrowRequests.tenantId, tenantId)];
+    const conditions: SQL[] = [
+      eq(borrowRequests.tenantId, tenantId),
+      or(isNull(borrowRequests.departmentId), eq(departments.isSandbox, false))!,
+    ];
     applySearch(conditions, filters.search, [
       borrowRequests.requestCode,
       borrowRequests.requesterName,
@@ -975,7 +978,11 @@ const requestsDef: DatasetDefinition = {
     }
 
     const where = and(...conditions);
-    const [totalRow] = await db.select({ total: count() }).from(borrowRequests).where(where);
+    const [totalRow] = await db
+      .select({ total: count() })
+      .from(borrowRequests)
+      .leftJoin(departments, eq(borrowRequests.departmentId, departments.id))
+      .where(where);
     const rowsRaw = await db
       .select({
         requestCode: borrowRequests.requestCode,
@@ -993,6 +1000,7 @@ const requestsDef: DatasetDefinition = {
         notes: borrowRequests.notes,
       })
       .from(borrowRequests)
+      .leftJoin(departments, eq(borrowRequests.departmentId, departments.id))
       .where(where)
       .orderBy(desc(borrowRequests.requestedAt))
       .limit(limit)
@@ -1138,6 +1146,7 @@ const consumableRequestsDef: DatasetDefinition = {
       }>
     >();
 
+    const requestIdsWithAnyLine = new Set<string>();
     if (reqIds.length > 0) {
       const lineRows = await db
         .select({
@@ -1151,10 +1160,17 @@ const consumableRequestsDef: DatasetDefinition = {
           isSandbox: consumables.isSandbox,
         })
         .from(consumableRequestLines)
-        .leftJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
+        .leftJoin(
+          consumables,
+          and(
+            eq(consumableRequestLines.consumableId, consumables.id),
+            eq(consumables.tenantId, tenantId)
+          )
+        )
         .where(inArray(consumableRequestLines.requestId, reqIds));
 
       for (const l of lineRows) {
+        requestIdsWithAnyLine.add(l.requestId);
         if (l.isSandbox) continue;
         const arr = lineMap.get(l.requestId) ?? [];
         arr.push({
@@ -1178,6 +1194,9 @@ const consumableRequestsDef: DatasetDefinition = {
     const enriched = reqRows
       .filter((r) => {
         const lines = lineMap.get(r.id) ?? [];
+        if (requestIdsWithAnyLine.has(r.id) && lines.length === 0) {
+          return false;
+        }
         if (wantedCategories.size && !lines.some((l) => wantedCategories.has(l.category))) {
           return false;
         }
@@ -1287,7 +1306,13 @@ const maintenanceDef: DatasetDefinition = {
   ],
   async execute(tenantId, filters, columns, limit, offset) {
     const db = getDb();
-    const conditions: SQL[] = [eq(maintenanceLogs.tenantId, tenantId)];
+    const conditions: SQL[] = [
+      eq(maintenanceLogs.tenantId, tenantId),
+      or(
+        isNull(maintenanceLogs.assetId),
+        and(eq(assets.tenantId, tenantId), eq(assets.isSandbox, false))!
+      )!,
+    ];
     applySearch(conditions, filters.search, [
       maintenanceLogs.logCode,
       maintenanceLogs.assetCode,

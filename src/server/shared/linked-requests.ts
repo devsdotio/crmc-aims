@@ -26,7 +26,8 @@ export type LinkedRequestSummary = {
  */
 export async function loadLinkedRequestSummaries(
   groupIds: Array<string | null | undefined>,
-  tenantId?: string
+  tenantId?: string,
+  requesterUserId?: string
 ): Promise<Map<string, LinkedRequestSummary[]>> {
   const unique = [
     ...new Set(
@@ -46,6 +47,10 @@ export async function loadLinkedRequestSummaries(
   if (resolvedTenantId) {
     assetConditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
     supplyConditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+  }
+  if (requesterUserId) {
+    assetConditions.push(eq(borrowRequests.requesterUserId, requesterUserId));
+    supplyConditions.push(eq(consumableRequests.requesterUserId, requesterUserId));
   }
 
   const [assetRows, supplyRows] = await Promise.all([
@@ -79,6 +84,10 @@ export async function loadLinkedRequestSummaries(
   const supplyClassByRequestId = new Map<string, string[]>();
   if (supplyRows.length > 0) {
     const supplyIds = supplyRows.map((r) => r.id);
+    const lineConditions = [inArray(consumableRequestLines.requestId, supplyIds)];
+    if (resolvedTenantId) {
+      lineConditions.push(eq(consumables.tenantId, resolvedTenantId));
+    }
     const lineRows = await db
       .select({
         requestId: consumableRequestLines.requestId,
@@ -86,7 +95,7 @@ export async function loadLinkedRequestSummaries(
       })
       .from(consumableRequestLines)
       .innerJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
-      .where(inArray(consumableRequestLines.requestId, supplyIds));
+      .where(and(...lineConditions));
     for (const line of lineRows) {
       const list = supplyClassByRequestId.get(line.requestId) ?? [];
       list.push(line.classification);
