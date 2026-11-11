@@ -82,7 +82,7 @@ export default function AssetRegisterReportPage() {
       .map((c) => ({ label: c.name, value: c.name.toLowerCase() }));
   }, [categoriesData]);
 
-  const canViewCosts = data?.canViewCosts ?? true;
+  const canViewCosts = data?.canViewCosts ?? false;
   const summary = data?.summary;
 
   const statusDonutData = useMemo(() => {

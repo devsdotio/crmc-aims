@@ -19,11 +19,14 @@ import {
 } from "@/server/db/schema";
 import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getTenantContext } from "@/server/shared/tenant-context";
+import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
 import { formatPhp } from "@/components/projects/format-money";
 import {
   deriveConsumableRequestKind,
+  normalizeConsumableClassification,
   type ConsumableRequestKind,
 } from "@/lib/consumable-classification";
 import { toQty } from "@/lib/qty";
@@ -117,8 +120,8 @@ export type DashboardAssetRowDTO = {
   };
   totalQty: number;
   stockIn: number;
-  valuation: number;
-  price: string;
+  valuation: number | null;
+  price: string | null;
   status: string;
   condition: string;
   statusType: "good" | "warning" | "danger" | "info";
@@ -251,7 +254,7 @@ export class DashboardService {
       names.push({ itemName: line.itemName });
       linesByRequestId.set(line.requestId, names);
       const classes = classesByRequestId.get(line.requestId) ?? [];
-      if (line.classification) classes.push(line.classification);
+      classes.push(normalizeConsumableClassification(line.classification));
       classesByRequestId.set(line.requestId, classes);
     }
 
@@ -1116,6 +1119,7 @@ export class DashboardService {
           .values(row)
           .onConflictDoUpdate({
             target: [
+              dashboardMetricSnapshots.tenantId,
               dashboardMetricSnapshots.metricKey,
               dashboardMetricSnapshots.snapshotDate,
             ],
@@ -1313,14 +1317,14 @@ export class DashboardService {
     search?: string;
     tag?: string;
     tenantId?: string;
-  }, actorTenantId?: string): Promise<DashboardAssetRowDTO[]> {
+  }, actorTenantId?: string, actor?: ActorContext): Promise<DashboardAssetRowDTO[]> {
     const limit = params?.limit ?? 5;
     const search = params?.search?.trim() ?? "";
     const tag = params?.tag ?? "all";
     const tenantId = params?.tenantId ?? actorTenantId ?? getTenantContext()?.tenantId ?? "global";
     const cacheKey = `tenant:${tenantId}:dashboard:assets:${limit}:${tag}:${search}`;
 
-    return serverCache.wrap(
+    const rows = await serverCache.wrap<DashboardAssetRowDTO[]>(
       cacheKey,
       30_000,
       async () => {
@@ -1478,6 +1482,16 @@ export class DashboardService {
       },
       ["dashboard", "dashboard:assets", `tenant:${tenantId}:dashboard`]
     );
+
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      return rows.map((row) => ({
+        ...row,
+        valuation: null,
+        price: null,
+      }));
+    }
+
+    return rows;
   }
 
   /**

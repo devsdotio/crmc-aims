@@ -87,7 +87,7 @@ export class AssetController {
   async getAsset(id: string) {
     try {
       const { actor: session } = await requireStaffShell();
-      const data = await this.assetService.getAssetById(id, session.tenantId);
+      const data = await this.assetService.getAssetById(id, session.tenantId, session);
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -99,7 +99,7 @@ export class AssetController {
       const { actor: session } = await requireStaffShell();
       const url = new URL(request.url);
       const code = url.searchParams.get("code") ?? "";
-      const data = await this.assetService.getAssetByCode(code, session.tenantId);
+      const data = await this.assetService.getAssetByCode(code, session.tenantId, session);
       return ok(data);
     } catch (error) {
       return handleError(error);
@@ -259,7 +259,8 @@ export class AssetController {
               session.role
             ),
           },
-          session.tenantId
+          session.tenantId,
+          session
         )
       );
     } catch (error) {
@@ -280,7 +281,7 @@ export class AssetController {
   async getModel(id: string) {
     try {
       const { actor: session } = await requireStaffShell();
-      return ok(await this.modelService.getById(id, session.tenantId));
+      return ok(await this.modelService.getById(id, session.tenantId, session));
     } catch (error) {
       return handleError(error);
     }
@@ -309,7 +310,7 @@ export class AssetController {
   async listModelUnits(id: string) {
     try {
       const { actor: session } = await requireStaffShell();
-      return ok(await this.assetService.listUnitsForModel(id, session.tenantId));
+      return ok(await this.assetService.listUnitsForModel(id, session.tenantId, session));
     } catch (error) {
       return handleError(error);
     }

@@ -4,6 +4,7 @@ import {
   todayDateString,
 } from "@/server/shared/codes";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import {
   ConflictError,
   NotFoundError,
@@ -25,7 +26,10 @@ import {
   updateOpenMaintenanceSchema,
 } from "./maintenance.validation";
 
-function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
+function toDTO(row: MaintenanceLogRow, includeCosts = true): MaintenanceLogDTO {
+  const repairParts = (row.repairParts ?? []).map((p) =>
+    includeCosts ? p : { name: p.name, cost: null }
+  );
   return {
     id: row.id,
     logCode: row.logCode,
@@ -43,10 +47,10 @@ function toDTO(row: MaintenanceLogRow): MaintenanceLogDTO {
     resolutionDate: row.resolutionDate ?? undefined,
     resolutionNotes: row.resolutionNotes ?? undefined,
     resolvedBy: row.resolvedByName ?? undefined,
-    repairCost: formatRepairAmount(
-      effectiveRepairAmount(row.repairCost, row.repairParts)
-    ),
-    repairParts: row.repairParts ?? [],
+    repairCost: includeCosts
+      ? formatRepairAmount(effectiveRepairAmount(row.repairCost, row.repairParts))
+      : null,
+    repairParts,
     relatedBorrowLogCode: row.relatedBorrowLogCode ?? undefined,
     assignedToName: row.assignedToName ?? null,
     scheduledDate: row.scheduledDate ?? undefined,
@@ -63,8 +67,9 @@ export class MaintenanceLogService {
 
   async list(rawQuery: unknown, actor?: ActorContext): Promise<MaintenanceLogDTO[]> {
     const filters = listMaintenanceQuerySchema.parse(rawQuery ?? {});
+    const includeCosts = !actor || isAssetOperatorRole(actor.role);
     const rows = await this.repo.list(filters, undefined, actor?.tenantId);
-    return rows.map(toDTO);
+    return rows.map((row) => toDTO(row, includeCosts));
   }
 
   /**
@@ -150,9 +155,10 @@ export class MaintenanceLogService {
 
   async getById(rawId: string, actor?: ActorContext): Promise<MaintenanceLogDTO> {
     const id = maintenanceIdSchema.parse(rawId);
+    const includeCosts = !actor || isAssetOperatorRole(actor.role);
     const row = await this.repo.findById(id, undefined, actor?.tenantId);
     if (!row) throw new NotFoundError("Maintenance log", id);
-    return toDTO(row);
+    return toDTO(row, includeCosts);
   }
 
   /**

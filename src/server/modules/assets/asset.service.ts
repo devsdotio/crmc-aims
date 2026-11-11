@@ -1,13 +1,12 @@
-import { eq } from "drizzle-orm";
 import type { Asset, MaintenanceLogEntry } from "@/types/assets";
-import { projectAssetAssignments, type AssetModelRow, type AssetRow, type MaintenanceLogRow } from "@/server/db/schema";
-import { getDb } from "@/server/db";
+import type { AssetModelRow, AssetRow, MaintenanceLogRow } from "@/server/db/schema";
 import {
   BadRequestError,
   ConflictError,
   NotFoundError,
 } from "@/server/shared/errors";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import { generateOperationalCode, todayDateString } from "@/server/shared/codes";
 import { parseScanPayload } from "@/server/shared/qr";
 import { assetCategoryCodePrefix } from "@/lib/asset-category";
@@ -60,6 +59,35 @@ import {
   type ReturnAssetBody,
   type UpdateAssetBody,
 } from "./asset.validation";
+
+function redactAssetForActor(
+  dto: AssetDTOWithMeta,
+  actor?: ActorContext
+): AssetDTOWithMeta {
+  if (!actor) return dto;
+  if (actor.role === "borrower") {
+    return {
+      ...dto,
+      value: undefined,
+      currentHolder: dto.currentHolder ? "In Custody" : undefined,
+      department: undefined,
+      notes: undefined,
+      serialNumber: undefined,
+      supplierId: undefined,
+      purchaseDate: undefined,
+      reservedForRequestId: dto.reservedForRequestId ? "reserved" : null,
+      maintenanceHistory: [],
+    };
+  }
+  if (!isAssetOperatorRole(actor.role)) {
+    return {
+      ...dto,
+      value: undefined,
+      maintenanceHistory: dto.maintenanceHistory.map(({ cost: _cost, ...entry }) => entry),
+    };
+  }
+  return dto;
+}
 
 function isPgUniqueViolation(error: unknown): boolean {
   const candidates: unknown[] = [error];
@@ -317,25 +345,14 @@ export class AssetService {
       tenantId
     );
 
-    if (actor?.role === "borrower" && filters.catalog) {
-      // Narrow catalog: hide valuation, holder PII, notes, serial numbers, and supplier links.
-      return dtos.map((d) => ({
-        ...d,
-        value: undefined,
-        currentHolder: d.currentHolder ? "In Custody" : undefined,
-        department: undefined,
-        notes: undefined,
-        serialNumber: undefined,
-        supplierId: undefined,
-        purchaseDate: undefined,
-        reservedForRequestId: d.reservedForRequestId ? "reserved" : null,
-        maintenanceHistory: [],
-      }));
-    }
-    return dtos;
+    return dtos.map((d) => redactAssetForActor(d, actor));
   }
 
-  async getAssetById(rawId: string, tenantId?: string): Promise<AssetDTOWithMeta> {
+  async getAssetById(
+    rawId: string,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<AssetDTOWithMeta> {
     const id = assetIdSchema.parse(rawId);
     const row = await this.assetRepository.findById(id, undefined, tenantId);
 
@@ -348,10 +365,14 @@ export class AssetService {
       [toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry))],
       tenantId
     );
-    return dto!;
+    return redactAssetForActor(dto!, actor);
   }
 
-  async getAssetByCode(rawCode: string, tenantId?: string): Promise<AssetDTOWithMeta> {
+  async getAssetByCode(
+    rawCode: string,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<AssetDTOWithMeta> {
     const parsed = parseScanPayload(rawCode);
     if (!parsed.code) {
       throw new BadRequestError("Asset code is required.");
@@ -369,16 +390,21 @@ export class AssetService {
       [toAssetDTO(row, maintRows.map(maintenanceRowToHistoryEntry))],
       tenantId
     );
-    return dto!;
+    return redactAssetForActor(dto!, actor);
   }
 
-  async listUnitsForModel(rawModelId: string, tenantId?: string): Promise<AssetDTOWithMeta[]> {
+  async listUnitsForModel(
+    rawModelId: string,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<AssetDTOWithMeta[]> {
     const model = await this.models.requireModel(rawModelId, tenantId);
     const rows = await this.assetRepository.findByModelId(model.id, undefined, tenantId);
-    return this.withOpenProjectCustodyHolders(
+    const dtos = await this.withOpenProjectCustodyHolders(
       rows.map((row) => toAssetDTO(row)),
       tenantId
     );
+    return dtos.map((d) => redactAssetForActor(d, actor));
   }
 
   /**
@@ -1155,12 +1181,9 @@ export class AssetService {
       },
     });
 
-    const db = getDb();
-    await db
-      .delete(projectAssetAssignments)
-      .where(eq(projectAssetAssignments.assetId, id));
+    await this.projectAssignments.deleteByAssetId(id, undefined, actor.tenantId);
 
-    const deleted = await this.assetRepository.delete(id);
+    const deleted = await this.assetRepository.delete(id, undefined, actor.tenantId);
     if (!deleted) {
       throw new NotFoundError("Asset", id);
     }

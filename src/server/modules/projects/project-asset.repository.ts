@@ -160,4 +160,16 @@ export class ProjectAssetAssignmentRepository
       .returning();
     return row ?? null;
   }
+
+  async deleteByAssetId(
+    assetId: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<void> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(projectAssetAssignments.assetId, assetId)];
+    if (resolvedTenantId) conditions.push(eq(projectAssetAssignments.tenantId, resolvedTenantId));
+    await db.delete(projectAssetAssignments).where(and(...conditions));
+  }
 }

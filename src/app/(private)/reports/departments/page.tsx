@@ -53,7 +53,7 @@ export default function DepartmentReportsPage() {
   );
 
   const { data, isLoading } = useDepartmentReportQuery(effectiveFilters);
-  const canViewCosts = data?.canViewCosts ?? true;
+  const canViewCosts = data?.canViewCosts ?? false;
   const summary = data?.summary;
 
   const handleFilterChange = (updated: Partial<BaseReportFilters>) => {

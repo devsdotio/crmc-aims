@@ -122,7 +122,7 @@ export class DashboardController {
         search,
         tag,
         tenantId,
-      }, tenantId);
+      }, tenantId, session);
 
       if (request) {
         return okWithEtag(request, data, {

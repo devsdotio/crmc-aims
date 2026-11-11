@@ -53,7 +53,7 @@ export class StockMovementController {
   async listByConsumable(id: string) {
     try {
       const { actor } = await requireStaffShell();
-      return ok(await this.service.listByConsumable(id, actor.tenantId));
+      return ok(await this.service.listByConsumable(id, actor.tenantId, actor));
     } catch (error) {
       return handleError(error);
     }

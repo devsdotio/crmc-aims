@@ -528,7 +528,7 @@ export default function ProjectReportsPage() {
                         </div>
                       ) : (
                         <div className="text-[11px] text-text-secondary">
-                          {row.consumablesValue ? `₱${row.consumablesValue.toLocaleString()} consumables` : "Active Project"}
+                          Active Project
                         </div>
                       )}
                     </div>

@@ -97,7 +97,7 @@ export default function PurchaseOrdersReportPage() {
 
   const { data, isLoading } = usePurchaseOrdersReportQuery(effectiveFilters);
 
-  const canViewCosts = data?.canViewCosts ?? true;
+  const canViewCosts = data?.canViewCosts ?? false;
   const summary = data?.summary;
 
   const reportRows = data?.data;

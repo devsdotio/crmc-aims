@@ -111,7 +111,7 @@ export function AssetDetailDialog({
   const custodyHistory = data?.custodyHistory || [];
   const consumablesConsumed = data?.consumablesConsumed || [];
   const tco = data?.tco;
-  const canViewCosts = data?.canViewCosts ?? true;
+  const canViewCosts = data?.canViewCosts ?? false;
   const categoryMeta = asset ? getCategoryStyle(asset.category) : null;
   const repairVsAcquisitionPct =
     tco && tco.purchaseCost > 0
