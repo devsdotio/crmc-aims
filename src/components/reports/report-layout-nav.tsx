@@ -9,6 +9,7 @@ import {
   FolderKanban,
   Building2,
   Wrench,
+  ShoppingCart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useReportTimeframe } from "./report-timeframe-context";
@@ -33,6 +34,13 @@ const REPORT_TABS = [
     shortName: "Consumables",
     href: "/reports/consumables",
     icon: Layers,
+    exact: false,
+  },
+  {
+    name: "Purchase Orders",
+    shortName: "Orders",
+    href: "/reports/purchase-orders",
+    icon: ShoppingCart,
     exact: false,
   },
   {
@@ -71,10 +79,10 @@ export function ReportLayoutNav() {
   })();
 
   return (
-    <div className="w-full rounded-t-2xl border-t border-x border-b border-border/60 bg-[#F0F1F5] dark:bg-card/90 pt-1 sm:pt-1.5 px-1 sm:px-1.5 pb-0 shadow-2xs shrink-0 select-none overflow-hidden">
+    <div className="w-full rounded-t-2xl border-t border-x border-b border-border/60 bg-bg-subtle dark:bg-card/90 pt-1 sm:pt-1.5 px-1 sm:px-1.5 pb-0 shadow-2xs shrink-0 select-none overflow-x-auto no-scrollbar">
       {/* ── Browser Tab Strip (Seamlessly attached to the card below) ── */}
       <nav
-        className="flex items-end w-full gap-1 min-w-0"
+        className="flex items-end w-max min-w-full gap-1"
         aria-label="Reports Navigation Tabs"
       >
         {REPORT_TABS.map((tab, idx) => {
@@ -92,44 +100,40 @@ export function ReportLayoutNav() {
           const tabHref = `${tab.href}${queryString}`;
 
           return (
-            <div key={tab.href} className="relative flex-1 min-w-0 flex items-end">
+            <div key={tab.href} className="relative flex-none lg:flex-1 min-w-0 flex items-end">
               <Link
                 href={tabHref}
                 title={tab.name}
                 className={cn(
-                  "group relative flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 w-full h-9 sm:h-10 px-2 sm:px-3 text-xs sm:text-[13px] font-semibold transition-all duration-150 rounded-t-xl cursor-pointer min-w-0",
+                  "group relative flex items-center justify-center lg:justify-start gap-1.5 sm:gap-2 w-full min-h-11 sm:min-h-10 px-3 text-xs font-semibold transition-all duration-150 rounded-t-xl cursor-pointer min-w-0 whitespace-nowrap",
                   isActive
-                    ? "bg-card text-text font-bold shadow-xs border-t-2 border-t-accent border-x border-border/90 -mb-px z-10"
-                    : "text-text-secondary/80 hover:text-text hover:bg-card/60 border-t-2 border-transparent border-x"
+                    ? "bg-card text-text font-bold shadow-xs border-t-2 border-t-primary border-x border-border/90 -mb-px z-10"
+                    : "text-text-secondary hover:text-text hover:bg-card/60 border-t-2 border-transparent border-x"
                 )}
               >
-                {/* Tab Favicon Icon */}
                 <div
                   className={cn(
                     "flex h-4 w-4 shrink-0 items-center justify-center transition-colors",
                     isActive
-                      ? "text-accent"
-                      : "text-text-secondary/75 group-hover:text-text"
+                      ? "text-primary"
+                      : "text-text-secondary group-hover:text-text"
                   )}
                 >
-                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                  <Icon className="h-4 w-4 shrink-0" />
                 </div>
 
-                {/* Tab Label: Full on medium+, Short on mobile */}
-                <span className="truncate hidden md:inline">
+                <span className="truncate hidden xl:inline">
                   {tab.name}
                 </span>
-                <span className="truncate md:hidden inline">
+                <span className="truncate xl:hidden inline">
                   {tab.shortName}
                 </span>
 
-                {/* Active Live Indicator */}
                 {isActive && (
-                  <span className="ml-auto hidden xl:flex h-1.5 w-1.5 rounded-full bg-accent animate-pulse shrink-0" />
+                  <span className="ml-auto hidden 2xl:flex h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
                 )}
               </Link>
 
-              {/* Subtle tab separator divider between inactive tabs */}
               {showDivider && (
                 <span
                   className="absolute right-0 top-2.5 bottom-2.5 w-px bg-border/60 pointer-events-none hidden sm:block"

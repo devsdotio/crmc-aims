@@ -43,6 +43,27 @@ const DEFAULT_PALETTE = [
   "#64748B", // Slate
 ];
 
+export function formatDonutCenterTotal(
+  totalValue: number,
+  unitLabel = "units"
+): string {
+  const normalizedUnit = unitLabel.trim().toLowerCase();
+  const isCurrency =
+    normalizedUnit === "spend" ||
+    normalizedUnit === "php" ||
+    normalizedUnit === "cost" ||
+    normalizedUnit === "value" ||
+    normalizedUnit.includes("₱");
+  const prefix = isCurrency ? "₱" : "";
+  if (totalValue >= 1_000_000) {
+    return `${prefix}${(totalValue / 1_000_000).toFixed(1)}M`;
+  }
+  if (totalValue >= 1_000) {
+    return `${prefix}${(totalValue / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return `${prefix}${totalValue.toLocaleString()}`;
+}
+
 export function BreakdownDonutChart({
   title,
   description,
@@ -173,11 +194,7 @@ export function BreakdownDonutChart({
               {/* Centered Total */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="font-mono text-base sm:text-lg font-extrabold text-text tabular-nums leading-none">
-                  {totalValue >= 1000000
-                    ? `₱${(totalValue / 1000000).toFixed(1)}M`
-                    : totalValue >= 1000
-                    ? `₱${(totalValue / 1000).toFixed(0)}k`
-                    : totalValue.toLocaleString()}
+                  {formatDonutCenterTotal(totalValue, unitLabel)}
                 </span>
                 <span className="text-[9px] uppercase tracking-wider text-text-secondary font-bold mt-1">
                   TOTAL
@@ -209,11 +226,10 @@ export function BreakdownDonutChart({
                         : item.actualValue.toLocaleString()}
                     </span>
                     <span
-                      className="font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded-xs border"
+                      className="font-mono text-[9.5px] font-bold px-1.5 py-0.2 rounded-xs border text-text"
                       style={{
-                        backgroundColor: `${item.segmentColor}15`,
-                        borderColor: `${item.segmentColor}30`,
-                        color: item.segmentColor,
+                        backgroundColor: `${item.segmentColor}18`,
+                        borderColor: `${item.segmentColor}40`,
                       }}
                     >
                       {item.percentage}%

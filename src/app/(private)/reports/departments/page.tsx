@@ -24,7 +24,13 @@ import { useReportTimeframe } from "@/components/reports/report-timeframe-contex
 import { DepartmentDetailDialog } from "@/components/reports/department-detail-dialog";
 import { DepartmentsPrintableReport } from "@/components/reports/print/DepartmentsPrintableReport";
 import { DepartmentCardSkeleton } from "@/components/reports/report-card-skeleton";
+import { ClassificationFilterPills } from "@/components/reports/consumable-classification-badge";
 import { cn } from "@/lib/utils";
+
+const CLASSIFICATION_OPTIONS = [
+  { label: "Supplies Only", value: "supply" },
+  { label: "Materials Only", value: "material" },
+];
 
 export default function DepartmentReportsPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
@@ -33,6 +39,7 @@ export default function DepartmentReportsPage() {
     page: 1,
     pageSize: 20,
     search: "",
+    classification: "",
   });
   const [selectedDepartment, setSelectedDepartment] = useState<DepartmentReportRow | null>(null);
 
@@ -60,7 +67,7 @@ export default function DepartmentReportsPage() {
   };
 
   const handleReset = () => {
-    setFilters({ page: 1, pageSize: 20, search: "" });
+    setFilters({ page: 1, pageSize: 20, search: "", classification: "" });
   };
 
   const columns: ColumnDef<DepartmentReportRow>[] = [
@@ -95,12 +102,21 @@ export default function DepartmentReportsPage() {
     },
     {
       key: "consumablesConsumedCount",
-      header: "Stocks Used",
+      header: "Supplies & Materials",
       align: "right",
       render: (row) => (
-        <div className="text-right">
+        <div className="text-right space-y-0.5">
           <div className="font-mono font-bold text-text">
             {row.consumablesConsumedCount.toLocaleString()}
+          </div>
+          <div className="text-[10px] font-mono text-text-secondary">
+            <span className="text-emerald-700 dark:text-emerald-300 font-semibold">
+              {(row.suppliesConsumedCount ?? 0).toLocaleString()} Sup
+            </span>
+            {" · "}
+            <span className="text-amber-800 dark:text-amber-300 font-semibold">
+              {(row.materialsConsumedCount ?? 0).toLocaleString()} Mat
+            </span>
           </div>
           {canViewCosts && row.consumablesValue != null && (
             <div className="text-[10px] font-mono text-text-secondary">
@@ -170,7 +186,7 @@ export default function DepartmentReportsPage() {
             e.stopPropagation();
             setSelectedDepartment(row);
           }}
-          className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:text-accent/80 px-2 py-1 rounded-md hover:bg-accent/10 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 px-2 py-1 rounded-md hover:bg-primary/10 transition-colors cursor-pointer"
         >
           <span>View</span>
           <ChevronRight className="h-3 w-3" />
@@ -194,19 +210,19 @@ export default function DepartmentReportsPage() {
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner ─────────────────────────────────────────── */}
-      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-12 sm:top-11.5 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl font-bold tracking-tight text-text">
                 Department Reports
               </h1>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
                 Dept. Breakdown
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-0.5">
-              All assets assigned, consumables consumed, maintenance activity, and statistics per department.
+              All assets assigned, separated Supplies &amp; Materials consumed, maintenance activity, and statistics per department.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -248,7 +264,7 @@ export default function DepartmentReportsPage() {
         />
         <StatCard
           title="Consumables Consumed"
-          sublabel="STOCKS // DISTRIBUTED"
+          sublabel="SUPPLIES & MATERIALS"
           value={
             isLoading
               ? "…"
@@ -256,12 +272,12 @@ export default function DepartmentReportsPage() {
               ? `₱${(summary?.totalConsumablesValue || 0).toLocaleString()}`
               : `${summary?.totalConsumablesConsumed || 0} items`
           }
-          subtitle={`${summary?.totalConsumablesConsumed || 0} items dispatched dept-wide`}
+          subtitle={`${(summary?.totalSuppliesConsumed ?? 0).toLocaleString()} Supplies (₱${(summary?.totalSuppliesValue ?? 0).toLocaleString()}) · ${(summary?.totalMaterialsConsumed ?? 0).toLocaleString()} Materials (₱${(summary?.totalMaterialsValue ?? 0).toLocaleString()})`}
           icon={Layers}
           tone="indigo"
           toneValue={true}
           loading={isLoading}
-          infoTooltip="Volume of consumable materials and office supplies dispatched and consumed across all campus departments."
+          infoTooltip="Volume and valuation of Supplies and Materials dispatched across all campus departments."
         />
       </StatCardGrid>
 
@@ -271,14 +287,31 @@ export default function DepartmentReportsPage() {
           filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
+          classifications={CLASSIFICATION_OPTIONS}
           searchPlaceholder="Search department name…"
         />
       </div>
 
-      {/* ── View Mode Switcher Bar ───────────────────────────────────── */}
+      {/* ── Classification & View Mode Switcher Bar ───────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
-        <div className="text-xs text-text-secondary font-medium">
-          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> departments
+        <div className="flex flex-wrap items-center gap-3">
+          <ClassificationFilterPills
+            value={effectiveFilters.classification || "all"}
+            onChange={(next) =>
+              handleFilterChange({
+                classification: next === "all" ? "" : next,
+                page: 1,
+              })
+            }
+            options={[
+              { id: "all", label: "All Consumables" },
+              { id: "supply", label: "Supplies" },
+              { id: "material", label: "Materials" },
+            ]}
+          />
+          <span className="text-xs text-text-secondary font-medium">
+            Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> departments
+          </span>
         </div>
 
         <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
@@ -325,6 +358,7 @@ export default function DepartmentReportsPage() {
           isLoading={isLoading}
           onPageChange={(page) => handleFilterChange({ page })}
           onRowClick={(row) => setSelectedDepartment(row)}
+          onEmptyAction={handleReset}
         />
       ) : (
         <div className="space-y-4">
@@ -336,7 +370,14 @@ export default function DepartmentReportsPage() {
             </div>
           ) : !data?.data || data.data.length === 0 ? (
             <div className="py-12 text-center text-xs text-text-secondary border border-dashed border-border rounded-2xl bg-card">
-              No departments found matching the search criteria.
+              <p>No departments found matching the search criteria.</p>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="mt-3 inline-flex items-center justify-center rounded-xl border border-border bg-bg-subtle px-4 min-h-11 sm:min-h-9 text-xs font-semibold text-text hover:bg-border/50 transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
             </div>
           ) : (
             <>
@@ -386,20 +427,19 @@ export default function DepartmentReportsPage() {
                           )}
                         </div>
 
-                        {/* Stocks Used */}
+                        {/* Supplies & Materials Used */}
                         <div className="rounded-xl border border-border/60 bg-bg-subtle/40 p-2.5">
                           <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-text-secondary mb-0.5">
-                            <Layers className="h-3 w-3 text-indigo-500" />
+                            <Layers className="h-3 w-3 text-indigo-600 dark:text-indigo-400" />
                             <span>Stocks</span>
                           </div>
                           <div className="text-sm font-mono font-bold text-text">
                             {dept.consumablesConsumedCount.toLocaleString()}
                           </div>
-                          {canViewCosts && dept.consumablesValue != null && (
-                            <div className="text-[10px] font-mono text-text-secondary truncate">
-                              ₱{dept.consumablesValue.toLocaleString()}
-                            </div>
-                          )}
+                          <div className="text-[10px] font-mono text-text-secondary truncate">
+                            {(dept.suppliesConsumedCount ?? 0).toLocaleString()}S · {(dept.materialsConsumedCount ?? 0).toLocaleString()}M
+                            {canViewCosts && dept.consumablesValue != null ? ` · ₱${dept.consumablesValue.toLocaleString()}` : ""}
+                          </div>
                         </div>
 
                         {/* Maintenance Tickets */}
@@ -458,9 +498,10 @@ export default function DepartmentReportsPage() {
 
                 <div className="flex items-center gap-1.5">
                   <button
+                    type="button"
                     onClick={() => handleFilterChange({ page: (data.page || 1) - 1 })}
                     disabled={(data.page || 1) <= 1 || isLoading}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                     aria-label="Previous page"
                   >
                     <ChevronLeft className="h-4 w-4" />
@@ -469,9 +510,10 @@ export default function DepartmentReportsPage() {
                     {data.page || 1} / {data.totalPages || 1}
                   </span>
                   <button
+                    type="button"
                     onClick={() => handleFilterChange({ page: (data.page || 1) + 1 })}
                     disabled={(data.page || 1) >= (data.totalPages || 1) || isLoading}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                    className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
                     aria-label="Next page"
                   >
                     <ChevronRight className="h-4 w-4" />

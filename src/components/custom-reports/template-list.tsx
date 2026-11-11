@@ -59,9 +59,14 @@ const DATASET_CONFIGS: Record<CustomReportDataset, DatasetBadgeConfig> = {
     classes: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
   },
   requests: {
-    label: "Requests",
+    label: "Borrow & Assign Requests",
     icon: ClipboardList,
     classes: "bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300 border-purple-200 dark:border-purple-800",
+  },
+  "consumable-requests": {
+    label: "Consumable Requests",
+    icon: ClipboardList,
+    classes: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
   },
   maintenance: {
     label: "Maintenance",

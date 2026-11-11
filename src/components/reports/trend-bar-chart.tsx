@@ -169,7 +169,7 @@ export function TrendBarChart({
                   type={layout === "vertical" ? "number" : "category"}
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fontSize: 10, fill: "#5A5F73", fontWeight: layout === "horizontal" ? 600 : 400 }}
+                  tick={{ fontSize: 10, fill: "var(--text-secondary, #5A5F73)", fontWeight: layout === "horizontal" ? 600 : 400 }}
                   tickFormatter={
                     layout === "vertical"
                       ? (v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))
@@ -182,7 +182,7 @@ export function TrendBarChart({
                   tickLine={false}
                   axisLine={false}
                   width={layout === "vertical" ? 80 : undefined}
-                  tick={{ fontSize: 10, fill: "#5A5F73", fontFamily: layout === "horizontal" ? "monospace" : undefined, fontWeight: layout === "vertical" ? 600 : 400 }}
+                  tick={{ fontSize: 10, fill: "var(--text-secondary, #5A5F73)", fontFamily: layout === "horizontal" ? "monospace" : undefined, fontWeight: layout === "vertical" ? 600 : 400 }}
                   tickFormatter={
                     layout === "horizontal"
                       ? (v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))

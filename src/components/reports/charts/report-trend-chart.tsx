@@ -40,25 +40,25 @@ export function ReportTrendChart({
         <AreaChart data={data} margin={{ top: 12, right: 12, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="procurementGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#000B58" stopOpacity={0.25} />
-              <stop offset="95%" stopColor="#000B58" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--primary, #2A3260)" stopOpacity={0.28} />
+              <stop offset="95%" stopColor="var(--primary, #2A3260)" stopOpacity={0} />
             </linearGradient>
             <linearGradient id="maintenanceGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#FF4E45" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#FF4E45" stopOpacity={0} />
+              <stop offset="5%" stopColor="var(--accent, #FF4E45)" stopOpacity={0.3} />
+              <stop offset="95%" stopColor="var(--accent, #FF4E45)" stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #E5E7EB)" vertical={false} />
           <XAxis
             dataKey="month"
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 11, fill: "#5A5F73", fontWeight: 600 }}
+            tick={{ fontSize: 11, fill: "var(--text-secondary, #5A5F73)", fontWeight: 600 }}
           />
           <YAxis
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 10, fill: "#5A5F73", fontFamily: "monospace" }}
+            tick={{ fontSize: 10, fill: "var(--text-secondary, #5A5F73)", fontFamily: "monospace" }}
             tickFormatter={(v) => `₱${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
           />
           <Tooltip
@@ -68,6 +68,7 @@ export function ReportTrendChart({
               border: "1px solid var(--border, #E5E7EB)",
               fontSize: "12px",
               fontWeight: 600,
+              color: "var(--text, #111827)",
               boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
             }}
             formatter={(value: unknown) => [`₱${Number(value || 0).toLocaleString()}`, ""]}
@@ -82,7 +83,7 @@ export function ReportTrendChart({
             type="monotone"
             dataKey="procurement"
             name="Procurement Spend"
-            stroke="#000B58"
+            stroke="var(--primary, #2A3260)"
             strokeWidth={2.5}
             fillOpacity={1}
             fill="url(#procurementGradient)"
@@ -91,7 +92,7 @@ export function ReportTrendChart({
             type="monotone"
             dataKey="maintenance"
             name="Maintenance Spend"
-            stroke="#FF4E45"
+            stroke="var(--accent, #FF4E45)"
             strokeWidth={2.5}
             fillOpacity={1}
             fill="url(#maintenanceGradient)"

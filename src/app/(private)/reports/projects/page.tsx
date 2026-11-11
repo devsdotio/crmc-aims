@@ -17,7 +17,6 @@ import {
   Table as TableIcon,
   Building2,
   Calendar,
-  User,
 } from "lucide-react";
 
 import { useProjectReportQuery } from "@/features/reports/client/use-reports";
@@ -32,6 +31,7 @@ import { useReportTimeframe } from "@/components/reports/report-timeframe-contex
 import { ProjectDetailDialog } from "@/components/reports/project-detail-dialog";
 import { ProjectsPrintableReport } from "@/components/reports/print/ProjectsPrintableReport";
 import { ProjectCardSkeleton } from "@/components/reports/report-card-skeleton";
+import { ClassificationFilterPills } from "@/components/reports/consumable-classification-badge";
 import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
@@ -39,6 +39,11 @@ const STATUS_OPTIONS = [
   { label: "Completed", value: "completed" },
   { label: "On Hold", value: "on_hold" },
   { label: "Cancelled", value: "cancelled" },
+];
+
+const CLASSIFICATION_OPTIONS = [
+  { label: "Supplies Only", value: "supply" },
+  { label: "Materials Only", value: "material" },
 ];
 
 function StatusBadge({ status }: { status: ProjectReportRow["status"] }) {
@@ -88,6 +93,7 @@ export default function ProjectReportsPage() {
     pageSize: 20,
     search: "",
     status: "",
+    classification: "",
   });
   const [selectedProject, setSelectedProject] = useState<ProjectReportRow | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
@@ -116,7 +122,7 @@ export default function ProjectReportsPage() {
   };
 
   const handleReset = () => {
-    setFilters({ page: 1, pageSize: 20, search: "", status: "" });
+    setFilters({ page: 1, pageSize: 20, search: "", status: "", classification: "" });
   };
 
   const columns: ColumnDef<ProjectReportRow>[] = [
@@ -186,12 +192,21 @@ export default function ProjectReportsPage() {
     },
     {
       key: "consumablesConsumedCount",
-      header: "Stocks Used",
+      header: "Supplies & Materials",
       align: "right",
       render: (row) => (
-        <div className="text-right">
+        <div className="text-right space-y-0.5">
           <div className="font-mono font-bold text-text">
             {row.consumablesConsumedCount.toLocaleString()}
+          </div>
+          <div className="text-[10px] font-mono text-text-secondary">
+            <span className="text-emerald-700 dark:text-emerald-300 font-semibold">
+              {(row.suppliesConsumedCount ?? 0).toLocaleString()} Sup
+            </span>
+            {" · "}
+            <span className="text-amber-800 dark:text-amber-300 font-semibold">
+              {(row.materialsConsumedCount ?? 0).toLocaleString()} Mat
+            </span>
           </div>
           {canViewCosts && row.consumablesValue != null && (
             <div className="text-[10px] font-mono text-text-secondary">
@@ -228,7 +243,7 @@ export default function ProjectReportsPage() {
             e.stopPropagation();
             setSelectedProject(row);
           }}
-          className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:text-accent/80 px-2 py-1 rounded-md hover:bg-accent/10 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 px-2 py-1 rounded-md hover:bg-primary/10 transition-colors cursor-pointer"
         >
           <span>View</span>
           <ChevronRight className="h-3 w-3" />
@@ -252,19 +267,19 @@ export default function ProjectReportsPage() {
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-12 sm:top-11.5 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl font-bold tracking-tight text-text">
                 Project Reports
               </h1>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/25">
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-primary/10 text-primary dark:text-blue-300 border border-primary/25 dark:border-blue-400/30">
                 Project Audit
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-0.5">
-              Assigned assets, consumables consumed, overall project cost, and project timelines.
+              Assigned assets, separated Supplies &amp; Materials consumed, overall project cost, and timelines.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
@@ -324,7 +339,7 @@ export default function ProjectReportsPage() {
           }
           subtitle={
             canViewCosts
-              ? `${summary?.totalConsumablesConsumed || 0} supplies issued`
+              ? `${(summary?.totalSuppliesConsumed ?? 0).toLocaleString()} Supplies · ${(summary?.totalMaterialsConsumed ?? 0).toLocaleString()} Materials`
               : "Admin view only"
           }
           icon={DollarSign}
@@ -332,7 +347,7 @@ export default function ProjectReportsPage() {
           toneValue={true}
           loading={isLoading}
           tooltipAlign="right"
-          tooltip="The total money spent so far on materials, supplies, and work for these projects."
+          tooltip="The total money spent so far on Materials, Supplies, and services for these projects."
         />
       </StatCardGrid>
 
@@ -342,15 +357,32 @@ export default function ProjectReportsPage() {
           filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
+          classifications={CLASSIFICATION_OPTIONS}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search project code, name, department, manager…"
         />
       </div>
 
-      {/* ── View Switcher Header ────────────────────────────────────────── */}
+      {/* ── Classification & View Switcher Header ──────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
-        <div className="text-xs text-text-secondary font-medium">
-          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> institutional projects
+        <div className="flex flex-wrap items-center gap-3">
+          <ClassificationFilterPills
+            value={effectiveFilters.classification || "all"}
+            onChange={(next) =>
+              handleFilterChange({
+                classification: next === "all" ? "" : next,
+                page: 1,
+              })
+            }
+            options={[
+              { id: "all", label: "All Consumables" },
+              { id: "supply", label: "Supplies" },
+              { id: "material", label: "Materials" },
+            ]}
+          />
+          <span className="text-xs text-text-secondary font-medium">
+            Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> institutional projects
+          </span>
         </div>
         <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
           <button
@@ -394,6 +426,7 @@ export default function ProjectReportsPage() {
           isLoading={isLoading}
           onPageChange={(page) => handleFilterChange({ page })}
           onRowClick={(row) => setSelectedProject(row)}
+          onEmptyAction={handleReset}
         />
       ) : (
         <div className="space-y-4">
@@ -410,6 +443,13 @@ export default function ProjectReportsPage() {
               <p className="text-xs text-text-secondary mt-1">
                 Try adjusting your search criteria or filter selections.
               </p>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="mt-4 inline-flex items-center justify-center rounded-xl border border-border bg-bg-subtle px-4 min-h-11 sm:min-h-9 text-xs font-semibold text-text hover:bg-border/50 transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -464,10 +504,13 @@ export default function ProjectReportsPage() {
                         </div>
                       </div>
                       <div className="p-2 rounded-lg bg-bg-subtle/50 border border-border/50 text-center">
-                        <div className="text-[10px] text-text-secondary uppercase font-semibold">Stocks Used</div>
+                        <div className="text-[10px] text-text-secondary uppercase font-semibold">Supplies &amp; Materials</div>
                         <div className="font-mono font-bold text-xs text-text mt-0.5 flex items-center justify-center gap-1">
                           <Layers className="h-3 w-3 text-text-secondary" />
                           <span>{row.consumablesConsumedCount.toLocaleString()}</span>
+                        </div>
+                        <div className="text-[9.5px] font-mono text-text-secondary">
+                          {(row.suppliesConsumedCount ?? 0).toLocaleString()}S · {(row.materialsConsumedCount ?? 0).toLocaleString()}M
                         </div>
                       </div>
                     </div>
@@ -485,7 +528,7 @@ export default function ProjectReportsPage() {
                         </div>
                       ) : (
                         <div className="text-[11px] text-text-secondary">
-                          {row.consumablesValue ? `₱${row.consumablesValue.toLocaleString()} supplies` : "Active Project"}
+                          {row.consumablesValue ? `₱${row.consumablesValue.toLocaleString()} consumables` : "Active Project"}
                         </div>
                       )}
                     </div>
@@ -496,7 +539,7 @@ export default function ProjectReportsPage() {
                         e.stopPropagation();
                         setSelectedProject(row);
                       }}
-                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-accent hover:underline cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary dark:text-blue-300 hover:underline cursor-pointer"
                     >
                       <span>Details</span>
                       <ChevronRight className="h-3.5 w-3.5" />
@@ -513,12 +556,12 @@ export default function ProjectReportsPage() {
               <span className="text-xs text-text-secondary">
                 Page {data.page} of {data.totalPages} ({data.total} total)
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   disabled={data.page <= 1}
                   onClick={() => handleFilterChange({ page: data.page - 1 })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-3 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span>Prev</span>
@@ -527,7 +570,7 @@ export default function ProjectReportsPage() {
                   type="button"
                   disabled={data.page >= data.totalPages}
                   onClick={() => handleFilterChange({ page: data.page + 1 })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-3 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
                 >
                   <span>Next</span>
                   <ChevronRight className="h-3.5 w-3.5" />

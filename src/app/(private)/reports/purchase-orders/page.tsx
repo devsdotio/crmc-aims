@@ -12,8 +12,7 @@ import {
   Table as TableIcon,
   ChevronLeft,
   ChevronRight,
-  Package,
-  Calendar,
+  AlertCircle,
 } from "lucide-react";
 
 import { usePurchaseOrdersReportQuery } from "@/features/reports/client/use-reports";
@@ -30,13 +29,51 @@ import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-fil
 import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { ProcurementPrintableReport } from "@/components/reports/print/ProcurementPrintableReport";
 import { PurchaseOrderCardSkeleton } from "@/components/reports/report-card-skeleton";
+import {
+  ClassificationFilterPills,
+  ConsumableClassificationBadge,
+} from "@/components/reports/consumable-classification-badge";
 import { cn } from "@/lib/utils";
 
-const TYPE_OPTIONS = [
-  { label: "All Types", value: "all" },
-  { label: "Consumables", value: "consumable" },
+const CLASSIFICATION_OPTIONS = [
+  { label: "Consumable Supplies", value: "supply" },
+  { label: "Consumable Materials", value: "material" },
   { label: "Capital Assets", value: "asset" },
 ];
+
+const STATUS_OPTIONS = [
+  { label: "Pending Approval", value: "pending_approval" },
+  { label: "Approved", value: "approved" },
+  { label: "Ordered", value: "ordered" },
+  { label: "Delivered", value: "delivered" },
+  { label: "Cancelled", value: "cancelled" },
+];
+
+function renderPoStatusBadge(status: string) {
+  const s = status.trim().toLowerCase();
+  if (s === "delivered" || s === "received") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 px-2 py-0.5 text-[10px] font-bold capitalize">
+        <CheckCircle2 className="h-3 w-3" />
+        <span>{status.replace(/_/g, " ")}</span>
+      </span>
+    );
+  }
+  if (s === "cancelled" || s === "rejected") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 border border-rose-200 dark:border-rose-800 px-2 py-0.5 text-[10px] font-bold capitalize">
+        <AlertCircle className="h-3 w-3" />
+        <span>{status.replace(/_/g, " ")}</span>
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 text-amber-800 dark:text-amber-300 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold capitalize">
+      <Clock className="h-3 w-3" />
+      <span>{status.replace(/_/g, " ")}</span>
+    </span>
+  );
+}
 
 export default function PurchaseOrdersReportPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
@@ -45,7 +82,8 @@ export default function PurchaseOrdersReportPage() {
     page: 1,
     pageSize: 20,
     search: "",
-    category: "",
+    classification: "",
+    status: "",
   });
 
   const effectiveFilters = useMemo<BaseReportFilters>(
@@ -93,7 +131,12 @@ export default function PurchaseOrdersReportPage() {
       .map((po) => ({
         id: po.poNumber,
         title: po.poNumber,
-        tag: po.itemType,
+        tag:
+          po.itemType === "asset"
+            ? "Asset"
+            : po.classification === "material"
+            ? "Material"
+            : "Supply",
         subtitle: `${po.supplierName} · ${
           po.itemsPreview || `${po.totalQuantity} items`
         }`,
@@ -120,7 +163,8 @@ export default function PurchaseOrdersReportPage() {
       page: 1,
       pageSize: 20,
       search: "",
-      category: "",
+      classification: "",
+      status: "",
     });
   };
 
@@ -129,7 +173,7 @@ export default function PurchaseOrdersReportPage() {
       key: "poNumber",
       header: "PO / Lot Code",
       render: (row) => (
-        <span className="font-mono font-bold text-text hover:text-accent transition-colors">
+        <span className="font-mono font-bold text-text hover:text-primary transition-colors">
           {row.poNumber}
         </span>
       ),
@@ -143,11 +187,14 @@ export default function PurchaseOrdersReportPage() {
     },
     {
       key: "itemType",
-      header: "Type",
+      header: "Class / Type",
       render: (row) => (
-        <span className="rounded-full bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-bold text-text capitalize">
-          {row.itemType}
-        </span>
+        <ConsumableClassificationBadge
+          classification={
+            row.itemType === "asset" ? "asset" : row.classification || "supply"
+          }
+          compact
+        />
       ),
     },
     {
@@ -192,12 +239,7 @@ export default function PurchaseOrdersReportPage() {
       key: "status",
       header: "Status",
       align: "center",
-      render: (row) => (
-        <span className="inline-flex items-center gap-1 rounded-full bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 px-2 py-0.5 text-[10px] font-bold capitalize">
-          <CheckCircle2 className="h-3 w-3" />
-          <span>{row.status}</span>
-        </span>
-      ),
+      render: (row) => renderPoStatusBadge(row.status),
     },
   ];
 
@@ -214,19 +256,19 @@ export default function PurchaseOrdersReportPage() {
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-12 sm:top-11.5 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl font-bold tracking-tight text-text">
                 Purchase Orders &amp; Receipts Report
               </h1>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
-                Procurement Audit
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
+                Supplies, Materials &amp; Assets
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-1">
-              Procurement expenditure audit, vendor spend distributions, and order fulfillment.
+              Procurement expenditure audit separated across Supplies, Materials, and Capital Assets.
             </p>
           </div>
 
@@ -249,13 +291,17 @@ export default function PurchaseOrdersReportPage() {
               ? `₱${(summary?.totalSpend || 0).toLocaleString()}`
               : "Restricted"
           }
-          subtitle="Cumulative historical receipts"
+          subtitle={
+            canViewCosts
+              ? `₱${(summary?.suppliesSpend ?? 0).toLocaleString()} Sup · ₱${(summary?.materialsSpend ?? 0).toLocaleString()} Mat`
+              : `${summary?.suppliesOrdersCount ?? 0} Supplies · ${summary?.materialsOrdersCount ?? 0} Materials`
+          }
           icon={DollarSign}
           tone="indigo"
           toneValue={true}
           loading={isLoading}
           tooltipAlign="left"
-          tooltip="The total money spent on all orders delivered to the school so far."
+          tooltip="Total non-cancelled procurement expenditure separated across Supplies, Materials, and Capital Assets."
         />
 
         <KpiCard
@@ -363,15 +409,33 @@ export default function PurchaseOrdersReportPage() {
           filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
-          categories={TYPE_OPTIONS}
+          classifications={CLASSIFICATION_OPTIONS}
+          statuses={STATUS_OPTIONS}
           searchPlaceholder="Search PO number, supplier, item name…"
         />
       </div>
 
-      {/* ── View Switcher Header ────────────────────────────────────────── */}
+      {/* ── Classification Switcher & View Switcher Header ──────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
-        <div className="text-xs text-text-secondary font-medium">
-          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> purchase orders
+        <div className="flex flex-wrap items-center gap-3">
+          <ClassificationFilterPills
+            value={effectiveFilters.classification || "all"}
+            onChange={(next) =>
+              handleFilterChange({
+                classification: next === "all" ? "" : next,
+                page: 1,
+              })
+            }
+            options={[
+              { id: "all", label: "All Orders" },
+              { id: "supply", label: "Supplies", count: summary?.suppliesOrdersCount },
+              { id: "material", label: "Materials", count: summary?.materialsOrdersCount },
+              { id: "asset", label: "Capital Assets" },
+            ]}
+          />
+          <span className="text-xs text-text-secondary font-medium">
+            Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> purchase orders
+          </span>
         </div>
         <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
           <button
@@ -414,6 +478,7 @@ export default function PurchaseOrdersReportPage() {
           totalPages={data?.totalPages || 1}
           isLoading={isLoading}
           onPageChange={(page) => handleFilterChange({ page })}
+          onEmptyAction={handleReset}
         />
       ) : (
         <div className="space-y-4">
@@ -430,36 +495,43 @@ export default function PurchaseOrdersReportPage() {
               <p className="text-xs text-text-secondary mt-1">
                 Try adjusting your search criteria or filter selections.
               </p>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="mt-4 inline-flex items-center justify-center rounded-xl border border-border bg-bg-subtle px-4 min-h-11 sm:min-h-9 text-xs font-semibold text-text hover:bg-border/50 transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {data.data.map((row) => (
                 <div
                   key={row.poNumber}
-                  className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-accent/40 hover:shadow-md transition-all relative"
+                  className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-primary/40 hover:shadow-md transition-all relative"
                 >
                   <div>
                     {/* Top Bar: PO Code & Status */}
                     <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-accent transition-colors">
+                      <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-primary transition-colors">
                         <span>{row.poNumber}</span>
                       </div>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30 px-2 py-0.5 text-[10px] font-bold capitalize">
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>{row.status}</span>
-                      </span>
+                      {renderPoStatusBadge(row.status)}
                     </div>
 
                     {/* Supplier Name */}
-                    <h4 className="text-sm font-bold text-text group-hover:text-accent transition-colors line-clamp-1">
+                    <h4 className="text-sm font-bold text-text group-hover:text-primary transition-colors line-clamp-1">
                       {row.supplierName}
                     </h4>
 
                     {/* Item Type & Items Preview */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      <span className="inline-flex rounded-md bg-bg-subtle border border-border/60 px-2 py-0.5 text-[10px] font-semibold text-text capitalize">
-                        {row.itemType}
-                      </span>
+                      <ConsumableClassificationBadge
+                        classification={
+                          row.itemType === "asset" ? "asset" : row.classification || "supply"
+                        }
+                        compact
+                      />
                     </div>
                     {row.itemsPreview && (
                       <p className="text-xs text-text-secondary mt-2 line-clamp-2">
@@ -506,12 +578,12 @@ export default function PurchaseOrdersReportPage() {
               <span className="text-xs text-text-secondary">
                 Page {data.page} of {data.totalPages} ({data.total} total)
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   disabled={data.page <= 1}
                   onClick={() => handleFilterChange({ page: data.page - 1 })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-3 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span>Prev</span>
@@ -520,7 +592,7 @@ export default function PurchaseOrdersReportPage() {
                   type="button"
                   disabled={data.page >= data.totalPages}
                   onClick={() => handleFilterChange({ page: data.page + 1 })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-3 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
                 >
                   <span>Next</span>
                   <ChevronRight className="h-3.5 w-3.5" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Printer,
   Copy,
@@ -40,6 +40,8 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
 import type { ProjectReportRow } from "@/types/reports";
 import { IndividualProjectPrintableReport } from "@/components/reports/print/individual/IndividualProjectPrintableReport";
+import { ConsumedItemsLedger } from "@/components/reports/consumed-items-ledger";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 interface ProjectDetailDialogProps {
   project: ProjectReportRow | null;
@@ -59,9 +61,9 @@ export function ProjectDetailDialog({
 }: ProjectDetailDialogProps) {
   const [copied, setCopied] = useState(false);
   const [assetSearch, setAssetSearch] = useState("");
-  const [supplySearch, setSupplySearch] = useState("");
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [cachedProject, setCachedProject] = useState<ProjectReportRow | null>(
     project,
   );
@@ -89,16 +91,7 @@ export function ProjectDetailDialog({
     }, 200);
   }, [isClosing, onClose]);
 
-  // Close on Escape key press with smooth exit
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen && !isClosing) {
-        handleInitiateClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isClosing, handleInitiateClose]);
+  useFocusTrap(isRendered && !isClosing, dialogRef, handleInitiateClose);
 
   const effectiveProject = isOpen ? project : cachedProject;
 
@@ -196,25 +189,7 @@ export function ProjectDetailDialog({
     0,
   );
 
-  // Itemized supplies filtering
   const consumedSupplies = effectiveProject.consumedSupplies || [];
-  const filteredSupplies = consumedSupplies.filter(
-    (s) =>
-      s.itemCode.toLowerCase().includes(supplySearch.toLowerCase()) ||
-      s.name.toLowerCase().includes(supplySearch.toLowerCase()) ||
-      (s.category &&
-        s.category.toLowerCase().includes(supplySearch.toLowerCase())),
-  );
-
-  // Top 5 consumed items by total cost
-  const topSuppliesChartData = [...consumedSupplies]
-    .sort((a, b) => (b.totalCost || 0) - (a.totalCost || 0))
-    .slice(0, 5)
-    .map((s) => ({
-      name: s.name.length > 20 ? `${s.name.slice(0, 20)}…` : s.name,
-      cost: s.totalCost || 0,
-      qty: s.quantity,
-    }));
 
   return (
     <>
@@ -233,11 +208,13 @@ export function ProjectDetailDialog({
 
         {/* ── Centered Modal Dialog (Wider & Single-View) ───────────────── */}
         <div
+          ref={dialogRef}
+          tabIndex={-1}
           role="dialog"
           aria-modal="true"
           aria-labelledby="project-dialog-title"
           className={cn(
-            "relative z-10 w-full sm:w-[88vw] max-w-6xl h-[85vh] bg-card rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden transform-gpu transition-all duration-200 ease-out will-change-transform",
+            "relative z-10 w-full sm:w-[88vw] max-w-6xl h-[85vh] bg-card rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden transform-gpu transition-all duration-200 ease-out will-change-transform outline-none",
             isClosing
               ? "scale-95 opacity-0"
               : "animate-in fade-in zoom-in-95 duration-200 scale-100 opacity-100",
@@ -275,9 +252,11 @@ export function ProjectDetailDialog({
 
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 onClick={handleCopyCode}
                 title="Copy project code"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+                aria-label="Copy project code"
+                className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
               >
                 {copied ? (
                   <Check className="h-4 w-4 text-emerald-600" />
@@ -286,11 +265,22 @@ export function ProjectDetailDialog({
                 )}
               </button>
               <button
+                type="button"
                 onClick={handlePrint}
                 title="Print project report"
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+                aria-label="Print project report"
+                className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
               >
                 <Printer className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleInitiateClose}
+                title="Close dialog (Esc)"
+                aria-label="Close project dialog"
+                className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -755,9 +745,11 @@ export function ProjectDetailDialog({
                             key={asset.id}
                             className="hover:bg-bg-subtle/50 transition-colors"
                           >
-                            <td className="px-4 py-3 font-mono font-bold text-text flex items-center gap-1.5">
-                              <QrCode className="h-3.5 w-3.5 text-accent" />
-                              {asset.assetCode}
+                            <td className="px-4 py-3 font-mono font-bold text-text">
+                              <div className="flex items-center gap-1.5">
+                                <QrCode className="h-3.5 w-3.5 text-primary dark:text-blue-300 shrink-0" />
+                                <span>{asset.assetCode}</span>
+                              </div>
                             </td>
                             <td className="px-4 py-3">
                               <div className="font-semibold text-text">
@@ -800,213 +792,14 @@ export function ProjectDetailDialog({
 
             <hr className="border-border/70" />
 
-            {/* ════ SECTION 3: CONSUMABLE STOCKS DISPATCHED ════════════════ */}
-            <section id="sec-project-supplies" className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600">
-                      <Layers className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-text">
-                        Consumable Stocks Ledger
-                      </h3>
-                      <p className="text-xs text-text-secondary">
-                        Itemized warehouse materials and supplies issued to{" "}
-                        {effectiveProject.projectCode}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="relative w-48 sm:w-64">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
-                    <input
-                      type="text"
-                      placeholder="Search supplies by SKU, name, category..."
-                      value={supplySearch}
-                      onChange={(e) => setSupplySearch(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-card text-text placeholder:text-text-secondary focus:outline-none focus:ring-1 focus:ring-accent"
-                    />
-                  </div>
-                  {canViewCosts &&
-                    effectiveProject.consumablesValue != null && (
-                      <span className="font-mono text-xs font-bold text-accent bg-accent/10 px-2.5 py-1 rounded-md border border-accent/20 shrink-0">
-                        ₱{effectiveProject.consumablesValue.toLocaleString()}
-                      </span>
-                    )}
-                </div>
-              </div>
-
-              {/* Top Consumed Supplies Mini Chart (if multiple items with costs exist) */}
-              {canViewCosts &&
-                topSuppliesChartData.length > 0 &&
-                topSuppliesChartData.some((d) => d.cost > 0) && (
-                  <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-2xs">
-                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/60">
-                      <div className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4 text-accent" />
-                        <span className="text-xs font-bold text-text">
-                          Top Material Expenses
-                        </span>
-                      </div>
-                      <span className="text-[10px] text-text-secondary">
-                        By total cost incurred
-                      </span>
-                    </div>
-                    <div className="h-40 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={topSuppliesChartData}
-                          margin={{ top: 10, right: 15, left: -15, bottom: 5 }}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke="#E5E7EB"
-                            vertical={false}
-                          />
-                          <XAxis
-                            dataKey="name"
-                            tickLine={false}
-                            axisLine={false}
-                            tick={{
-                              fontSize: 10,
-                              fill: "#5A5F73",
-                              fontWeight: 600,
-                            }}
-                          />
-                          <YAxis
-                            tickLine={false}
-                            axisLine={false}
-                            tick={{
-                              fontSize: 10,
-                              fill: "#5A5F73",
-                              fontFamily: "monospace",
-                            }}
-                            tickFormatter={(v) => `₱${v}`}
-                          />
-                          <Tooltip
-                            cursor={false}
-                            formatter={(val: unknown) => [
-                              `₱${Number(val || 0).toLocaleString()}`,
-                              "Expense",
-                            ]}
-                            contentStyle={{
-                              backgroundColor: "var(--card, #ffffff)",
-                              borderRadius: "10px",
-                              border: "1px solid var(--border, #E5E7EB)",
-                              fontSize: "11px",
-                              fontWeight: 600,
-                            }}
-                          />
-                          <Bar
-                            dataKey="cost"
-                            fill="#FF4E45"
-                            radius={[4, 4, 0, 0]}
-                            cursor="pointer"
-                            activeBar={{ opacity: 0.82 }}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-              {/* Itemized Consumables Table */}
-              {consumedSupplies.length === 0 ? (
-                <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-border">
-                  <Layers className="h-10 w-10 text-text-secondary/40 mb-2" />
-                  <div className="text-sm font-bold text-text">
-                    No Consumables Consumed
-                  </div>
-                  <p className="text-xs text-text-secondary max-w-sm mt-1">
-                    No warehouse materials or supplies have been issued to this
-                    project.
-                  </p>
-                </div>
-              ) : filteredSupplies.length === 0 ? (
-                <div className="py-8 text-center text-xs text-text-secondary border border-dashed border-border rounded-xl">
-                  No consumable items matching &ldquo;{supplySearch}&rdquo;.
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-border/80 bg-card overflow-hidden shadow-2xs">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="border-b border-border/80 bg-bg-subtle/80 text-[10px] font-bold uppercase tracking-wider text-text-secondary">
-                        <tr>
-                          <th className="px-4 py-3">SKU Code</th>
-                          <th className="px-4 py-3">Consumable Item</th>
-                          <th className="px-4 py-3 text-right">Quantity</th>
-                          {canViewCosts && (
-                            <th className="px-4 py-3 text-right">Unit Cost</th>
-                          )}
-                          {canViewCosts && (
-                            <th className="px-4 py-3 text-right">Total Cost</th>
-                          )}
-                          <th className="px-4 py-3">Date / Details</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60">
-                        {filteredSupplies.map((item) => (
-                          <tr
-                            key={item.id}
-                            className="hover:bg-bg-subtle/50 transition-colors"
-                          >
-                            <td className="px-4 py-3 font-mono font-bold text-text">
-                              {item.itemCode}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="font-semibold text-text">
-                                {item.name}
-                              </div>
-                              {item.category && (
-                                <div className="text-[10px] text-text-secondary capitalize">
-                                  {item.category.replace(/_/g, " ")}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-text">
-                              {item.quantity.toLocaleString()}{" "}
-                              <span className="font-normal text-text-secondary text-[11px]">
-                                {item.unit}
-                              </span>
-                            </td>
-                            {canViewCosts && (
-                              <td className="px-4 py-3 text-right font-mono text-text-secondary">
-                                {item.unitCost != null
-                                  ? `₱${item.unitCost.toLocaleString()}`
-                                  : "—"}
-                              </td>
-                            )}
-                            {canViewCosts && (
-                              <td className="px-4 py-3 text-right font-mono font-bold text-text">
-                                {item.totalCost != null
-                                  ? `₱${item.totalCost.toLocaleString()}`
-                                  : "—"}
-                              </td>
-                            )}
-                            <td className="px-4 py-3 text-[11px] text-text-secondary">
-                              {item.incurredOn && (
-                                <div className="font-mono">
-                                  {item.incurredOn}
-                                </div>
-                              )}
-                              {item.purpose && (
-                                <div className="truncate max-w-xs italic">
-                                  &ldquo;{item.purpose}&rdquo;
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </section>
+            {/* ════ SECTION 3: CONSUMABLE SUPPLIES & MATERIALS LEDGER ════ */}
+            <ConsumedItemsLedger
+              sectionId="sec-project-supplies"
+              scopeLabel={effectiveProject.projectCode}
+              items={consumedSupplies}
+              canViewCosts={canViewCosts}
+              totalValueOverride={effectiveProject.consumablesValue}
+            />
 
             <hr className="border-border/70" />
 
@@ -1112,7 +905,7 @@ export function ProjectDetailDialog({
         </div>
       </div>
 
-      <div className="hidden print:block">
+      <div className="hidden print:block print:w-full">
         <IndividualProjectPrintableReport
           project={effectiveProject}
           canViewCosts={canViewCosts}

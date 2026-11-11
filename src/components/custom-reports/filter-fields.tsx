@@ -60,7 +60,7 @@ function selectedForField(
 
 export function CustomReportFilterFields({ meta, filters, onChange }: FilterFieldsProps) {
   const { data: catalog, isLoading } = useCustomReportFilterOptionsQuery();
-  const fields = meta?.filterFields ?? [];
+  const fields = useMemo(() => meta?.filterFields ?? [], [meta?.filterFields]);
 
   const set = (patch: Partial<CustomReportFilters>) => onChange({ ...filters, ...patch });
 
@@ -71,13 +71,54 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
     const next = current.includes(id)
       ? current.filter((x) => x !== id)
       : [...current, id];
-    set({ [filterKey]: next.length ? next : undefined });
+    set({ [filterKey]: next });
   };
 
   const multiFields = useMemo(
     () => fields.filter((f) => f.control === "multi"),
     [fields]
   );
+  const activeMultiKeys = useMemo(() => {
+    const keys = new Set<keyof CustomReportFilters>([
+      "departmentIds",
+      "departmentNames",
+      "projectIds",
+      "categories",
+      "classifications",
+      "categoryClasses",
+      "statuses",
+      "assignmentTypes",
+      "itemTypes",
+      "requestTypes",
+      "assetIds",
+      "consumableIds",
+      "conditions",
+      "reasons",
+      "directions",
+    ]);
+    for (const f of multiFields) {
+      if (f.filterKey) keys.add(f.filterKey);
+    }
+    return [...keys];
+  }, [multiFields]);
+
+  const hasSelectedMultiFilters = activeMultiKeys.some((key) => {
+    const val = filters[key];
+    return Array.isArray(val) && val.length > 0;
+  });
+
+  const handleClearMultiFilters = () => {
+    const cleared: Partial<CustomReportFilters> = {};
+    for (const key of activeMultiKeys) {
+      (cleared as Record<string, unknown>)[key] = [];
+    }
+    onChange({
+      ...cleared,
+      search: filters.search,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    });
+  };
   const hasSearch = fields.some((f) => f.control === "search");
   const hasDateRange = fields.some((f) => f.control === "dateRange");
 
@@ -94,7 +135,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
             <input
               className={inputClass}
               value={filters.search ?? ""}
-              onChange={(e) => set({ search: e.target.value || undefined })}
+              onChange={(e) => set({ search: e.target.value })}
               placeholder="Code, name…"
             />
           </label>
@@ -134,7 +175,7 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
               type="date"
               className={inputClass}
               value={filters.startDate ?? ""}
-              onChange={(e) => set({ startDate: e.target.value || undefined })}
+              onChange={(e) => set({ startDate: e.target.value })}
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-text-secondary">
@@ -143,27 +184,17 @@ export function CustomReportFilterFields({ meta, filters, onChange }: FilterFiel
               type="date"
               className={inputClass}
               value={filters.endDate ?? ""}
-              onChange={(e) => set({ endDate: e.target.value || undefined })}
+              onChange={(e) => set({ endDate: e.target.value })}
             />
           </label>
         </div>
       )}
 
-      {(filters.departmentIds?.length ||
-        filters.categories?.length ||
-        filters.assetIds?.length ||
-        filters.projectIds?.length ||
-        filters.statuses?.length) && (
+      {hasSelectedMultiFilters && (
         <button
           type="button"
-          className="self-start text-xs text-text-secondary underline hover:text-text"
-          onClick={() =>
-            onChange({
-              search: filters.search,
-              startDate: filters.startDate,
-              endDate: filters.endDate,
-            })
-          }
+          className="self-start text-xs text-text-secondary underline hover:text-text cursor-pointer"
+          onClick={handleClearMultiFilters}
         >
           Clear selected filters
         </button>

@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useMemo } from "react";
 import {
   Package,
-  Layers,
+  HardHat,
   ShoppingCart,
-  ClipboardList,
   Wrench,
   ArrowRight,
   ShieldCheck,
@@ -39,7 +38,6 @@ export default function ExecutiveReportsPage() {
   const assets = data?.assets;
   const consumables = data?.consumables;
   const procurement = data?.procurement;
-  const requests = data?.requests;
   const maintenance = data?.maintenance;
   const projects = projectReportData?.summary;
   const departments = departmentReportData?.summary;
@@ -56,19 +54,19 @@ export default function ExecutiveReportsPage() {
       {/* ── Screen Dashboard View (Hidden during browser print) ──────── */}
       <div className="flex flex-col gap-3 w-full print:hidden">
         {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-        <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
+        <div className="sticky top-12 sm:top-11.5 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
           <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="text-xl font-bold tracking-tight text-text">
                   Reports &amp; Analytics
                 </h1>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/25">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-primary/10 text-primary dark:text-blue-300 border border-primary/25 dark:border-blue-400/30">
                   Live Institutional Rollup
                 </span>
               </div>
               <p className="text-xs text-text-secondary mt-0.5">
-                Cross-domain metrics, inventory valuation, procurement spend trends, and SLA turnaround.
+                Cross-domain metrics, Supplies &amp; Materials valuation, procurement spend trends, and SLA turnaround.
               </p>
             </div>
 
@@ -79,7 +77,7 @@ export default function ExecutiveReportsPage() {
         </div>
 
         {/* ── Top Domain KPI Row with Report Links ──────────────────────── */}
-        <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 -mt-1.5">
+        <StatCardGrid className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 -mt-1.5">
           <KpiCard
             title="Asset Valuation"
             sublabel="CAPITAL // ASSETS"
@@ -105,31 +103,63 @@ export default function ExecutiveReportsPage() {
           />
 
           <KpiCard
-            title="Consumables Stock"
+            title="Consumable Supplies"
             sublabel="INVENTORY // SUPPLIES"
             value={
               isLoading
                 ? "…"
                 : canViewCosts
-                ? `₱${(consumables?.totalValuation || 0).toLocaleString()}`
-                : `${consumables?.totalItems || 0} items`
+                ? `₱${(consumables?.suppliesValuation ?? 0).toLocaleString()}`
+                : `${consumables?.suppliesCount ?? 0} SKUs`
             }
             subtitle={
-              consumables?.lowStockCount
-                ? `${consumables.lowStockCount} items running low`
-                : "All supplies in good stock"
+              (consumables?.suppliesLowStockCount ?? 0) > 0
+                ? `${consumables?.suppliesLowStockCount} of ${consumables?.suppliesCount ?? 0} SKUs low`
+                : `${consumables?.suppliesCount ?? 0} SKUs in optimal stock`
             }
-            icon={Layers}
-            tone={consumables?.lowStockCount ? "amber" : "emerald"}
+            icon={Package}
+            tone={(consumables?.suppliesLowStockCount ?? 0) > 0 ? "amber" : "emerald"}
             toneValue={true}
             delta={{
-              value: consumables?.lowStockCount ? `${consumables.lowStockCount} low` : "Optimal",
-              isPositive: !consumables?.lowStockCount,
+              value: (consumables?.suppliesLowStockCount ?? 0) > 0
+                ? `${consumables?.suppliesLowStockCount} low`
+                : "Optimal",
+              isPositive: !(consumables?.suppliesLowStockCount ?? 0),
             }}
             loading={isLoading}
-            href="/reports/consumables"
+            href="/reports/consumables?classification=supply"
             tooltipAlign="left"
-            tooltip="The total value of everyday supplies (like paper, ink, and cleaning materials) currently stored in school stockrooms."
+            tooltip="General storeroom supplies (paper, ink, toiletries, office & medical items) kept for campus distribution."
+          />
+
+          <KpiCard
+            title="Consumable Materials"
+            sublabel="INVENTORY // MATERIALS"
+            value={
+              isLoading
+                ? "…"
+                : canViewCosts
+                ? `₱${(consumables?.materialsValuation ?? 0).toLocaleString()}`
+                : `${consumables?.materialsCount ?? 0} SKUs`
+            }
+            subtitle={
+              (consumables?.materialsLowStockCount ?? 0) > 0
+                ? `${consumables?.materialsLowStockCount} of ${consumables?.materialsCount ?? 0} SKUs low`
+                : `${consumables?.materialsCount ?? 0} SKUs in optimal stock`
+            }
+            icon={HardHat}
+            tone={(consumables?.materialsLowStockCount ?? 0) > 0 ? "rose" : "amber"}
+            toneValue={true}
+            delta={{
+              value: (consumables?.materialsLowStockCount ?? 0) > 0
+                ? `${consumables?.materialsLowStockCount} low`
+                : "Optimal",
+              isPositive: !(consumables?.materialsLowStockCount ?? 0),
+            }}
+            loading={isLoading}
+            href="/reports/consumables?classification=material"
+            tooltipAlign="center"
+            tooltip="Construction, trade, and project materials (lumber, wiring, plumbing, paint, fabrication stock) tracked independently from office supplies."
           />
 
           <KpiCard
@@ -142,7 +172,7 @@ export default function ExecutiveReportsPage() {
                 ? `₱${(procurement?.totalSpend30d || 0).toLocaleString()}`
                 : `${procurement?.openOrdersCount || 0} orders`
             }
-            subtitle={`${procurement?.openOrdersCount || 0} open orders pending`}
+            subtitle={`${procurement?.openOrdersCount || 0} open POs · ${procurement?.pendingDeliveryCount || 0} pending delivery`}
             icon={ShoppingCart}
             tone="indigo"
             toneValue={true}
@@ -153,25 +183,7 @@ export default function ExecutiveReportsPage() {
             loading={isLoading}
             href="/reports/purchase-orders"
             tooltipAlign="center"
-            tooltip="The total money spent on buying new supplies and equipment over the past 30 days."
-          />
-
-          <KpiCard
-            title="Supply Requests"
-            sublabel="LOGISTICS // REQUESTS"
-            value={isLoading ? "…" : requests?.pendingCount ?? 0}
-            subtitle={`${requests?.fulfilledThisMonth || 0} fulfilled this month`}
-            icon={ClipboardList}
-            tone="accent"
-            toneValue={true}
-            delta={{
-              value: (requests?.pendingCount ?? 0) > 0 ? `${requests?.pendingCount} open` : "Clear",
-              isPositive: (requests?.pendingCount ?? 0) === 0,
-            }}
-            loading={isLoading}
-            href="/reports/requests"
-            tooltipAlign="right"
-            tooltip="Supplies requested by school staff and teachers that are waiting to be checked or given out."
+            tooltip="The total money spent buying Supplies, Materials, and Capital Equipment over the past 30 days."
           />
 
           <KpiCard
@@ -207,7 +219,7 @@ export default function ExecutiveReportsPage() {
                     Operational Domain Status Matrix
                   </h2>
                   <p className="text-[11px] text-text-secondary">
-                    Consolidated audit ledger of institutional assets, supplies, procurement, requisitions, and maintenance.
+                    Consolidated audit ledger of institutional assets, Supplies, Materials, procurement, and maintenance.
                   </p>
                 </div>
               </div>
@@ -280,50 +292,50 @@ export default function ExecutiveReportsPage() {
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <Link
                         href="/reports/assets"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
                       >
                         View Assets <ArrowRight className="h-3 w-3" />
                       </Link>
                     </td>
                   </tr>
 
-                  {/* Row 2: Consumable Supplies */}
+                  {/* Row 2A: Consumable Supplies */}
                   <tr className="hover:bg-bg-subtle/30 transition-colors">
                     <td className="py-3 px-4 sm:px-5">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600 dark:bg-teal-950/40 dark:text-teal-400">
-                          <Layers className="h-4 w-4" />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                          <Package className="h-4 w-4" />
                         </div>
                         <div>
-                          <div className="font-bold text-text">Consumable Supply Stores</div>
-                          <div className="text-[11px] text-text-secondary">Office, academic, &amp; medical inventory</div>
+                          <div className="font-bold text-text">Consumable Supplies</div>
+                          <div className="text-[11px] text-text-secondary">Office, stationery, ink, medical &amp; janitorial stores</div>
                         </div>
                       </div>
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
                       <span className="font-bold text-text">
-                        {isLoading ? "…" : (consumables?.totalItems || 0).toLocaleString()}
+                        {isLoading ? "…" : (consumables?.suppliesCount ?? 0).toLocaleString()}
                       </span>{" "}
                       <span className="text-[11px] text-text-secondary">SKUs</span>
-                      <div className="text-[10px] text-text-secondary">Active store catalog</div>
+                      <div className="text-[10px] text-text-secondary">Supply inventory</div>
                     </td>
                     <td className="py-3 px-3 font-mono font-bold whitespace-nowrap text-text">
                       {isLoading
                         ? "…"
                         : canViewCosts
-                        ? `₱${(consumables?.totalValuation || 0).toLocaleString()}`
+                        ? `₱${(consumables?.suppliesValuation ?? 0).toLocaleString()}`
                         : "—"}
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
-                      {consumables?.lowStockCount ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                      {(consumables?.suppliesLowStockCount ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                           <AlertTriangle className="h-3 w-3" />
-                          {consumables.lowStockCount} Below Threshold
+                          {consumables?.suppliesLowStockCount} Below Threshold
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                           <CheckCircle2 className="h-3 w-3" />
-                          Stock Levels Healthy
+                          Supplies Optimal
                         </span>
                       )}
                     </td>
@@ -331,15 +343,72 @@ export default function ExecutiveReportsPage() {
                       {isLoading
                         ? "…"
                         : canViewCosts
-                        ? `₱${(consumables?.monthBurnRateValue || 0).toLocaleString()} / 30d burn`
-                        : "Active inventory turnover"}
+                        ? `₱${(consumables?.suppliesBurnRateValue ?? 0).toLocaleString()} / 30d burn`
+                        : "Active supply turnover"}
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <Link
-                        href="/reports/consumables"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                        href="/reports/consumables?classification=supply"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
                       >
                         View Supplies <ArrowRight className="h-3 w-3" />
+                      </Link>
+                    </td>
+                  </tr>
+
+                  {/* Row 2B: Consumable Materials */}
+                  <tr className="hover:bg-bg-subtle/30 transition-colors">
+                    <td className="py-3 px-4 sm:px-5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-800 dark:text-amber-300 border border-amber-500/25">
+                          <HardHat className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-text">Consumable Materials</div>
+                          <div className="text-[11px] text-text-secondary">Construction, electrical, plumbing &amp; project hardware</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      <span className="font-bold text-text">
+                        {isLoading ? "…" : (consumables?.materialsCount ?? 0).toLocaleString()}
+                      </span>{" "}
+                      <span className="text-[11px] text-text-secondary">SKUs</span>
+                      <div className="text-[10px] text-text-secondary">Material inventory</div>
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold whitespace-nowrap text-text">
+                      {isLoading
+                        ? "…"
+                        : canViewCosts
+                        ? `₱${(consumables?.materialsValuation ?? 0).toLocaleString()}`
+                        : "—"}
+                    </td>
+                    <td className="py-3 px-3 whitespace-nowrap">
+                      {(consumables?.materialsLowStockCount ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                          <AlertTriangle className="h-3 w-3" />
+                          {consumables?.materialsLowStockCount} Below Threshold
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                          <CheckCircle2 className="h-3 w-3" />
+                          Materials Optimal
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-3 px-3 text-text-secondary whitespace-nowrap text-[11px]">
+                      {isLoading
+                        ? "…"
+                        : canViewCosts
+                        ? `₱${(consumables?.materialsBurnRateValue ?? 0).toLocaleString()} / 30d burn`
+                        : "Active material turnover"}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <Link
+                        href="/reports/consumables?classification=material"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
+                      >
+                        View Materials <ArrowRight className="h-3 w-3" />
                       </Link>
                     </td>
                   </tr>
@@ -348,12 +417,12 @@ export default function ExecutiveReportsPage() {
                   <tr className="hover:bg-bg-subtle/30 transition-colors">
                     <td className="py-3 px-4 sm:px-5">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
                           <ShoppingCart className="h-4 w-4" />
                         </div>
                         <div>
                           <div className="font-bold text-text">Procurement &amp; Purchase Orders</div>
-                          <div className="text-[11px] text-text-secondary">Vendor lots &amp; acquisition pipeline</div>
+                          <div className="text-[11px] text-text-secondary">Vendor lots across Supplies, Materials &amp; Assets</div>
                         </div>
                       </div>
                     </td>
@@ -372,7 +441,7 @@ export default function ExecutiveReportsPage() {
                         : "—"}
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300">
                         {isLoading ? "…" : `${procurement?.pendingDeliveryCount || 0} Pending Delivery`}
                       </span>
                     </td>
@@ -382,63 +451,14 @@ export default function ExecutiveReportsPage() {
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <Link
                         href="/reports/purchase-orders"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
                       >
                         View Orders <ArrowRight className="h-3 w-3" />
                       </Link>
                     </td>
                   </tr>
 
-                  {/* Row 4: Department Requisitions */}
-                  <tr className="hover:bg-bg-subtle/30 transition-colors">
-                    <td className="py-3 px-4 sm:px-5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
-                          <ClipboardList className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-text">Department Requisitions</div>
-                          <div className="text-[11px] text-text-secondary">Supply requests &amp; institutional distribution</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="font-bold text-text">
-                        {isLoading ? "…" : requests?.fulfilledThisMonth || 0}
-                      </span>{" "}
-                      <span className="text-[11px] text-text-secondary">issued</span>
-                      <div className="text-[10px] text-text-secondary">Fulfilled this period</div>
-                    </td>
-                    <td className="py-3 px-3 font-mono whitespace-nowrap text-text-secondary">
-                      {isLoading ? "…" : `${requests?.pendingCount ?? 0} In Queue`}
-                    </td>
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      {(requests?.pendingCount ?? 0) > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
-                          <AlertTriangle className="h-3 w-3" />
-                          {requests?.pendingCount} Pending Action
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3" />
-                          Queue Clear
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-3 text-text-secondary whitespace-nowrap text-[11px]">
-                      {isLoading ? "…" : `${requests?.avgApprovalHours || 0}h avg turnaround`}
-                    </td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <Link
-                        href="/reports/requests"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
-                      >
-                        View Requests <ArrowRight className="h-3 w-3" />
-                      </Link>
-                    </td>
-                  </tr>
-
-                  {/* Row 5: Maintenance & Repairs */}
+                  {/* Row 4: Maintenance & Repairs */}
                   <tr className="hover:bg-bg-subtle/30 transition-colors">
                     <td className="py-3 px-4 sm:px-5">
                       <div className="flex items-center gap-2.5">
@@ -486,7 +506,7 @@ export default function ExecutiveReportsPage() {
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <Link
                         href="/reports/maintenance"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
                       >
                         View Logs <ArrowRight className="h-3 w-3" />
                       </Link>
@@ -497,12 +517,12 @@ export default function ExecutiveReportsPage() {
                   <tr className="hover:bg-bg-subtle/30 transition-colors">
                     <td className="py-3 px-4 sm:px-5">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-950/40 dark:text-purple-400">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
                           <FolderKanban className="h-4 w-4" />
                         </div>
                         <div>
                           <div className="font-bold text-text">Institutional Projects</div>
-                          <div className="text-[11px] text-text-secondary">Capital ventures &amp; facility improvements</div>
+                          <div className="text-[11px] text-text-secondary">Capital ventures, Materials &amp; Supplies utilization</div>
                         </div>
                       </div>
                     </td>
@@ -526,18 +546,20 @@ export default function ExecutiveReportsPage() {
                       </div>
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300">
                         <CheckCircle2 className="h-3 w-3" />
                         {isProjectLoading ? "…" : `${projects?.activeProjects || 0} In Progress`}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-text-secondary whitespace-nowrap text-[11px]">
-                      {isProjectLoading ? "…" : `${projects?.totalConsumablesConsumed || 0} supplies consumed`}
+                      {isProjectLoading
+                        ? "…"
+                        : `${(projects?.totalSuppliesConsumed ?? 0).toLocaleString()} supplies · ${(projects?.totalMaterialsConsumed ?? 0).toLocaleString()} materials`}
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <Link
                         href="/reports/projects"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
                       >
                         View Projects <ArrowRight className="h-3 w-3" />
                       </Link>
@@ -548,7 +570,7 @@ export default function ExecutiveReportsPage() {
                   <tr className="hover:bg-bg-subtle/30 transition-colors">
                     <td className="py-3 px-4 sm:px-5">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300">
                           <Building2 className="h-4 w-4" />
                         </div>
                         <div>
@@ -574,23 +596,25 @@ export default function ExecutiveReportsPage() {
                         : "—"}
                       {canViewCosts && (departments?.totalConsumablesValue || 0) > 0 && (
                         <div className="text-[10px] text-text-secondary font-normal">
-                          ₱{(departments?.totalConsumablesValue || 0).toLocaleString()} supplies
+                          ₱{(departments?.totalSuppliesValue ?? 0).toLocaleString()} Sup · ₱{(departments?.totalMaterialsValue ?? 0).toLocaleString()} Mat
                         </div>
                       )}
                     </td>
                     <td className="py-3 px-3 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                         <CheckCircle2 className="h-3 w-3" />
                         {isDeptLoading ? "…" : departments?.mostActiveByAssets ? `Top: ${departments.mostActiveByAssets}` : "Audited Units"}
                       </span>
                     </td>
                     <td className="py-3 px-3 text-text-secondary whitespace-nowrap text-[11px]">
-                      {isDeptLoading ? "…" : `${departments?.totalConsumablesConsumed || 0} supplies issued`}
+                      {isDeptLoading
+                        ? "…"
+                        : `${(departments?.totalSuppliesConsumed ?? 0).toLocaleString()} supplies · ${(departments?.totalMaterialsConsumed ?? 0).toLocaleString()} materials`}
                     </td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <Link
                         href="/reports/departments"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-accent hover:underline"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-primary dark:text-blue-300 hover:underline"
                       >
                         View Units <ArrowRight className="h-3 w-3" />
                       </Link>
@@ -604,7 +628,7 @@ export default function ExecutiveReportsPage() {
           {/* ── Side-by-Side Tables: Category Valuation & 6-Month Spend Ledgers ── */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
             {/* Table 2: Category Valuation & Inventory Breakdown (col-span-6) */}
-            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col h-90">
+            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col">
               <div className="border-b border-border px-4 sm:px-5 py-3 bg-bg-subtle/40 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-text">
@@ -704,7 +728,7 @@ export default function ExecutiveReportsPage() {
             </div>
 
             {/* Table 3: 6-Month Institutional Spend Ledger (col-span-6) */}
-            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col h-90">
+            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col">
               <div className="border-b border-border px-4 sm:px-5 py-3 bg-bg-subtle/40 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="text-xs font-bold uppercase tracking-wider text-text">
@@ -763,7 +787,7 @@ export default function ExecutiveReportsPage() {
                                   <td className="py-2.5 px-3 text-right font-mono text-rose-600 dark:text-rose-400">
                                     {canViewCosts ? `₱${row.maintenance.toLocaleString()}` : "—"}
                                   </td>
-                                  <td className="py-2.5 px-4 text-right font-mono font-bold text-accent">
+                                  <td className="py-2.5 px-4 text-right font-mono font-bold text-primary dark:text-blue-300">
                                     {canViewCosts ? `₱${monthTotal.toLocaleString()}` : "—"}
                                   </td>
                                 </tr>
@@ -775,10 +799,10 @@ export default function ExecutiveReportsPage() {
                               <td className="py-2.5 px-3 text-right font-mono text-text">
                                 {canViewCosts ? `₱${totalProc.toLocaleString()}` : "—"}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-rose-600 dark:text-rose-400">
+                              <td className="py-2.5 px-3 text-right font-mono text-rose-700 dark:text-rose-400">
                                 {canViewCosts ? `₱${totalMaint.toLocaleString()}` : "—"}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-mono text-accent font-extrabold">
+                              <td className="py-2.5 px-4 text-right font-mono text-primary dark:text-blue-300 font-extrabold">
                                 {canViewCosts ? `₱${totalCombined.toLocaleString()}` : "—"}
                               </td>
                             </tr>

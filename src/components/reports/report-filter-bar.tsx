@@ -57,6 +57,7 @@ export function ReportFilterBar({
   const hasActiveFilters = Boolean(
     filters.search ||
       filters.category ||
+      filters.departmentId ||
       filters.classification ||
       filters.status ||
       filters.startDate ||
@@ -74,15 +75,17 @@ export function ReportFilterBar({
             value={localSearch}
             onChange={(e) => setLocalSearch(e.target.value)}
             placeholder={searchPlaceholder}
-            className="h-9 w-full rounded-xl border border-border bg-bg-subtle pl-9 pr-8 text-xs text-text placeholder:text-text-secondary focus:border-accent focus:bg-card focus:outline-hidden transition-colors"
+            className="min-h-11 sm:min-h-9 w-full rounded-xl border border-border bg-bg-subtle pl-9 pr-10 text-xs text-text placeholder:text-text-secondary focus:border-primary focus:bg-card focus:outline-hidden transition-colors"
           />
           {localSearch && (
             <button
+              type="button"
+              aria-label="Clear search"
               onClick={() => {
                 setLocalSearch("");
                 onFilterChange({ search: "", page: 1 });
               }}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 text-text-secondary hover:text-text cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -93,8 +96,9 @@ export function ReportFilterBar({
         <div className="flex items-center gap-2">
           {hasActiveFilters && (
             <button
+              type="button"
               onClick={onReset}
-              className="flex h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-text-secondary hover:bg-bg-subtle hover:text-text transition-colors cursor-pointer"
+              className="flex min-h-11 sm:min-h-9 items-center gap-1.5 rounded-xl border border-border bg-card px-3 text-xs font-semibold text-text-secondary hover:bg-bg-subtle hover:text-text transition-colors cursor-pointer"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               <span>Reset Filters</span>
@@ -112,7 +116,7 @@ export function ReportFilterBar({
             value={filters.category || ""}
             onChange={(e) => onFilterChange({ category: e.target.value || undefined, page: 1 })}
             aria-label="Filter by category"
-            className="h-8.5 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-accent focus:bg-card focus:outline-hidden cursor-pointer"
+            className="min-h-11 sm:min-h-9 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-primary focus:bg-card focus:outline-hidden cursor-pointer"
           >
             <option value="">All Categories</option>
             {categories.map((c) => (
@@ -129,7 +133,7 @@ export function ReportFilterBar({
             value={filters.departmentId || ""}
             onChange={(e) => onFilterChange({ departmentId: e.target.value || undefined, page: 1 })}
             aria-label="Filter by department"
-            className="h-8.5 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-accent focus:bg-card focus:outline-hidden cursor-pointer"
+            className="min-h-11 sm:min-h-9 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-primary focus:bg-card focus:outline-hidden cursor-pointer"
           >
             <option value="">All Departments</option>
             {departments.map((d) => (
@@ -146,7 +150,7 @@ export function ReportFilterBar({
             value={filters.classification || ""}
             onChange={(e) => onFilterChange({ classification: e.target.value || undefined, page: 1 })}
             aria-label="Filter by classification"
-            className="h-8.5 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-accent focus:bg-card focus:outline-hidden cursor-pointer"
+            className="min-h-11 sm:min-h-9 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-primary focus:bg-card focus:outline-hidden cursor-pointer"
           >
             <option value="">All Classifications</option>
             {classifications.map((c) => (
@@ -163,7 +167,7 @@ export function ReportFilterBar({
             value={filters.status || ""}
             onChange={(e) => onFilterChange({ status: e.target.value || undefined, page: 1 })}
             aria-label="Filter by status"
-            className="h-8.5 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-accent focus:bg-card focus:outline-hidden cursor-pointer"
+            className="min-h-11 sm:min-h-9 rounded-xl border border-border bg-bg-subtle px-3 text-xs font-medium text-text focus:border-primary focus:bg-card focus:outline-hidden cursor-pointer"
           >
             <option value="">All Statuses</option>
             {statuses.map((s) => (
@@ -189,9 +193,10 @@ export function ReportFilterBar({
               return (
                 <button
                   key={p.value}
+                  type="button"
                   onClick={() => handleDatePreset(p.value)}
                   className={cn(
-                    "rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
+                    "min-h-11 sm:min-h-8 rounded-lg px-2.5 py-1 text-[11px] font-bold transition-all cursor-pointer",
                     isActive
                       ? "bg-primary text-primary-foreground shadow-2xs"
                       : "bg-bg-subtle text-text-secondary hover:text-text hover:bg-border/60"
@@ -211,11 +216,14 @@ export function ReportFilterBar({
                 onChange={(e) => {
                   if (!e.target.value) return;
                   const [year, month] = e.target.value.split("-").map(Number);
-                  const firstDay = new Date(year, month - 1, 1).toISOString().split("T")[0];
-                  const lastDay = new Date(year, month, 0).toISOString().split("T")[0];
+                  if (!year || !month) return;
+                  const pad = (n: number) => String(n).padStart(2, "0");
+                  const lastDayNum = new Date(year, month, 0).getDate();
+                  const firstDay = `${year}-${pad(month)}-01`;
+                  const lastDay = `${year}-${pad(month)}-${pad(lastDayNum)}`;
                   onFilterChange({ startDate: firstDay, endDate: lastDay, page: 1 });
                 }}
-                className="h-7 px-1.5 text-[11px] rounded-md border border-border bg-bg-subtle text-text cursor-pointer"
+                className="min-h-11 sm:min-h-8 px-2 text-[11px] rounded-md border border-border bg-bg-subtle text-text cursor-pointer"
               />
             </div>
           </div>
