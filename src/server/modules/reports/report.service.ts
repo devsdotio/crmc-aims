@@ -1,4 +1,5 @@
 import { isAssetOperatorRole, type AppRole } from "@/server/shared/roles";
+import { toCsv } from "@/lib/csv";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { ReportRepository } from "./report.repository";
@@ -13,21 +14,6 @@ export type ReportAuditActor = {
   displayName: string;
   tenantId?: string;
 };
-
-function escapeCsvField(val: unknown): string {
-  if (val === null || val === undefined) return "";
-  const str = String(val);
-  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function toCsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]): string {
-  const headerLine = headers.map(escapeCsvField).join(",");
-  const rowLines = rows.map((r) => r.map(escapeCsvField).join(","));
-  return [headerLine, ...rowLines].join("\r\n");
-}
 
 export class ReportService {
   constructor(

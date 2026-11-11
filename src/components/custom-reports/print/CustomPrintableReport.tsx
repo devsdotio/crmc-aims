@@ -1,5 +1,6 @@
 "use client";
 
+import { sanitizeImgSrc } from "@/lib/html";
 import { summarizeCustomReportFilters, type CustomReportColumnDef } from "@/types/custom-reports";
 import {
   ensurePrintableLayout,
@@ -217,7 +218,10 @@ export function CustomPrintableReport({
 
       {blocks.map((block) => {
         if (block.type === "header") {
-          const logo = block.props?.logoUrl || data.logoUrl || DEFAULT_LOGO;
+          const logo = sanitizeImgSrc(
+            block.props?.logoUrl || data.logoUrl,
+            DEFAULT_LOGO
+          );
           const org = block.props?.orgName || data.organizationName || "Institution";
           const sub = block.props?.orgSubtitle || data.organizationSubtitle;
           return (

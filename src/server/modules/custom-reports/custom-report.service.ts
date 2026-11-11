@@ -1,4 +1,5 @@
 import { NotFoundError, ValidationError } from "@/server/shared/errors";
+import { toCsv } from "@/lib/csv";
 import {
   CUSTOM_REPORT_EXPORT_MAX_ROWS,
   CUSTOM_REPORT_PREVIEW_PAGE_SIZE,
@@ -22,22 +23,6 @@ import type {
   RunReportInput,
   UpdateTemplateInput,
 } from "./custom-report.validation";
-
-function escapeCsvField(val: unknown): string {
-  if (val === null || val === undefined) return "";
-  const s = String(val);
-  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function toCsv(
-  headers: string[],
-  rows: (string | number | boolean | null | undefined)[][],
-): string {
-  const headerLine = headers.map(escapeCsvField).join(",");
-  const rowLines = rows.map((r) => r.map(escapeCsvField).join(","));
-  return [headerLine, ...rowLines].join("\r\n");
-}
 
 function toIso(d: Date | string | null | undefined): string {
   if (!d) return "";

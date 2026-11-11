@@ -10,6 +10,7 @@ import {
   Minimize2,
 } from "lucide-react";
 
+import { escapeHtml } from "@/lib/html";
 import {
   CustomPrintableReport,
   type PaperSize,
@@ -111,7 +112,7 @@ export function CustomReportPrintPreviewDialog({
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>${templateName || payload.templateName || "Custom Report"}</title>
+  <title>${escapeHtml(templateName || payload.templateName || "Custom Report")}</title>
   ${styleTags}
   <style>
     @page {

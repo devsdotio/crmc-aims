@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       {
         status: "degraded",
         db: "error",
-        error: message.slice(0, 240),
+        error: "Database probe failed",
         timestamp: new Date().toISOString(),
       },
       { status: 503 }

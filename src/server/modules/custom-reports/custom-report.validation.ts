@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isSafeLogoUrl } from "@/lib/html";
 import { CUSTOM_REPORT_DATASETS } from "@/types/custom-reports";
 
 const layoutBlockSchema = z.object({
@@ -16,7 +17,14 @@ const layoutBlockSchema = z.object({
   ]),
   props: z
     .object({
-      logoUrl: z.string().optional(),
+      logoUrl: z
+        .string()
+        .trim()
+        .refine((v) => !v || isSafeLogoUrl(v), {
+          message:
+            "Logo URL must be a relative path (/...), safe PNG/JPEG/WebP data URI, or an allowed HTTPS origin.",
+        })
+        .optional(),
       orgName: z.string().optional(),
       orgSubtitle: z.string().optional(),
       title: z.string().optional(),
