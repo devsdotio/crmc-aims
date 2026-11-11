@@ -5,13 +5,22 @@ import {
   Boxes,
   Calendar,
   Package,
+  RefreshCw,
   Search,
   Tag,
+  Wrench,
+  X,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMeQuery } from "@/features/users/client";
 import { useBorrowerPortal } from "@/components/borrower-db/context";
 import type { BrowseConsumableItem } from "@/components/borrower-db/types";
+import {
+  useConsumableCatalogQuery,
+} from "@/features/consumables/client/use-consumables";
+import type { ConsumableItem } from "@/features/consumables/client/consumables-api";
+import { availableQty } from "@/components/consumables/utils";
 import {
   useStockMovementsQuery,
   type StockMovement,
@@ -33,51 +42,121 @@ function formatDisplayDate(iso?: string | null): string {
 
 function IssueCardSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-bg p-4 flex gap-3 animate-pulse h-full">
-      <div className="h-10 w-10 rounded-lg bg-border shrink-0" />
-      <div className="flex-1 space-y-2 min-w-0">
-        <div className="h-3.5 w-28 rounded bg-border" />
-        <div className="h-3 w-48 rounded bg-border" />
-        <div className="h-3 w-40 rounded bg-border" />
+    <div className="rounded-xl border border-border bg-bg p-4 flex flex-col gap-3 animate-pulse h-full min-h-[192px]">
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 rounded-lg bg-border shrink-0" />
+        <div className="flex-1 space-y-2 min-w-0">
+          <div className="h-4 w-36 rounded bg-border" />
+          <div className="h-3 w-24 rounded bg-border" />
+        </div>
+        <div className="h-5 w-16 rounded-full bg-border shrink-0" />
+      </div>
+      <div className="flex gap-1.5">
+        <div className="h-5 w-24 rounded-md bg-border" />
+        <div className="h-5 w-16 rounded-full bg-border" />
+      </div>
+      <div className="mt-auto pt-3 border-t border-border/60 flex items-end justify-between gap-3">
+        <div className="space-y-1.5">
+          <div className="h-3 w-28 rounded bg-border" />
+          <div className="h-3 w-20 rounded bg-border" />
+        </div>
+        <div className="h-11 sm:h-9 w-28 rounded-lg bg-border shrink-0" />
       </div>
     </div>
   );
 }
 
+function cleanMovementNotes(notes?: string | null): string | null {
+  if (!notes) return null;
+  const cleaned = notes
+    .replace(/\[VOIDED\]/gi, "")
+    .replace(/\[REVERSES:[0-9a-f-]{36}\]/gi, "")
+    .replace(/\s+/g, " ")
+    .replace(/^\.\s*|\s*\.$/g, "")
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 function IssuedItemCard({
   row,
   classification,
+  liveItem,
 }: {
   row: StockMovement;
   classification: ConsumableClassification;
+  liveItem?: ConsumableItem;
 }) {
   const { openWizard } = useBorrowerPortal();
-  const qtyLabel = `${row.direction === "out" ? "−" : "+"}${displayQty(row.qty)}${
-    row.unit ? ` ${row.unit}` : ""
-  }`;
-  const canRequestAgain = !row.voided && !row.isReversal && Boolean(row.consumableId);
+  const isMaterial = classification === "material";
+  const qtyLabel = `${displayQty(row.qty)}${row.unit ? ` ${row.unit}` : ""}`;
+  const isVoided = Boolean(row.voided);
+  const isIssued = row.direction === "out" && !row.isReversal && !isVoided;
+  const cleanNotes = cleanMovementNotes(row.notes);
+  const sourceLabel = row.requestCode
+    ? `Via ${row.requestCode}`
+    : row.requestId
+      ? "Via Request"
+      : "Direct Issue";
+
+  const liveFreeQty = liveItem
+    ? (liveItem.availableQty ?? availableQty(liveItem))
+    : undefined;
+  const isOutOfStock = liveFreeQty !== undefined && liveFreeQty <= 0;
+  const canRequestAgain =
+    !row.voided && !row.isReversal && Boolean(row.consumableId);
 
   const requestAgain = () => {
+    if (!canRequestAgain) return;
+    const freeQty = liveFreeQty ?? 1;
+    const status: BrowseConsumableItem["status"] = liveItem
+      ? freeQty <= 0
+        ? "out_of_stock"
+        : freeQty <= (liveItem.minThreshold ?? 0)
+          ? "low_stock"
+          : "available"
+      : "available";
+
     const item: BrowseConsumableItem = {
       type: "consumable",
-      id: row.consumableId,
-      name: row.itemName ?? "Consumable",
-      category: classification === "material" ? "Material" : "Supply",
-      classification,
-      status: "available",
-      itemCode: row.itemCode ?? "",
-      unit: row.unit ?? "unit",
-      currentQty: 1,
-      location: "",
+      id: liveItem?.id ?? row.consumableId,
+      name: liveItem?.name ?? row.itemName ?? "Consumable",
+      category:
+        liveItem?.category ?? (isMaterial ? "Material" : "Supply"),
+      classification: liveItem?.classification ?? classification,
+      status,
+      itemCode: liveItem?.itemCode ?? row.itemCode ?? "",
+      unit: liveItem?.unit ?? row.unit ?? "unit",
+      currentQty: freeQty,
+      location: liveItem?.location ?? "",
     };
-    openWizard([item], classification === "material" ? "material" : "supply");
+    openWizard([item], isMaterial ? "material" : "supply");
   };
 
   return (
-    <article className="rounded-xl border border-border bg-bg p-4 h-full flex flex-col gap-3 hover:border-primary/30 transition-colors">
+    <article
+      className={cn(
+        "rounded-xl border bg-bg p-4 h-full flex flex-col gap-3 transition-colors",
+        isVoided
+          ? "border-border/80 opacity-80"
+          : isMaterial
+            ? "border-border hover:border-teal-500/40"
+            : "border-border hover:border-emerald-500/40"
+      )}
+    >
       <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-lg shrink-0 border shadow-2xs bg-status-active-bg/15 text-status-active-text border-status-active-bg/30">
-          <Boxes className="h-4 w-4" strokeWidth={2.2} />
+        <span
+          className={cn(
+            "flex h-10 w-10 items-center justify-center rounded-lg shrink-0 border shadow-2xs",
+            isMaterial
+              ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25"
+              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+          )}
+        >
+          {isMaterial ? (
+            <Wrench className="h-4 w-4" strokeWidth={2.2} />
+          ) : (
+            <Boxes className="h-4 w-4" strokeWidth={2.2} />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-text truncate">
@@ -87,7 +166,14 @@ function IssuedItemCard({
             {row.itemCode ?? "—"}
           </p>
         </div>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-sky-500/10 text-sky-700 dark:text-sky-400 border-sky-500/25 shrink-0">
+        <span
+          className={cn(
+            "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide border shrink-0 tabular-nums",
+            isMaterial
+              ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25"
+              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+          )}
+        >
           {qtyLabel}
         </span>
       </div>
@@ -97,31 +183,65 @@ function IssuedItemCard({
           <Tag className="h-2.5 w-2.5" />
           {row.movementCode}
         </span>
-        {row.voided && (
+        <span
+          className={cn(
+            "inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border",
+            row.requestId
+              ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/25"
+              : "bg-bg-subtle text-text-secondary border-border"
+          )}
+        >
+          {sourceLabel}
+        </span>
+        {!isVoided ? (
+          <span
+            className={cn(
+              "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border",
+              isIssued
+                ? "bg-status-active-bg/15 text-status-active-text border-status-active-bg/30"
+                : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25"
+            )}
+          >
+            {row.isReversal ? "Reversal" : "Issued"}
+          </span>
+        ) : (
           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-status-outofservice-bg/15 text-status-outofservice-text border-status-outofservice-bg/30">
             Voided
           </span>
         )}
       </div>
 
-      <div className="mt-auto space-y-1 text-[11px] text-text-secondary">
-        <p className="inline-flex items-center gap-1">
-          <Calendar className="h-3 w-3 shrink-0" />
-          Issued {formatDisplayDate(row.createdAt)}
-        </p>
-        {row.actorName ? (
-          <p className="truncate">By {row.actorName}</p>
+      <div className="mt-auto pt-3 border-t border-border/60 flex items-end justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1 text-[11px] text-text-secondary">
+          <p className="inline-flex items-center gap-1">
+            <Calendar className="h-3 w-3 shrink-0" aria-hidden="true" />
+            Issued {formatDisplayDate(row.createdAt)}
+          </p>
+          {row.actorName ? (
+            <p className="truncate">By {row.actorName}</p>
+          ) : null}
+          {cleanNotes ? (
+            <p className="line-clamp-2 text-text-secondary/90 leading-snug" title={cleanNotes}>
+              {cleanNotes}
+            </p>
+          ) : null}
+          {canRequestAgain && isOutOfStock && (
+            <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300 leading-snug">
+              Out of stock — Admin will restock
+            </p>
+          )}
+        </div>
+        {canRequestAgain ? (
+          <button
+            type="button"
+            onClick={requestAgain}
+            className="ml-auto shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 min-h-11 sm:min-h-9 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity shadow-xs cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 whitespace-nowrap"
+          >
+            <RefreshCw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>Request again</span>
+          </button>
         ) : null}
       </div>
-      {canRequestAgain ? (
-        <button
-          type="button"
-          onClick={requestAgain}
-          className="self-start text-xs font-semibold text-accent hover:underline cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
-        >
-          Request again
-        </button>
-      ) : null}
     </article>
   );
 }
@@ -131,11 +251,12 @@ export function DepartmentIssuedConsumablesView({
 }: {
   classification: ConsumableClassification;
 }) {
+  const { openWizard } = useBorrowerPortal();
   const isSupply = classification === "supply";
   const title = isSupply ? "Issued Supplies" : "Issued Materials";
   const subtitle = isSupply
-    ? "Supplies already released to your department. Request again to ask for the same item."
-    : "Materials issued for projects and the department. Request again to ask for the same item.";
+    ? "Supplies released to your department. Request again to ask for more."
+    : "Materials released to your department. Request again to ask for more.";
 
   const { data: me, isLoading: meLoading } = useMeQuery();
   const {
@@ -150,6 +271,16 @@ export function DepartmentIssuedConsumablesView({
     fetchAll: true,
     enabled: Boolean(me?.departmentId),
   });
+  const { data: catalogData } = useConsumableCatalogQuery({
+    catalog: true,
+    classification,
+    enabled: Boolean(me?.departmentId),
+  });
+
+  const catalogById = useMemo(
+    () => new Map((catalogData?.data ?? []).map((item) => [item.id, item])),
+    [catalogData?.data]
+  );
 
   const [search, setSearch] = useState("");
   const [hideVoided, setHideVoided] = useState(true);
@@ -166,6 +297,8 @@ export function DepartmentIssuedConsumablesView({
         (r.itemCode ?? "").toLowerCase().includes(q) ||
         (r.itemName ?? "").toLowerCase().includes(q) ||
         r.movementCode.toLowerCase().includes(q) ||
+        (r.requestCode ?? "").toLowerCase().includes(q) ||
+        (r.notes ?? "").toLowerCase().includes(q) ||
         (r.actorName ?? "").toLowerCase().includes(q)
     );
   }, [movements, search, hideVoided]);
@@ -210,26 +343,41 @@ export function DepartmentIssuedConsumablesView({
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-48 max-w-md">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none"
+              aria-hidden="true"
+            />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label={`Search issued ${isSupply ? "supplies" : "materials"}`}
               placeholder={`Search ${isSupply ? "supplies" : "materials"}…`}
-              className="w-full h-9 pl-8 pr-3 rounded-lg border border-border bg-bg text-sm text-text placeholder:text-text-secondary/70 focus:outline-none focus:ring-2 focus:ring-primary/25"
+              className="w-full h-9 pl-8 pr-8 rounded-lg border border-border bg-bg text-sm text-text placeholder:text-text-secondary/70 focus:outline-none focus:ring-2 focus:ring-primary/25"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 rounded flex items-center justify-center text-text-secondary hover:text-text cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
           <button
             type="button"
+            aria-pressed={!hideVoided}
             onClick={() => setHideVoided((v) => !v)}
             className={cn(
-              "h-9 px-3 rounded-lg border text-xs font-semibold transition-colors",
-              hideVoided
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-border bg-bg text-text-secondary hover:bg-bg-subtle"
+              "min-h-11 sm:min-h-9 px-3 rounded-lg border text-xs font-semibold transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+              !hideVoided
+                ? "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-bg text-text-secondary hover:bg-bg-subtle hover:text-text"
             )}
           >
-            {hideVoided ? "Hiding voided" : "Showing voided"}
+            {hideVoided ? "Show voided & reversals" : "Showing voided & reversals"}
           </button>
         </div>
       </div>
@@ -255,19 +403,49 @@ export function DepartmentIssuedConsumablesView({
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center px-6 py-16">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-bg text-text-secondary mb-3">
-              <Boxes className="h-7 w-7" strokeWidth={1.8} aria-hidden />
+              {isSupply ? (
+                <Boxes className="h-7 w-7" strokeWidth={1.8} aria-hidden />
+              ) : (
+                <Wrench className="h-7 w-7" strokeWidth={1.8} aria-hidden />
+              )}
             </span>
             <h3 className="text-base font-bold text-text">
               No issued {isSupply ? "supplies" : "materials"}
             </h3>
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
-              When stock is released to {deptLabel}, it will appear here.
+              {search.trim()
+                ? "No issued items match your search query."
+                : `When ${isSupply ? "supplies are" : "materials are"} released to ${deptLabel}, they will appear here.`}
             </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              {search.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="px-3.5 py-2 min-h-11 sm:min-h-9 rounded-lg border border-border bg-bg text-xs font-semibold text-text hover:bg-bg-subtle cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
+                  Clear search
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => openWizard(undefined, isSupply ? "supply" : "material")}
+                className="inline-flex items-center gap-1.5 px-4 py-2 min-h-11 sm:min-h-9 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:opacity-80 transition-opacity shadow-xs cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                Request {isSupply ? "Supplies" : "Materials"}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 p-0.5 pb-4">
             {filtered.map((row) => (
-              <IssuedItemCard key={row.id} row={row} classification={classification} />
+              <IssuedItemCard
+                key={row.id}
+                row={row}
+                classification={classification}
+                liveItem={catalogById.get(row.consumableId)}
+              />
             ))}
           </div>
         )}

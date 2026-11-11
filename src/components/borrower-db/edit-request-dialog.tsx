@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   Package,
+  HardHat,
   AlertCircle,
   CheckCircle2,
   ChevronRight,
@@ -17,19 +18,28 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roundQty } from "@/lib/qty";
+import { summarizePurposes } from "@/lib/request-purpose";
+import { splitByConsumableClassification } from "@/lib/consumable-classification";
 import { useCategoriesQuery, useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
 import { useUpdateBorrowRequestMutation } from "@/features/borrow-requests/client/use-borrow-requests";
-import { useUpdateConsumableRequestMutation } from "@/features/consumable-requests/client";
+import {
+  useUpdateConsumableRequestMutation,
+  type ConsumableRequest,
+} from "@/features/consumable-requests/client";
+import { useDepartmentsQuery } from "@/features/departments/client/use-departments";
+import { useMeQuery } from "@/features/users/client/use-users";
+import { mapConsumableRequestToPortal } from "./map-portal-request";
 import { useToast } from "@/components/providers/toast-context";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useRequestModalDismiss } from "@/hooks/use-request-modal-dismiss";
 import type { PortalBorrowRequest } from "./types";
 import type { BorrowRequest } from "@/types/borrow-requests";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface EditRequestDialogProps {
-  request: PortalBorrowRequest | BorrowRequest | null;
+  request: PortalBorrowRequest | BorrowRequest | ConsumableRequest | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
@@ -37,9 +47,57 @@ interface EditRequestDialogProps {
 
 function requestPortalKind(
   request: PortalBorrowRequest | BorrowRequest | null | undefined
-): "supply" | "material" | undefined {
+): "supply" | "material" | "mixed" | undefined {
   if (!request || !("portalKind" in request)) return undefined;
   return request.portalKind;
+}
+
+function EditQtyInput({
+  value,
+  disabled,
+  ariaLabel,
+  onCommit,
+}: {
+  value: number;
+  disabled?: boolean;
+  ariaLabel?: string;
+  onCommit: (nextQty: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+  const displayed = focused ? draft : String(value);
+
+  const commit = (raw: string) => {
+    const val = Number(raw);
+    const next = roundQty(!Number.isFinite(val) || val <= 0 ? 0.01 : Math.min(9999, val));
+    onCommit(next);
+    setDraft(String(next));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={displayed}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onFocus={() => {
+        setFocused(true);
+        setDraft(String(value));
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={(e) => {
+        setFocused(false);
+        commit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+      }}
+      className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+    />
+  );
 }
 
 type EditStep = "items" | "audit";
@@ -50,17 +108,26 @@ const STEPS: { key: EditStep; label: string; stepNumber: number }[] = [
 ];
 
 export function EditRequestDialog({
-  request,
+  request: rawRequest,
   open,
   onOpenChange,
   onSuccess,
 }: EditRequestDialogProps) {
+  const request = useMemo<PortalBorrowRequest | BorrowRequest | null>(() => {
+    if (!rawRequest) return null;
+    if ("lines" in rawRequest) {
+      return mapConsumableRequestToPortal(rawRequest);
+    }
+    return rawRequest;
+  }, [rawRequest]);
+
   const [currentStep, setCurrentStep] = useState<EditStep>("items");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [editReason, setEditReason] = useState("");
   const [requestedByName, setRequestedByName] = useState("");
   const [assignedToName, setAssignedToName] = useState("");
+  const [departmentId, setDepartmentId] = useState<string>("");
   const [notes, setNotes] = useState("");
   const [purpose, setPurpose] = useState("");
   const [expectedReturnDate, setExpectedReturnDate] = useState("");
@@ -69,11 +136,22 @@ export function EditRequestDialog({
   const [assetItems, setAssetItems] = useState<any[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [supplyLines, setSupplyLines] = useState<any[]>([]);
+  const [baseline, setBaseline] = useState<string>("");
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const editClassification = requestPortalKind(request);
+  const { data: me } = useMeQuery();
+  const isBorrower = !me || me.role === "borrower";
+  const { data: departments = [] } = useDepartmentsQuery({
+    enabled: open && !isBorrower,
+  });
+  const departmentOptions = useMemo(
+    () => departments.map((d) => ({ value: d.id, label: d.name })),
+    [departments]
+  );
   const { data: consumableData } = useConsumableCatalogQuery({
     catalog: true,
-    classification: editClassification,
+    classification: editClassification === "mixed" ? undefined : editClassification,
   });
 
   const { getCategoryStyle } = useCategoryStyleMap();
@@ -86,18 +164,40 @@ export function EditRequestDialog({
   const updateBorrowMutation = useUpdateBorrowRequestMutation();
   const updateSupplyMutation = useUpdateConsumableRequestMutation();
   const toast = useToast();
-  const baselineRef = useRef<string>("");
 
   const consumablesCatalog = useMemo(() => consumableData?.data ?? [], [consumableData]);
 
-  const supplyOptions = useMemo(
-    () =>
-      consumablesCatalog.map((c) => ({
+  const formatCatalogOption = useCallback(
+    (c: (typeof consumablesCatalog)[number]) => {
+      const freeQty = c.availableQty ?? c.currentQty ?? 0;
+      return {
         value: c.id,
-        label: `${c.name} (${c.itemCode})${c.unit ? ` · ${c.unit}` : ""}`,
-        keywords: `${c.itemCode} ${c.name}`,
-      })),
-    [consumablesCatalog]
+        label: `${c.name} (${c.itemCode})${c.classification === "material" ? " · Material" : " · Supply"}${c.unit ? ` · ${c.unit}` : ""}${freeQty <= 0 ? " · Out of stock" : ""}`,
+        keywords: `${c.itemCode} ${c.name} ${c.classification ?? ""}`,
+      };
+    },
+    []
+  );
+
+  const supplyOptions = useMemo(
+    () => consumablesCatalog.map(formatCatalogOption),
+    [consumablesCatalog, formatCatalogOption]
+  );
+
+  const supplyOnlyOptions = useMemo(
+    () =>
+      consumablesCatalog
+        .filter((c) => c.classification !== "material")
+        .map(formatCatalogOption),
+    [consumablesCatalog, formatCatalogOption]
+  );
+
+  const materialOnlyOptions = useMemo(
+    () =>
+      consumablesCatalog
+        .filter((c) => c.classification === "material")
+        .map(formatCatalogOption),
+    [consumablesCatalog, formatCatalogOption]
   );
 
   const assetCategoryOptions = useMemo(
@@ -107,7 +207,8 @@ export function EditRequestDialog({
 
   const isSupply = useMemo(() => {
     if (!request) return false;
-    return request.items?.every((i) => i.itemType === "consumable");
+    if ("portalKind" in request && request.portalKind) return true;
+    return Boolean(request.items?.length && request.items.every((i) => i.itemType === "consumable"));
   }, [request]);
 
   const isSubmitting =
@@ -135,33 +236,44 @@ export function EditRequestDialog({
       ("requestedDateTo" in request && request.requestedDateTo
         ? String(request.requestedDateTo).slice(0, 10)
         : "");
+    const initialDepartmentId =
+      ("departmentId" in request && request.departmentId) || "";
     setRequestedByName(initialRequestedBy);
     setAssignedToName(initialAssignedTo);
+    setDepartmentId(initialDepartmentId);
     setNotes(initialNotes);
     setPurpose(initialPurpose);
     setExpectedReturnDate(initialReturn);
 
-    if (request.items?.every((i) => i.itemType === "consumable")) {
-      const lines = request.items.map((it, idx) => ({
+    const requestIsConsumable =
+      ("portalKind" in request && Boolean(request.portalKind)) ||
+      Boolean(request.items?.length && request.items.every((i) => i.itemType === "consumable"));
+
+    if (requestIsConsumable) {
+      const lines = (request.items ?? []).map((it, idx) => ({
         id: `line-${idx}`,
         consumableId: it.consumableId || "",
         itemName: it.itemDescription,
         category: it.category || "office",
+        classification: it.classification,
         quantity: it.quantity || 1,
         purpose: it.purpose || request.purpose || "General",
         notes: "",
       }));
       setSupplyLines(lines);
       setAssetItems([]);
-      baselineRef.current = JSON.stringify({
-        kind: "supply",
-        lines,
-        reason: "",
-        requestedByName: initialRequestedBy,
-        notes: initialNotes,
-        purpose: initialPurpose,
-        expectedReturnDate: "",
-      });
+      setBaseline(
+        JSON.stringify({
+          kind: "supply",
+          lines,
+          reason: "",
+          requestedByName: initialRequestedBy,
+          departmentId: initialDepartmentId,
+          notes: initialNotes,
+          purpose: initialPurpose,
+          expectedReturnDate: "",
+        })
+      );
     } else {
       const items = (request.items || []).map((it, idx) => ({
         id: `item-${idx}`,
@@ -169,33 +281,37 @@ export function EditRequestDialog({
         assetId: it.assetId,
         assetCode: it.assetCode,
         category: it.category || "computing",
-        quantity: it.quantity || 1,
+        quantity: it.assetId ? 1 : it.quantity || 1,
         itemType: "asset",
         purpose: it.purpose || request.purpose || "General",
       }));
       setAssetItems(items);
       setSupplyLines([]);
-      baselineRef.current = JSON.stringify({
-        kind: "asset",
-        items,
-        reason: "",
-        requestedByName: initialRequestedBy,
-        assignedToName: initialAssignedTo,
-        notes: initialNotes,
-        purpose: initialPurpose,
-        expectedReturnDate: initialReturn,
-      });
+      setBaseline(
+        JSON.stringify({
+          kind: "asset",
+          items,
+          reason: "",
+          requestedByName: initialRequestedBy,
+          assignedToName: initialAssignedTo,
+          departmentId: initialDepartmentId,
+          notes: initialNotes,
+          purpose: initialPurpose,
+          expectedReturnDate: initialReturn,
+        })
+      );
     }
   }, [open, request]);
 
   const isDirty = useMemo(() => {
-    if (!open || !request) return false;
+    if (!open || !request || !baseline) return false;
     const current = isSupply
       ? JSON.stringify({
           kind: "supply",
           lines: supplyLines,
           reason: editReason,
           requestedByName,
+          departmentId,
           notes,
           purpose,
           expectedReturnDate: "",
@@ -206,20 +322,23 @@ export function EditRequestDialog({
           reason: editReason,
           requestedByName,
           assignedToName,
+          departmentId,
           notes,
           purpose,
           expectedReturnDate,
         });
-    return current !== baselineRef.current;
+    return current !== baseline;
   }, [
     open,
     request,
+    baseline,
     isSupply,
     supplyLines,
     assetItems,
     editReason,
     requestedByName,
     assignedToName,
+    departmentId,
     notes,
     purpose,
     expectedReturnDate,
@@ -242,12 +361,26 @@ export function EditRequestDialog({
     onRequestClose: handleRequestClose,
   });
 
+  useFocusTrap(open && !discardConfirmOpen, dialogRef, requestClose);
+
   if (!open || !request) return null;
 
   const requestType =
     !isSupply && "requestType" in request ? request.requestType : undefined;
   const isBorrowable = !isSupply && requestType !== "assignable";
   const isAssignable = !isSupply && requestType === "assignable";
+
+  const portalKind = requestPortalKind(request);
+  const dynamicKindLabel =
+    portalKind === "mixed"
+      ? "Mixed Requisition"
+      : portalKind === "material"
+        ? "Materials Requisition"
+        : isSupply
+          ? "Supplies Requisition"
+          : isAssignable
+            ? "Assignment Request"
+            : "Borrow Request";
 
   const validateStep = (step: EditStep): boolean => {
     setErrorMsg(null);
@@ -274,9 +407,11 @@ export function EditRequestDialog({
       if (isSupply) {
         if (supplyLines.length === 0) {
           setErrorMsg(
-            requestPortalKind(request) === "material"
+            portalKind === "material"
               ? "At least one materials line is required."
-              : "At least one supplies line is required."
+              : portalKind === "mixed"
+                ? "At least one item line is required."
+                : "At least one supplies line is required."
           );
           return false;
         }
@@ -337,6 +472,16 @@ export function EditRequestDialog({
   const handleSubmit = async () => {
     if (!validateStep("audit")) return;
 
+    const lockedRequesterName = isBorrower ? (me?.name || request.requesterName) : request.requesterName;
+    const lockedRequesterEmail = isBorrower ? (me?.email || request.requesterEmail) : request.requesterEmail;
+    const initialDeptId = ("departmentId" in request ? request.departmentId : null) ?? null;
+    const departmentChangedForOperator = !isBorrower && (departmentId || "") !== (initialDeptId || "");
+    const lockedDepartmentId = isBorrower
+      ? (me?.departmentId ?? initialDeptId)
+      : departmentChangedForOperator
+        ? (departmentId || null)
+        : undefined;
+
     try {
       if (isSupply) {
         const mergedLines = new Map<
@@ -361,35 +506,47 @@ export function EditRequestDialog({
             });
           }
         }
-        const kindLabel =
-          requestPortalKind(request) === "material"
-            ? "Materials"
-            : "Supplies";
+        const computedPurpose =
+          purpose.trim() ||
+          summarizePurposes(Array.from(mergedLines.values()).map((l) => l.purpose));
+
         await updateSupplyMutation.mutateAsync({
           id: request.id,
           payload: {
-            requesterName: request.requesterName,
-            requesterEmail: request.requesterEmail,
+            requesterName: lockedRequesterName,
+            requesterEmail: lockedRequesterEmail,
             requesterPhone: request.requesterPhone,
-            departmentId: ("departmentId" in request ? request.departmentId : null) ?? null,
-            purpose: purpose.trim(),
+            departmentId: lockedDepartmentId,
+            purpose: computedPurpose,
             notes: notes.trim() || null,
             requestedByName: requestedByName.trim(),
             lines: Array.from(mergedLines.values()),
             editReason: editReason.trim(),
           },
         });
-        toast.success(`${kindLabel} requisition ${request.requestCode} updated successfully.`);
+        toast.success(`${dynamicKindLabel} ${request.requestCode} updated successfully.`);
       } else {
+        const mappedItems = assetItems.map((it) => ({
+          itemDescription: it.itemDescription.trim(),
+          assetId: it.assetId || undefined,
+          assetCode: it.assetCode || undefined,
+          category: it.category,
+          quantity: it.assetId ? 1 : Math.max(1, Number(it.quantity || 1)),
+          itemType: "asset" as const,
+          purpose: (it.purpose || purpose || "General").trim(),
+        }));
+        const computedPurpose =
+          purpose.trim() || summarizePurposes(mappedItems.map((it) => it.purpose));
+
         await updateBorrowMutation.mutateAsync({
           id: request.id,
           payload: {
-            requesterName: request.requesterName,
-            requesterEmail: request.requesterEmail,
+            requesterName: lockedRequesterName,
+            requesterEmail: lockedRequesterEmail,
             requesterPhone: request.requesterPhone,
-            departmentId: ("departmentId" in request ? request.departmentId : undefined) ?? undefined,
+            departmentId: lockedDepartmentId ?? undefined,
             requestType: requestType ?? undefined,
-            purpose: purpose.trim(),
+            purpose: computedPurpose,
             expectedReturnDate: isBorrowable
               ? expectedReturnDate || null
               : null,
@@ -398,19 +555,11 @@ export function EditRequestDialog({
             assignedToName: isAssignable
               ? assignedToName.trim()
               : assignedToName.trim() || null,
-            items: assetItems.map((it) => ({
-              itemDescription: it.itemDescription.trim(),
-              assetId: it.assetId || undefined,
-              assetCode: it.assetCode || undefined,
-              category: it.category,
-              quantity: Number(it.quantity || 1),
-              itemType: "asset" as const,
-              purpose: (it.purpose || purpose || "General").trim(),
-            })),
+            items: mappedItems,
             editReason: editReason.trim(),
           },
         });
-        toast.success(`Borrow request ${request.requestCode} updated successfully.`);
+        toast.success(`${dynamicKindLabel} ${request.requestCode} updated successfully.`);
       }
 
       onSuccess?.();
@@ -420,36 +569,23 @@ export function EditRequestDialog({
     }
   };
 
-  const handleAddSupplyLine = () => {
-    const firstConsumable = consumablesCatalog[0];
+  const handleAddSupplyLine = (targetClassification?: "supply" | "material") => {
     const linePurpose = purpose.trim() || "General";
-    setSupplyLines((prev) => {
-      // Same SKU → append qty instead of a duplicate line.
-      if (firstConsumable?.id) {
-        const existingIdx = prev.findIndex(
-          (l) => l.consumableId === firstConsumable.id
-        );
-        if (existingIdx >= 0) {
-          return prev.map((l, i) =>
-            i === existingIdx
-              ? { ...l, quantity: roundQty((l.quantity || 0) + 1) }
-              : l
-          );
-        }
-      }
-      return [
-        ...prev,
-        {
-          id: `line-${Date.now()}`,
-          consumableId: firstConsumable?.id || "",
-          itemName: firstConsumable?.name || "Select item",
-          category: firstConsumable?.category || "office",
-          quantity: 1,
-          notes: "",
-          purpose: linePurpose,
-        },
-      ];
-    });
+    const resolvedClass =
+      targetClassification ?? (portalKind === "material" ? "material" : "supply");
+    setSupplyLines((prev) => [
+      ...prev,
+      {
+        id: `line-${Date.now()}-${prev.length}`,
+        consumableId: "",
+        itemName: "",
+        category: "office",
+        classification: resolvedClass,
+        quantity: 1,
+        notes: "",
+        purpose: linePurpose,
+      },
+    ]);
   };
 
   const handleRemoveSupplyLine = (index: number) => {
@@ -460,7 +596,7 @@ export function EditRequestDialog({
     setAssetItems((prev) => [
       ...prev,
       {
-        id: `item-${Date.now()}`,
+        id: `item-${Date.now()}-${prev.length}`,
         itemDescription: "",
         category: "computing",
         quantity: 1,
@@ -479,7 +615,7 @@ export function EditRequestDialog({
   return (
     <>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-dialog-title"
@@ -491,7 +627,11 @@ export function EditRequestDialog({
         aria-hidden="true"
       />
 
-      <div className="relative z-10 w-full max-w-2xl max-h-[70vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-2xl max-h-[85vh] bg-card border border-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 focus:outline-none"
+      >
 
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="px-5 py-4 border-b border-border bg-bg-subtle/50 flex items-center justify-between shrink-0 gap-3">
@@ -508,7 +648,7 @@ export function EditRequestDialog({
                   {request.requestCode}
                 </span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-bg-subtle border border-border text-text-secondary">
-                  {isSupply ? "Supplies Requisition" : "Asset Borrow"}
+                  {dynamicKindLabel}
                 </span>
               </div>
               <p id="edit-dialog-desc" className="text-[11px] text-text-secondary mt-0.5">
@@ -521,7 +661,7 @@ export function EditRequestDialog({
             onClick={requestClose}
             disabled={isSubmitting}
             aria-label="Close"
-            className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+            className="p-2 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer shrink-0 disabled:opacity-50"
           >
             <X className="h-4 w-4" />
           </button>
@@ -677,213 +817,369 @@ export function EditRequestDialog({
                       />
                     </label>
                   </div>
-                </div>
-
-                {/* Section header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-accent" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
-                      {isSupply
-                        ? requestPortalKind(request) === "material"
-                          ? "Materials Lines"
-                          : "Supplies Lines"
-                        : "Requested Asset Items"}
-                    </span>
-                    <span className="text-xs font-semibold text-text-secondary bg-bg-subtle border border-border rounded-full px-2 py-0.5">
-                      {isSupply ? supplyLines.length : assetItems.length} line{(isSupply ? supplyLines.length : assetItems.length) !== 1 ? "s" : ""}
-                    </span>
+                  <div className="grid gap-2 sm:grid-cols-2 rounded-md border border-border bg-bg p-2 text-[11px]">
+                    <div>
+                      <span className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold block mb-1">
+                        Department {isBorrower ? "(Locked)" : ""}
+                      </span>
+                      {!isBorrower && departmentOptions.length > 0 ? (
+                        <SearchableSelect
+                          value={departmentId}
+                          onValueChange={setDepartmentId}
+                          options={departmentOptions}
+                          placeholder={request.department || "Select department…"}
+                          clearLabel="Keep current"
+                          emptyMessage="No departments found"
+                          inputClassName="h-7 text-xs bg-bg"
+                        />
+                      ) : (
+                        <span className="font-semibold text-text">
+                          {(isBorrower ? me?.department : request.department) || request.department || "—"}
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold block">
+                        {isBorrower ? "Account Email" : "Requester"}
+                      </span>
+                      <span className="font-semibold text-text truncate block mt-0.5">
+                        {isBorrower
+                          ? (me?.email || request.requesterEmail || "—")
+                          : `${request.requesterName}${request.requesterEmail ? ` · ${request.requesterEmail}` : ""}`}
+                      </span>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={isSupply ? handleAddSupplyLine : handleAddAssetItem}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors cursor-pointer"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Add Line
-                  </button>
                 </div>
 
-                {/* ── Supply Lines ── */}
-                {isSupply ? (
-                  <div className="space-y-2">
-                    {supplyLines.map((line, idx) => {
-                      const selected = consumablesCatalog.find((c) => c.id === line.consumableId);
-                      return (
-                        <div
-                          key={line.id || idx}
-                          className="rounded-lg border border-border bg-bg p-2.5 space-y-2"
+                {/* Section header + lines */}
+                {(() => {
+                  if (!isSupply) {
+                    return (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-accent" />
+                          <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                            Requested Asset Items
+                          </span>
+                          <span className="text-xs font-semibold text-text-secondary bg-bg-subtle border border-border rounded-full px-2 py-0.5">
+                            {assetItems.length} line{assetItems.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddAssetItem}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors cursor-pointer"
                         >
-                          <div className="flex items-center justify-between gap-2">
+                          <Plus className="h-3 w-3" />
+                          Add Line
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  const resolvedIndexed = supplyLines.map((line, idx) => {
+                    const selected = consumablesCatalog.find(
+                      (c) => c.id === line.consumableId
+                    );
+                    return {
+                      line,
+                      idx,
+                      classification: selected?.classification ?? line.classification,
+                    };
+                  });
+                  const lineSplit = splitByConsumableClassification(resolvedIndexed);
+                  const isCombined = portalKind === "mixed" || lineSplit.isCombined;
+
+                  const renderSupplyLineCard = (
+                    entry: (typeof resolvedIndexed)[number],
+                    displayIdx: number,
+                    forcedClass?: "supply" | "material"
+                  ) => {
+                    const { line, idx } = entry;
+                    const selected = consumablesCatalog.find(
+                      (c) => c.id === line.consumableId
+                    );
+                    const lineClass =
+                      selected?.classification ?? line.classification ?? forcedClass;
+                    const lineOptions =
+                      forcedClass === "material"
+                        ? materialOnlyOptions
+                        : forcedClass === "supply"
+                          ? supplyOnlyOptions
+                          : supplyOptions;
+                    const activeKind = forcedClass ?? (portalKind === "material" ? "material" : "supply");
+
+                    return (
+                      <div
+                        key={line.id || idx}
+                        className="rounded-lg border border-border bg-bg p-2.5 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">
-                              Line {idx + 1}
+                              Line {displayIdx + 1}
                             </span>
-                            {supplyLines.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveSupplyLine(idx)}
-                                aria-label={`Remove line ${idx + 1}`}
-                                className="p-1 rounded-md text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                            {lineClass && (
+                              <span
+                                className={cn(
+                                  "rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border",
+                                  lineClass === "material"
+                                    ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25"
+                                    : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+                                )}
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                                {lineClass === "material" ? "Material" : "Supply"}
+                              </span>
                             )}
                           </div>
+                          {supplyLines.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSupplyLine(idx)}
+                              aria-label={`Remove line ${displayIdx + 1}`}
+                              className="h-8 w-8 rounded-md flex items-center justify-center text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
 
-                          <label className="block space-y-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                              Item
-                            </span>
-                            <SearchableSelect
-                              value={line.consumableId}
-                              onValueChange={(newId) => {
-                                const item = consumablesCatalog.find((c) => c.id === newId);
-                                setSupplyLines((prev) => {
-                                  const dupIdx = prev.findIndex(
-                                    (l, i) => i !== idx && l.consumableId === newId
-                                  );
-                                  if (dupIdx >= 0) {
-                                    // Merge into the existing same-SKU line; drop this row.
-                                    return prev
-                                      .map((l, i) =>
-                                        i === dupIdx
-                                          ? {
-                                              ...l,
-                                              quantity: roundQty(
-                                                (l.quantity || 0) +
-                                                  (prev[idx]?.quantity || 1)
-                                              ),
-                                            }
-                                          : l
-                                      )
-                                      .filter((_, i) => i !== idx);
-                                  }
-                                  return prev.map((l, i) =>
-                                    i === idx
-                                      ? {
-                                          ...l,
-                                          consumableId: newId,
-                                          itemName: item?.name || "",
-                                          category: item?.category || "office",
-                                        }
-                                      : l
-                                  );
-                                });
-                              }}
-                              options={supplyOptions}
-                              placeholder={
-                                requestPortalKind(request) === "material"
-                                  ? "Select material…"
-                                  : "Select supply…"
-                              }
-                              clearLabel={
-                                requestPortalKind(request) === "material"
-                                  ? "Select material…"
-                                  : "Select supply…"
-                              }
-                              emptyMessage={
-                                requestPortalKind(request) === "material"
-                                  ? "No materials available"
-                                  : "No supplies available"
-                              }
-                              inputClassName="h-8 text-xs bg-bg"
-                            />
-                          </label>
-
-                          <div className="flex items-end gap-2">
-                            <label className="w-20 shrink-0 space-y-1">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                                Qty
-                              </span>
-                              <input
-                                type="number"
-                                min={0.01}
-                                step={0.01}
-                                max={9999}
-                                value={line.quantity}
-                                onChange={(e) => {
-                                  const val = Number(e.target.value);
-                                  if (!Number.isFinite(val)) return;
-                                  setSupplyLines((prev) =>
-                                    prev.map((l, i) =>
-                                      i === idx
-                                        ? {
-                                            ...l,
-                                            quantity: roundQty(Math.max(0.01, val)),
-                                          }
-                                        : l
-                                    )
-                                  );
-                                }}
-                                onBlur={(e) => {
-                                  const val = Number(e.target.value);
-                                  setSupplyLines((prev) =>
-                                    prev.map((l, i) =>
-                                      i === idx
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                            Item
+                          </span>
+                          <SearchableSelect
+                            value={line.consumableId}
+                            onValueChange={(newId) => {
+                              const item = consumablesCatalog.find(
+                                (c) => c.id === newId
+                              );
+                              setSupplyLines((prev) => {
+                                const dupIdx = prev.findIndex(
+                                  (l, i) => i !== idx && l.consumableId === newId
+                                );
+                                if (dupIdx >= 0) {
+                                  return prev
+                                    .map((l, i) =>
+                                      i === dupIdx
                                         ? {
                                             ...l,
                                             quantity: roundQty(
-                                              !Number.isFinite(val) || val <= 0
-                                                ? 0.01
-                                                : val
+                                              (l.quantity || 0) +
+                                                (prev[idx]?.quantity || 1)
                                             ),
                                           }
                                         : l
                                     )
-                                  );
-                                }}
-                                className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
-                              />
-                            </label>
-                            {selected && (
+                                    .filter((_, i) => i !== idx);
+                                }
+                                return prev.map((l, i) =>
+                                  i === idx
+                                    ? {
+                                        ...l,
+                                        consumableId: newId,
+                                        itemName: item?.name || "",
+                                        category: item?.category || "office",
+                                        classification:
+                                          item?.classification ?? forcedClass,
+                                      }
+                                    : l
+                                );
+                              });
+                            }}
+                            options={lineOptions}
+                            placeholder={
+                              activeKind === "material"
+                                ? "Select material…"
+                                : "Select supply…"
+                            }
+                            clearLabel={
+                              activeKind === "material"
+                                ? "Select material…"
+                                : "Select supply…"
+                            }
+                            emptyMessage={
+                              activeKind === "material"
+                                ? "No materials available"
+                                : "No supplies available"
+                            }
+                            inputClassName="h-8 text-xs bg-bg"
+                          />
+                        </label>
+
+                        <div className="flex items-end gap-2">
+                          <label className="w-24 shrink-0 space-y-1">
+                            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                              Qty
+                            </span>
+                            <EditQtyInput
+                              value={line.quantity}
+                              disabled={isSubmitting}
+                              ariaLabel={`Quantity for line ${displayIdx + 1}`}
+                              onCommit={(nextQty) => {
+                                setSupplyLines((prev) =>
+                                  prev.map((l, i) =>
+                                    i === idx ? { ...l, quantity: nextQty } : l
+                                  )
+                                );
+                              }}
+                            />
+                          </label>
+                          {selected && (() => {
+                            const freeQty = selected.availableQty ?? selected.currentQty ?? 0;
+                            const isZeroStock = freeQty <= 0;
+                            const coversQty = freeQty >= line.quantity;
+                            return (
                               <span
                                 className={cn(
                                   "mb-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
-                                  (selected.availableQty ?? selected.currentQty ?? 0) >= line.quantity
+                                  coversQty
                                     ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                                    : "bg-destructive/10 text-destructive border-destructive/25"
+                                    : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25"
                                 )}
                               >
-                                {(selected.availableQty ?? selected.currentQty ?? 0) >= line.quantity
+                                {coversQty
                                   ? "In stock"
-                                  : "Low stock"}
+                                  : isZeroStock
+                                    ? "Out of stock · Admin restocks"
+                                    : "Low stock · Admin restocks"}
                               </span>
+                            );
+                          })()}
+                        </div>
+
+                        <label className="block space-y-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                            Line purpose <span className="text-destructive">*</span>
+                          </span>
+                          <input
+                            type="text"
+                            value={line.purpose || ""}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setSupplyLines((prev) =>
+                                prev.map((l, i) => (i === idx ? { ...l, purpose: next } : l))
+                              );
+                            }}
+                            placeholder="What this line is for…"
+                            disabled={isSubmitting}
+                            className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
+                          />
+                        </label>
+                      </div>
+                    );
+                  };
+
+                  if (isCombined) {
+                    return (
+                      <div className="space-y-4">
+                        <div className="space-y-2 rounded-xl border border-emerald-500/20 bg-emerald-500/4 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Package className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                Supplies ({lineSplit.supplies.length})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddSupplyLine("supply")}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add Supply
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {lineSplit.supplies.map((entry, i) =>
+                              renderSupplyLineCard(entry, i, "supply")
+                            )}
+                            {lineSplit.supplies.length === 0 && (
+                              <p className="text-xs text-text-secondary py-2 text-center">
+                                No supply lines. Click &ldquo;Add Supply&rdquo; to add one.
+                              </p>
                             )}
                           </div>
-
-                          <label className="block space-y-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                              Line purpose <span className="text-destructive">*</span>
-                            </span>
-                            <input
-                              type="text"
-                              value={line.purpose || ""}
-                              onChange={(e) => {
-                                const next = e.target.value;
-                                setSupplyLines((prev) =>
-                                  prev.map((l, i) => (i === idx ? { ...l, purpose: next } : l))
-                                );
-                              }}
-                              placeholder="What this line is for…"
-                              disabled={isSubmitting}
-                              className="w-full h-8 px-2.5 text-xs bg-bg border border-border rounded-md text-text placeholder:text-text-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-60"
-                            />
-                          </label>
                         </div>
-                      );
-                    })}
-                    {supplyLines.length === 0 && (
-                      <div className="flex flex-col items-center justify-center h-24 rounded-xl border border-dashed border-border text-xs text-text-secondary gap-1.5">
-                        <Package className="h-5 w-5 text-text-secondary/50" />
-                        No lines yet. Click &ldquo;Add Line&rdquo; to begin.
+
+                        <div className="space-y-2 rounded-xl border border-teal-500/20 bg-teal-500/4 p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <HardHat className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                              <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300">
+                                Materials ({lineSplit.materials.length})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAddSupplyLine("material")}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-teal-500/15 text-teal-700 dark:text-teal-300 border border-teal-500/25 hover:bg-teal-500/25 transition-colors cursor-pointer"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add Material
+                            </button>
+                          </div>
+                          <div className="space-y-2">
+                            {lineSplit.materials.map((entry, i) =>
+                              renderSupplyLineCard(entry, i, "material")
+                            )}
+                            {lineSplit.materials.length === 0 && (
+                              <p className="text-xs text-text-secondary py-2 text-center">
+                                No material lines. Click &ldquo;Add Material&rdquo; to add one.
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ) : (
-                  /* ── Asset Items ── */
+                    );
+                  }
+
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {portalKind === "material" ? (
+                            <HardHat className="h-4 w-4 text-teal-600 dark:text-teal-400" />
+                          ) : (
+                            <Package className="h-4 w-4 text-accent" />
+                          )}
+                          <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
+                            {portalKind === "material" ? "Materials Lines" : "Supplies Lines"}
+                          </span>
+                          <span className="text-xs font-semibold text-text-secondary bg-bg-subtle border border-border rounded-full px-2 py-0.5">
+                            {supplyLines.length} line{supplyLines.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddSupplyLine()}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add Line
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {resolvedIndexed.map((entry, i) =>
+                          renderSupplyLineCard(entry, i)
+                        )}
+                        {supplyLines.length === 0 && (
+                          <div className="flex flex-col items-center justify-center h-24 rounded-xl border border-dashed border-border text-xs text-text-secondary gap-1.5">
+                            <Package className="h-5 w-5 text-text-secondary/50" />
+                            No lines yet. Click &ldquo;Add Line&rdquo; to begin.
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* ── Asset Items (when not consumable) ── */}
+                {!isSupply && (
                   <div className="space-y-2">
                     {assetItems.map((item, idx) => {
                       const catMeta = getCategoryStyle(item.category);
+                      const isSerialized = Boolean(item.assetId);
                       return (
                         <div
                           key={item.id || idx}
@@ -899,7 +1195,7 @@ export function EditRequestDialog({
                                 type="button"
                                 onClick={() => handleRemoveAssetItem(idx)}
                                 aria-label={`Remove line ${idx + 1}`}
-                                className="p-1 rounded-md text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                                className="h-8 w-8 rounded-md flex items-center justify-center text-text-secondary hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -944,24 +1240,35 @@ export function EditRequestDialog({
                           </div>
 
                           <div className="grid grid-cols-[5rem_1fr] gap-2">
-                            <label className="space-y-1">
-                              <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
-                                Qty
-                              </span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={99}
-                                value={item.quantity}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value, 10) || 1;
-                                  setAssetItems((prev) =>
-                                    prev.map((it, i) => (i === idx ? { ...it, quantity: Math.max(1, val) } : it))
-                                  );
-                                }}
-                                className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
-                              />
-                            </label>
+                            {isSerialized ? (
+                              <div className="space-y-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary block">
+                                  Qty
+                                </span>
+                                <span className="inline-flex w-full h-8 items-center justify-center rounded-md border border-border bg-bg-subtle text-[11px] font-bold text-text-secondary">
+                                  1 unit
+                                </span>
+                              </div>
+                            ) : (
+                              <label className="space-y-1">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
+                                  Qty
+                                </span>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={99}
+                                  value={item.quantity}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10) || 1;
+                                    setAssetItems((prev) =>
+                                      prev.map((it, i) => (i === idx ? { ...it, quantity: Math.max(1, val) } : it))
+                                    );
+                                  }}
+                                  className="w-full h-8 px-2 text-xs font-mono tabular-nums bg-bg border border-border rounded-md text-text text-center focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
+                                />
+                              </label>
+                            )}
                             <label className="space-y-1 min-w-0">
                               <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary">
                                 Line purpose <span className="text-destructive">*</span>
@@ -1022,20 +1329,16 @@ export function EditRequestDialog({
                     <span className="text-xs font-semibold text-text capitalize truncate">
                       {isAssignable
                         ? assignedToName.trim() || "—"
-                        : isSupply
-                          ? requestPortalKind(request) === "material"
+                        : portalKind === "mixed"
+                          ? "Mixed"
+                          : portalKind === "material"
                             ? "Materials"
-                            : "Supplies"
-                          : ("requestType" in request ? request.requestType : null) ?? "Borrow"}
+                            : isSupply
+                              ? "Supplies"
+                              : ("requestType" in request ? request.requestType : null) ?? "Borrow"}
                     </span>
                     <span className="text-[10px] text-text-secondary">
-                      {isAssignable
-                        ? "Asset holder"
-                        : isSupply
-                          ? requestPortalKind(request) === "material"
-                            ? "Materials Requisition"
-                            : "Supplies Requisition"
-                          : "Asset Request"}
+                      {isAssignable ? "Asset holder" : dynamicKindLabel}
                     </span>
                   </div>
 
@@ -1084,7 +1387,7 @@ export function EditRequestDialog({
                   <div className="px-3 py-2 bg-bg-subtle border-b border-border flex items-center gap-2">
                     <Sparkles className="h-3.5 w-3.5 text-accent shrink-0" />
                     <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                      {isSupply ? "Supply Lines to Submit" : "Asset Lines to Submit"}
+                      {isSupply ? `${dynamicKindLabel} Lines to Submit` : "Asset Lines to Submit"}
                     </span>
                     <div className="ml-auto flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20">
                       {isSupply ? supplyLines.length : assetItems.length} line{(isSupply ? supplyLines.length : assetItems.length) !== 1 ? "s" : ""}
@@ -1094,44 +1397,93 @@ export function EditRequestDialog({
                   {/* Rows */}
                   <div className="divide-y divide-border">
                     {isSupply
-                      ? supplyLines.map((line: { consumableId: string; quantity: number; itemName?: string; purpose?: string }, idx: number) => {
-                          const found = consumablesCatalog.find((c) => c.id === line.consumableId);
-                          const inStock = (found?.availableQty ?? found?.currentQty ?? 0) >= line.quantity;
-                          return (
-                            <div
-                              key={idx}
-                              className="flex items-center gap-3 px-3 py-2.5 bg-bg hover:bg-bg-subtle/60 transition-colors"
-                            >
-                              <span className="w-5 h-5 shrink-0 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
-                                {idx + 1}
-                              </span>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-text truncate">
-                                  {found?.name ?? line.itemName ?? "—"}
-                                </p>
-                                <p className="text-[10px] text-text-secondary truncate">
-                                  {found ? `${found.itemCode} · ${found.unit}` : ""}
-                                  {found && (line.purpose || purpose) ? " · " : ""}
-                                  {(line.purpose || purpose || "").trim() || ""}
-                                </p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <span className="text-sm font-bold text-text tabular-nums">{line.quantity}</span>
-                                <span className="text-[10px] text-text-secondary ml-1">{found?.unit ?? "pcs"}</span>
-                              </div>
-                              <span
-                                className={cn(
-                                  "shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border",
-                                  inStock
-                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
-                                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25"
-                                )}
-                              >
-                                {inStock ? "✓ OK" : "⚠ Low"}
-                              </span>
-                            </div>
+                      ? (() => {
+                          const reviewSplit = splitByConsumableClassification(
+                            supplyLines.map((l) => {
+                              const found = consumablesCatalog.find(
+                                (c) => c.id === l.consumableId
+                              );
+                              return {
+                                ...l,
+                                classification: found?.classification ?? l.classification,
+                              };
+                            })
                           );
-                        })
+
+                          const renderReviewSupplyRow = (
+                            line: {
+                              consumableId: string;
+                              quantity: number;
+                              itemName?: string;
+                              purpose?: string;
+                            },
+                            idx: number
+                          ) => {
+                            const found = consumablesCatalog.find(
+                              (c) => c.id === line.consumableId
+                            );
+                            const freeQty = found?.availableQty ?? found?.currentQty ?? 0;
+                            const inStock = freeQty >= line.quantity;
+                            const isZeroStock = freeQty <= 0;
+                            return (
+                              <div
+                                key={`${line.consumableId}-${idx}`}
+                                className="flex items-center gap-3 px-3 py-2.5 bg-bg hover:bg-bg-subtle/60 transition-colors"
+                              >
+                                <span className="w-5 h-5 shrink-0 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-[10px] font-bold text-accent">
+                                  {idx + 1}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-text truncate">
+                                    {found?.name ?? line.itemName ?? "—"}
+                                  </p>
+                                  <p className="text-[10px] text-text-secondary truncate">
+                                    {found ? `${found.itemCode} · ${found.unit}` : ""}
+                                    {found && (line.purpose || purpose) ? " · " : ""}
+                                    {(line.purpose || purpose || "").trim() || ""}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <span className="text-sm font-bold text-text tabular-nums">{line.quantity}</span>
+                                  <span className="text-[10px] text-text-secondary ml-1">{found?.unit ?? "pcs"}</span>
+                                </div>
+                                <span
+                                  className={cn(
+                                    "shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border",
+                                    inStock
+                                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                                      : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25"
+                                  )}
+                                >
+                                  {inStock ? "✓ OK" : isZeroStock ? "⚠ Restock" : "⚠ Low"}
+                                </span>
+                              </div>
+                            );
+                          };
+
+                          if (reviewSplit.isCombined) {
+                            return (
+                              <>
+                                <div className="px-3 py-1.5 bg-emerald-500/5 border-b border-border flex items-center gap-1.5">
+                                  <Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                                    Supplies ({reviewSplit.supplies.length})
+                                  </span>
+                                </div>
+                                {reviewSplit.supplies.map(renderReviewSupplyRow)}
+                                <div className="px-3 py-1.5 bg-teal-500/5 border-y border-border flex items-center gap-1.5">
+                                  <HardHat className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300">
+                                    Materials ({reviewSplit.materials.length})
+                                  </span>
+                                </div>
+                                {reviewSplit.materials.map(renderReviewSupplyRow)}
+                              </>
+                            );
+                          }
+
+                          return supplyLines.map(renderReviewSupplyRow);
+                        })()
                       : assetItems.map((item: { itemDescription: string; category: string; quantity: number; purpose?: string }, idx: number) => {
                           const catMeta = getCategoryStyle(item.category);
                           return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Calendar,
   Clock,
@@ -21,20 +21,23 @@ import {
   Edit3,
   AlertCircle,
   StickyNote,
+  Package,
+  HardHat,
   PackageCheck,
   Briefcase,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { formatItemDescription, formatAssetCodeDisplay, formatQuantityWithUnit } from "@/lib/sanitize-display";
+import { splitByConsumableClassification } from "@/lib/consumable-classification";
 import { groupByPurpose } from "@/lib/request-purpose";
 import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import {
   getActionStyle,
   getActionIcon,
   formatDateTime,
   formatRelativeTime,
-  parseAuditNote,
   AuditNoteDisplay,
 } from "@/components/audit-logs/audit-log-utils";
 import type { PortalBorrowRequest } from "./types";
@@ -87,6 +90,12 @@ const STATUS_CONFIG: Record<
     icon: X,
     color: "text-text-secondary",
   },
+  unreleased: {
+    label: "Returned Unreleased",
+    badge: "bg-slate-500/15 text-text-secondary border-border",
+    icon: RotateCcw,
+    color: "text-text-secondary",
+  },
 };
 
 function formatDisplayDate(dateStr?: string | null): string {
@@ -110,19 +119,18 @@ export function RequestDetailSheet({
   const { getCategoryStyle } = useCategoryStyleMap();
   const [copied, setCopied] = useState(false);
   const [isOverdue, setIsOverdue] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const copyTimerRef = useRef<number | null>(null);
 
-  // Close on escape key
+  useFocusTrap(open, panelRef, () => onOpenChange(false));
+
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && open) {
-        onOpenChange(false);
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
       }
-    }
-    if (open) {
-      document.addEventListener("keydown", handleKeyDown);
-    }
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onOpenChange]);
+    };
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -138,11 +146,16 @@ export function RequestDetailSheet({
     const isAssign = request.requestType === "assignable";
     const hasAsset = !isAssign && request.items?.some((i) => i.itemType === "asset");
     const returnDate = request.requestedDateTo || request.expectedReturnDate;
-    const overdue =
-      Boolean(hasAsset) &&
-      !isAssign &&
-      request.status === "released" &&
-      Boolean(returnDate && new Date(returnDate).setHours(23, 59, 59, 999) < Date.now());
+    let overdue = false;
+    if (hasAsset && !isAssign && request.status === "released" && returnDate) {
+      const parsed = returnDate.includes("T")
+        ? new Date(returnDate)
+        : new Date(`${returnDate}T00:00:00`);
+      if (!isNaN(parsed.getTime())) {
+        parsed.setHours(23, 59, 59, 999);
+        overdue = parsed.getTime() < Date.now();
+      }
+    }
     setIsOverdue(overdue);
   }, [open, request]);
 
@@ -152,14 +165,33 @@ export function RequestDetailSheet({
   const StatusIcon = statusConfig.icon;
   const isAssignRequest = request.requestType === "assignable";
   const hasAsset = !isAssignRequest && request.items?.some((i) => i.itemType === "asset");
-  const isConsumable = request.items?.every((i) => i.itemType === "consumable");
-  const returnDate = request.requestedDateTo || request.expectedReturnDate;
+  const isConsumable =
+    Boolean(request.portalKind) ||
+    Boolean(request.items?.length && request.items.every((i) => i.itemType === "consumable"));
+  const consumableHeading =
+    request.portalKind === "mixed"
+      ? "Mixed Requisition (Supplies & Materials)"
+      : request.portalKind === "material"
+        ? "Materials Requisition"
+        : "Supplies Requisition";
+  const consumableShort =
+    request.portalKind === "mixed"
+      ? "Supplies & materials"
+      : request.portalKind === "material"
+        ? "Materials"
+        : "Supplies";
 
-  const handleCopyCode = () => {
-    if (request.requestCode) {
-      navigator.clipboard.writeText(request.requestCode);
+  const handleCopyCode = async () => {
+    if (!request.requestCode) return;
+    try {
+      await navigator.clipboard.writeText(request.requestCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
     }
   };
 
@@ -220,7 +252,7 @@ export function RequestDetailSheet({
                   note: request.pickedUpBy
                     ? `Released to: ${request.pickedUpBy}`
                     : isConsumable
-                    ? "Supplies issued and deducted from stock"
+                    ? `${consumableShort} issued and deducted from stock`
                     : "Items released to requester",
                 },
               ]
@@ -256,7 +288,11 @@ export function RequestDetailSheet({
       />
 
       {/* Slide-over Drawer Panel */}
-      <div className="relative z-10 w-full max-w-xl h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-250">
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-xl h-full bg-card border-l border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-250 focus:outline-none"
+      >
         {/* Highlighted Header - Code & Badge as Heroes */}
         <div className="p-5 border-b border-border bg-card shrink-0 space-y-3">
           <div className="flex items-start justify-between gap-3">
@@ -280,7 +316,7 @@ export function RequestDetailSheet({
                     type="button"
                     onClick={handleCopyCode}
                     aria-label="Copy request code"
-                    className="p-1 rounded-md text-accent hover:bg-accent/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    className="p-1 rounded-md text-accent hover:bg-accent/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
                   >
                     {copied ? (
                       <Check className="h-3.5 w-3.5 text-status-active-text" />
@@ -298,7 +334,7 @@ export function RequestDetailSheet({
               </div>
             </div>
 
-            {/* Status & Edit */}
+            {/* Status, Edit & Close */}
             <div className="flex items-center gap-2 shrink-0">
               {onEdit && request.status === "pending" && (
                 <button
@@ -321,23 +357,37 @@ export function RequestDetailSheet({
                 <StatusIcon className="h-3.5 w-3.5 shrink-0" />
                 {statusConfig.label}
               </span>
+
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                aria-label="Close request details"
+                className="h-9 w-9 rounded-xl border border-border bg-bg-subtle/60 flex items-center justify-center text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-xs text-text-secondary pt-0.5 gap-2 flex-wrap">
             <span className="font-bold text-text">
               {isConsumable
-                ? request.portalKind === "material"
-                  ? "Materials Requisition"
-                  : "Supplies Requisition"
+                ? consumableHeading
                 : isAssignRequest
                   ? "Assignment Request"
                   : "Borrow Request"}
             </span>
             <span>
-              Submitted {new Date(request.requestedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+              Submitted {formatDisplayDate(request.requestedAt)}
             </span>
           </div>
+          {request.releasedSummary && (
+            <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg px-2.5 py-1.5">
+              Issued allocation: {request.releasedSummary.totalReleased} of{" "}
+              {request.releasedSummary.totalRequested} requested (
+              {request.releasedSummary.totalRemaining} remaining)
+            </p>
+          )}
           {request.relatedRequests && request.relatedRequests.length > 0 && (
             <div className="pt-1">
               <LinkedRequestsNote related={request.relatedRequests} />
@@ -454,8 +504,8 @@ export function RequestDetailSheet({
             </div>
           </section>
 
-          {/* Requested Items (grouped by purpose) */}
-          <section aria-labelledby="items-heading" className="space-y-2">
+          {/* Requested Items (separated by Supplies vs Materials when combined, then grouped by purpose) */}
+          <section aria-labelledby="items-heading" className="space-y-2.5">
             <div className="flex items-center justify-between px-1">
               <h3 id="items-heading" className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
                 Requested Items ({request.items?.length || 0})
@@ -464,46 +514,98 @@ export function RequestDetailSheet({
                 {request.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 1} Total Units
               </span>
             </div>
-            {groupByPurpose(request.items ?? [], request.purpose).map((group) => (
-              <div
-                key={group.purpose}
-                className="rounded-xl border border-border bg-card overflow-hidden shadow-xs"
-              >
-                <div className="px-3.5 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
-                    Purpose
-                  </p>
-                  <p className="text-xs font-semibold text-text mt-0.5">{group.purpose}</p>
-                </div>
-                <div className="divide-y divide-border">
-                  {group.lines.map((item, idx) => {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const catMeta = getCategoryStyle(item.category as any);
-                    const desc = formatItemDescription(item.itemDescription, catMeta.label, item.itemType);
-                    const displayCode = formatAssetCodeDisplay(item.assetCode);
-                    return (
-                      <div key={idx} className="p-3.5 flex items-center gap-3.5 bg-card hover:bg-bg-subtle/40 transition-colors">
-                        <div className={cn("h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border", catMeta.bg, "border-transparent")}>
-                          <Tag className={cn("h-4 w-4", catMeta.text)} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-text truncate">{desc}</p>
-                          <p className="text-xs text-text-secondary font-mono mt-0.5">
-                            {displayCode ? `${displayCode} · ` : ""}<span className="capitalize">{catMeta.label}</span>
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0 bg-bg-subtle px-2.5 py-1 rounded-md border border-border">
-                          <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Qty</p>
-                          <p className="font-bold text-xs text-text">
-                            {formatQuantityWithUnit(item.quantity, item.unit, item.itemType)}
-                          </p>
-                        </div>
+            {(() => {
+              const allItems = request.items ?? [];
+              const consumableSplit = splitByConsumableClassification(
+                allItems.filter((i) => i.itemType === "consumable")
+              );
+              const renderItemGroups = (items: typeof allItems) =>
+                groupByPurpose(items, request.purpose).map((group) => (
+                  <div
+                    key={group.purpose}
+                    className="rounded-xl border border-border bg-card overflow-hidden shadow-xs"
+                  >
+                    <div className="px-3.5 py-2 bg-indigo-500/5 border-b border-indigo-500/20">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                        Purpose
+                      </p>
+                      <p className="text-xs font-semibold text-text mt-0.5">{group.purpose}</p>
+                    </div>
+                    <div className="divide-y divide-border">
+                      {group.lines.map((item, idx) => {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const catMeta = getCategoryStyle(item.category as any);
+                        const desc = formatItemDescription(item.itemDescription, catMeta.label, item.itemType);
+                        const displayCode = formatAssetCodeDisplay(item.assetCode);
+                        return (
+                          <div key={idx} className="p-3.5 flex items-center gap-3.5 bg-card hover:bg-bg-subtle/40 transition-colors">
+                            <div className={cn("h-9 w-9 shrink-0 rounded-lg flex items-center justify-center border", catMeta.bg, "border-transparent")}>
+                              <Tag className={cn("h-4 w-4", catMeta.text)} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <p className="text-sm font-bold text-text truncate">{desc}</p>
+                                {item.itemType === "consumable" && item.classification && (
+                                  <span
+                                    className={cn(
+                                      "rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border shrink-0",
+                                      item.classification === "material"
+                                        ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25"
+                                        : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+                                    )}
+                                  >
+                                    {item.classification === "material" ? "Material" : "Supply"}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-text-secondary font-mono mt-0.5">
+                                {displayCode ? `${displayCode} · ` : ""}<span className="capitalize">{catMeta.label}</span>
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0 bg-bg-subtle px-2.5 py-1 rounded-md border border-border">
+                              <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">Qty</p>
+                              <p className="font-bold text-xs text-text">
+                                {formatQuantityWithUnit(item.quantity, item.unit, item.itemType)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+
+              if (consumableSplit.isCombined) {
+                return (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                          Supplies ({consumableSplit.supplies.length})
+                        </span>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+                      <div className="space-y-2">
+                        {renderItemGroups(consumableSplit.supplies)}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 px-1">
+                        <HardHat className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300">
+                          Materials ({consumableSplit.materials.length})
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {renderItemGroups(consumableSplit.materials)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              return renderItemGroups(allItems);
+            })()}
           </section>
 
           {/* Schedule & Timing */}
@@ -526,7 +628,7 @@ export function RequestDetailSheet({
                     {formatDisplayDate(request.requestedDateFrom || request.requestedAt?.split("T")[0])}
                   </span>
                   <span className="text-[10px] text-text-secondary font-medium">
-                    Submitted: {new Date(request.requestedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+                    Submitted: {formatDisplayDate(request.requestedAt)}
                   </span>
                 </div>
               </div>
@@ -620,9 +722,7 @@ export function RequestDetailSheet({
                       Non-returnable
                     </span>
                     <span className="text-[10px] text-text-secondary font-medium">
-                      {request.portalKind === "material"
-                        ? "Materials requisition"
-                        : "Supplies requisition"}
+                      {consumableHeading}
                     </span>
                   </div>
                 </div>
@@ -683,10 +783,6 @@ export function RequestDetailSheet({
                 {logs.map((h, index) => {
                   const style = getActionStyle(h.action);
                   const icon = getActionIcon(h.action);
-                  const { picker, description } = parseAuditNote(h.action, h.note);
-                  const isRejected =
-                    h.action.toLowerCase() === "rejected" ||
-                    h.action.toLowerCase() === "cancelled";
 
                   return (
                     <li key={h.id || index} className="pl-6 relative">

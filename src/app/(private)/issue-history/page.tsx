@@ -6,6 +6,8 @@ import {
   History,
   Search,
   Package,
+  HardHat,
+  Boxes,
   Download,
   RefreshCw,
   X,
@@ -40,12 +42,13 @@ const DATE_FILTERS: { id: DateFilter; label: string }[] = [
 
 function supplyToDetailRecord(row: StockMovement): IssueDetailRecord {
   const signed = row.direction === "out" ? `−${row.qty}` : `+${row.qty}`;
+  const isMaterial = row.classification === "material";
   return {
     id: `mov-${row.id}`,
     movementId: row.id,
     code: row.movementCode,
-    kind: "supply",
-    itemLabel: row.itemName ?? "Consumable",
+    kind: isMaterial ? "material" : "supply",
+    itemLabel: row.itemName ?? (isMaterial ? "Material" : "Consumable"),
     itemCode: row.itemCode ?? "",
     destination: row.destinationLabel ?? "General Inventory",
     qtyLabel: `${signed}${row.unit ? ` ${row.unit}` : ""}`,
@@ -73,17 +76,20 @@ function supplyToDetailRecord(row: StockMovement): IssueDetailRecord {
     lineTotal: row.lineTotal,
     unit: row.unit,
     notes: row.notes,
-    requestCode: row.requestId,
+    requestCode: row.requestCode ?? null,
     voided: row.voided,
     reversalMovementCode: row.reversalMovementCode,
   };
 }
+
+type ClassificationTab = "all" | "supply" | "material";
 
 function IssueHistoryContent() {
   const searchParams = useSearchParams();
   const itemParam = searchParams.get("item") ?? "";
 
   const [search, setSearch] = useState(itemParam);
+  const [classFilter, setClassFilter] = useState<ClassificationTab>("all");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   /** Default on: only show successful (non-voided) issues. */
@@ -119,9 +125,8 @@ function IssueHistoryContent() {
     isRefetching: isRefreshing,
   } = useStockMovementsQuery({
     reason: "issue",
-    limit: 100,
     fromDate,
-    excludeVoided: hideVoided || undefined,
+    fetchAll: true,
   });
 
   const departments = useMemo(() => {
@@ -138,16 +143,36 @@ function IssueHistoryContent() {
     [movements]
   );
 
+  const visibilityRecords = useMemo(
+    () => (hideVoided ? allRecords.filter((r) => !r.voided) : allRecords),
+    [allRecords, hideVoided]
+  );
+
+  const supplyCount = useMemo(
+    () => visibilityRecords.filter((r) => r.kind === "supply").length,
+    [visibilityRecords]
+  );
+
+  const materialCount = useMemo(
+    () => visibilityRecords.filter((r) => r.kind === "material").length,
+    [visibilityRecords]
+  );
+
   const voidedCount = useMemo(
-    () => allRecords.filter((r) => r.voided).length,
-    [allRecords]
+    () =>
+      allRecords.filter(
+        (r) => r.voided && (classFilter === "all" || r.kind === classFilter)
+      ).length,
+    [allRecords, classFilter]
   );
 
   const filteredRecords = useMemo(() => {
-    let result = allRecords;
+    let result = visibilityRecords;
 
-    // Voided + date already applied server-side when possible; keep client
-    // filters for destination label and free-text search.
+    if (classFilter !== "all") {
+      result = result.filter((r) => r.kind === classFilter);
+    }
+
     if (departmentFilter !== "all") {
       result = result.filter(
         (r) =>
@@ -166,12 +191,13 @@ function IssueHistoryContent() {
           r.destination.toLowerCase().includes(q) ||
           (r.actor ?? "").toLowerCase().includes(q) ||
           (r.extra ?? "").toLowerCase().includes(q) ||
-          (r.lotCode ?? "").toLowerCase().includes(q)
+          (r.lotCode ?? "").toLowerCase().includes(q) ||
+          (r.requestCode ?? "").toLowerCase().includes(q)
       );
     }
 
     return result;
-  }, [allRecords, departmentFilter, search]);
+  }, [visibilityRecords, classFilter, departmentFilter, search]);
 
   const totalPages = Math.ceil(filteredRecords.length / pageSize) || 1;
   const paginatedRecords = useMemo(() => {
@@ -188,9 +214,11 @@ function IssueHistoryContent() {
     const headers = [
       "Movement Code",
       "Item Code",
+      "Class",
       "Item Description",
       "Quantity",
       "Destination",
+      "Request Code",
       "Issued By",
       "Date Issued",
       "Lot Code",
@@ -200,9 +228,11 @@ function IssueHistoryContent() {
     const rowsData = filteredRecords.map((r) => [
       r.code,
       r.itemCode,
+      r.kind === "material" ? "Material" : "Supply",
       `"${(r.itemLabel || "").replace(/"/g, '""')}"`,
       r.qtyLabel,
       `"${(r.destination || "").replace(/"/g, '""')}"`,
+      r.requestCode || "",
       `"${(r.actor || "").replace(/"/g, '""')}"`,
       new Date(r.when).toISOString(),
       r.lotCode || "",
@@ -223,7 +253,9 @@ function IssueHistoryContent() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success(`Exported ${filteredRecords.length} supply issues to CSV.`);
+    toast.success(
+      `Exported ${filteredRecords.length} ${classFilter === "material" ? "material" : classFilter === "supply" ? "supply" : "consumable"} issues to CSV.`
+    );
   };
 
   const handleRefresh = async () => {
@@ -257,7 +289,7 @@ function IssueHistoryContent() {
               Issue History
             </h1>
             <p className="text-xs text-text-secondary mt-0.5">
-              Consumable supply issues and dispatches (<span className="font-mono font-bold">MOV-</span>). Asset custody lives in the Custody Log.
+              Consumable supply &amp; material issues and dispatches (<span className="font-mono font-bold">MOV-</span>). Asset custody lives in the Custody Log.
             </p>
           </div>
 
@@ -286,16 +318,86 @@ function IssueHistoryContent() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          <div className="flex items-center gap-2 text-xs text-text-secondary">
-            <History className="h-3.5 w-3.5 shrink-0" />
-            <span>
-              <span className="font-bold text-text tabular-nums">{filteredRecords.length}</span>
-              {" "}
-              supply issue{filteredRecords.length === 1 ? "" : "s"}
-              {filteredRecords.length !== allRecords.length
-                ? ` (of ${allRecords.length})`
-                : ""}
-            </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div
+              role="tablist"
+              aria-label="Issue classification filter"
+              className="inline-flex items-center gap-1 rounded-xl border border-border bg-bg-subtle p-1"
+            >
+              {(
+                [
+                  {
+                    id: "all" as const,
+                    label: "All",
+                    count: visibilityRecords.length,
+                    icon: Boxes,
+                  },
+                  {
+                    id: "supply" as const,
+                    label: "Supplies",
+                    count: supplyCount,
+                    icon: Package,
+                  },
+                  {
+                    id: "material" as const,
+                    label: "Materials",
+                    count: materialCount,
+                    icon: HardHat,
+                  },
+                ]
+              ).map((tab) => {
+                const Icon = tab.icon;
+                const active = classFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      setClassFilter(tab.id);
+                      setPage(1);
+                    }}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors cursor-pointer",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-2xs"
+                        : "text-text-secondary hover:bg-bg hover:text-text"
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{tab.label}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums",
+                        active
+                          ? "bg-primary-foreground/20 text-primary-foreground"
+                          : "bg-bg text-text-secondary border border-border/70"
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
+              <History className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                <span className="font-bold text-text tabular-nums">{filteredRecords.length}</span>
+                {" "}
+                {classFilter === "material"
+                  ? "material"
+                  : classFilter === "supply"
+                    ? "supply"
+                    : "consumable"}{" "}
+                issue{filteredRecords.length === 1 ? "" : "s"}
+                {filteredRecords.length !== visibilityRecords.length
+                  ? ` (of ${visibilityRecords.length})`
+                  : ""}
+              </span>
+            </div>
           </div>
 
             <div className="flex items-center gap-2 flex-1 min-w-72 justify-end flex-wrap">
@@ -434,7 +536,13 @@ function IssueHistoryContent() {
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-status-active-bg/10 border border-status-active-bg/25 text-status-active-text shadow-xs mb-3">
               <Package className="h-7 w-7" strokeWidth={1.8} />
             </span>
-            <p className="text-base font-bold text-text">No Supply Issues Found</p>
+            <p className="text-base font-bold text-text">
+              {classFilter === "material"
+                ? "No Material Issues Found"
+                : classFilter === "supply"
+                  ? "No Supply Issues Found"
+                  : "No Consumable Issues Found"}
+            </p>
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
               {allRecords.length === 0
                 ? "Consumable dispatches will appear here when supplies are issued from inventory."
@@ -460,6 +568,7 @@ function IssueHistoryContent() {
                   type="button"
                   onClick={() => {
                     setSearch("");
+                    setClassFilter("all");
                     setDepartmentFilter("all");
                     setDateFilter("all");
                     setHideVoided(true);
@@ -543,14 +652,31 @@ function IssueHistoryContent() {
                       </td>
 
                       <td className="px-4 py-3.5 align-middle">
-                        <p className="font-bold text-text truncate max-w-55">
-                          {row.itemLabel}
-                        </p>
-                        <div className="flex items-center gap-1.5 text-[11px] font-mono text-text-secondary mt-0.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-text truncate max-w-55">
+                            {row.itemLabel}
+                          </p>
+                          <span
+                            className={cn(
+                              "inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide border shrink-0",
+                              row.kind === "material"
+                                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                : "bg-status-active-bg/15 text-status-active-text border-status-active-bg/30"
+                            )}
+                          >
+                            {row.kind === "material" ? "Material" : "Supply"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] font-mono text-text-secondary mt-0.5 flex-wrap">
                           <span>{row.itemCode}</span>
                           {row.lotCode && (
                             <span className="bg-bg-subtle px-1 py-0.2 rounded border border-border text-[10px]">
                               Lot: {row.lotCode}
+                            </span>
+                          )}
+                          {row.requestCode && (
+                            <span className="bg-bg-subtle px-1 py-0.2 rounded border border-border text-[10px]">
+                              {row.requestCode}
                             </span>
                           )}
                         </div>

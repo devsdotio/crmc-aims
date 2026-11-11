@@ -5,7 +5,9 @@ import { Loader2, AlertCircle, AlertTriangle, XCircle, Info } from "lucide-react
 
 import { cn } from "@/lib/utils";
 import { formatItemDescription, formatQuantityWithUnit } from "@/lib/sanitize-display";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useRequestModalDismiss } from "@/hooks/use-request-modal-dismiss";
+import { portalRequestKindLabel } from "./map-portal-request";
 import type { PortalBorrowRequest } from "./types";
 
 interface CancelRequestDialogProps {
@@ -24,6 +26,7 @@ export function CancelRequestDialog({
   const [isCancelling, setIsCancelling] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
 
   const { requestClose, onBackdropClick } = useRequestModalDismiss({
@@ -32,6 +35,8 @@ export function CancelRequestDialog({
     isDirty: false,
     onRequestClose: () => onOpenChange(false),
   });
+
+  useFocusTrap(open, dialogRef, requestClose);
 
   // Reset fields when opening or switching request
   useEffect(() => {
@@ -46,6 +51,7 @@ export function CancelRequestDialog({
   if (!open) return null;
 
   const isApproved = request.status === "approved";
+  const kindLabel = portalRequestKindLabel(request);
 
   const handleConfirm = async () => {
     if (isCancelling) return;
@@ -91,8 +97,10 @@ export function CancelRequestDialog({
 
       {/* Panel */}
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className={cn(
-          "relative z-10 w-full max-w-lg rounded-2xl bg-card border border-border shadow-2xl p-6 space-y-5"
+          "relative z-10 w-full max-w-lg rounded-2xl bg-card border border-border shadow-2xl p-6 space-y-5 focus:outline-none"
         )}
       >
         {/* Header */}
@@ -108,6 +116,9 @@ export function CancelRequestDialog({
               >
                 Cancel Request
               </h2>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border border-border bg-bg-subtle text-text-secondary uppercase tracking-wide">
+                {kindLabel}
+              </span>
               <span
                 className={cn(
                   "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border uppercase tracking-wide",
@@ -132,7 +143,7 @@ export function CancelRequestDialog({
             <div className="space-y-0.5">
               <p className="font-semibold">Notice for approved requests</p>
               <p className="text-[11px] leading-relaxed text-amber-700/90 dark:text-amber-400/90">
-                This request was already approved. Cancelling it will revoke the approval and release any reserved supplies or items back to available inventory.
+                This request was already approved. Cancelling it will revoke the approval and release any reserved items back to available stock.
               </p>
             </div>
           </div>

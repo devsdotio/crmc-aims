@@ -121,26 +121,37 @@ export function useCreateBorrowRequestMutation(): UseMutationResult<
   return useMutation({
     mutationFn: (payload) => borrowRequestsApi.create(payload),
     onSuccess: (newRequest) => {
-      // 1. Optimistically add to lists
-      qc.setQueriesData<PaginatedResponse<BorrowRequest[]>>(
-        { queryKey: borrowRequestQueryKeys.lists() },
-        (old) => {
-          if (!old) {
-            return {
-              data: [newRequest],
-              meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
-            };
-          }
-          return {
-            ...old,
-            data: [newRequest, ...old.data],
-            meta: {
-              ...old.meta,
-              total: old.meta.total + 1,
-            },
-          };
+      const reqKind =
+        newRequest.requestType === "assignable" ? "assign" : "borrow";
+      // 1. Optimistically add to matching pending/all lists only
+      const listQueries = qc.getQueriesData<PaginatedResponse<BorrowRequest[]>>({
+        queryKey: borrowRequestQueryKeys.lists(),
+      });
+      for (const [queryKey, old] of listQueries) {
+        const filters = (queryKey[2] ?? {}) as {
+          status?: string;
+          search?: string;
+          requestType?: string;
+        };
+        if (filters.status && filters.status !== "pending") continue;
+        if (filters.search?.trim()) continue;
+        if (
+          filters.requestType &&
+          filters.requestType !== (newRequest.requestType ?? "borrowable")
+        ) {
+          continue;
         }
-      );
+        if (!old) continue;
+        if (old.data.some((r) => r.id === newRequest.id)) continue;
+        qc.setQueryData<PaginatedResponse<BorrowRequest[]>>(queryKey, {
+          ...old,
+          data: [newRequest, ...old.data],
+          meta: {
+            ...old.meta,
+            total: old.meta.total + 1,
+          },
+        });
+      }
 
       // 2. Optimistically update dashboard snapshot
       const firstItem = newRequest.items?.[0];
@@ -157,14 +168,18 @@ export function useCreateBorrowRequestMutation(): UseMutationResult<
               ...old.summary,
               pendingApprovals: (old.summary?.pendingApprovals || 0) + 1,
               totalRequests: (old.summary?.totalRequests || 0) + 1,
+              ...(reqKind === "assign"
+                ? { pendingAssignRequests: (old.summary?.pendingAssignRequests || 0) + 1 }
+                : { pendingBorrowRequests: (old.summary?.pendingBorrowRequests || 0) + 1 }),
             },
             pendingRequests: [
               {
                 id: newRequest.id,
+                requestCode: newRequest.requestCode,
+                kind: reqKind,
                 itemDescription: itemDesc,
                 requesterName: newRequest.requesterName,
                 department: newRequest.department,
-                items: newRequest.items,
                 requestedAt: newRequest.requestedAt,
                 relativeTime: newRequest.relativeTime || "Just now",
               },
@@ -271,20 +286,79 @@ export function useCancelBorrowRequestMutation(): UseMutationResult<
   return useMutation({
     mutationFn: ({ id, reason, note }) =>
       borrowRequestsApi.cancel(id, { reason, note }),
-    onSuccess: (_, { id }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      qc.setQueriesData<any>({ queryKey: dashboardQueryKeys.snapshot() }, (old: any) => {
+    onMutate: async ({ id, reason, note }) => {
+      await qc.cancelQueries({ queryKey: borrowRequestQueryKeys.lists() });
+      const prevLists = qc.getQueriesData<PaginatedResponse<BorrowRequest[]>>({
+        queryKey: borrowRequestQueryKeys.lists(),
+      });
+      const prevSnapshots = qc.getQueriesData<{
+        summary?: { pendingApprovals?: number };
+        pendingRequests?: Array<{ id: string }>;
+      }>({
+        queryKey: dashboardQueryKeys.snapshot(),
+      });
+      let cancelledPending = false;
+      for (const [queryKey, old] of prevLists) {
+        if (!old) continue;
+        const match = old.data.find((r) => r.id === id);
+        if (match?.status === "pending") cancelledPending = true;
+        const filters = (queryKey[2] ?? {}) as { status?: string };
+        const shouldRemove = Boolean(filters.status && filters.status !== "cancelled");
+        qc.setQueryData<PaginatedResponse<BorrowRequest[]>>(queryKey, {
+          ...old,
+          data: shouldRemove
+            ? old.data.filter((r) => r.id !== id)
+            : old.data.map((r) =>
+                r.id === id
+                  ? {
+                      ...r,
+                      status: "cancelled",
+                      cancellationReason: (reason ?? note ?? "").trim() || r.cancellationReason,
+                    }
+                  : r
+              ),
+        });
+      }
+      qc.setQueriesData<{
+        summary?: { pendingApprovals?: number };
+        pendingRequests?: Array<{ id: string }>;
+      }>({ queryKey: dashboardQueryKeys.snapshot() }, (old) => {
         if (!old) return old;
+        const inPending = (old.pendingRequests || []).some((r) => r.id === id);
         return {
           ...old,
           summary: {
             ...old.summary,
-            pendingApprovals: Math.max(0, (old.summary?.pendingApprovals || 1) - 1),
+            pendingApprovals:
+              cancelledPending || inPending
+                ? Math.max(0, (old.summary?.pendingApprovals || 1) - 1)
+                : old.summary?.pendingApprovals,
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          pendingRequests: (old.pendingRequests || []).filter((r: any) => r.id !== id),
+          pendingRequests: (old.pendingRequests || []).filter((r) => r.id !== id),
         };
       });
+      return { prevLists, prevSnapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      const typed = ctx as {
+        prevLists?: Array<[readonly unknown[], PaginatedResponse<BorrowRequest[]> | undefined]>;
+        prevSnapshots?: Array<
+          [
+            readonly unknown[],
+            | {
+                summary?: { pendingApprovals?: number };
+                pendingRequests?: Array<{ id: string }>;
+              }
+            | undefined,
+          ]
+        >;
+      } | undefined;
+      for (const [key, data] of typed?.prevLists ?? []) {
+        qc.setQueryData(key, data);
+      }
+      for (const [key, data] of typed?.prevSnapshots ?? []) {
+        qc.setQueryData(key, data);
+      }
     },
     onSettled: () => {
       void invalidateDomains(qc, REQUEST_QUEUE_DOMAINS);

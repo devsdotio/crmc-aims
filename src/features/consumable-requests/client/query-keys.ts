@@ -1,3 +1,4 @@
+import type { ConsumableRequestKind } from "@/lib/consumable-classification";
 import type { ConsumableRequest } from "./consumable-requests-api";
 
 export const consumableRequestQueryKeys = {
@@ -5,6 +6,7 @@ export const consumableRequestQueryKeys = {
   lists: () => [...consumableRequestQueryKeys.all, "list"] as const,
   list: (filters?: {
     status?: ConsumableRequest["status"];
+    classification?: ConsumableRequestKind;
     department?: string;
     search?: string;
     page?: number;

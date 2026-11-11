@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { createClient } from "@/lib/supabase/client";
+import { assetQueryKeys } from "@/features/assets/client/query-keys";
 import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 import { borrowRequestQueryKeys } from "@/features/borrow-requests/client/query-keys";
 import { consumableRequestQueryKeys } from "@/features/consumable-requests/client/query-keys";
@@ -51,7 +52,8 @@ export function useBorrowerRealtimeSync(
         ];
         if (domain === "requests") {
           jobs.push(
-            qc.invalidateQueries({ queryKey: borrowRequestQueryKeys.all })
+            qc.invalidateQueries({ queryKey: borrowRequestQueryKeys.all }),
+            qc.invalidateQueries({ queryKey: assetQueryKeys.all })
           );
         } else if (domain === "supplies") {
           jobs.push(
@@ -60,7 +62,10 @@ export function useBorrowerRealtimeSync(
             qc.invalidateQueries({ queryKey: stockMovementQueryKeys.all })
           );
         } else {
-          jobs.push(qc.invalidateQueries({ queryKey: borrowLogQueryKeys.all }));
+          jobs.push(
+            qc.invalidateQueries({ queryKey: borrowLogQueryKeys.all }),
+            qc.invalidateQueries({ queryKey: assetQueryKeys.all })
+          );
         }
         void Promise.all(jobs);
       }, 250);
@@ -86,12 +91,16 @@ export function useBorrowerRealtimeSync(
     const catalogConfig = filter
       ? { event: "*" as const, schema: "public", table: "consumables", filter }
       : { event: "*" as const, schema: "public", table: "consumables" };
+    const assetCatalogConfig = filter
+      ? { event: "*" as const, schema: "public", table: "assets", filter }
+      : { event: "*" as const, schema: "public", table: "assets" };
     const movementConfig = filter
       ? { event: "*" as const, schema: "public", table: "stock_movements", filter }
       : { event: "*" as const, schema: "public", table: "stock_movements" };
     const channel = supabase
       .channel(channelName)
       .on("postgres_changes", requestConfig, () => invalidateDomain("requests"))
+      .on("postgres_changes", assetCatalogConfig, () => invalidateDomain("requests"))
       .on("postgres_changes", supplyConfig, () => invalidateDomain("supplies"))
       .on("postgres_changes", catalogConfig, () => invalidateDomain("supplies"))
       .on("postgres_changes", movementConfig, () => invalidateDomain("supplies"))

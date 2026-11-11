@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Tag,
@@ -12,10 +12,12 @@ import {
   Wrench,
   Search,
   CheckCircle2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { OverdueBadge } from "@/components/ui/overdue-badge";
+import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import {
   getActionStyle,
   getActionIcon,
@@ -25,6 +27,18 @@ import {
 import { useBorrowLogPageQuery } from "@/features/borrow-log/client/use-borrow-log";
 
 type HistoryStatusFilter = "all" | "active" | "overdue" | "returned";
+type CustodyKindFilter = "all" | "borrow" | "assignment";
+
+function formatSafeDate(iso?: string | null): string {
+  if (!iso) return "—";
+  const parsed = new Date(iso.includes("T") ? iso : `${iso}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 const STATUS_FILTERS: {
   key: HistoryStatusFilter;
@@ -94,12 +108,17 @@ function ConditionBadge({ condition }: { condition?: string }) {
 
 function RowSkeleton() {
   return (
-    <div className="flex items-center gap-4 p-4 border-b border-border">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 md:px-6 border-b border-border">
       <div className="flex-1 space-y-2">
-        <div className="h-4 w-48 animate-pulse rounded bg-border" />
-        <div className="h-3 w-32 animate-pulse rounded bg-border" />
+        <div className="flex items-center gap-2">
+          <div className="h-3.5 w-20 animate-pulse rounded bg-border" />
+          <div className="h-3.5 w-20 animate-pulse rounded bg-border" />
+          <div className="h-4 w-16 animate-pulse rounded-full bg-border" />
+        </div>
+        <div className="h-4 w-56 animate-pulse rounded bg-border" />
+        <div className="h-3 w-44 animate-pulse rounded bg-border" />
       </div>
-      <div className="h-6 w-24 animate-pulse rounded-full bg-border" />
+      <div className="h-6 w-24 animate-pulse rounded-full bg-border shrink-0" />
     </div>
   );
 }
@@ -108,45 +127,61 @@ export function BorrowHistoryTab() {
   const { getCategoryStyle } = useCategoryStyleMap();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>("all");
+  const [custodyKind, setCustodyKind] = useState<CustodyKindFilter>("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 25;
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 300);
+    return () => window.clearTimeout(id);
+  }, [search]);
 
   const listStatus =
     statusFilter === "all" ? undefined : statusFilter;
 
-  const { data: pageData, isLoading: loading } = useBorrowLogPageQuery({
-    custodyKind: "borrow",
+  const {
+    data: pageData,
+    isLoading: loading,
+    isError,
+    error,
+    refetch,
+  } = useBorrowLogPageQuery({
+    custodyKind,
     status: listStatus,
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     page,
     limit: pageSize,
   });
 
   const { data: countAll } = useBorrowLogPageQuery({
-    custodyKind: "borrow",
-    search: search.trim() || undefined,
+    custodyKind,
+    search: debouncedSearch || undefined,
     page: 1,
     limit: 1,
+    enabled: statusFilter !== "all",
   });
   const { data: countActive } = useBorrowLogPageQuery({
-    custodyKind: "borrow",
+    custodyKind,
     status: "active",
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     page: 1,
     limit: 1,
   });
   const { data: countOverdue } = useBorrowLogPageQuery({
-    custodyKind: "borrow",
+    custodyKind,
     status: "overdue",
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     page: 1,
     limit: 1,
   });
   const { data: countReturned } = useBorrowLogPageQuery({
-    custodyKind: "borrow",
+    custodyKind,
     status: "returned",
-    search: search.trim() || undefined,
+    search: debouncedSearch || undefined,
     page: 1,
     limit: 1,
   });
@@ -160,90 +195,149 @@ export function BorrowHistoryTab() {
 
   const counts = useMemo(
     () => ({
-      all: countAll?.total ?? 0,
+      all: statusFilter === "all" ? (pageData?.total ?? 0) : (countAll?.total ?? 0),
       active: countActive?.total ?? 0,
       overdue: countOverdue?.total ?? 0,
       returned: countReturned?.total ?? 0,
     }),
-    [countAll?.total, countActive?.total, countOverdue?.total, countReturned?.total]
+    [statusFilter, pageData?.total, countAll?.total, countActive?.total, countOverdue?.total, countReturned?.total]
   );
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col min-h-0">
+    <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
-      <div className="px-4 md:px-6 py-3 bg-bg border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
-        {/* Status Tabs */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
-            Status:
-          </span>
-          <div className="flex gap-1 rounded-xl border border-border p-1 bg-bg-subtle shrink-0 overflow-x-auto scrollbar-none relative">
-            {STATUS_FILTERS.map((f) => {
-              const count = counts[f.key];
+      <div className="px-4 md:px-6 py-3 bg-bg border-b border-border flex flex-col gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Status Tabs */}
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
+              Status:
+            </span>
+            <div className="flex gap-1 rounded-xl border border-border p-1 bg-bg-subtle shrink-0 overflow-x-auto scrollbar-none relative">
+              {STATUS_FILTERS.map((f) => {
+                const count = counts[f.key];
 
-              const isSelected = statusFilter === f.key;
+                const isSelected = statusFilter === f.key;
 
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  onClick={() => {
-                    setStatusFilter(f.key);
-                    setPage(1);
-                  }}
-                  className={cn(
-                    "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-150 cursor-pointer whitespace-nowrap select-none",
-                    isSelected
-                      ? "text-text"
-                      : "text-text-secondary hover:text-text"
-                  )}
-                >
-                  {isSelected && (
-                    <motion.span
-                      layoutId="borrower-history-active-tab"
-                      className="absolute inset-0 rounded-lg bg-bg shadow-xs border border-border/80"
-                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                    />
-                  )}
-                  <span
-                    className={cn("h-1.5 w-1.5 rounded-full relative z-10 shrink-0", f.dot)}
-                    aria-hidden="true"
-                  />
-                  <span className="relative z-10">{f.label}</span>
-                  <span
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(f.key);
+                      setPage(1);
+                    }}
                     className={cn(
-                      "relative z-10 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold transition-colors duration-150",
-                      isSelected ? f.activeBadge : f.badge
+                      "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-150 cursor-pointer whitespace-nowrap select-none",
+                      isSelected
+                        ? "text-text"
+                        : "text-text-secondary hover:text-text"
                     )}
                   >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+                    {isSelected && (
+                      <motion.span
+                        layoutId="borrower-history-active-tab"
+                        className="absolute inset-0 rounded-lg bg-bg shadow-xs border border-border/80"
+                        transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                      />
+                    )}
+                    <span
+                      className={cn("h-1.5 w-1.5 rounded-full relative z-10 shrink-0", f.dot)}
+                      aria-hidden="true"
+                    />
+                    <span className="relative z-10">{f.label}</span>
+                    <span
+                      className={cn(
+                        "relative z-10 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold transition-colors duration-150",
+                        isSelected ? f.activeBadge : f.badge
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Search Field */}
+          <div className="relative flex-1 min-w-48 max-w-sm">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
+              <Search className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Search borrow and assignment history"
+              placeholder="Search asset, LOG code, or requester…"
+              className={cn(
+                "w-full h-9 pl-8.5 pr-8 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
+                "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+              )}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setDebouncedSearch("");
+                  setPage(1);
+                }}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Search Field */}
-        <div className="relative flex-1 min-w-48 max-w-sm">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
-            <Search className="h-3.5 w-3.5" />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mr-1">
+            Custody:
           </span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            placeholder="Search asset, LOG code, or serial…"
-            className={cn(
-              "w-full h-9 pl-8.5 pr-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
-              "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
-            )}
-          />
+          {(
+            [
+              { key: "all" as const, label: "All Records" },
+              { key: "borrow" as const, label: "Borrowed" },
+              { key: "assignment" as const, label: "Assigned" },
+            ]
+          ).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              aria-pressed={custodyKind === opt.key}
+              onClick={() => {
+                setCustodyKind(opt.key);
+                setPage(1);
+              }}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors cursor-pointer",
+                custodyKind === opt.key
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-bg-subtle border-border text-text-secondary hover:text-text"
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       </div>
+
+      {isError && (
+        <QueryErrorBanner
+          message={
+            error instanceof Error
+              ? error.message
+              : "Failed to load history records."
+          }
+          onRetry={() => void refetch()}
+        />
+      )}
 
       {/* List */}
       <div className="flex-1 overflow-y-auto min-h-0 bg-bg divide-y divide-border">
@@ -254,12 +348,27 @@ export function BorrowHistoryTab() {
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-bg-subtle text-text-secondary shadow-xs mb-3">
               <History className="h-7 w-7" strokeWidth={1.8} aria-hidden />
             </span>
-            <h3 className="text-base font-bold text-text">No borrow history records</h3>
+            <h3 className="text-base font-bold text-text">No custody history records</h3>
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
-              {statusFilter === "all"
-                ? "Your completed and active borrowings will appear here once assets are released."
-                : "No records match the selected status filter."}
+              {statusFilter === "all" && custodyKind === "all" && !debouncedSearch
+                ? "Your completed and active equipment records will appear here once assets are released."
+                : "No records match the selected filters."}
             </p>
+            {(statusFilter !== "all" || custodyKind !== "all" || debouncedSearch) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("all");
+                  setCustodyKind("all");
+                  setSearch("");
+                  setDebouncedSearch("");
+                  setPage(1);
+                }}
+                className="mt-4 px-3.5 py-2 rounded-lg border border-border bg-card text-xs font-semibold text-text hover:bg-bg-subtle cursor-pointer"
+              >
+                Show all records
+              </button>
+            )}
           </div>
         ) : (
           filteredRecords.map((record) => {
@@ -338,12 +447,9 @@ export function BorrowHistoryTab() {
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5 shrink-0 text-text-secondary/70" aria-hidden />
-                        Borrowed:{" "}
+                        {record.custodyKind === "assignment" ? "Assigned: " : "Borrowed: "}
                         <span className="font-medium text-text">
-                          {new Date(record.releasedAt).toLocaleDateString(
-                            "en-PH",
-                            { month: "short", day: "numeric", year: "numeric" }
-                          )}
+                          {formatSafeDate(record.releasedAt)}
                         </span>
                       </span>
                       {record.dueDate && (
@@ -352,7 +458,7 @@ export function BorrowHistoryTab() {
                           <span
                             className={cn(
                               "font-medium",
-                              isOverdue ? "text-status-outofservice-bg font-bold" : "text-text"
+                              isOverdue ? "text-status-outofservice-text font-bold" : "text-text"
                             )}
                           >
                             {record.dueDate}
@@ -363,10 +469,7 @@ export function BorrowHistoryTab() {
                         <span className="flex items-center gap-1">
                           Returned:{" "}
                           <span className="font-medium text-text">
-                            {new Date(record.returnedAt).toLocaleDateString(
-                              "en-PH",
-                              { month: "short", day: "numeric", year: "numeric" }
-                            )}
+                            {formatSafeDate(record.returnedAt)}
                           </span>
                         </span>
                       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   X,
   Search,
@@ -14,7 +14,8 @@ import {
   Package,
   Briefcase,
   Clock,
-  Layers,
+  Boxes,
+  Wrench,
   FileCheck2,
   FileText,
   StickyNote,
@@ -53,11 +54,12 @@ import {
   mapBorrowRequestToPortal,
   mapConsumableRequestToPortal,
 } from "./map-portal-request";
-import { LoadingState } from "@/components/providers/loading-context";
 import { useToast } from "@/components/providers/toast-context";
 import { formatQuantityWithUnit } from "@/lib/sanitize-display";
 import { summarizePurposes } from "@/lib/request-purpose";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { QueryErrorBanner } from "@/components/shared/query-error-banner";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 import { useRequestModalDismiss } from "@/hooks/use-request-modal-dismiss";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -82,6 +84,77 @@ function newTypeBundle(requestType: WizardRequestType): WizardTypeBundle {
     selectedItems: [],
     purposeGroups: [newPurposeGroup()],
   };
+}
+
+function defaultLineQuantity(item: BrowseItem): number {
+  if (
+    item.type === "consumable" &&
+    typeof item.currentQty === "number" &&
+    item.currentQty > 0 &&
+    item.currentQty < 1
+  ) {
+    return roundQty(item.currentQty);
+  }
+  return 1;
+}
+
+function populateUnassignedLines(bundle: WizardTypeBundle): WizardTypeBundle {
+  const assignedIds = new Set(
+    bundle.purposeGroups.flatMap((g) => g.lines.map((l) => l.itemId))
+  );
+  const unassignedItems = bundle.selectedItems.filter(
+    (item) => !assignedIds.has(item.id)
+  );
+  if (unassignedItems.length === 0) return bundle;
+
+  return {
+    ...bundle,
+    purposeGroups: bundle.purposeGroups.map((g, i) =>
+      i === 0
+        ? {
+            ...g,
+            lines: [
+              ...g.lines,
+              ...unassignedItems.map((item) => ({
+                itemId: item.id,
+                quantity: defaultLineQuantity(item),
+              })),
+            ],
+          }
+        : g
+    ),
+  };
+}
+
+function bundleMatchesBrowseItem(
+  requestType: WizardRequestType,
+  item: BrowseItem
+): boolean {
+  if (item.type === "asset") {
+    return (
+      (requestType === "assignable" && item.assignmentType === "assignable") ||
+      (requestType === "borrowable" && item.assignmentType !== "assignable")
+    );
+  }
+  const kind = item.classification === "material" ? "material" : "supply";
+  return requestType === kind;
+}
+
+function distributePrefilledItems(
+  bundles: WizardTypeBundle[],
+  prefilledItems?: BrowseItem[]
+): WizardTypeBundle[] {
+  if (!prefilledItems || prefilledItems.length === 0) return bundles;
+  return bundles.map((bundle) => {
+    const matched = prefilledItems.filter((item) =>
+      bundleMatchesBrowseItem(bundle.requestType, item)
+    );
+    if (matched.length === 0) return bundle;
+    return populateUnassignedLines({
+      ...bundle,
+      selectedItems: matched,
+    });
+  });
 }
 
 function emptyWizardValues(
@@ -307,7 +380,7 @@ function StepType({
       subtitle: "Office & warehouse supplies",
       description:
         "Request consumable office stationery, toner, paper, and other supplies from stock.",
-      icon: Layers,
+      icon: Boxes,
       badge: "Supplies",
       color: "emerald",
       theme: {
@@ -325,7 +398,7 @@ function StepType({
       subtitle: "Project & construction materials",
       description:
         "Request materials such as paint, cement, lumber, and other project stock.",
-      icon: Layers,
+      icon: Wrench,
       badge: "Materials",
       color: "teal",
       theme: {
@@ -398,10 +471,13 @@ function StepType({
                 </div>
 
                 <div className="mt-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <p className={cn("text-sm font-bold", isSelected ? opt.theme.selectedTitle : "text-text")}>
                       {opt.title}
                     </p>
+                    <span className={cn("text-[10px] font-semibold px-2 py-0.5 rounded-full border", opt.theme.badge)}>
+                      {opt.badge}
+                    </span>
                   </div>
                   <p className="text-[11px] font-medium text-text-secondary mt-0.5">
                     {opt.subtitle}
@@ -516,7 +592,7 @@ function StepSelect({
   const [search, setSearch] = useState("");
   const assignmentType =
     requestType === "assignable" ? "assignable" : "borrowable";
-  const { data: assets = [], isLoading } = useAssetsQuery(undefined, {
+  const { data: assets = [], isLoading, isError, error, refetch } = useAssetsQuery(undefined, {
     catalog: true,
     assignmentType,
   });
@@ -615,7 +691,8 @@ function StepSelect({
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text cursor-pointer"
+              aria-label="Clear search"
               title="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -625,14 +702,20 @@ function StepSelect({
       </div>
 
       <div>
-        {isLoading ? (
-          <LoadingState
-            variant="inline"
-            icon="package"
-            message="Loading equipment..."
-            subtitle="Fetching units available for this request..."
-            className="py-8"
+        {isError ? (
+          <QueryErrorBanner
+            message={(error as Error)?.message ?? "Failed to load equipment"}
+            onRetry={() => refetch()}
           />
+        ) : isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-28 rounded-lg border border-border bg-bg-subtle/60 animate-pulse p-3"
+              />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="p-6 text-center rounded-lg border border-dashed border-border">
             <Package className="h-7 w-7 text-text-secondary/40 mx-auto mb-2" />
@@ -730,7 +813,7 @@ function StepSelectConsumables({
 }) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const { data: paginatedData, isLoading } = useConsumableCatalogQuery({
+  const { data: paginatedData, isLoading, isError, error, refetch } = useConsumableCatalogQuery({
     catalog: true,
     classification,
   });
@@ -849,7 +932,8 @@ function StepSelectConsumables({
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text cursor-pointer"
+              aria-label="Clear search"
               title="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -858,57 +942,94 @@ function StepSelectConsumables({
         </div>
       </div>
 
-      {categories.length > 1 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setSelectedCategory("all")}
-            className={cn(
-              "px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0",
-              selectedCategory === "all"
-                ? "bg-accent/15 text-accent border-accent/40 font-bold"
-                : "bg-card border-border text-text-secondary hover:border-accent/40 hover:text-text"
-            )}
+      {categories.length > 5 ? (
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor={`category-${classification}`}
+            className="text-[11px] font-semibold text-text-secondary shrink-0"
           >
-            All ({supplyItems.length})
-          </button>
-          {categories.map((cat) => {
-            const count = supplyItems.filter((i) => i.category === cat).length;
-            const isCatActive = selectedCategory.toLowerCase() === cat.toLowerCase();
-            const catStyle = getCategoryStyle(cat);
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(isCatActive ? "all" : cat)}
-                className={cn(
-                  "px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
-                  isCatActive
-                    ? "bg-accent/15 text-accent border-accent/40 font-bold"
-                    : "bg-card border-border text-text-secondary hover:border-accent/40 hover:text-text"
-                )}
-              >
-                <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", catStyle.bg)} />
-                {cat} ({count})
-              </button>
-            );
-          })}
+            Category:
+          </label>
+          <select
+            id={`category-${classification}`}
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="h-8 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-text focus:outline-none focus:border-accent"
+          >
+            <option value="all">All ({supplyItems.length})</option>
+            {categories.map((cat) => {
+              const count = supplyItems.filter((i) => i.category === cat).length;
+              return (
+                <option key={cat} value={cat}>
+                  {cat} ({count})
+                </option>
+              );
+            })}
+          </select>
         </div>
+      ) : (
+        categories.length > 1 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("all")}
+              aria-pressed={selectedCategory === "all"}
+              className={cn(
+                "px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0",
+                selectedCategory === "all"
+                  ? "bg-primary text-primary-foreground border-primary font-bold"
+                  : "bg-card border-border text-text-secondary hover:border-accent/40 hover:text-text"
+              )}
+            >
+              All ({supplyItems.length})
+            </button>
+            {categories.map((cat) => {
+              const count = supplyItems.filter((i) => i.category === cat).length;
+              const isCatActive = selectedCategory.toLowerCase() === cat.toLowerCase();
+              const catStyle = getCategoryStyle(cat);
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setSelectedCategory(isCatActive ? "all" : cat)}
+                  aria-pressed={isCatActive}
+                  className={cn(
+                    "px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
+                    isCatActive
+                      ? "bg-primary text-primary-foreground border-primary font-bold"
+                      : "bg-card border-border text-text-secondary hover:border-accent/40 hover:text-text"
+                  )}
+                >
+                  <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", catStyle.bg)} />
+                  {cat} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )
       )}
 
       <div>
-        {isLoading ? (
-          <LoadingState
-            variant="inline"
-            icon="package"
-            message={`Loading ${kindLabel.toLowerCase()}...`}
-            subtitle={`Fetching ${kindLabel.toLowerCase()} inventory...`}
-            className="py-8"
+        {isError ? (
+          <QueryErrorBanner
+            message={(error as Error)?.message ?? `Failed to load ${kindLabel.toLowerCase()}`}
+            onRetry={() => refetch()}
           />
+        ) : isLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+            {Array.from({ length: 6 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-28 rounded-lg border border-border bg-bg-subtle/60 animate-pulse p-3"
+              />
+            ))}
+          </div>
         ) : filtered.length === 0 ? (
           <div className="p-6 text-center rounded-lg border border-dashed border-border">
             <FlaskConical className="h-7 w-7 text-text-secondary/40 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-text">No supplies found</p>
+            <p className="text-sm font-semibold text-text">
+              No {kindLabel.toLowerCase()} found
+            </p>
             {(search || selectedCategory !== "all") && (
               <button
                 type="button"
@@ -927,6 +1048,7 @@ function StepSelectConsumables({
             {filtered.map((item) => {
               const isSelected = value.some((v) => v.id === item.id);
               const style = getCategoryStyle(item.category);
+              const isMaterial = item.classification === "material";
 
               return (
                 <button
@@ -962,30 +1084,40 @@ function StepSelectConsumables({
                       {isSelected ? <Check className="h-3.5 w-3.5 stroke-3" /> : null}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/50 text-[11px] w-full mt-auto">
+                  <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-border/50 text-[11px] w-full mt-auto">
                     <span
                       className={cn(
-                        "rounded px-1.5 py-0.5 font-bold text-[9px] uppercase tracking-wider truncate",
-                        style.bg,
-                        style.text
+                        "rounded px-1.5 py-0.5 font-bold text-[9px] uppercase tracking-wider shrink-0 border",
+                        isMaterial
+                          ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25"
+                          : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
                       )}
                     >
-                      {item.classification === "material"
-                        ? "Material"
-                        : item.classification === "supply"
-                          ? "Supply"
-                          : item.category || "Consumable"}
+                      {isMaterial ? "Material" : "Supply"}
                     </span>
-                    <span className="text-text-secondary font-medium flex items-center gap-1 shrink-0">
+                    {item.category && (
+                      <span
+                        className={cn(
+                          "rounded px-1.5 py-0.5 font-bold text-[9px] uppercase tracking-wider truncate max-w-24",
+                          style.bg,
+                          style.text
+                        )}
+                      >
+                        {item.category}
+                      </span>
+                    )}
+                    <span className="ml-auto text-text-secondary font-medium flex items-center gap-1 shrink-0 tabular-nums">
                       <span
                         className={cn(
                           "h-1.5 w-1.5 rounded-full",
                           item.currentQty > 0
                             ? "bg-status-active-bg"
-                            : "bg-status-outofservice-bg"
+                            : "bg-amber-500"
                         )}
                       />
-                      {item.currentQty > 0 ? "In stock" : "Out of stock"}
+                      {item.currentQty > 0
+                        ? formatQuantityWithUnit(item.currentQty, item.unit, "consumable")
+                        : "Out of stock · Requestable"}
                     </span>
                   </div>
                 </button>
@@ -998,7 +1130,58 @@ function StepSelectConsumables({
   );
 }
 
-// ─── Step 2: Request Details (per-type purposes + manual department) ──────────
+// ─── Step 2: Request Details (per-type purposes + locked/manual dept) ─────────
+
+function WizardQtyInput({
+  value,
+  ariaLabel,
+  onCommit,
+}: {
+  value: number;
+  ariaLabel: string;
+  onCommit: (nextQty: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  const displayed = focused ? draft : String(value);
+
+  const commit = (raw: string) => {
+    const num = Number(raw);
+    if (!Number.isFinite(num) || num <= 0) {
+      onCommit(0.01);
+      setDraft("0.01");
+      return;
+    }
+    const clamped = roundQty(Math.min(9999, Math.max(0.01, num)));
+    onCommit(clamped);
+    setDraft(String(clamped));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={displayed}
+      onFocus={() => {
+        setFocused(true);
+        setDraft(String(value));
+      }}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={(e) => {
+        setFocused(false);
+        commit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+      }}
+      className="w-12 h-6 px-1 text-center text-xs font-mono font-bold tabular-nums bg-bg border border-border/80 rounded text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 select-all"
+      aria-label={ariaLabel}
+    />
+  );
+}
 
 function StepDetails({
   values,
@@ -1018,7 +1201,8 @@ function StepDetails({
   const { data: users = [] } = useUsersQuery({
     enabled: Boolean(me && me.role !== "borrower"),
   });
-  const isManual = values.requesterMode === "manual";
+  const isBorrower = !me || me.role === "borrower";
+  const isManual = !isBorrower && values.requesterMode === "manual";
   const hasAssignable = values.typeBundles.some(
     (b) => b.requestType === "assignable"
   );
@@ -1076,16 +1260,8 @@ function StepDetails({
       if (!bundle) return;
       const targetItem = bundle.selectedItems.find((i) => i.id === itemId);
       if (targetItem?.type === "asset") return; // Unique serialized assets are strictly single unit
-      const maxAvailable =
-        targetItem?.type === "consumable" && typeof targetItem.currentQty === "number" && targetItem.currentQty > 0
-          ? targetItem.currentQty
-          : undefined;
       const minQty = 0.01;
-      const clamped = roundQty(
-        maxAvailable !== undefined
-          ? Math.min(maxAvailable, Math.max(minQty, quantity))
-          : Math.max(minQty, quantity)
-      );
+      const clamped = roundQty(Math.min(9999, Math.max(minQty, quantity)));
       updateBundle(requestType, {
         purposeGroups: bundle.purposeGroups.map((g) =>
           g.id !== groupId
@@ -1115,18 +1291,7 @@ function StepDetails({
         : bundle.purposeGroups.find((g) => g.id === groupId && g.lines.some((l) => l.itemId === itemId));
       if (existingGroup) {
         const existing = existingGroup.lines.find((l) => l.itemId === itemId)!;
-        const maxAvailable =
-          isConsumable &&
-          targetItem &&
-          typeof targetItem.currentQty === "number" &&
-          targetItem.currentQty > 0
-            ? targetItem.currentQty
-            : undefined;
-        const nextQty = roundQty(existing.quantity + 1);
-        const clamped =
-          maxAvailable !== undefined
-            ? Math.min(maxAvailable, nextQty)
-            : nextQty;
+        const clamped = roundQty(Math.min(9999, existing.quantity + 1));
         updateBundle(requestType, {
           purposeGroups: bundle.purposeGroups.map((g) =>
             g.id !== existingGroup.id
@@ -1145,7 +1310,16 @@ function StepDetails({
         purposeGroups: bundle.purposeGroups.map((g) =>
           g.id !== groupId
             ? g
-            : { ...g, lines: [...g.lines, { itemId, quantity: 1 }] }
+            : {
+                ...g,
+                lines: [
+                  ...g.lines,
+                  {
+                    itemId,
+                    quantity: targetItem ? defaultLineQuantity(targetItem) : 1,
+                  },
+                ],
+              }
         ),
       });
     },
@@ -1194,6 +1368,16 @@ function StepDetails({
     [me, onChange]
   );
 
+  const assignAllUnassigned = useCallback(
+    (requestType: WizardRequestType) => {
+      const bundle = values.typeBundles.find((b) => b.requestType === requestType);
+      if (!bundle) return;
+      const updated = populateUnassignedLines(bundle);
+      updateBundle(requestType, { purposeGroups: updated.purposeGroups });
+    },
+    [updateBundle, values.typeBundles]
+  );
+
   return (
     <div className="space-y-4">
       {/* ── Requester ─────────────────────────────────────────────── */}
@@ -1208,41 +1392,43 @@ function StepDetails({
               Requester details
             </p>
           </div>
-          <div
-            role="radiogroup"
-            aria-label="Requester entry mode"
-            className="inline-flex rounded-lg border border-border bg-bg-subtle p-0.5"
-          >
-            {(
-              [
-                { id: "account" as const, label: "Use my account" },
-                { id: "manual" as const, label: "Enter manually" },
-              ]
-            ).map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                role="radio"
-                aria-checked={values.requesterMode === opt.id}
-                onClick={() => setRequesterMode(opt.id)}
-                className={cn(
-                  "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors",
-                  values.requesterMode === opt.id
-                    ? "bg-accent text-accent-foreground shadow-2xs"
-                    : "text-text-secondary hover:text-text"
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {!isBorrower && (
+            <div
+              role="radiogroup"
+              aria-label="Requester entry mode"
+              className="inline-flex rounded-lg border border-border bg-bg-subtle p-0.5"
+            >
+              {(
+                [
+                  { id: "account" as const, label: "Use my account" },
+                  { id: "manual" as const, label: "Enter manually" },
+                ]
+              ).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={values.requesterMode === opt.id}
+                  onClick={() => setRequesterMode(opt.id)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors",
+                    values.requesterMode === opt.id
+                      ? "bg-accent text-accent-foreground shadow-2xs"
+                      : "text-text-secondary hover:text-text"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {isManual ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor="requestedByName" className="text-xs font-bold text-text">
-                Requested by <span className="text-status-outofservice-bg">*</span>
+                Requested by <span className="text-status-outofservice-text">*</span>
               </label>
               <input
                 id="requestedByName"
@@ -1259,7 +1445,7 @@ function StepDetails({
                 )}
               />
               {errors.requestedByName && (
-                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                   <AlertCircle className="h-3 w-3 shrink-0" />
                   {errors.requestedByName}
                 </p>
@@ -1267,7 +1453,7 @@ function StepDetails({
             </div>
             <div className="space-y-1.5">
               <label htmlFor="department" className="text-xs font-bold text-text">
-                Department <span className="text-status-outofservice-bg">*</span>
+                Department <span className="text-status-outofservice-text">*</span>
               </label>
               <input
                 id="department"
@@ -1299,7 +1485,7 @@ function StepDetails({
                 ))}
               </datalist>
               {errors.department ? (
-                <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                   <AlertCircle className="h-3 w-3 shrink-0" />
                   {errors.department}
                 </p>
@@ -1320,7 +1506,7 @@ function StepDetails({
             >
               <div className="space-y-1.5">
                 <label htmlFor="requestedByName-account" className="text-xs font-bold text-text">
-                  Requested by <span className="text-status-outofservice-bg">*</span>
+                  Requested by <span className="text-status-outofservice-text">*</span>
                 </label>
                 <input
                   id="requestedByName-account"
@@ -1337,25 +1523,25 @@ function StepDetails({
                   )}
                 />
                 {errors.requestedByName ? (
-                  <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                  <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                     <AlertCircle className="h-3 w-3 shrink-0" />
                     {errors.requestedByName}
                   </p>
                 ) : (
                   <p className="text-[11px] text-text-secondary">
-                    Who is filing / on whose behalf.
+                    Filed under your signed-in account ({me?.name || "Account"}).
                   </p>
                 )}
               </div>
               {hasAssignable && (
                 <div className="space-y-1.5">
                   <label htmlFor="assignedToName" className="text-xs font-bold text-text">
-                    Assign to <span className="text-status-outofservice-bg">*</span>
+                    Assign to <span className="text-status-outofservice-text">*</span>
                   </label>
                   <input
                     id="assignedToName"
                     type="text"
-                    list="wizard-assign-to-options"
+                    list={assigneeSuggestions.length > 0 ? "wizard-assign-to-options" : undefined}
                     value={values.assignedToName}
                     onChange={(e) => onChange({ assignedToName: e.target.value })}
                     placeholder="Person who will hold the asset…"
@@ -1367,13 +1553,15 @@ function StepDetails({
                         : "border-border"
                     )}
                   />
-                  <datalist id="wizard-assign-to-options">
-                    {assigneeSuggestions.map((name) => (
-                      <option key={name} value={name} />
-                    ))}
-                  </datalist>
+                  {assigneeSuggestions.length > 0 && (
+                    <datalist id="wizard-assign-to-options">
+                      {assigneeSuggestions.map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  )}
                   {errors.assignedToName ? (
-                    <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                    <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                       <AlertCircle className="h-3 w-3 shrink-0" />
                       {errors.assignedToName}
                     </p>
@@ -1388,7 +1576,7 @@ function StepDetails({
             <div className="grid gap-2 sm:grid-cols-2 rounded-lg border border-border bg-bg-subtle/40 p-2.5">
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-text-secondary font-semibold">
-                  Department
+                  Department (Account Locked)
                 </p>
                 <p className="text-xs font-semibold text-text mt-0.5 truncate">
                   {values.department || me?.department || "Not linked"}
@@ -1403,10 +1591,11 @@ function StepDetails({
                 </p>
               </div>
               {errors.department && (
-                <p className="sm:col-span-2 text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                <p className="sm:col-span-2 text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                   <AlertCircle className="h-3 w-3 shrink-0" />
-                  {errors.department} Switch to{" "}
-                  <span className="font-bold">Enter manually</span> to fix.
+                  {isBorrower
+                    ? "Your account is not linked to a department. Ask an administrator to assign your department."
+                    : errors.department}
                 </p>
               )}
             </div>
@@ -1463,18 +1652,34 @@ function StepDetails({
         const unassigned = bundle.selectedItems.filter(
           (i) => !assignedAnywhere.has(i.id)
         );
+        const bundleAccent =
+          bundle.requestType === "material"
+            ? "border-teal-500/35"
+            : bundle.requestType === "supply"
+              ? "border-emerald-500/35"
+              : bundle.requestType === "assignable"
+                ? "border-indigo-500/35"
+                : "border-blue-500/35";
+        const bundleIconColor =
+          bundle.requestType === "material"
+            ? "text-teal-600 dark:text-teal-400"
+            : bundle.requestType === "supply"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : bundle.requestType === "assignable"
+                ? "text-indigo-600 dark:text-indigo-400"
+                : "text-blue-600 dark:text-blue-400";
         return (
           <section
             key={bundle.requestType}
             aria-label={`${typeLabel(bundle.requestType)} purposes`}
-            className="space-y-2.5 rounded-lg border border-border bg-card p-3 shadow-xs"
+            className={cn("space-y-2.5 rounded-lg border bg-card p-3 shadow-xs", bundleAccent)}
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
-                <FileText className="h-3.5 w-3.5 text-accent shrink-0" />
+                <FileText className={cn("h-3.5 w-3.5 shrink-0", bundleIconColor)} />
                 <p className="text-[11px] font-bold uppercase tracking-wider text-text truncate">
                   {typeLabel(bundle.requestType)}
-                  <span className="text-status-outofservice-bg"> *</span>
+                  <span className="text-status-outofservice-text"> *</span>
                 </p>
                 <span className="text-[10px] font-semibold text-text-secondary rounded-md border border-border px-1.5 py-0.5 shrink-0">
                   {bundle.selectedItems.length} item
@@ -1501,7 +1706,7 @@ function StepDetails({
             </div>
 
             {errors[`bundle_${bundle.requestType}`] && (
-              <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+              <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                 <AlertCircle className="h-3 w-3 shrink-0" />
                 {errors[`bundle_${bundle.requestType}`]}
               </p>
@@ -1525,7 +1730,7 @@ function StepDetails({
                       className="text-xs font-semibold text-text"
                     >
                       Checkout date{" "}
-                      <span className="text-status-outofservice-bg">*</span>
+                      <span className="text-status-outofservice-text">*</span>
                     </label>
                     <input
                       id="dateFrom"
@@ -1542,7 +1747,7 @@ function StepDetails({
                       )}
                     />
                     {errors.dateFrom && (
-                      <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                      <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                         <AlertCircle className="h-3 w-3 shrink-0" />
                         {errors.dateFrom}
                       </p>
@@ -1554,7 +1759,7 @@ function StepDetails({
                       className="text-xs font-semibold text-text"
                     >
                       Expected return{" "}
-                      <span className="text-status-outofservice-bg">*</span>
+                      <span className="text-status-outofservice-text">*</span>
                     </label>
                     <input
                       id="dateTo"
@@ -1571,7 +1776,7 @@ function StepDetails({
                       )}
                     />
                     {errors.dateTo && (
-                      <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                      <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                         <AlertCircle className="h-3 w-3 shrink-0" />
                         {errors.dateTo}
                       </p>
@@ -1583,7 +1788,7 @@ function StepDetails({
 
             {unassigned.length > 0 && (
               <div className="rounded-lg border border-status-repair-bg/40 bg-status-repair-bg/10 px-3 py-2 flex flex-wrap items-center gap-2">
-                <AlertCircle className="h-3.5 w-3.5 text-status-repair-bg shrink-0" />
+                <AlertCircle className="h-3.5 w-3.5 text-status-repair-text shrink-0" />
                 <p className="text-[11px] font-semibold text-text">
                   Not assigned to a purpose yet:
                 </p>
@@ -1593,23 +1798,19 @@ function StepDetails({
                   return (
                     <span
                       key={item.id}
-                      className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-text"
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-1.5 py-0.5 text-[11px] font-medium text-text"
                     >
-                      <Tag className={cn("h-3 w-3", catMeta.text)} />
+                      <span className={cn("h-4 w-4 rounded flex items-center justify-center shrink-0", catMeta.bg)}>
+                        <Tag className={cn("h-2.5 w-2.5", catMeta.text)} />
+                      </span>
                       {item.name}
                     </span>
                   );
                 })}
                 <button
                   type="button"
-                  onClick={() => {
-                    const first = bundle.purposeGroups[0];
-                    if (!first) return;
-                    unassigned.forEach((item) =>
-                      addLineToGroup(bundle.requestType, first.id, item.id)
-                    );
-                  }}
-                  className="ml-auto text-[11px] font-semibold text-accent hover:underline"
+                  onClick={() => assignAllUnassigned(bundle.requestType)}
+                  className="ml-auto text-[11px] font-semibold text-accent hover:underline cursor-pointer"
                 >
                   Add all to Purpose 1
                 </button>
@@ -1662,7 +1863,7 @@ function StepDetails({
                           onClick={() =>
                             removeGroup(bundle.requestType, group.id)
                           }
-                          className="p-1.5 rounded-md text-text-secondary hover:text-status-outofservice-bg hover:bg-status-outofservice-bg/10 shrink-0"
+                          className="h-7 w-7 rounded-md flex items-center justify-center text-text-secondary hover:text-status-outofservice-text hover:bg-status-outofservice-bg/10 shrink-0 cursor-pointer"
                           aria-label={`Remove purpose ${idx + 1}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1670,7 +1871,7 @@ function StepDetails({
                       )}
                     </div>
                     {errors[`purpose_${errKey}`] && (
-                      <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1 pl-7">
+                      <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1 pl-7">
                         <AlertCircle className="h-3 w-3 shrink-0" />
                         {errors[`purpose_${errKey}`]}
                       </p>
@@ -1683,31 +1884,41 @@ function StepDetails({
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const catMeta = getCategoryStyle(item.category as any);
                         const isAsset = item.type === "asset";
-                        const maxAvailable =
-                          item.type === "consumable" && typeof item.currentQty === "number" && item.currentQty > 0
-                            ? item.currentQty
-                            : undefined;
                         return (
                           <div
                             key={line.itemId}
-                            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1.5"
+                            className="flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5"
                           >
-                            <Tag
-                              className={cn("h-3 w-3 shrink-0", catMeta.text)}
-                            />
+                            <span
+                              className={cn(
+                                "h-5 w-5 rounded flex items-center justify-center shrink-0",
+                                catMeta.bg
+                              )}
+                            >
+                              <Tag className={cn("h-3 w-3", catMeta.text)} />
+                            </span>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-text truncate">
                                 {item.name}
                               </p>
                               {item.type === "consumable" && (
-                                <p className="text-[10px] text-text-secondary truncate">
-                                  {item.classification === "material"
-                                    ? "Material"
-                                    : item.classification === "supply"
-                                      ? "Supply"
-                                      : "Consumable"}
-                                  {item.unit ? ` · ${item.unit}` : ""}
-                                </p>
+                                <>
+                                  <p className="text-[10px] text-text-secondary truncate">
+                                    {item.classification === "material"
+                                      ? "Material"
+                                      : item.classification === "supply"
+                                        ? "Supply"
+                                        : "Consumable"}
+                                    {item.unit ? ` · ${item.unit}` : ""}
+                                  </p>
+                                  {(item.currentQty <= 0 || line.quantity > item.currentQty) && (
+                                    <p className="text-[10px] font-medium text-amber-700 dark:text-amber-300 truncate">
+                                      {item.currentQty <= 0
+                                        ? "Out of stock — Admin will restock"
+                                        : `Only ${formatQuantityWithUnit(item.currentQty, item.unit, "consumable")} on hand — Admin will restock`}
+                                    </p>
+                                  )}
+                                </>
                               )}
                             </div>
                             {isAsset ? (
@@ -1715,7 +1926,7 @@ function StepDetails({
                                 1 unit
                               </span>
                             ) : (
-                              <div className="flex items-center gap-1 rounded-md border border-border bg-bg-subtle p-0.5 shrink-0">
+                              <div className="flex items-center gap-2 rounded-md border border-border bg-bg-subtle p-0.5 shrink-0">
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -1732,34 +1943,17 @@ function StepDetails({
                                 >
                                   <Minus className="h-3 w-3" />
                                 </button>
-                                <input
-                                  type="number"
-                                  min={0.01}
-                                  step={0.01}
-                                  max={maxAvailable ?? 99999}
+                                <WizardQtyInput
                                   value={line.quantity}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    if (Number.isFinite(val)) {
-                                      setLineQty(
-                                        bundle.requestType,
-                                        group.id,
-                                        line.itemId,
-                                        val
-                                      );
-                                    }
-                                  }}
-                                  onBlur={(e) => {
-                                    const val = Number(e.target.value);
+                                  ariaLabel={`Quantity for ${item.name}`}
+                                  onCommit={(nextQty) =>
                                     setLineQty(
                                       bundle.requestType,
                                       group.id,
                                       line.itemId,
-                                      !Number.isFinite(val) || val <= 0 ? 0.01 : val
-                                    );
-                                  }}
-                                  className="w-12 h-6 px-1 text-center text-xs font-mono font-bold tabular-nums bg-bg border border-border/80 rounded text-text focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none select-all"
-                                  aria-label={`Quantity for ${item.name}`}
+                                      nextQty
+                                    )
+                                  }
                                 />
                                 <button
                                   type="button"
@@ -1771,7 +1965,7 @@ function StepDetails({
                                       line.quantity + 1
                                     )
                                   }
-                                  disabled={maxAvailable !== undefined && line.quantity >= maxAvailable}
+                                  disabled={line.quantity >= 9999}
                                   className="h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text hover:bg-card border border-transparent hover:border-border disabled:opacity-30 cursor-pointer transition-colors"
                                   aria-label={`Increase quantity for ${item.name}`}
                                 >
@@ -1788,7 +1982,7 @@ function StepDetails({
                                   line.itemId
                                 )
                               }
-                              className="p-0.5 rounded text-text-secondary hover:text-status-outofservice-bg shrink-0"
+                              className="h-7 w-7 rounded flex items-center justify-center text-text-secondary hover:text-status-outofservice-text hover:bg-status-outofservice-bg/10 shrink-0 cursor-pointer"
                               aria-label={`Remove ${item.name} from this purpose`}
                             >
                               <X className="h-3.5 w-3.5" />
@@ -1827,7 +2021,7 @@ function StepDetails({
                         </select>
                       )}
                       {errors[`lines_${errKey}`] && (
-                        <p className="text-[11px] font-medium text-status-outofservice-bg flex items-center gap-1">
+                        <p className="text-[11px] font-medium text-status-outofservice-text flex items-center gap-1">
                           <AlertCircle className="h-3 w-3 shrink-0" />
                           {errors[`lines_${errKey}`]}
                         </p>
@@ -1973,8 +2167,8 @@ function StepReview({
                     Expected Return
                   </p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <Calendar className="h-3.5 w-3.5 text-status-outofservice-bg" />
-                    <p className="font-medium text-status-outofservice-bg">
+                    <Calendar className="h-3.5 w-3.5 text-status-outofservice-text" />
+                    <p className="font-medium text-status-outofservice-text">
                       {values.dateTo}
                     </p>
                   </div>
@@ -2137,16 +2331,14 @@ export function NewBorrowRequestWizard({
   );
   const [values, setValues] = useState<WizardFormValues>(() => {
     const base = emptyWizardValues(initialTypes);
-    if (prefilledItems && prefilledItems.length > 0 && base.typeBundles[0]) {
-      base.typeBundles[0] = {
-        ...base.typeBundles[0],
-        selectedItems: prefilledItems,
-      };
-    }
-    return base;
+    return {
+      ...base,
+      typeBundles: distributePrefilledItems(base.typeBundles, prefilledItems),
+    };
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState("");
+  const dialogRef = useRef<HTMLDivElement | null>(null);
 
   const {
     mutateAsync: createRequest,
@@ -2167,29 +2359,13 @@ export function NewBorrowRequestWizard({
     resetSupply();
   }, [resetAsset, resetSupply]);
   const { data: me } = useMeQuery();
+  const isBorrower = !me || me.role === "borrower";
 
   useEffect(() => {
     if (!open) return;
     const types = resolveInitialWizardTypes(initialType, prefilledItems);
     const base = emptyWizardValues(types);
-    if (prefilledItems && prefilledItems.length > 0) {
-      base.typeBundles = base.typeBundles.map((bundle) => ({
-        ...bundle,
-        selectedItems: prefilledItems.filter((item) => {
-          if (item.type === "asset") {
-            return (
-              (bundle.requestType === "assignable" &&
-                item.assignmentType === "assignable") ||
-              (bundle.requestType === "borrowable" &&
-                item.assignmentType !== "assignable")
-            );
-          }
-          const kind =
-            item.classification === "material" ? "material" : "supply";
-          return bundle.requestType === kind;
-        }),
-      }));
-    }
+    base.typeBundles = distributePrefilledItems(base.typeBundles, prefilledItems);
     setStep(
       prefilledItems && prefilledItems.length > 0
         ? "details"
@@ -2206,20 +2382,20 @@ export function NewBorrowRequestWizard({
   useEffect(() => {
     if (!open || !me) return;
     setValues((prev) => {
-      if (prev.requesterMode === "manual" && prev.requestedByName.trim()) {
+      if (!isBorrower && prev.requesterMode === "manual" && prev.requestedByName.trim()) {
         return prev;
       }
       return {
         ...prev,
-        requesterMode: prev.requesterMode || "account",
-        departmentId: me.departmentId ?? prev.departmentId,
-        department: me.department || prev.department,
+        requesterMode: isBorrower ? "account" : prev.requesterMode || "account",
+        departmentId: isBorrower ? (me.departmentId ?? null) : (me.departmentId ?? prev.departmentId),
+        department: isBorrower ? (me.department ?? "") : (me.department || prev.department),
         // Prefill once; do not overwrite if the requester already edited the name.
         requestedByName: prev.requestedByName.trim() || me.name || "",
         assignedToName: prev.assignedToName.trim() || me.name || "",
       };
     });
-  }, [open, me]);
+  }, [open, me, isBorrower]);
 
   const patchValues = useCallback(
     (patch: Partial<WizardFormValues>) =>
@@ -2329,29 +2505,7 @@ export function NewBorrowRequestWizard({
       if (!canAdvanceSelect) return;
       setValues((prev) => ({
         ...prev,
-        typeBundles: prev.typeBundles.map((b) => {
-          const assignedIds = new Set(b.purposeGroups.flatMap((g) => g.lines.map((l) => l.itemId)));
-          const unassignedItems = b.selectedItems.filter((item) => !assignedIds.has(item.id));
-          if (unassignedItems.length === 0) return b;
-
-          return {
-            ...b,
-            purposeGroups: b.purposeGroups.map((g, i) =>
-              i === 0
-                ? {
-                    ...g,
-                    lines: [
-                      ...g.lines,
-                      ...unassignedItems.map((item) => ({
-                        itemId: item.id,
-                        quantity: 1,
-                      })),
-                    ],
-                  }
-                : g
-            ),
-          };
-        }),
+        typeBundles: prev.typeBundles.map(populateUnassignedLines),
       }));
       setStep("details");
     } else if (step === "details") {
@@ -2383,6 +2537,8 @@ export function NewBorrowRequestWizard({
   async function handleSubmit() {
     setErrorMessage("");
 
+    const codes: string[] = [];
+    let activeBundleLabel = "";
     try {
       const isValidUuid = (str?: string | null) =>
         Boolean(
@@ -2398,22 +2554,52 @@ export function NewBorrowRequestWizard({
         );
         return;
       }
-      if (!values.departmentId && !values.department.trim()) {
-        setErrorMessage("Select or enter a requesting department.");
+
+      const resolvedDeptId = isBorrower ? me.departmentId : values.departmentId;
+      const resolvedDeptName = isBorrower ? (me.department ?? "") : values.department;
+      if (!resolvedDeptId && !resolvedDeptName.trim()) {
+        setErrorMessage(
+          isBorrower
+            ? "Your account is not linked to a department. Contact an administrator."
+            : "Select or enter a requesting department."
+        );
         return;
       }
 
       const departmentPayload = {
-        departmentId: isValidUuid(values.departmentId)
-          ? values.departmentId!
+        departmentId: isValidUuid(resolvedDeptId)
+          ? resolvedDeptId!
           : undefined,
-        department: values.department.trim() || undefined,
+        department: resolvedDeptName.trim() || undefined,
       };
       const submissionGroupId =
         values.typeBundles.length > 1 ? crypto.randomUUID() : undefined;
 
-      let lastPortal: PortalBorrowRequest | null = null;
-      const codes: string[] = [];
+      type PreparedSubmission =
+        | {
+            kind: "consumable";
+            label: string;
+            lines: { consumableId: string; quantity: number; purpose: string }[];
+            headerPurpose: string;
+          }
+        | {
+            kind: "asset";
+            label: string;
+            requestType: "borrowable" | "assignable";
+            items: {
+              itemDescription: string;
+              assetId?: string;
+              assetCode?: string;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              category: any;
+              quantity: number;
+              itemType: "asset";
+              purpose: string;
+            }[];
+            headerPurpose: string;
+          };
+
+      const prepared: PreparedSubmission[] = [];
 
       for (const bundle of values.typeBundles) {
         // Typed request pages lock to one kind — never create sibling types from this entry.
@@ -2458,7 +2644,6 @@ export function NewBorrowRequestWizard({
           const kindLabel =
             bundle.requestType === "material" ? "material" : "supply";
           const rawLines = items.filter((item) => item.consumableId);
-          // Same SKU → one line (qty summed); keep the first non-empty purpose.
           const merged = new Map<
             string,
             { consumableId: string; quantity: number; purpose: string }
@@ -2483,34 +2668,18 @@ export function NewBorrowRequestWizard({
           const supplyLines = Array.from(merged.values());
           if (supplyLines.length === 0) {
             setErrorMessage(
-              `Select at least one ${kindLabel} item before submitting.`
+              `Select at least one ${kindLabel} item before sending.`
             );
             return;
           }
-          const created = await createConsumableRequest({
-            requesterUserId: isValidUuid(me.id) ? me.id : undefined,
-            requesterName: me.name,
-            requesterEmail: me.email,
-            ...departmentPayload,
-            requestedByName: values.requestedByName.trim() || me.name,
-            purpose: headerPurpose,
-            notes: values.notes || undefined,
-            submissionGroupId,
+          prepared.push({
+            kind: "consumable",
+            label: typeLabel(bundle.requestType),
             lines: supplyLines,
+            headerPurpose,
           });
-          codes.push(created.requestCode);
-          lastPortal = mapConsumableRequestToPortal(created);
-          continue;
-        }
-
-        const createdRequest = await createRequest({
-          requesterUserId: isValidUuid(me.id) ? me.id : undefined,
-          requesterName: me.name,
-          requesterEmail: me.email,
-          ...departmentPayload,
-          requestType:
-            bundle.requestType === "assignable" ? "assignable" : "borrowable",
-          items: items
+        } else {
+          const assetItems = items
             .filter((item) => item.itemType === "asset")
             .map((item) => ({
               itemDescription: item.itemDescription,
@@ -2520,43 +2689,97 @@ export function NewBorrowRequestWizard({
               quantity: item.quantity,
               itemType: "asset" as const,
               purpose: item.purpose,
-            })),
-          purpose: headerPurpose,
-          expectedReturnDate:
-            bundle.requestType === "borrowable" ? values.dateTo : undefined,
-          notes: values.notes || undefined,
-          requestedByName: values.requestedByName.trim() || me.name,
-          assignedToName:
-            bundle.requestType === "assignable"
-              ? values.assignedToName.trim()
-              : undefined,
-          submissionGroupId,
-        });
-        codes.push(createdRequest.requestCode);
-        lastPortal = mapBorrowRequestToPortal(createdRequest);
+            }));
+          if (assetItems.length === 0) {
+            setErrorMessage(
+              `Select at least one equipment unit for ${typeLabel(bundle.requestType)}.`
+            );
+            return;
+          }
+          prepared.push({
+            kind: "asset",
+            label: typeLabel(bundle.requestType),
+            requestType:
+              bundle.requestType === "assignable" ? "assignable" : "borrowable",
+            items: assetItems,
+            headerPurpose,
+          });
+        }
+      }
+
+      let lastPortal: PortalBorrowRequest | null = null;
+
+      for (const entry of prepared) {
+        activeBundleLabel = entry.label;
+        if (entry.kind === "consumable") {
+          const created = await createConsumableRequest({
+            requesterUserId: isValidUuid(me.id) ? me.id : undefined,
+            requesterName: me.name,
+            requesterEmail: me.email,
+            ...departmentPayload,
+            requestedByName: values.requestedByName.trim() || me.name,
+            purpose: entry.headerPurpose,
+            notes: values.notes || undefined,
+            submissionGroupId,
+            lines: entry.lines,
+          });
+          codes.push(created.requestCode);
+          lastPortal = mapConsumableRequestToPortal(created);
+        } else {
+          const createdRequest = await createRequest({
+            requesterUserId: isValidUuid(me.id) ? me.id : undefined,
+            requesterName: me.name,
+            requesterEmail: me.email,
+            ...departmentPayload,
+            requestType: entry.requestType,
+            items: entry.items,
+            purpose: entry.headerPurpose,
+            expectedReturnDate:
+              entry.requestType === "borrowable" ? values.dateTo : undefined,
+            notes: values.notes || undefined,
+            requestedByName: values.requestedByName.trim() || me.name,
+            assignedToName:
+              entry.requestType === "assignable"
+                ? values.assignedToName.trim()
+                : undefined,
+            submissionGroupId,
+          });
+          codes.push(createdRequest.requestCode);
+          lastPortal = mapBorrowRequestToPortal(createdRequest);
+        }
       }
 
       if (codes.length > 1) {
-        toast.success(`Submitted ${codes.length} requests: ${codes.join(", ")}.`);
+        toast.success(`Sent ${codes.length} requests: ${codes.join(", ")}.`);
       } else if (codes.length === 1) {
-        toast.success(`Request ${codes[0]} submitted successfully.`);
+        toast.success(`Request ${codes[0]} sent successfully.`);
       }
       if (lastPortal) onSuccess(lastPortal);
       onOpenChange(false);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
-      setErrorMessage(formatFriendlyErrorMessage(e.message));
+      const msg = formatFriendlyErrorMessage(e?.message);
+      if (codes.length > 0) {
+        setErrorMessage(
+          `Created ${codes.join(", ")}, but failed on ${activeBundleLabel || "next request"}: ${msg}`
+        );
+      } else {
+        setErrorMessage(msg);
+      }
     }
   }
 
   const isDirty = useMemo(() => {
-    if (step !== "type") return true;
-    if (values.typeBundles.some((b) => b.selectedItems.length > 0)) return true;
-    if (values.notes?.trim()) return true;
-    // Type chips toggled beyond the empty pristine start
-    if (!initialType && values.typeBundles.length > 0) return true;
-    return Boolean(prefilledItems && prefilledItems.length > 0);
-  }, [step, values, initialType, prefilledItems]);
+    const hasItems = values.typeBundles.some((b) => b.selectedItems.length > 0);
+    const hasNotes = Boolean(values.notes?.trim());
+    if (hasItems || hasNotes) return true;
+    if (prefilledItems && prefilledItems.length > 0) return true;
+    if (!typeLocked && (step !== "type" || values.typeBundles.length > 0)) {
+      return true;
+    }
+    if (typeLocked && step !== "select") return true;
+    return false;
+  }, [step, values, typeLocked, prefilledItems]);
 
   const handleRequestClose = useCallback(() => {
     onOpenChange(false);
@@ -2574,6 +2797,8 @@ export function NewBorrowRequestWizard({
     isDirty,
     onRequestClose: handleRequestClose,
   });
+
+  useFocusTrap(open && !discardConfirmOpen, dialogRef, requestClose);
 
   if (!open) return null;
 
@@ -2622,7 +2847,11 @@ export function NewBorrowRequestWizard({
         aria-hidden="true"
       />
 
-      <div className="relative z-10 w-full max-w-3xl max-h-[76vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-3xl max-h-[85vh] rounded-xl bg-card border border-border shadow-2xl flex flex-col overflow-hidden focus:outline-none"
+      >
         <div className="px-4 py-3 border-b border-border bg-card shrink-0 space-y-2.5">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -2635,8 +2864,7 @@ export function NewBorrowRequestWizard({
                 </span>
               </div>
               <p className="text-xs text-text-secondary mt-0.5">
-                Complete the milestones below to submit your request for
-                custodian review.
+                Complete the steps below to send your request for custodian review.
               </p>
             </div>
             <button
@@ -2644,7 +2872,7 @@ export function NewBorrowRequestWizard({
               onClick={requestClose}
               disabled={isSubmitting}
               aria-label="Close"
-              className="p-1.5 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="p-2 rounded-lg text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -2690,7 +2918,7 @@ export function NewBorrowRequestWizard({
                       {bundle.selectedItems.map((item) => (
                         <span
                           key={item.id}
-                          className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-text"
+                          className="inline-flex items-center gap-1 rounded-full border border-accent/30 bg-accent/10 pl-2.5 pr-1 py-0.5 text-[11px] font-semibold text-text"
                         >
                           {item.name}
                           <button
@@ -2703,7 +2931,7 @@ export function NewBorrowRequestWizard({
                                 )
                               )
                             }
-                            className="rounded-full p-0.5 text-text-secondary hover:text-status-outofservice-bg"
+                            className="h-5 w-5 rounded-full inline-flex items-center justify-center text-text-secondary hover:text-status-outofservice-text hover:bg-status-outofservice-bg/10 cursor-pointer"
                             aria-label={`Remove ${item.name}`}
                           >
                             <X className="h-3 w-3" />
@@ -2754,8 +2982,8 @@ export function NewBorrowRequestWizard({
               <StepReview values={values} me={me} />
               {errorMessage && (
                 <div className="mt-4 flex items-start gap-2 rounded-lg bg-status-outofservice-bg/10 border border-status-outofservice-bg/30 p-3">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-status-outofservice-bg mt-0.5" />
-                  <p className="text-xs text-status-outofservice-bg dark:text-status-outofservice-text">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-status-outofservice-text mt-0.5" />
+                  <p className="text-xs text-status-outofservice-text">
                     {errorMessage}
                   </p>
                 </div>
@@ -2816,16 +3044,16 @@ export function NewBorrowRequestWizard({
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Submitting…
+                  Sending…
                 </>
               ) : isSubmitted ? (
                 <>
                   <Check className="h-4 w-4" />
-                  Submitted
+                  Sent
                 </>
               ) : (
                 <>
-                  Submit
+                  Send
                   {values.typeBundles.length > 1
                     ? ` ${values.typeBundles.length} requests`
                     : " request"}

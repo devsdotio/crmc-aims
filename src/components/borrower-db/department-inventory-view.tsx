@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   Layers,
   Plus,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OverdueBadge } from "@/components/ui/overdue-badge";
@@ -93,12 +94,21 @@ function holderLines(record: BorrowLogRecord) {
 
 function InventoryCardSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-bg p-4 flex gap-3 animate-pulse h-full">
-      <div className="h-10 w-10 rounded-lg bg-border shrink-0" />
-      <div className="flex-1 space-y-2 min-w-0">
-        <div className="h-3.5 w-28 rounded bg-border" />
-        <div className="h-3 w-48 rounded bg-border" />
-        <div className="h-3 w-40 rounded bg-border" />
+    <div className="rounded-xl border border-border bg-bg p-4 flex flex-col gap-3 animate-pulse h-full min-h-[168px]">
+      <div className="flex items-start gap-3">
+        <div className="h-10 w-10 rounded-lg bg-border shrink-0" />
+        <div className="flex-1 space-y-2 min-w-0">
+          <div className="h-3.5 w-24 rounded bg-border" />
+          <div className="h-4 w-44 rounded bg-border" />
+        </div>
+      </div>
+      <div className="flex gap-1.5">
+        <div className="h-5 w-20 rounded-full bg-border" />
+        <div className="h-5 w-16 rounded-full bg-border" />
+      </div>
+      <div className="mt-auto space-y-1.5 pt-2">
+        <div className="h-3 w-36 rounded bg-border" />
+        <div className="h-3 w-28 rounded bg-border" />
       </div>
     </div>
   );
@@ -392,9 +402,11 @@ function InventoryTable({
 function SectionEmpty({
   kind,
   searching,
+  onClearSearch,
 }: {
   kind: CustodyTab;
   searching: boolean;
+  onClearSearch?: () => void;
 }) {
   const { openWizard } = useBorrowerPortal();
   const copy =
@@ -425,7 +437,17 @@ function SectionEmpty({
       <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
         {copy.body}
       </p>
-      {!searching && (
+      {searching ? (
+        onClearSearch && (
+          <button
+            type="button"
+            onClick={onClearSearch}
+            className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-border bg-card text-xs font-semibold text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+          >
+            Clear search
+          </button>
+        )
+      ) : (
         <button
           type="button"
           onClick={copy.action}
@@ -505,7 +527,7 @@ export function DepartmentInventoryView() {
     return (
       <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle gap-3">
         <div className="rounded-xl border border-border bg-card px-5 py-4 shrink-0 shadow-xs">
-          <h1 className="text-xl font-bold tracking-tight text-text">Assets</h1>
+          <h1 className="text-xl font-bold tracking-tight text-text">Department Assets</h1>
           <p className="text-xs text-text-secondary mt-0.5">
             Assets currently held by your department (view only).
           </p>
@@ -636,14 +658,28 @@ export function DepartmentInventoryView() {
           </div>
 
           <div className="relative flex-1 sm:max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
+            <Search
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none"
+              aria-hidden="true"
+            />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search department assets"
               placeholder="Search asset, code, or requester…"
-              className="w-full h-9 pl-8 pr-3 text-xs bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full h-9 pl-8 pr-8 text-xs bg-bg-subtle border border-border rounded-lg text-text focus:outline-none focus:ring-2 focus:ring-accent"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
 
           <div className="sm:ml-auto">
@@ -684,7 +720,11 @@ export function DepartmentInventoryView() {
             </div>
           )
         ) : (
-          <SectionEmpty kind={tab} searching={Boolean(search.trim())} />
+          <SectionEmpty
+            kind={tab}
+            searching={Boolean(search.trim())}
+            onClearSearch={() => setSearch("")}
+          />
         )}
       </div>
     </div>

@@ -1,4 +1,8 @@
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
+import {
+  deriveConsumableRequestKind,
+  type ConsumableRequestKind,
+} from "@/lib/consumable-classification";
 import type { BorrowRequest } from "@/types/borrow-requests";
 import type { PortalBorrowRequest } from "./types";
 
@@ -13,16 +17,17 @@ export function mapBorrowRequestToPortal(
   };
 }
 
-function portalKindFromConsumableRequest(
+export function portalKindFromConsumableRequest(
   row: ConsumableRequest
-): "supply" | "material" {
-  const classes = (row.lines ?? [])
-    .map((l) => l.classification)
-    .filter((c): c is "supply" | "material" => c === "supply" || c === "material");
-  if (classes.length > 0 && classes.every((c) => c === "material")) {
-    return "material";
+): ConsumableRequestKind {
+  if (
+    row.classification === "supply" ||
+    row.classification === "material" ||
+    row.classification === "mixed"
+  ) {
+    return row.classification;
   }
-  return "supply";
+  return deriveConsumableRequestKind((row.lines ?? []).map((l) => l.classification));
 }
 
 export function mapConsumableRequestToPortal(
@@ -30,6 +35,10 @@ export function mapConsumableRequestToPortal(
 ): PortalBorrowRequest {
   const requestedAt = row.requestedAt ?? "";
   const portalKind = portalKindFromConsumableRequest(row);
+  const lines = row.lines ?? [];
+  const totalRequested = lines.reduce((sum, l) => sum + (l.quantityRequested || 0), 0);
+  const totalReleased = lines.reduce((sum, l) => sum + (l.quantityReleased || 0), 0);
+  const totalRemaining = lines.reduce((sum, l) => sum + (l.quantityRemaining || 0), 0);
   return {
     id: row.id,
     requestCode: row.requestCode,
@@ -37,15 +46,17 @@ export function mapConsumableRequestToPortal(
     requesterEmail: row.requesterEmail,
     requesterPhone: row.requesterPhone ?? "",
     department: row.department,
+    departmentId: row.departmentId ?? null,
     requestType: null,
     requestedByName: row.requestedByName,
     submissionGroupId: row.submissionGroupId,
     relatedRequests: row.relatedRequests,
-    items: (row.lines ?? []).map((line) => ({
+    items: lines.map((line) => ({
       itemDescription: line.itemName,
       consumableId: line.consumableId,
       assetCode: line.itemCode,
       category: line.category,
+      classification: line.classification,
       quantity: line.quantityRequested,
       itemType: "consumable" as const,
       unit: line.unit,
@@ -55,15 +66,18 @@ export function mapConsumableRequestToPortal(
     requestedAt,
     relativeTime: row.relativeTime,
     expectedReturnDate: null,
-    status:
-      row.status === "released"
-        ? "released"
-        : row.status === "cancelled"
-          ? "cancelled"
-          : row.status,
+    status: row.status,
     notes: row.notes,
     rejectionReason: row.rejectionReason,
     cancellationReason: row.cancellationReason,
+    approvedAt: row.approvedAt,
+    approvedByName: row.approvedByName,
+    releasedAt: row.releasedAt,
+    releasedByName: row.releasedByName,
+    releasedSummary:
+      totalReleased > 0 || row.status === "released"
+        ? { totalRequested, totalReleased, totalRemaining }
+        : undefined,
     history: row.history.map((h) => ({
       id: h.id,
       action: h.action as PortalBorrowRequest["history"][number]["action"],
@@ -79,15 +93,21 @@ export function mapConsumableRequestToPortal(
 
 export function portalRequestKindLabel(request: {
   requestType?: "borrowable" | "assignable" | null;
-  items?: Array<{ itemType?: "asset" | "consumable" }>;
-  portalKind?: "supply" | "material" | "borrow" | "assign";
-}): "Supplies" | "Materials" | "Assignment" | "Borrow" {
+  items?: Array<{ itemType?: "asset" | "consumable"; classification?: "supply" | "material" }>;
+  portalKind?: "supply" | "material" | "mixed" | "borrow" | "assign";
+}): "Supplies" | "Materials" | "Mixed" | "Assignment" | "Borrow" {
+  if (request.portalKind === "mixed") return "Mixed";
   if (request.portalKind === "material") return "Materials";
   if (request.portalKind === "supply") return "Supplies";
   const items = request.items ?? [];
   const allConsumable =
     items.length > 0 && items.every((item) => item.itemType === "consumable");
-  if (allConsumable) return "Supplies";
+  if (allConsumable) {
+    const derived = deriveConsumableRequestKind(items.map((i) => i.classification));
+    if (derived === "mixed") return "Mixed";
+    if (derived === "material") return "Materials";
+    return "Supplies";
+  }
   if (request.requestType === "assignable") return "Assignment";
   return "Borrow";
 }

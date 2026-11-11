@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
-import { Search, ChevronLeft, ChevronRight, ClipboardCheck, Inbox } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, ClipboardCheck, Inbox, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isAssetOperatorRole } from "@/constants/roles";
+import { useMeQuery } from "@/features/users/client";
 import { MyRequestItem, MyRequestItemSkeleton } from "./my-request-item";
 import { CancelRequestDialog } from "./cancel-request-dialog";
 import { EditRequestDialog } from "./edit-request-dialog";
 import { RequestDetailSheet } from "./request-detail-sheet";
+import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import type { PortalBorrowRequest, RequestStatusFilter } from "./types";
 import {
   mapBorrowRequestToPortal,
@@ -76,35 +80,60 @@ const STATUS_FILTERS: {
 
 const REQUESTS_PAGE_SIZE = 10;
 
-export type RequestKindFilter = "all" | "borrow" | "assign" | "supply" | "material";
+export type RequestKindFilter = "all" | "borrow" | "assign" | "supply" | "material" | "mixed";
+
+const TYPE_SUBFILTERS: { key: RequestKindFilter; label: string }[] = [
+  { key: "all", label: "All Types" },
+  { key: "borrow", label: "Borrow" },
+  { key: "assign", label: "Assignment" },
+  { key: "supply", label: "Supplies" },
+  { key: "material", label: "Materials" },
+  { key: "mixed", label: "Mixed" },
+];
 
 function matchesKind(request: PortalBorrowRequest, kind: RequestKindFilter) {
   if (kind === "all") return true;
   const label = portalRequestKindLabel(request);
   if (kind === "supply") return label === "Supplies";
   if (kind === "material") return label === "Materials";
+  if (kind === "mixed") return label === "Mixed";
   if (kind === "assign") return label === "Assignment";
   return label === "Borrow";
 }
 
 export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   const [statusFilter, setStatusFilter] = useState<RequestStatusFilter>("pending");
+  const [subKind, setSubKind] = useState<RequestKindFilter>("all");
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<PortalBorrowRequest | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<PortalBorrowRequest | null>(null);
   const [editingRequest, setEditingRequest] = useState<PortalBorrowRequest | null>(null);
   const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
+  const { data: me } = useMeQuery();
 
-  const fetchAssets = kind !== "supply" && kind !== "material";
-  const fetchSupplies = kind !== "borrow" && kind !== "assign";
+  const activeKind = kind === "all" ? subKind : kind;
+  const fetchAssets = activeKind !== "supply" && activeKind !== "material" && activeKind !== "mixed";
+  const fetchSupplies = activeKind !== "borrow" && activeKind !== "assign";
 
-  const { data: response, isLoading: loadingAssets } = useBorrowRequests({
+  const {
+    data: response,
+    isLoading: loadingAssets,
+    isError: errorAssets,
+    error: assetsError,
+    refetch: refetchAssets,
+  } = useBorrowRequests({
     fetchAll: true,
-    requestType: kind === "borrow" ? "borrowable" : kind === "assign" ? "assignable" : undefined,
+    requestType: activeKind === "borrow" ? "borrowable" : activeKind === "assign" ? "assignable" : undefined,
     enabled: fetchAssets,
   });
-  const { data: supplyResponse, isLoading: loadingSupplies } = useConsumableRequests({
+  const {
+    data: supplyResponse,
+    isLoading: loadingSupplies,
+    isError: errorSupplies,
+    error: suppliesError,
+    refetch: refetchSupplies,
+  } = useConsumableRequests({
     fetchAll: true,
     enabled: fetchSupplies,
   });
@@ -115,21 +144,66 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   );
   const loading =
     (fetchAssets && loadingAssets) || (fetchSupplies && loadingSupplies);
+  const hasError = (fetchAssets && errorAssets) || (fetchSupplies && errorSupplies);
+  const firstErrorMsg =
+    (assetsError as Error | undefined)?.message ||
+    (suppliesError as Error | undefined)?.message ||
+    "Failed to load requests.";
   const { mutateAsync: cancelRequest } = useCancelBorrowRequestMutation();
   const { mutateAsync: cancelSupply } = useCancelConsumableRequestMutation();
   const toast = useToast();
 
   useEffect(() => {
     setPage(1);
-  }, [statusFilter, search, kind]);
+  }, [statusFilter, search, kind, subKind]);
+
+  useEffect(() => {
+    if (kind !== "all" || typeof window === "undefined") return;
+    const typeParam = new URLSearchParams(window.location.search).get("type");
+    if (
+      typeParam === "borrow" ||
+      typeParam === "assign" ||
+      typeParam === "supply" ||
+      typeParam === "material" ||
+      typeParam === "mixed"
+    ) {
+      setSubKind(typeParam);
+    }
+  }, [kind]);
+
+  const allMappedRequests = useMemo<PortalBorrowRequest[]>(() => {
+    const mappedAssets = fetchAssets ? assetRequests.map(mapBorrowRequestToPortal) : [];
+    const mappedSupplies = fetchSupplies ? supplyRequests.map(mapConsumableRequestToPortal) : [];
+    return [...mappedSupplies, ...mappedAssets].sort((a, b) =>
+      b.requestedAt.localeCompare(a.requestedAt)
+    );
+  }, [assetRequests, supplyRequests, fetchAssets, fetchSupplies]);
+
+  const mixedCount = useMemo(
+    () => allMappedRequests.filter((row) => portalRequestKindLabel(row) === "Mixed").length,
+    [allMappedRequests]
+  );
+
+  const requesterUserIdById = useMemo(() => {
+    const map = new Map<string, string | null | undefined>();
+    for (const row of assetRequests) map.set(row.id, row.requesterUserId);
+    for (const row of supplyRequests) map.set(row.id, row.requesterUserId);
+    return map;
+  }, [assetRequests, supplyRequests]);
+
+  const canEditRequest = useCallback(
+    (req: PortalBorrowRequest) => {
+      if (req.status !== "pending" || !me) return false;
+      if (isAssetOperatorRole(me.role)) return true;
+      const ownerId = requesterUserIdById.get(req.id);
+      return Boolean(ownerId && ownerId === me.id);
+    },
+    [me, requesterUserIdById]
+  );
 
   const requests = useMemo<PortalBorrowRequest[]>(() => {
-    const mappedAssets = assetRequests.map(mapBorrowRequestToPortal);
-    const mappedSupplies = supplyRequests.map(mapConsumableRequestToPortal);
-    return [...mappedSupplies, ...mappedAssets]
-      .filter((row) => matchesKind(row, kind))
-      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
-  }, [assetRequests, supplyRequests, kind]);
+    return allMappedRequests.filter((row) => matchesKind(row, activeKind));
+  }, [allMappedRequests, activeKind]);
 
   useEffect(() => {
     setSelectedRequest((prev) => {
@@ -141,7 +215,11 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   const handleCancelConfirmed = async (requestId: string, reason: string) => {
     const target = requests.find((r) => r.id === requestId);
     const isSupply = Boolean(
-      target?.items.every((i) => i.itemType === "consumable")
+      target &&
+        (target.portalKind !== undefined ||
+          target.requestCode?.startsWith("CRQ-") ||
+          (target.items.length > 0 &&
+            target.items.every((i) => i.itemType === "consumable")))
     );
     try {
       if (isSupply) {
@@ -185,45 +263,117 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
   }, [filtered, page]);
 
   return (
-    <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col min-h-0">
-      <div className="px-4 md:px-6 py-3 bg-bg border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2 shrink-0 min-w-0">
-          <span className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
-            Status:
-          </span>
-          <div className="flex gap-1 rounded-xl border border-border p-1 bg-bg-subtle shrink-0 overflow-x-auto scrollbar-none relative">
-            {STATUS_FILTERS.map((f) => {
-              const count = requests.filter((r) => matchesFilter(r, f.key)).length;
-              const isSelected = statusFilter === f.key;
+    <div className="rounded-xl border border-border overflow-hidden bg-bg shadow-xs flex flex-col flex-1 min-h-0">
+      <div className="px-4 md:px-6 py-3 bg-bg border-b border-border flex flex-col gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 shrink-0 min-w-0">
+            <span className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
+              Status:
+            </span>
+            <div className="flex gap-1 rounded-xl border border-border p-1 bg-bg-subtle shrink-0 overflow-x-auto scrollbar-none relative">
+              {STATUS_FILTERS.map((f) => {
+                const count = requests.filter((r) => matchesFilter(r, f.key)).length;
+                const isSelected = statusFilter === f.key;
 
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setStatusFilter(f.key)}
+                    className={cn(
+                      "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-150 cursor-pointer whitespace-nowrap select-none",
+                      isSelected
+                        ? "text-text"
+                        : "text-text-secondary hover:text-text"
+                    )}
+                  >
+                    {isSelected && (
+                      <motion.span
+                        layoutId={`borrower-my-requests-active-tab-${kind}`}
+                        className="absolute inset-0 rounded-lg bg-bg shadow-xs border border-border/80"
+                        transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                      />
+                    )}
+                    <span
+                      className={cn("h-1.5 w-1.5 rounded-full relative z-10 shrink-0", f.dot)}
+                      aria-hidden="true"
+                    />
+                    <span className="relative z-10">{f.label}</span>
+                    <span
+                      className={cn(
+                        "relative z-10 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold transition-colors duration-150",
+                        isSelected ? f.activeBadge : f.badge
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-1 min-w-48 justify-end">
+            <div className="relative flex-1 min-w-40 max-w-sm">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
+                <Search className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search requests by code, item, or purpose"
+                placeholder="Search request code, item, or purpose…"
+                className={cn(
+                  "w-full h-9 pl-8.5 pr-8 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
+                  "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
+                )}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 rounded flex items-center justify-center text-text-secondary hover:text-text cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {kind === "all" && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mr-1">
+              Type:
+            </span>
+            {TYPE_SUBFILTERS.map((opt) => {
+              const count =
+                opt.key === "all"
+                  ? allMappedRequests.length
+                  : allMappedRequests.filter((r) => matchesKind(r, opt.key)).length;
+              const isSelected = subKind === opt.key;
               return (
                 <button
-                  key={f.key}
+                  key={opt.key}
                   type="button"
-                  onClick={() => setStatusFilter(f.key)}
+                  aria-pressed={isSelected}
+                  onClick={() => setSubKind(opt.key)}
                   className={cn(
-                    "relative inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors duration-150 cursor-pointer whitespace-nowrap select-none",
+                    "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors cursor-pointer",
                     isSelected
-                      ? "text-text"
-                      : "text-text-secondary hover:text-text"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-bg-subtle border-border text-text-secondary hover:text-text hover:border-text-secondary/40"
                   )}
                 >
-                  {isSelected && (
-                    <motion.span
-                      layoutId={`borrower-my-requests-active-tab-${kind}`}
-                      className="absolute inset-0 rounded-lg bg-bg shadow-xs border border-border/80"
-                      transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                    />
-                  )}
-                  <span
-                    className={cn("h-1.5 w-1.5 rounded-full relative z-10 shrink-0", f.dot)}
-                    aria-hidden="true"
-                  />
-                  <span className="relative z-10">{f.label}</span>
+                  <span>{opt.label}</span>
                   <span
                     className={cn(
-                      "relative z-10 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold transition-colors duration-150",
-                      isSelected ? f.activeBadge : f.badge
+                      "px-1.5 py-0.2 rounded-full text-[10px] font-mono tabular-nums",
+                      isSelected
+                        ? "bg-white/20 text-white"
+                        : "bg-bg text-text-secondary border border-border/60"
                     )}
                   >
                     {count}
@@ -232,26 +382,34 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
               );
             })}
           </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-2 flex-1 min-w-48 justify-end">
-          <div className="relative flex-1 min-w-40 max-w-sm">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-text-secondary">
-              <Search className="h-3.5 w-3.5" />
+        {(kind === "supply" || kind === "material") && mixedCount > 0 && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-amber-800 dark:text-amber-200 font-medium">
+              You also have{" "}
+              <strong className="font-bold">{mixedCount}</strong>{" "}
+              mixed requisition{mixedCount === 1 ? "" : "s"} containing both supplies and materials.
             </span>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search request code, item, or purpose…"
-              className={cn(
-                "w-full h-9 pl-8.5 pr-3 text-xs bg-bg border border-border rounded-lg text-text placeholder:text-text-secondary/60",
-                "focus:outline-none focus:ring-2 focus:ring-accent transition-colors"
-              )}
-            />
+            <Link
+              href="/borrower-db/requests"
+              className="text-xs font-bold text-amber-800 dark:text-amber-200 underline underline-offset-2 hover:opacity-80 shrink-0"
+            >
+              View in All Requests →
+            </Link>
           </div>
-        </div>
+        )}
       </div>
+
+      {hasError && (
+        <QueryErrorBanner
+          message={firstErrorMsg}
+          onRetry={() => {
+            if (fetchAssets) void refetchAssets();
+            if (fetchSupplies) void refetchSupplies();
+          }}
+        />
+      )}
 
       {/* List */}
       <div className="flex-1 overflow-y-auto min-h-0 bg-bg divide-y divide-border">
@@ -286,30 +444,49 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
             </h3>
             <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
               {statusFilter === "all"
-                ? kind === "supply"
+                ? activeKind === "supply"
                   ? "You haven't submitted any supplies requisitions yet."
-                  : kind === "material"
+                  : activeKind === "material"
                     ? "You haven't submitted any materials requisitions yet."
-                    : kind === "assign"
-                      ? "You haven't submitted any assignment requests yet."
-                      : kind === "borrow"
-                        ? "You haven't submitted any borrow requests yet."
-                        : "You haven't submitted any borrow, assignment, supplies, or materials requests yet."
-                : "No requests match the selected status filter."}
+                    : activeKind === "mixed"
+                      ? "You don't have any mixed requisitions combining supplies and materials."
+                      : activeKind === "assign"
+                        ? "You haven't submitted any assignment requests yet."
+                        : activeKind === "borrow"
+                          ? "You haven't submitted any borrow requests yet."
+                          : "You haven't submitted any borrow, assignment, supplies, or materials requests yet."
+                : "No requests match the selected filters."}
             </p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              {(statusFilter !== "all" || search.trim() || subKind !== "all") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusFilter("all");
+                    setSubKind("all");
+                    setSearch("");
+                  }}
+                  className="px-3.5 py-2 rounded-lg border border-border bg-card text-xs font-semibold text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  Show all requests
+                </button>
+              )}
+              <Link
+                href="/borrower-db/catalog"
+                className="px-3.5 py-2 rounded-lg bg-accent text-accent-foreground text-xs font-semibold hover:opacity-90 transition-opacity"
+              >
+                Browse catalog
+              </Link>
+            </div>
           </div>
         ) : (
           paginatedRequests.map((request) => (
             <MyRequestItem
               key={request.id}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              request={request as any}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onViewDetails={(r) => setSelectedRequest(r as any)}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onCancel={(r) => setCancelTarget(r as any)}
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              onEdit={(r) => setEditingRequest(r as any)}
+              request={request}
+              onViewDetails={(r) => setSelectedRequest(r)}
+              onCancel={(r) => setCancelTarget(r)}
+              onEdit={canEditRequest(request) ? (r) => setEditingRequest(r) : undefined}
             />
           ))
         )}
@@ -392,9 +569,14 @@ export function MyRequestsTab({ kind = "all" }: { kind?: RequestKindFilter }) {
             setSelectedRequest(null);
             setCancelTarget(req);
           }}
-          onEdit={(req) => {
-            setEditingRequest(req);
-          }}
+          onEdit={
+            canEditRequest(selectedRequest)
+              ? (req) => {
+                  setSelectedRequest(null);
+                  setEditingRequest(req);
+                }
+              : undefined
+          }
         />
       )}
     </div>
