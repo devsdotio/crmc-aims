@@ -249,7 +249,7 @@ export class ConsumableRequestRepository
       };
       if (row.classification?.trim().toLowerCase() === "material") {
         entry.hasMaterial = true;
-      } else if (row.classification != null) {
+      } else {
         entry.hasSupply = true;
       }
       flagsByRequest.set(row.id, entry);

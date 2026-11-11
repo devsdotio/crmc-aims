@@ -39,8 +39,8 @@ export type ConsumableRequestReleaseAllocationDTO = {
   supplierId: string | null;
   supplierName: string | null;
   quantity: number;
-  unitCost: string;
-  lineTotal: string;
+  unitCost: string | null;
+  lineTotal: string | null;
   releasedAt: string;
   releasedByName: string;
 };
@@ -71,7 +71,7 @@ export type ConsumableRequestDTO = {
   history: ConsumableRequestHistoryEntry[];
   lines: ConsumableRequestLineDTO[];
   allocations: ConsumableRequestReleaseAllocationDTO[];
-  totalCost: string;
+  totalCost: string | null;
   approvedAt?: string;
   approvedByName?: string;
   releasedAt?: string;

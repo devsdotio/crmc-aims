@@ -18,7 +18,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roundQty } from "@/lib/qty";
-import { summarizePurposes } from "@/lib/request-purpose";
+import {
+  mergeConsumableLinesByPurpose,
+  summarizePurposes,
+} from "@/lib/request-purpose";
 import { splitByConsumableClassification } from "@/lib/consumable-classification";
 import { useCategoriesQuery, useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import { useConsumableCatalogQuery } from "@/features/consumables/client/use-consumables";
@@ -484,31 +487,13 @@ export function EditRequestDialog({
 
     try {
       if (isSupply) {
-        const mergedLines = new Map<
-          string,
-          { consumableId: string; quantity: number; purpose: string; notes?: string }
-        >();
-        for (const l of supplyLines) {
-          if (!l.consumableId) continue;
-          const linePurpose = (l.purpose || purpose || "General").trim();
-          const prev = mergedLines.get(l.consumableId);
-          if (prev) {
-            prev.quantity = roundQty(prev.quantity + Number(l.quantity));
-            if (prev.purpose === "General" && linePurpose !== "General") {
-              prev.purpose = linePurpose;
-            }
-          } else {
-            mergedLines.set(l.consumableId, {
-              consumableId: l.consumableId,
-              quantity: roundQty(Number(l.quantity)),
-              purpose: linePurpose,
-              notes: l.notes?.trim() || undefined,
-            });
-          }
-        }
+        const mergedList = mergeConsumableLinesByPurpose(
+          supplyLines,
+          purpose || "General"
+        );
         const computedPurpose =
           purpose.trim() ||
-          summarizePurposes(Array.from(mergedLines.values()).map((l) => l.purpose));
+          summarizePurposes(mergedList.map((l) => l.purpose));
 
         await updateSupplyMutation.mutateAsync({
           id: request.id,
@@ -520,7 +505,7 @@ export function EditRequestDialog({
             purpose: computedPurpose,
             notes: notes.trim() || null,
             requestedByName: requestedByName.trim(),
-            lines: Array.from(mergedLines.values()),
+            lines: mergedList,
             editReason: editReason.trim(),
           },
         });
@@ -955,8 +940,16 @@ export function EditRequestDialog({
                                 (c) => c.id === newId
                               );
                               setSupplyLines((prev) => {
+                                const normalizeLinePurpose = (raw?: string | null) =>
+                                  ((raw || purpose).trim() || "General").toLowerCase();
+                                const targetPurpose = normalizeLinePurpose(
+                                  prev[idx]?.purpose
+                                );
                                 const dupIdx = prev.findIndex(
-                                  (l, i) => i !== idx && l.consumableId === newId
+                                  (l, i) =>
+                                    i !== idx &&
+                                    l.consumableId === newId &&
+                                    normalizeLinePurpose(l.purpose) === targetPurpose
                                 );
                                 if (dupIdx >= 0) {
                                   return prev

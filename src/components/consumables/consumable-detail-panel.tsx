@@ -43,6 +43,7 @@ import type { StockMovement } from "@/features/stock-movements/client";
 import { formatPhp } from "@/components/projects/format-money";
 import { filterUnsignedDecimalInput } from "@/lib/numeric-input";
 import { StockLevelBar } from "./stock-level-bar";
+import { availableQty } from "./utils";
 import { LotQrCodeDisplay } from "./lot-qr-code-display";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
@@ -323,6 +324,7 @@ export function ConsumableDetailPanel({
             </span>
             <StockLevelBar
               currentQty={displayItem.currentQty}
+              availableQty={displayItem.availableQty ?? availableQty(displayItem)}
               minThreshold={displayItem.minThreshold}
               unit={displayItem.unit}
             />

@@ -1,13 +1,16 @@
-import { and, count, desc, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, count, desc, asc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
+  consumableRequestLines,
   consumables,
+  stockMovements,
   type ConsumableRow,
   type NewConsumableRow,
 } from "@/server/db/schema";
+import { normalizeConsumableClassification } from "@/lib/consumable-classification";
 
 import type {
   IConsumableRepository,
@@ -116,7 +119,15 @@ export class ConsumableRepository implements IConsumableRepository {
       conditions.push(eq(consumables.category, filters.category));
     }
     if (filters.classification) {
-      conditions.push(eq(consumables.classification, filters.classification));
+      const wanted = normalizeConsumableClassification(filters.classification);
+      conditions.push(
+        wanted === "material"
+          ? sql`lower(trim(${consumables.classification})) = 'material'`
+          : or(
+              isNull(consumables.classification),
+              sql`lower(trim(${consumables.classification})) <> 'material'`
+            )!
+      );
     }
     if (filters.categoryClass?.trim()) {
       conditions.push(
@@ -133,18 +144,15 @@ export class ConsumableRepository implements IConsumableRepository {
         )!
       );
     }
+    const availableSql = sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty})`;
     if (filters.stockLevel === "critical") {
-      conditions.push(
-        sql`${consumables.currentQty} <= ${consumables.minThreshold}`
-      );
+      conditions.push(sql`${availableSql} <= ${consumables.minThreshold}`);
     } else if (filters.stockLevel === "low") {
       conditions.push(
-        sql`${consumables.currentQty} > ${consumables.minThreshold} and ${consumables.currentQty} <= (${consumables.minThreshold} * 1.2)`
+        sql`${availableSql} > ${consumables.minThreshold} and ${availableSql} <= (${consumables.minThreshold} * 1.2)`
       );
     } else if (filters.stockLevel === "healthy") {
-      conditions.push(
-        sql`${consumables.currentQty} > (${consumables.minThreshold} * 1.2)`
-      );
+      conditions.push(sql`${availableSql} > (${consumables.minThreshold} * 1.2)`);
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -164,7 +172,7 @@ export class ConsumableRepository implements IConsumableRepository {
       .select(consumableListColumns)
       .from(consumables)
       .where(whereClause)
-      .orderBy(asc(consumables.currentQty), asc(consumables.name))
+      .orderBy(asc(availableSql), asc(consumables.name))
       .limit(limit)
       .offset(offset);
 
@@ -193,8 +201,9 @@ export class ConsumableRepository implements IConsumableRepository {
   async countLowStock(session?: DbSession, tenantId?: string): Promise<number> {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const availableSql = sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty})`;
     const conditions = [
-      sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
+      sql`${availableSql} <= (${consumables.minThreshold} * 1.2)`,
     ];
     if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
 
@@ -208,8 +217,9 @@ export class ConsumableRepository implements IConsumableRepository {
   async getLowStockItems(limit: number, session?: DbSession, tenantId?: string): Promise<ConsumableRow[]> {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const availableSql = sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty})`;
     const conditions = [
-      sql`${consumables.currentQty} <= ceil(${consumables.minThreshold} * 1.2)`
+      sql`${availableSql} <= (${consumables.minThreshold} * 1.2)`,
     ];
     if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
 
@@ -217,9 +227,36 @@ export class ConsumableRepository implements IConsumableRepository {
       .select(consumableListColumns)
       .from(consumables)
       .where(and(...conditions))
-      .orderBy(asc(consumables.currentQty))
+      .orderBy(asc(availableSql), asc(consumables.name))
       .limit(limit);
     return rows.map(withEmptyHistory);
+  }
+
+  async listClassificationsByIds(
+    ids: string[],
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<Map<string, "supply" | "material">> {
+    const map = new Map<string, "supply" | "material">();
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return map;
+
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [inArray(consumables.id, unique)];
+    if (resolvedTenantId) conditions.push(eq(consumables.tenantId, resolvedTenantId));
+
+    const rows = await db
+      .select({
+        id: consumables.id,
+        classification: consumables.classification,
+      })
+      .from(consumables)
+      .where(and(...conditions));
+    for (const row of rows) {
+      map.set(row.id, normalizeConsumableClassification(row.classification));
+    }
+    return map;
   }
 
   async getCategoryDistribution(
@@ -281,6 +318,29 @@ export class ConsumableRepository implements IConsumableRepository {
       .where(and(...conditions))
       .returning();
     return row ?? null;
+  }
+
+  async deleteRelatedChildren(
+    consumableId: string,
+    session?: DbSession,
+    tenantId?: string
+  ): Promise<void> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const moveConditions = [eq(stockMovements.consumableId, consumableId)];
+    if (resolvedTenantId) {
+      moveConditions.push(eq(stockMovements.tenantId, resolvedTenantId));
+    }
+    await db.delete(stockMovements).where(and(...moveConditions));
+
+    // Delete child request lines scoped by parent request tenant when available.
+    const lineConditions = [eq(consumableRequestLines.consumableId, consumableId)];
+    if (resolvedTenantId) {
+      lineConditions.push(
+        sql`exists (select 1 from ${consumables} where ${consumables.id} = ${consumableRequestLines.consumableId} and ${consumables.tenantId} = ${resolvedTenantId})`
+      );
+    }
+    await db.delete(consumableRequestLines).where(and(...lineConditions));
   }
 
   async delete(id: string, session?: DbSession, tenantId?: string): Promise<boolean> {

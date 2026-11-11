@@ -13,7 +13,7 @@ import {
 } from "@/features/consumables/client/use-consumables";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
 import type { ConsumableItem, ConsumableFilterState } from "@/types/inventory";
-import { getStockSeverity } from "@/components/consumables/utils";
+import { availableQty, getStockSeverity } from "@/components/consumables/utils";
 import { ConsumableFilters } from "@/components/consumables/consumable-filters";
 import { AssetViewToggle } from "@/components/assets/asset-view-toggle";
 import { ConsumableGrid } from "@/components/consumables/consumable-grid";
@@ -143,7 +143,8 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
       }
 
       if (filters.stockLevel && filters.stockLevel !== "all") {
-        const severity = getStockSeverity(item.currentQty, item.minThreshold);
+        const eff = item.availableQty ?? availableQty(item);
+        const severity = getStockSeverity(eff, item.minThreshold);
         if (severity !== filters.stockLevel) return false;
       }
 
@@ -151,22 +152,24 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
     });
 
     result.sort((a, b) => {
+      const availA = a.availableQty ?? availableQty(a);
+      const availB = b.availableQty ?? availableQty(b);
       if (filters.sortBy === "qty") {
-        if (a.currentQty !== b.currentQty) return a.currentQty - b.currentQty;
+        if (availA !== availB) return availA - availB;
         return a.name.localeCompare(b.name);
       }
       if (filters.sortBy === "qty_desc") {
-        if (b.currentQty !== a.currentQty) return b.currentQty - a.currentQty;
+        if (availB !== availA) return availB - availA;
         return a.name.localeCompare(b.name);
       }
       if (filters.sortBy === "critical") {
         const sevOrder = { critical: 0, low: 1, healthy: 2 };
-        const sevA = sevOrder[getStockSeverity(a.currentQty, a.minThreshold)];
-        const sevB = sevOrder[getStockSeverity(b.currentQty, b.minThreshold)];
+        const sevA = sevOrder[getStockSeverity(availA, a.minThreshold)];
+        const sevB = sevOrder[getStockSeverity(availB, b.minThreshold)];
         if (sevA !== sevB) return sevA - sevB;
         const thrA = a.minThreshold || 1;
         const thrB = b.minThreshold || 1;
-        return a.currentQty / thrA - b.currentQty / thrB;
+        return availA / thrA - availB / thrB;
       }
       if (filters.sortBy === "updated") {
         return b.lastRestocked.localeCompare(a.lastRestocked);

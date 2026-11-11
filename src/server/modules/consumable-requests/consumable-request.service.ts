@@ -1,12 +1,9 @@
-import { and, eq, inArray } from "drizzle-orm";
 import type {
   ConsumableRequestHistoryEntry,
   ConsumableRequestLineRow,
   ConsumableRequestReleaseAllocationRow,
   ConsumableRequestRow,
 } from "@/server/db/schema";
-import { consumables } from "@/server/db/schema";
-import { getDb } from "@/server/db";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import {
   generateOperationalCode,
@@ -52,6 +49,7 @@ import {
 import { summarizePurposes } from "@/lib/request-purpose";
 import {
   deriveConsumableRequestKind,
+  normalizeConsumableClassification,
 } from "@/lib/consumable-classification";
 import { displayQty, formatQty, qtyEquals, roundQty, toQty } from "@/lib/qty";
 import {
@@ -107,8 +105,28 @@ function releasedQtyByLineId(
 }
 
 function toAllocationDTO(
-  row: ConsumableRequestReleaseAllocationRow
+  row: ConsumableRequestReleaseAllocationRow,
+  includeCosts = true
 ): ConsumableRequestReleaseAllocationDTO {
+  if (!includeCosts) {
+    return {
+      id: row.id,
+      requestLineId: row.requestLineId,
+      consumableId: row.consumableId,
+      purchaseLotId: null,
+      lotCode: null,
+      supplierId: null,
+      supplierName: null,
+      quantity: toQty(row.quantity),
+      unitCost: null,
+      lineTotal: null,
+      releasedAt:
+        row.releasedAt instanceof Date
+          ? row.releasedAt.toISOString()
+          : String(row.releasedAt),
+      releasedByName: row.releasedByName,
+    };
+  }
   return {
     id: row.id,
     requestLineId: row.requestLineId,
@@ -133,11 +151,14 @@ function toDTO(
   lines: ConsumableRequestLineRow[],
   allocations: ConsumableRequestReleaseAllocationRow[] = [],
   relatedRequests: LinkedRequestSummary[] = [],
-  classificationByConsumableId: Map<string, "supply" | "material"> = new Map()
+  classificationByConsumableId: Map<string, "supply" | "material"> = new Map(),
+  includeCosts = true
 ): ConsumableRequestDTO {
   const history = Array.isArray(row.history) ? row.history : [];
-  const allocDtos = allocations.map(toAllocationDTO);
-  const totalCost = allocDtos.reduce((sum, a) => sum + Number(a.lineTotal), 0);
+  const allocDtos = allocations.map((a) => toAllocationDTO(a, includeCosts));
+  const totalCost = includeCosts
+    ? money(allocDtos.reduce((sum, a) => sum + Number(a.lineTotal ?? 0), 0))
+    : null;
   const releasedByLine = releasedQtyByLineId(allocations);
   const lineDtos = lines.map((line) =>
     toLineDTO(
@@ -172,7 +193,7 @@ function toDTO(
     history,
     lines: lineDtos,
     allocations: allocDtos,
-    totalCost: money(totalCost),
+    totalCost,
     approvedAt: row.approvedAt
       ? row.approvedAt instanceof Date
         ? row.approvedAt.toISOString()
@@ -229,37 +250,29 @@ export class ConsumableRequestService {
     lines: ConsumableRequestLineRow[],
     tenantId?: string
   ): Promise<Map<string, "supply" | "material">> {
-    const map = new Map<string, "supply" | "material">();
     const ids = [...new Set(lines.map((l) => l.consumableId))];
-    if (ids.length === 0) return map;
-    const conditions = [inArray(consumables.id, ids)];
-    if (tenantId) conditions.push(eq(consumables.tenantId, tenantId));
-    const rows = await getDb()
-      .select({
-        id: consumables.id,
-        classification: consumables.classification,
-      })
-      .from(consumables)
-      .where(and(...conditions));
-    for (const row of rows) {
-      map.set(
-        row.id,
-        row.classification === "material" ? "material" : "supply"
-      );
-    }
-    return map;
+    if (ids.length === 0) return new Map();
+    return this.consumables.listClassificationsByIds(ids, undefined, tenantId);
   }
 
   private async hydrate(
     row: ConsumableRequestRow,
-    tenantId?: string
+    tenantId?: string,
+    actor?: ActorContext
   ): Promise<ConsumableRequestDTO> {
+    const includeCosts = !actor || isAssetOperatorRole(actor.role);
+    const requesterScope =
+      actor && !isAssetOperatorRole(actor.role) ? actor.userId : undefined;
     const [lines, allocations, linked] = await Promise.all([
       this.repo.listLinesByRequestId(row.id),
       row.status === "released" || row.status === "approved"
         ? this.repo.listAllocationsByRequestId(row.id)
         : Promise.resolve([]),
-      loadLinkedRequestSummaries([row.submissionGroupId], tenantId),
+      loadLinkedRequestSummaries(
+        [row.submissionGroupId],
+        tenantId,
+        requesterScope
+      ),
     ]);
     const classificationByConsumableId =
       await this.classificationMapForLines(lines, tenantId ?? row.tenantId);
@@ -268,7 +281,8 @@ export class ConsumableRequestService {
       lines,
       allocations,
       relatedForRow(row.id, row.submissionGroupId, linked),
-      classificationByConsumableId
+      classificationByConsumableId,
+      includeCosts
     );
   }
 
@@ -277,8 +291,11 @@ export class ConsumableRequestService {
     actor?: ActorContext
   ): Promise<{ data: ConsumableRequestDTO[]; meta: PaginatedMeta }> {
     const filters = listConsumableRequestsQuerySchema.parse(rawQuery ?? {});
-    if (actor && !isAssetOperatorRole(actor.role)) {
-      filters.requesterUserId = actor.userId;
+    const includeCosts = !actor || isAssetOperatorRole(actor.role);
+    const requesterScope =
+      actor && !isAssetOperatorRole(actor.role) ? actor.userId : undefined;
+    if (requesterScope) {
+      filters.requesterUserId = requesterScope;
     }
 
     const { page, limit, ...countFilters } = filters;
@@ -315,7 +332,8 @@ export class ConsumableRequestService {
     }
     const linked = await loadLinkedRequestSummaries(
       rows.map((row) => row.submissionGroupId),
-      actor?.tenantId
+      actor?.tenantId,
+      requesterScope
     );
     const classificationByConsumableId =
       await this.classificationMapForLines(allLines, actor?.tenantId);
@@ -327,7 +345,8 @@ export class ConsumableRequestService {
           linesByRequest.get(row.id) ?? [],
           allocationsByRequest.get(row.id) ?? [],
           relatedForRow(row.id, row.submissionGroupId, linked),
-          classificationByConsumableId
+          classificationByConsumableId,
+          includeCosts
         )
       ),
       meta: {
@@ -354,7 +373,7 @@ export class ConsumableRequestService {
     ) {
       throw new ForbiddenError("You are not allowed to view this request.");
     }
-    return this.hydrate(row, actor?.tenantId);
+    return this.hydrate(row, actor?.tenantId, actor);
   }
 
   async create(
@@ -486,10 +505,17 @@ export class ConsumableRequestService {
       for (const { item } of items) {
         classificationByConsumableId.set(
           item.id,
-          item.classification === "material" ? "material" : "supply"
+          normalizeConsumableClassification(item.classification)
         );
       }
-      return toDTO(created, lines, [], [], classificationByConsumableId);
+      return toDTO(
+        created,
+        lines,
+        [],
+        [],
+        classificationByConsumableId,
+        isAssetOperatorRole(actor.role)
+      );
     });
 
     invalidateDashboardCache(actor.tenantId);
@@ -531,10 +557,8 @@ export class ConsumableRequestService {
 
       let quantityChanged = false;
       const linesToProcess = existingLines.map((line) => {
-        const matchingInputLine = input.lines?.find(
-          (il) =>
-            (il.lineId && il.lineId === line.id) ||
-            il.consumableId === line.consumableId
+        const matchingInputLine = input.lines?.find((il) =>
+          il.lineId ? il.lineId === line.id : il.consumableId === line.consumableId
         );
         if (
           matchingInputLine &&
@@ -785,7 +809,7 @@ export class ConsumableRequestService {
       },
     });
     invalidateDashboardCache(actor.tenantId);
-    return this.hydrate(updated, actor.tenantId);
+    return this.hydrate(updated, actor.tenantId, actor);
   }
 
   async undoApproval(
@@ -1167,6 +1191,7 @@ export class ConsumableRequestService {
       input.department !== undefined
     ) {
       if (input.projectId) {
+        departmentName = "";
         departmentId = null;
         projectId = input.projectId;
       } else if (input.departmentId || input.department?.trim()) {
@@ -1266,6 +1291,6 @@ export class ConsumableRequestService {
     });
 
     invalidateDashboardCache(actor.tenantId);
-    return this.hydrate(updated, actor.tenantId);
+    return this.hydrate(updated, actor.tenantId, actor);
   }
 }

@@ -1,10 +1,4 @@
-import {
-  type ConsumableRow,
-  stockMovements,
-  consumableRequestLines,
-} from "@/server/db/schema";
-import { getDb } from "@/server/db";
-import { eq } from "drizzle-orm";
+import type { ConsumableRow } from "@/server/db/schema";
 import {
   generateOperationalCode,
   todayDateString,
@@ -589,7 +583,8 @@ export class ConsumableService {
           lastRestocked: new Date(),
           ...(lot.supplierName ? { supplier: lot.supplierName } : {}),
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Consumable", id);
 
@@ -745,7 +740,8 @@ export class ConsumableService {
         {
           currentQty: formatQty(toQty(existing.currentQty) - input.quantity),
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Consumable", existing.id);
 
@@ -936,8 +932,8 @@ export class ConsumableService {
           lotId: lot.id,
           lotCode: lot.lotCode,
           quantity: input.quantityChange,
-          unitCost: lot.unitCost,
-          total: lot.totalCost,
+          unitCost: lot.unitCost ?? "0.00",
+          total: lot.totalCost ?? "0.00",
           supplierId: lot.supplierId,
           supplierName: lot.supplierName,
         });
@@ -946,7 +942,8 @@ export class ConsumableService {
       const updated = await this.repo.update(
         id,
         { currentQty: formatQty(next) },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Consumable", id);
 
@@ -1060,7 +1057,8 @@ export class ConsumableService {
         {
           currentQty: formatQty(toQty(existing.currentQty) - input.quantity),
         },
-        tx
+        tx,
+        actor.tenantId
       );
       if (!updated) throw new NotFoundError("Consumable", id);
 
@@ -1154,7 +1152,6 @@ export class ConsumableService {
   async delete(rawId: string, actor: ActorContext): Promise<void> {
     const id = consumableIdSchema.parse(rawId);
     return withTransaction(async (session) => {
-      const db = session ?? getDb();
       const existing = await this.repo.findByIdForUpdate(id, session, actor.tenantId);
       if (!existing) {
         throw new NotFoundError("Consumable", id);
@@ -1179,15 +1176,9 @@ export class ConsumableService {
         session
       );
 
-      await db
-        .delete(stockMovements)
-        .where(eq(stockMovements.consumableId, id));
+      await this.repo.deleteRelatedChildren(id, session, actor.tenantId);
 
-      await db
-        .delete(consumableRequestLines)
-        .where(eq(consumableRequestLines.consumableId, id));
-
-      const deleted = await this.repo.delete(id, session);
+      const deleted = await this.repo.delete(id, session, actor.tenantId);
       if (!deleted) {
         throw new NotFoundError("Consumable", id);
       }

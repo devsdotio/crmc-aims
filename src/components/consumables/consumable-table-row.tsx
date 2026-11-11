@@ -6,6 +6,7 @@ import type { ConsumableItem } from "@/types/inventory";
 import type { CategoryStyleMeta } from "@/constants/categories";
 import { StockLevelBar } from "./stock-level-bar";
 import { CategoryPill } from "./category-pill";
+import { availableQty } from "./utils";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableTableRowProps {
@@ -66,6 +67,7 @@ export function ConsumableTableRow({
       <td className="px-3 py-3.5 min-w-50">
         <StockLevelBar
           currentQty={item.currentQty}
+          availableQty={item.availableQty ?? availableQty(item)}
           minThreshold={item.minThreshold}
           unit={item.unit}
         />

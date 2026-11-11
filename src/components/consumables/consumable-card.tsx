@@ -6,6 +6,7 @@ import type { ConsumableItem } from "@/types/inventory";
 import type { CategoryStyleMeta } from "@/constants/categories";
 import { StockLevelBar } from "./stock-level-bar";
 import { CategoryPill } from "./category-pill";
+import { availableQty } from "./utils";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 
 export interface ConsumableCardProps {
@@ -71,6 +72,7 @@ export function ConsumableCard({
         <div className="mt-auto pt-2">
           <StockLevelBar
             currentQty={item.currentQty}
+            availableQty={item.availableQty ?? availableQty(item)}
             minThreshold={item.minThreshold}
             unit={item.unit}
           />

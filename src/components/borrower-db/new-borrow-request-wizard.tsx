@@ -56,7 +56,10 @@ import {
 } from "./map-portal-request";
 import { useToast } from "@/components/providers/toast-context";
 import { formatQuantityWithUnit } from "@/lib/sanitize-display";
-import { summarizePurposes } from "@/lib/request-purpose";
+import {
+  mergeConsumableLinesByPurpose,
+  summarizePurposes,
+} from "@/lib/request-purpose";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { useFocusTrap } from "@/hooks/use-focus-trap";
@@ -1284,11 +1287,9 @@ function StepDetails({
       const bundle = values.typeBundles.find((b) => b.requestType === requestType);
       if (!bundle) return;
       const targetItem = bundle.selectedItems.find((i) => i.id === itemId);
-      const isConsumable = targetItem?.type === "consumable";
-      // Consumables: same SKU already on this request type → bump qty (never a second line).
-      const existingGroup = isConsumable
-        ? bundle.purposeGroups.find((g) => g.lines.some((l) => l.itemId === itemId))
-        : bundle.purposeGroups.find((g) => g.id === groupId && g.lines.some((l) => l.itemId === itemId));
+      const existingGroup = bundle.purposeGroups.find(
+        (g) => g.id === groupId && g.lines.some((l) => l.itemId === itemId)
+      );
       if (existingGroup) {
         const existing = existingGroup.lines.find((l) => l.itemId === itemId)!;
         const clamped = roundQty(Math.min(9999, existing.quantity + 1));
@@ -1819,11 +1820,9 @@ function StepDetails({
 
             <div className="space-y-2.5">
               {bundle.purposeGroups.map((group, idx) => {
-                // Consumables may appear only once per request type (qty is adjusted instead).
+                // Allow the same consumable SKU across distinct purpose groups; prevent duplicate rows within the same group.
                 const assignedInBundle = new Set(
-                  isConsumableWizardType(bundle.requestType)
-                    ? bundle.purposeGroups.flatMap((g) => g.lines.map((l) => l.itemId))
-                    : group.lines.map((l) => l.itemId)
+                  group.lines.map((l) => l.itemId)
                 );
                 const availableToAdd = bundle.selectedItems.filter(
                   (i) => !assignedInBundle.has(i.id)
@@ -2643,29 +2642,15 @@ export function NewBorrowRequestWizard({
         if (isConsumableWizardType(bundle.requestType)) {
           const kindLabel =
             bundle.requestType === "material" ? "material" : "supply";
-          const rawLines = items.filter((item) => item.consumableId);
-          const merged = new Map<
-            string,
-            { consumableId: string; quantity: number; purpose: string }
-          >();
-          for (const item of rawLines) {
-            const purpose = item.purpose.trim() || "General";
-            const key = item.consumableId!;
-            const prev = merged.get(key);
-            if (prev) {
-              prev.quantity = roundQty(prev.quantity + item.quantity);
-              if (prev.purpose === "General" && purpose !== "General") {
-                prev.purpose = purpose;
-              }
-            } else {
-              merged.set(key, {
-                consumableId: key,
-                quantity: roundQty(item.quantity),
-                purpose,
-              });
-            }
-          }
-          const supplyLines = Array.from(merged.values());
+          const supplyLines = mergeConsumableLinesByPurpose(
+            items
+              .filter((item) => item.consumableId)
+              .map((item) => ({
+                consumableId: item.consumableId!,
+                quantity: item.quantity,
+                purpose: item.purpose,
+              }))
+          );
           if (supplyLines.length === 0) {
             setErrorMessage(
               `Select at least one ${kindLabel} item before sending.`
