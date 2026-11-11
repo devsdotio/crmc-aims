@@ -1,14 +1,3 @@
-import { and, asc, eq } from "drizzle-orm";
-
-import { getDb } from "@/server/db";
-import {
-  assets,
-  categories,
-  consumables,
-  departments,
-  projects,
-  tenants,
-} from "@/server/db/schema";
 import { NotFoundError, ValidationError } from "@/server/shared/errors";
 import {
   CUSTOM_REPORT_EXPORT_MAX_ROWS,
@@ -43,7 +32,7 @@ function escapeCsvField(val: unknown): string {
 
 function toCsv(
   headers: string[],
-  rows: (string | number | boolean | null | undefined)[][]
+  rows: (string | number | boolean | null | undefined)[][],
 ): string {
   const headerLine = headers.map(escapeCsvField).join(",");
   const rowLines = rows.map((r) => r.map(escapeCsvField).join(","));
@@ -54,6 +43,44 @@ function toIso(d: Date | string | null | undefined): string {
   if (!d) return "";
   if (typeof d === "string") return d;
   return d.toISOString();
+}
+
+const LEGACY_FILTER_ALIAS: Partial<Record<string, keyof CustomReportFilters>> =
+  {
+    departmentId: "departmentIds",
+    department: "departmentNames",
+    category: "categories",
+    classification: "classifications",
+    status: "statuses",
+  };
+
+function mergeTemplateFilters(
+  templateDefaults: CustomReportFilters | null | undefined,
+  rawOverrides: Record<string, unknown> | undefined,
+): CustomReportFilters {
+  const merged: Record<string, unknown> = {
+    ...normalizeCustomReportFilters(templateDefaults ?? {}),
+  };
+  if (!rawOverrides) {
+    return normalizeCustomReportFilters(merged);
+  }
+
+  const normalizedOverrides = normalizeCustomReportFilters(rawOverrides);
+  for (const [rawKey, rawVal] of Object.entries(rawOverrides)) {
+    if (rawVal === undefined) continue;
+    const canonicalKey = (LEGACY_FILTER_ALIAS[rawKey] ??
+      rawKey) as keyof CustomReportFilters;
+    const isCleared =
+      rawVal === null ||
+      rawVal === "" ||
+      (Array.isArray(rawVal) && rawVal.length === 0);
+    if (isCleared) {
+      delete merged[canonicalKey];
+    } else if (normalizedOverrides[canonicalKey] !== undefined) {
+      merged[canonicalKey] = normalizedOverrides[canonicalKey];
+    }
+  }
+  return normalizeCustomReportFilters(merged);
 }
 
 function mapTemplate(row: {
@@ -90,33 +117,6 @@ function mapTemplate(row: {
   };
 }
 
-type TenantBranding = {
-  logoUrl?: string;
-  organizationName?: string;
-  organizationSubtitle?: string;
-  name?: string;
-};
-
-async function loadTenantBranding(tenantId: string): Promise<{
-  organizationName?: string;
-  organizationSubtitle?: string;
-  logoUrl?: string;
-}> {
-  const db = getDb();
-  const [tenant] = await db
-    .select({ name: tenants.name, branding: tenants.branding })
-    .from(tenants)
-    .where(eq(tenants.id, tenantId))
-    .limit(1);
-  if (!tenant) return {};
-  const branding = (tenant.branding ?? {}) as TenantBranding;
-  return {
-    organizationName: branding.organizationName || branding.name || tenant.name,
-    organizationSubtitle: branding.organizationSubtitle,
-    logoUrl: branding.logoUrl,
-  };
-}
-
 export class CustomReportService {
   constructor(private readonly repo = new CustomReportRepository()) {}
 
@@ -125,54 +125,13 @@ export class CustomReportService {
   }
 
   async getFilterOptions(tenantId: string): Promise<CustomReportFilterOptions> {
-    const db = getDb();
-    const [
+    const {
       departmentRows,
       projectRows,
       categoryRows,
       assetRows,
       consumableRows,
-    ] = await Promise.all([
-      db
-        .select({ id: departments.id, name: departments.name, code: departments.code })
-        .from(departments)
-        .where(and(eq(departments.tenantId, tenantId), eq(departments.isSandbox, false)))
-        .orderBy(asc(departments.name)),
-      db
-        .select({ id: projects.id, name: projects.name, code: projects.projectCode })
-        .from(projects)
-        .where(eq(projects.tenantId, tenantId))
-        .orderBy(asc(projects.name)),
-      db
-        .select({
-          id: categories.id,
-          name: categories.name,
-          type: categories.type,
-        })
-        .from(categories)
-        .where(eq(categories.tenantId, tenantId))
-        .orderBy(asc(categories.name)),
-      db
-        .select({
-          id: assets.id,
-          code: assets.assetCode,
-          name: assets.name,
-        })
-        .from(assets)
-        .where(and(eq(assets.tenantId, tenantId), eq(assets.isSandbox, false)))
-        .orderBy(asc(assets.assetCode))
-        .limit(3000),
-      db
-        .select({
-          id: consumables.id,
-          code: consumables.itemCode,
-          name: consumables.name,
-        })
-        .from(consumables)
-        .where(and(eq(consumables.tenantId, tenantId), eq(consumables.isSandbox, false)))
-        .orderBy(asc(consumables.itemCode))
-        .limit(3000),
-    ]);
+    } = await this.repo.getFilterOptionRows(tenantId);
 
     const assetCategories = categoryRows
       .filter((c) => c.type === "asset")
@@ -216,7 +175,10 @@ export class CustomReportService {
     return rows.map(mapTemplate);
   }
 
-  async getTemplate(id: string, tenantId: string): Promise<CustomReportTemplate> {
+  async getTemplate(
+    id: string,
+    tenantId: string,
+  ): Promise<CustomReportTemplate> {
     const row = await this.repo.findById(id, tenantId);
     if (!row) throw new NotFoundError("Report template", id);
     return mapTemplate(row);
@@ -225,14 +187,16 @@ export class CustomReportService {
   async createTemplate(
     input: CreateTemplateInput,
     tenantId: string,
-    actor: { userId: string; displayName: string }
+    actor: { userId: string; displayName: string },
   ): Promise<CustomReportTemplate> {
     resolveDatasetColumns(input.dataset, input.columns);
     const layout =
       input.layout && input.layout.length > 0
         ? input.layout
         : defaultCustomReportLayout(input.name);
-    const defaultFilters = normalizeCustomReportFilters(input.defaultFilters ?? {});
+    const defaultFilters = normalizeCustomReportFilters(
+      input.defaultFilters ?? {},
+    );
 
     const row = await this.repo.create({
       tenantId,
@@ -254,7 +218,7 @@ export class CustomReportService {
     id: string,
     input: UpdateTemplateInput,
     tenantId: string,
-    actor: { userId: string; displayName: string }
+    actor: { userId: string; displayName: string },
   ): Promise<CustomReportTemplate> {
     const existing = await this.repo.findById(id, tenantId);
     if (!existing) throw new NotFoundError("Report template", id);
@@ -265,7 +229,8 @@ export class CustomReportService {
 
     const row = await this.repo.update(id, tenantId, {
       name: input.name,
-      description: input.description === undefined ? undefined : input.description,
+      description:
+        input.description === undefined ? undefined : input.description,
       dataset: input.dataset,
       columns: input.columns,
       defaultFilters:
@@ -283,7 +248,10 @@ export class CustomReportService {
     await this.repo.delete(id, tenantId);
   }
 
-  async run(input: RunReportInput, tenantId: string): Promise<CustomReportRunResult> {
+  async run(
+    input: RunReportInput,
+    tenantId: string,
+  ): Promise<CustomReportRunResult> {
     let dataset = input.dataset;
     let columns = input.columns;
     let layout = input.layout;
@@ -295,26 +263,23 @@ export class CustomReportService {
       dataset = dataset ?? template.dataset;
       columns = columns ?? template.columns;
       layout = layout ?? template.layout;
-      const runner = normalizeCustomReportFilters(input.filters ?? {});
-      filters = { ...normalizeCustomReportFilters(template.defaultFilters) };
-      for (const [key, value] of Object.entries(runner) as Array<
-        [keyof CustomReportFilters, CustomReportFilters[keyof CustomReportFilters]]
-      >) {
-        if (value !== undefined) {
-          (filters as Record<string, unknown>)[key] = value;
-        }
-      }
+      filters = mergeTemplateFilters(
+        template.defaultFilters,
+        input.filters as Record<string, unknown> | undefined,
+      );
       templateId = template.id;
     }
 
     if (!dataset || !columns?.length) {
-      throw new ValidationError("dataset and columns are required to run a report.");
+      throw new ValidationError(
+        "dataset and columns are required to run a report.",
+      );
     }
 
     const page = input.page ?? 1;
     const pageSize = Math.min(
       input.pageSize ?? CUSTOM_REPORT_PREVIEW_PAGE_SIZE,
-      CUSTOM_REPORT_EXPORT_MAX_ROWS
+      CUSTOM_REPORT_EXPORT_MAX_ROWS,
     );
     const offset = (page - 1) * pageSize;
 
@@ -324,10 +289,10 @@ export class CustomReportService {
       filters,
       columns,
       pageSize,
-      offset
+      offset,
     );
 
-    const branding = await loadTenantBranding(tenantId);
+    const branding = await this.repo.getTenantBranding(tenantId);
 
     return {
       templateId,
@@ -338,27 +303,23 @@ export class CustomReportService {
       page,
       pageSize,
       filters,
-      layout: layout && layout.length > 0 ? layout : defaultCustomReportLayout("Custom report"),
+      layout:
+        layout && layout.length > 0
+          ? layout
+          : defaultCustomReportLayout("Custom report"),
       ...branding,
     };
   }
 
   async exportCsv(
     body: ExportReportBody,
-    tenantId: string
+    tenantId: string,
   ): Promise<{ filename: string; csv: string; templateName: string }> {
     const template = await this.getTemplate(body.templateId, tenantId);
-    const runner = normalizeCustomReportFilters(body.filters ?? {});
-    const filters: CustomReportFilters = {
-      ...normalizeCustomReportFilters(template.defaultFilters),
-    };
-    for (const [key, value] of Object.entries(runner) as Array<
-      [keyof CustomReportFilters, CustomReportFilters[keyof CustomReportFilters]]
-    >) {
-      if (value !== undefined) {
-        (filters as Record<string, unknown>)[key] = value;
-      }
-    }
+    const filters = mergeTemplateFilters(
+      template.defaultFilters,
+      body.filters as Record<string, unknown> | undefined,
+    );
 
     const { columns: colDefs, result } = await executeDatasetQuery(
       template.dataset,
@@ -366,13 +327,15 @@ export class CustomReportService {
       filters,
       template.columns,
       CUSTOM_REPORT_EXPORT_MAX_ROWS,
-      0
+      0,
     );
 
     const headers = colDefs.map((c) => c.label);
     const keys = colDefs.map((c) => c.key);
     const csvRows = result.rows.map((row) => keys.map((k) => row[k]));
-    const safeName = template.name.replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 60);
+    const safeName = template.name
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .slice(0, 60);
     const filename = `custom-report_${safeName}_${new Date().toISOString().slice(0, 10)}.csv`;
 
     return {

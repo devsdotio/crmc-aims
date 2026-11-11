@@ -52,6 +52,21 @@ const stringList = z
     return out.length ? out : undefined;
   });
 
+const runtimeStringList = z
+  .union([z.array(z.string()), z.string(), z.null()])
+  .optional()
+  .transform((value) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === "") return [];
+    if (Array.isArray(value)) {
+      return value.map(String).map((s) => s.trim()).filter(Boolean);
+    }
+    return value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  });
+
 const filtersObjectSchema = z.object({
   search: z.string().optional(),
   departmentIds: stringList,
@@ -59,6 +74,7 @@ const filtersObjectSchema = z.object({
   projectIds: stringList,
   categories: stringList,
   classifications: stringList,
+  categoryClasses: stringList,
   statuses: stringList,
   assignmentTypes: stringList,
   itemTypes: stringList,
@@ -78,9 +94,41 @@ const filtersObjectSchema = z.object({
   status: z.string().optional(),
 });
 
+const runtimeFiltersObjectSchema = z.object({
+  search: z.union([z.string(), z.null()]).optional(),
+  departmentIds: runtimeStringList,
+  departmentNames: runtimeStringList,
+  projectIds: runtimeStringList,
+  categories: runtimeStringList,
+  classifications: runtimeStringList,
+  categoryClasses: runtimeStringList,
+  statuses: runtimeStringList,
+  assignmentTypes: runtimeStringList,
+  itemTypes: runtimeStringList,
+  requestTypes: runtimeStringList,
+  assetIds: runtimeStringList,
+  consumableIds: runtimeStringList,
+  conditions: runtimeStringList,
+  reasons: runtimeStringList,
+  directions: runtimeStringList,
+  startDate: z.union([z.string(), z.null()]).optional(),
+  endDate: z.union([z.string(), z.null()]).optional(),
+  // legacy singles
+  departmentId: z.union([z.string(), z.null()]).optional(),
+  department: z.union([z.string(), z.null()]).optional(),
+  category: z.union([z.string(), z.null()]).optional(),
+  classification: z.union([z.string(), z.null()]).optional(),
+  status: z.union([z.string(), z.null()]).optional(),
+});
+
 export const filtersSchema = z.preprocess(
   (value) => value ?? {},
   filtersObjectSchema
+);
+
+export const runtimeFiltersSchema = z.preprocess(
+  (value) => value ?? {},
+  runtimeFiltersObjectSchema
 );
 
 export const createTemplateSchema = z.object({
@@ -105,7 +153,7 @@ export const runReportSchema = z.object({
   templateId: z.string().uuid().optional(),
   dataset: z.enum(CUSTOM_REPORT_DATASETS).optional(),
   columns: z.array(z.string().min(1)).min(1).max(50).optional(),
-  filters: filtersSchema.optional(),
+  filters: runtimeFiltersSchema.optional(),
   layout: z.array(layoutBlockSchema).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(2000).default(100),
@@ -113,12 +161,12 @@ export const runReportSchema = z.object({
 
 export const exportReportBodySchema = z.object({
   templateId: z.string().uuid(),
-  filters: filtersSchema.optional(),
+  filters: runtimeFiltersSchema.optional(),
 });
 
 export const printIntentSchema = z.object({
   templateId: z.string().uuid(),
-  filters: filtersSchema.optional(),
+  filters: runtimeFiltersSchema.optional(),
 });
 
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;

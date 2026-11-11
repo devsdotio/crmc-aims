@@ -1,6 +1,18 @@
 import { isAssetOperatorRole, type AppRole } from "@/server/shared/roles";
+import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { ReportRepository } from "./report.repository";
-import type { BaseReportQuery, ExportReportQuery } from "./report.validation";
+import type {
+  BaseReportQuery,
+  ExportReportQuery,
+  ReportPrintIntentInput,
+} from "./report.validation";
+
+export type ReportAuditActor = {
+  userId: string;
+  displayName: string;
+  tenantId?: string;
+};
 
 function escapeCsvField(val: unknown): string {
   if (val === null || val === undefined) return "";
@@ -18,18 +30,29 @@ function toCsv(headers: string[], rows: (string | number | boolean | null | unde
 }
 
 export class ReportService {
-  constructor(private readonly repo = new ReportRepository()) {}
+  constructor(
+    private readonly repo = new ReportRepository(),
+    private readonly auditLogs = new AuditLogService()
+  ) {}
 
   // ─── 1. Executive Summary ─────────────────────────────────────────────────
 
-  async getExecutiveSummary(actorRole: AppRole, tenantId?: string) {
+  async getExecutiveSummary(
+    actorRole: AppRole,
+    tenantId?: string,
+    includeSandbox = false
+  ) {
     const canViewCosts = isAssetOperatorRole(actorRole);
-    const data = await this.repo.getExecutiveData(tenantId);
+    const data = await this.repo.getExecutiveData(tenantId, includeSandbox);
 
     if (!canViewCosts) {
       data.assets.totalValue = 0;
       data.consumables.totalValuation = 0;
       data.consumables.monthBurnRateValue = 0;
+      data.consumables.suppliesValuation = 0;
+      data.consumables.materialsValuation = 0;
+      data.consumables.suppliesBurnRateValue = 0;
+      data.consumables.materialsBurnRateValue = 0;
       data.procurement.totalSpend30d = 0;
       data.maintenance.totalRepairSpend30d = 0;
       data.charts.monthlySpendTrend = data.charts.monthlySpendTrend.map((m) => ({
@@ -38,8 +61,7 @@ export class ReportService {
         maintenance: 0,
       }));
       data.charts.categoryDistribution = data.charts.categoryDistribution.map((c) => ({
-        name: c.name,
-        count: c.count,
+        ...c,
         value: 0,
       }));
     }
@@ -112,6 +134,15 @@ export class ReportService {
     if (!canViewCosts) {
       result.summary.totalInventoryValuation = 0;
       result.summary.totalDispatchedValue30d = 0;
+      result.summary.suppliesValuation = 0;
+      result.summary.materialsValuation = 0;
+      result.summary.suppliesDispatchedValue30d = 0;
+      result.summary.materialsDispatchedValue30d = 0;
+      if (result.summary.topConsumingDepartments) {
+        result.summary.topConsumingDepartments = result.summary.topConsumingDepartments.map(
+          (d) => ({ ...d, spendValue: 0 })
+        );
+      }
       result.data = result.data.map((row) => ({
         ...row,
         unitCost: null,
@@ -133,6 +164,13 @@ export class ReportService {
 
     if (!canViewCosts) {
       result.summary.totalSpend = 0;
+      result.summary.suppliesSpend = 0;
+      result.summary.materialsSpend = 0;
+      result.summary.assetsSpend = 0;
+      result.summary.topSuppliers = result.summary.topSuppliers.map((s) => ({
+        ...s,
+        spend: 0,
+      }));
       result.data = result.data.map((row) => ({
         ...row,
         totalAmount: null,
@@ -193,7 +231,14 @@ export class ReportService {
       result.data = result.data.map((row) => ({
         ...row,
         consumablesValue: null,
+        suppliesValue: null,
+        materialsValue: null,
         totalProjectCost: null,
+        consumedSupplies: row.consumedSupplies?.map((s) => ({
+          ...s,
+          unitCost: null,
+          totalCost: null,
+        })),
       }));
     }
 
@@ -212,10 +257,19 @@ export class ReportService {
     if (!canViewCosts) {
       result.summary.totalAssetsValue = 0;
       result.summary.totalConsumablesValue = 0;
+      result.summary.totalSuppliesValue = 0;
+      result.summary.totalMaterialsValue = 0;
       result.data = result.data.map((row) => ({
         ...row,
         assetsValue: null,
         consumablesValue: null,
+        suppliesValue: null,
+        materialsValue: null,
+        consumedSupplies: row.consumedSupplies?.map((s) => ({
+          ...s,
+          unitCost: null,
+          totalCost: null,
+        })),
         maintenanceSummary: row.maintenanceSummary
           ? {
               ...row.maintenanceSummary,
@@ -241,9 +295,58 @@ export class ReportService {
     };
   }
 
-  // ─── 10. CSV Export Generation ────────────────────────────────────────────
+  // ─── 10. CSV Export & Audit Intent ────────────────────────────────────────
 
-  async exportReportCsv(query: ExportReportQuery, actorRole: AppRole, tenantId?: string): Promise<{ filename: string; csv: string }> {
+  async recordPrintIntent(
+    input: ReportPrintIntentInput,
+    actor: ReportAuditActor
+  ): Promise<void> {
+    await this.auditLogs.log({
+      entityType: AUDIT_ENTITY.report,
+      entityId: input.reportType,
+      action: AUDIT_ACTION.reportPrintRequested,
+      actorName: actor.displayName,
+      actorUserId: actor.userId,
+      notes: `Requested print/PDF for ${input.reportType} report.`,
+      metadata: {
+        reportType: input.reportType,
+        filters: input.filters ?? null,
+        tenantId: actor.tenantId ?? null,
+      },
+    });
+  }
+
+  async exportReportCsv(
+    query: ExportReportQuery,
+    actorRole: AppRole,
+    tenantId?: string,
+    actor?: ReportAuditActor
+  ): Promise<{ filename: string; csv: string }> {
+    const result = await this.buildReportCsv(query, actorRole, tenantId);
+    if (actor) {
+      await this.auditLogs.log({
+        entityType: AUDIT_ENTITY.report,
+        entityId: query.reportType,
+        action: AUDIT_ACTION.reportExported,
+        actorName: actor.displayName,
+        actorUserId: actor.userId,
+        notes: `Exported ${query.reportType} report as ${query.format.toUpperCase()}.`,
+        metadata: {
+          reportType: query.reportType,
+          format: query.format,
+          filters: query,
+          tenantId: actor.tenantId ?? tenantId ?? null,
+        },
+      });
+    }
+    return result;
+  }
+
+  private async buildReportCsv(
+    query: ExportReportQuery,
+    actorRole: AppRole,
+    tenantId?: string
+  ): Promise<{ filename: string; csv: string }> {
     const canViewCosts = isAssetOperatorRole(actorRole);
     const dateStamp = new Date().toISOString().split("T")[0];
 
@@ -345,6 +448,7 @@ export class ReportService {
           "Supplier",
           "Status",
           "Type",
+          "Classification",
           ...(canViewCosts ? ["Total Amount"] : []),
           "Quantity",
           "Purchased On",
@@ -355,6 +459,11 @@ export class ReportService {
           r.supplierName,
           r.status,
           r.itemType,
+          r.classification === "material"
+            ? "Material"
+            : r.classification === "supply"
+              ? "Supply"
+              : "Asset",
           ...(canViewCosts ? [r.totalAmount != null ? r.totalAmount.toFixed(2) : ""] : []),
           r.totalQuantity,
           r.purchasedOn,
@@ -371,6 +480,7 @@ export class ReportService {
         const headers = [
           "Request Code",
           "Type",
+          "Classification",
           "Requester",
           "Department",
           "Status",
@@ -378,16 +488,20 @@ export class ReportService {
           "Summary",
           "Requested At",
         ];
-        const rows = res.data.map((r) => [
-          r.requestCode,
-          r.requestType,
-          r.requesterName,
-          r.department,
-          r.status,
-          r.itemsCount,
-          r.itemsSummary,
-          r.requestedAt,
-        ]);
+        const rows = res.data.map((r) => {
+          const classification: string | undefined = r.classification;
+          return [
+            r.requestCode,
+            r.requestType,
+            classification || r.requestType,
+            r.requesterName,
+            r.department,
+            r.status,
+            r.itemsCount,
+            r.itemsSummary,
+            r.requestedAt,
+          ];
+        });
         return {
           filename: `requests-report-${dateStamp}.csv`,
           csv: toCsv(headers, rows),
@@ -457,8 +571,12 @@ export class ReportService {
           "Start Date",
           "End Date",
           "Assigned Assets",
-          "Consumables Consumed",
-          ...(canViewCosts ? ["Consumables Value", "Total Project Cost"] : []),
+          "Supplies Consumed",
+          "Materials Consumed",
+          "Total Consumables Consumed",
+          ...(canViewCosts
+            ? ["Supplies Value", "Materials Value", "Consumables Value", "Total Project Cost"]
+            : []),
           "Manager",
           "Description",
         ];
@@ -470,9 +588,13 @@ export class ReportService {
           r.startDate,
           r.endDate || "",
           r.assignedAssetsCount,
+          r.suppliesConsumedCount ?? 0,
+          r.materialsConsumedCount ?? 0,
           r.consumablesConsumedCount,
           ...(canViewCosts
             ? [
+                r.suppliesValue != null ? r.suppliesValue.toFixed(2) : "",
+                r.materialsValue != null ? r.materialsValue.toFixed(2) : "",
                 r.consumablesValue != null ? r.consumablesValue.toFixed(2) : "",
                 r.totalProjectCost != null ? r.totalProjectCost.toFixed(2) : "",
               ]
@@ -492,8 +614,12 @@ export class ReportService {
           "Department Name",
           "Assets Assigned",
           ...(canViewCosts ? ["Assets Valuation"] : []),
-          "Consumables Consumed",
-          ...(canViewCosts ? ["Consumables Valuation"] : []),
+          "Supplies Consumed",
+          "Materials Consumed",
+          "Total Consumables Consumed",
+          ...(canViewCosts
+            ? ["Supplies Valuation", "Materials Valuation", "Total Consumables Valuation"]
+            : []),
           "Active Maintenance",
           "Active Projects",
           "Top Assets",
@@ -502,8 +628,16 @@ export class ReportService {
           r.departmentName,
           r.assetsAssignedCount,
           ...(canViewCosts ? [r.assetsValue != null ? r.assetsValue.toFixed(2) : ""] : []),
+          r.suppliesConsumedCount ?? 0,
+          r.materialsConsumedCount ?? 0,
           r.consumablesConsumedCount,
-          ...(canViewCosts ? [r.consumablesValue != null ? r.consumablesValue.toFixed(2) : ""] : []),
+          ...(canViewCosts
+            ? [
+                r.suppliesValue != null ? r.suppliesValue.toFixed(2) : "",
+                r.materialsValue != null ? r.materialsValue.toFixed(2) : "",
+                r.consumablesValue != null ? r.consumablesValue.toFixed(2) : "",
+              ]
+            : []),
           r.activeMaintenanceCount,
           r.activeProjects,
           (r.topAssets || []).join("; "),
@@ -515,7 +649,11 @@ export class ReportService {
       }
 
       case "executive": {
-        const summary = await this.getExecutiveSummary(actorRole, tenantId);
+        const summary = await this.getExecutiveSummary(
+          actorRole,
+          tenantId,
+          query.includeSandbox
+        );
         const headers = [
           "Operational Domain",
           "Primary Metric / Valuation",
@@ -532,11 +670,30 @@ export class ReportService {
             `${summary.assets.inRepairCount} Under Repair`,
           ],
           [
-            "Consumable Supply Stores",
-            canViewCosts ? summary.consumables.totalValuation.toFixed(2) : "N/A",
-            `${summary.consumables.totalItems} SKUs`,
-            summary.consumables.lowStockCount ? `${summary.consumables.lowStockCount} Below Threshold` : "Healthy",
-            canViewCosts ? `₱${summary.consumables.monthBurnRateValue.toFixed(2)} 30d burn` : "N/A",
+            "Consumable Supplies",
+            canViewCosts
+              ? (summary.consumables.suppliesValuation ?? 0).toFixed(2)
+              : "N/A",
+            `${summary.consumables.suppliesCount ?? 0} SKUs`,
+            (summary.consumables.suppliesLowStockCount ?? 0) > 0
+              ? `${summary.consumables.suppliesLowStockCount} Below Threshold`
+              : "Healthy",
+            canViewCosts
+              ? `₱${(summary.consumables.suppliesBurnRateValue ?? 0).toFixed(2)} 30d burn`
+              : "N/A",
+          ],
+          [
+            "Consumable Materials",
+            canViewCosts
+              ? (summary.consumables.materialsValuation ?? 0).toFixed(2)
+              : "N/A",
+            `${summary.consumables.materialsCount ?? 0} SKUs`,
+            (summary.consumables.materialsLowStockCount ?? 0) > 0
+              ? `${summary.consumables.materialsLowStockCount} Below Threshold`
+              : "Healthy",
+            canViewCosts
+              ? `₱${(summary.consumables.materialsBurnRateValue ?? 0).toFixed(2)} 30d burn`
+              : "N/A",
           ],
           [
             "Procurement & Purchase Orders",
@@ -546,9 +703,9 @@ export class ReportService {
             "30-Day Window",
           ],
           [
-            "Supply Requests & Requisitions",
+            "Requisitions (Borrow, Supplies & Materials)",
             `${summary.requests.fulfilledThisMonth} Fulfilled`,
-            `${summary.requests.pendingCount} Pending Action`,
+            `${summary.requests.pendingCount} Pending (${summary.requests.borrowPendingCount ?? 0} Borrow · ${summary.requests.supplyPendingCount ?? 0} Supplies · ${summary.requests.materialPendingCount ?? 0} Materials)`,
             summary.requests.pendingCount === 0 ? "Queue Clear" : "Action Required",
             `${summary.requests.avgApprovalHours}h Avg Turnaround`,
           ],

@@ -6,7 +6,9 @@ import {
   gte,
   ilike,
   inArray,
+  isNull,
   lte,
+  not,
   or,
   sql,
   type AnyColumn,
@@ -17,6 +19,8 @@ import { getDb } from "@/server/db";
 import {
   assets,
   borrowRequests,
+  consumableRequestLines,
+  consumableRequests,
   consumables,
   departments,
   maintenanceLogs,
@@ -24,6 +28,12 @@ import {
   purchaseLots,
   stockMovements,
 } from "@/server/db/schema";
+import {
+  deriveConsumableRequestKind,
+  normalizeConsumableClassification,
+  resolvePurchaseLotClassification,
+} from "@/lib/consumable-classification";
+import { parseNotesMetadata } from "@/server/modules/purchase-lots/purchase-lot.service";
 import type {
   CustomReportColumnDef,
   CustomReportColumnKey,
@@ -87,6 +97,47 @@ function applySearch(conditions: SQL[], search: string | undefined, fields: AnyC
 
 function applyIn(conditions: SQL[], column: AnyColumn, values?: string[]) {
   if (hasValues(values)) conditions.push(inArray(column, values));
+}
+
+function applyConsumableClassifications(conditions: SQL[], values?: string[]) {
+  if (!hasValues(values)) return;
+  const normalized = new Set(
+    values.map((v) => v.trim().toLowerCase()).filter(Boolean)
+  );
+  const wantsSupply = normalized.has("supply");
+  const wantsMaterial = normalized.has("material");
+  if (wantsSupply && wantsMaterial) return;
+  if (wantsMaterial) {
+    conditions.push(
+      sql`lower(trim(coalesce(${consumables.classification}, ''))) = 'material'`
+    );
+  } else if (wantsSupply) {
+    conditions.push(
+      sql`lower(trim(coalesce(${consumables.classification}, ''))) <> 'material'`
+    );
+  }
+}
+
+function consumableVoidedSql(): SQL {
+  return sql`(
+    coalesce(${stockMovements.notes}, '') ilike '%[VOIDED]%'
+    or coalesce(${stockMovements.notes}, '') ilike '%[REVERSES:%'
+    or exists (
+      select 1 from stock_movements rev
+      where rev.notes ilike ('%[REVERSES:' || ${stockMovements.id}::text || ']%')
+    )
+  )`;
+}
+
+function consumableNotVoidedSql(): SQL {
+  return sql`not (
+    coalesce(${stockMovements.notes}, '') ilike '%[VOIDED]%'
+    or coalesce(${stockMovements.notes}, '') ilike '%[REVERSES:%'
+    or exists (
+      select 1 from stock_movements rev
+      where rev.notes ilike ('%[REVERSES:' || ${stockMovements.id}::text || ']%')
+    )
+  )`;
 }
 
 async function resolveDepartmentNames(
@@ -225,6 +276,44 @@ const STOCK_DIRECTION_OPTIONS = [
   { id: "out", label: "Out" },
 ];
 
+const STOCK_VOIDED_OPTIONS = [
+  { id: "active", label: "Active (non-voided)" },
+  { id: "voided", label: "Voided / reversal" },
+];
+
+const CONSUMABLE_CLASSIFICATION_OPTIONS = [
+  { id: "supply", label: "Supply" },
+  { id: "material", label: "Material" },
+];
+
+const PO_CLASSIFICATION_OPTIONS = [
+  { id: "supply", label: "Supply" },
+  { id: "material", label: "Material" },
+  { id: "asset", label: "Asset" },
+];
+
+const PO_STATUS_OPTIONS = [
+  { id: "pending_approval", label: "Pending approval" },
+  { id: "approved", label: "Approved" },
+  { id: "ordered", label: "Ordered" },
+  { id: "delivered", label: "Delivered" },
+  { id: "cancelled", label: "Cancelled" },
+];
+
+const CONSUMABLE_REQUEST_STATUS_OPTIONS = [
+  { id: "pending", label: "Pending" },
+  { id: "approved", label: "Approved" },
+  { id: "rejected", label: "Rejected" },
+  { id: "released", label: "Released" },
+  { id: "cancelled", label: "Cancelled" },
+];
+
+const CONSUMABLE_REQUEST_CLASS_OPTIONS = [
+  { id: "supply", label: "Supply only" },
+  { id: "material", label: "Material only" },
+  { id: "mixed", label: "Mixed (Supplies + Materials)" },
+];
+
 const assetsDef: DatasetDefinition = {
   key: "assets",
   label: "Assets",
@@ -352,10 +441,12 @@ const consumablesDef: DatasetDefinition = {
     field("classifications", "Supply / material", "multi", {
       filterKey: "classifications",
       optionsSource: "static",
-      staticOptions: [
-        { id: "supply", label: "Supply" },
-        { id: "material", label: "Material" },
-      ],
+      staticOptions: CONSUMABLE_CLASSIFICATION_OPTIONS,
+    }),
+    field("categoryClasses", "Category class", "multi", {
+      filterKey: "categoryClasses",
+      optionsSource: "consumableClasses",
+      searchable: true,
     }),
     field("statuses", "Stock status", "multi", {
       filterKey: "statuses",
@@ -377,6 +468,7 @@ const consumablesDef: DatasetDefinition = {
     col("unit", "Unit"),
     col("currentQty", "Current qty", "number"),
     col("reservedQty", "Reserved qty", "number"),
+    col("availableQty", "Available qty", "number"),
     col("minThreshold", "Min threshold", "number"),
     col("location", "Location"),
     col("supplier", "Supplier"),
@@ -388,15 +480,17 @@ const consumablesDef: DatasetDefinition = {
     const conditions: SQL[] = [eq(consumables.tenantId, tenantId), eq(consumables.isSandbox, false)];
     applySearch(conditions, filters.search, [consumables.itemCode, consumables.name]);
     applyIn(conditions, consumables.category, filters.categories);
-    applyIn(conditions, consumables.classification, filters.classifications);
+    applyConsumableClassifications(conditions, filters.classifications);
+    applyIn(conditions, consumables.categoryClass, filters.categoryClasses);
     applyIn(conditions, consumables.id, filters.consumableIds);
     if (hasValues(filters.statuses)) {
       const parts: SQL[] = [];
+      const availableExpr = sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty})`;
       if (filters.statuses.includes("low_stock")) {
-        parts.push(sql`${consumables.currentQty} <= ${consumables.minThreshold}`);
+        parts.push(sql`${availableExpr} <= ${consumables.minThreshold}`);
       }
       if (filters.statuses.includes("in_stock")) {
-        parts.push(sql`${consumables.currentQty} > ${consumables.minThreshold}`);
+        parts.push(sql`${availableExpr} > ${consumables.minThreshold}`);
       }
       if (parts.length === 1) conditions.push(parts[0]!);
       else if (parts.length > 1) conditions.push(or(...parts)!);
@@ -429,19 +523,23 @@ const consumablesDef: DatasetDefinition = {
     const allow = new Set(consumablesDef.columns.map((c) => c.key));
     return {
       total: Number(totalRow?.total ?? 0),
-      rows: rowsRaw.map((r) =>
-        pickColumns(
+      rows: rowsRaw.map((r) => {
+        const currentQty = Number(r.currentQty);
+        const reservedQty = Number(r.reservedQty);
+        return pickColumns(
           {
             ...r,
-            currentQty: Number(r.currentQty),
-            reservedQty: Number(r.reservedQty),
+            classification: normalizeConsumableClassification(r.classification),
+            currentQty,
+            reservedQty,
+            availableQty: Math.max(0, currentQty - reservedQty),
             minThreshold: Number(r.minThreshold),
             lastRestocked: r.lastRestocked?.toISOString?.() ?? r.lastRestocked,
           },
           columns,
           allow
-        )
-      ),
+        );
+      }),
     };
   },
 };
@@ -449,7 +547,7 @@ const consumablesDef: DatasetDefinition = {
 const stockMovementsDef: DatasetDefinition = {
   key: "stock-movements",
   label: "Consumable movements",
-  description: "Issues / restocks / adjustments by department or project",
+  description: "Issues / restocks / adjustments separated by Supplies & Materials",
   filterFields: [
     field("search", "Search", "search", { filterKey: "search" }),
     field("departments", "Departments", "multi", {
@@ -462,9 +560,19 @@ const stockMovementsDef: DatasetDefinition = {
       optionsSource: "projects",
       searchable: true,
     }),
+    field("classifications", "Supply / material", "multi", {
+      filterKey: "classifications",
+      optionsSource: "static",
+      staticOptions: CONSUMABLE_CLASSIFICATION_OPTIONS,
+    }),
     field("categories", "Item categories", "multi", {
       filterKey: "categories",
       optionsSource: "consumableCategories",
+      searchable: true,
+    }),
+    field("categoryClasses", "Category class", "multi", {
+      filterKey: "categoryClasses",
+      optionsSource: "consumableClasses",
       searchable: true,
     }),
     field("consumables", "Specific items", "multi", {
@@ -482,16 +590,24 @@ const stockMovementsDef: DatasetDefinition = {
       optionsSource: "static",
       staticOptions: STOCK_DIRECTION_OPTIONS,
     }),
+    field("statuses", "Record status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: STOCK_VOIDED_OPTIONS,
+    }),
     field("dateRange", "Movement date", "dateRange"),
   ],
   columns: [
     col("movementCode", "Movement code"),
     col("itemCode", "Item code"),
     col("itemName", "Item name"),
+    col("classification", "Classification"),
     col("category", "Category"),
+    col("categoryClass", "Category class"),
     col("qty", "Qty", "number"),
     col("direction", "Direction"),
     col("reason", "Reason"),
+    col("voided", "Voided", "boolean"),
     col("departmentName", "Department"),
     col("projectName", "Project"),
     col("lotCode", "Lot code"),
@@ -503,7 +619,10 @@ const stockMovementsDef: DatasetDefinition = {
   ],
   async execute(tenantId, filters, columns, limit, offset) {
     const db = getDb();
-    const conditions: SQL[] = [eq(stockMovements.tenantId, tenantId)];
+    const conditions: SQL[] = [
+      eq(stockMovements.tenantId, tenantId),
+      eq(consumables.isSandbox, false),
+    ];
     applySearch(conditions, filters.search, [
       stockMovements.movementCode,
       stockMovements.lotCode,
@@ -514,9 +633,22 @@ const stockMovementsDef: DatasetDefinition = {
     applyIn(conditions, stockMovements.departmentId, filters.departmentIds);
     applyIn(conditions, stockMovements.projectId, filters.projectIds);
     applyIn(conditions, stockMovements.consumableId, filters.consumableIds);
+    applyConsumableClassifications(conditions, filters.classifications);
     applyIn(conditions, consumables.category, filters.categories);
+    applyIn(conditions, consumables.categoryClass, filters.categoryClasses);
     applyIn(conditions, stockMovements.reason, filters.reasons);
     applyIn(conditions, stockMovements.direction, filters.directions);
+    if (hasValues(filters.statuses)) {
+      const wantsActive = filters.statuses.includes("active");
+      const wantsVoided = filters.statuses.includes("voided");
+      if (wantsActive && !wantsVoided) {
+        conditions.push(consumableNotVoidedSql());
+      } else if (wantsVoided && !wantsActive) {
+        conditions.push(consumableVoidedSql());
+      }
+    } else {
+      conditions.push(consumableNotVoidedSql());
+    }
     if (filters.startDate) {
       conditions.push(gte(stockMovements.createdAt, new Date(filters.startDate)));
     }
@@ -538,10 +670,13 @@ const stockMovementsDef: DatasetDefinition = {
         movementCode: stockMovements.movementCode,
         itemCode: consumables.itemCode,
         itemName: consumables.name,
+        classification: consumables.classification,
         category: consumables.category,
+        categoryClass: consumables.categoryClass,
         qty: stockMovements.qty,
         direction: stockMovements.direction,
         reason: stockMovements.reason,
+        isVoided: sql<boolean>`${consumableVoidedSql()}`,
         departmentId: stockMovements.departmentId,
         projectId: stockMovements.projectId,
         lotCode: stockMovements.lotCode,
@@ -590,10 +725,13 @@ const stockMovementsDef: DatasetDefinition = {
             movementCode: r.movementCode,
             itemCode: r.itemCode,
             itemName: r.itemName,
+            classification: normalizeConsumableClassification(r.classification),
             category: r.category,
+            categoryClass: r.categoryClass,
             qty: Number(r.qty),
             direction: r.direction,
             reason: r.reason,
+            voided: Boolean(r.isVoided),
             departmentName: r.departmentId ? deptMap.get(r.departmentId) ?? null : null,
             projectName: r.projectId ? projectMap.get(r.projectId) ?? null : null,
             lotCode: r.lotCode,
@@ -614,7 +752,7 @@ const stockMovementsDef: DatasetDefinition = {
 const purchaseOrdersDef: DatasetDefinition = {
   key: "purchase-orders",
   label: "Purchase orders",
-  description: "Purchase lots / procurement receipts",
+  description: "Purchase lots & procurement receipts separated by Supply, Material, and Asset",
   filterFields: [
     field("search", "Search", "search", { filterKey: "search" }),
     field("departments", "Departments", "multi", {
@@ -627,6 +765,16 @@ const purchaseOrdersDef: DatasetDefinition = {
       optionsSource: "projects",
       searchable: true,
     }),
+    field("classifications", "Classification", "multi", {
+      filterKey: "classifications",
+      optionsSource: "static",
+      staticOptions: PO_CLASSIFICATION_OPTIONS,
+    }),
+    field("statuses", "Order status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: PO_STATUS_OPTIONS,
+    }),
     field("itemTypes", "Item type", "multi", {
       filterKey: "itemTypes",
       optionsSource: "static",
@@ -637,6 +785,8 @@ const purchaseOrdersDef: DatasetDefinition = {
   columns: [
     col("lotCode", "Lot code"),
     col("itemType", "Item type"),
+    col("classification", "Classification"),
+    col("status", "Status"),
     col("itemCode", "Item code"),
     col("itemName", "Item name"),
     col("supplierName", "Supplier"),
@@ -653,7 +803,13 @@ const purchaseOrdersDef: DatasetDefinition = {
   ],
   async execute(tenantId, filters, columns, limit, offset) {
     const db = getDb();
-    const conditions: SQL[] = [eq(purchaseLots.tenantId, tenantId)];
+    const conditions: SQL[] = [
+      eq(purchaseLots.tenantId, tenantId),
+      not(ilike(purchaseLots.lotCode, "OPEN-%")),
+      or(isNull(purchaseLots.reference), not(eq(purchaseLots.reference, "INITIAL-STOCK")))!,
+      or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!,
+      or(isNull(purchaseLots.assetId), eq(assets.isSandbox, false))!,
+    ];
     applySearch(conditions, filters.search, [
       purchaseLots.lotCode,
       purchaseLots.itemCode,
@@ -667,11 +823,13 @@ const purchaseOrdersDef: DatasetDefinition = {
     if (filters.endDate) conditions.push(lte(purchaseLots.purchasedOn, filters.endDate));
 
     const where = and(...conditions);
-    const [totalRow] = await db.select({ total: count() }).from(purchaseLots).where(where);
-    const rowsRaw = await db
+    const rawRows = await db
       .select({
         lotCode: purchaseLots.lotCode,
         itemType: purchaseLots.itemType,
+        consumableId: purchaseLots.consumableId,
+        projectId: purchaseLots.projectId,
+        consumableClassification: consumables.classification,
         itemCode: purchaseLots.itemCode,
         itemName: purchaseLots.itemName,
         supplierName: purchaseLots.supplierName,
@@ -687,34 +845,76 @@ const purchaseOrdersDef: DatasetDefinition = {
         notes: purchaseLots.notes,
       })
       .from(purchaseLots)
+      .leftJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
+      .leftJoin(assets, eq(purchaseLots.assetId, assets.id))
       .where(where)
-      .orderBy(desc(purchaseLots.purchasedOn))
-      .limit(limit)
-      .offset(offset);
+      .orderBy(desc(purchaseLots.purchasedOn), desc(purchaseLots.createdAt));
 
+    const wantedClasses = new Set(
+      (filters.classifications ?? []).map((c) => c.trim().toLowerCase()).filter(Boolean)
+    );
+    const wantedStatuses = new Set(
+      (filters.statuses ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean)
+    );
+
+    const enriched = rawRows
+      .map((r) => {
+        const hasJsonMeta = Boolean(
+          r.notes?.trim().startsWith("{") && r.notes.includes('"status"')
+        );
+        const hasTagStatus = Boolean(
+          r.notes && /\[STATUS:\s*[a-z_]+\]/i.test(r.notes)
+        );
+        const meta = parseNotesMetadata(r.notes);
+        const status = hasJsonMeta || hasTagStatus ? meta.status : "delivered";
+        const resolvedClass =
+          r.itemType === "asset"
+            ? "asset"
+            : resolvePurchaseLotClassification({
+                itemType: r.itemType,
+                projectId: r.projectId,
+                classification:
+                  r.consumableClassification ?? meta.draftItem?.classification,
+                consumableId: r.consumableId,
+              }) ?? "supply";
+
+        return {
+          lotCode: r.lotCode,
+          itemType: r.itemType,
+          classification: resolvedClass,
+          status,
+          itemCode: r.itemCode,
+          itemName: r.itemName,
+          supplierName: r.supplierName,
+          departmentName: r.departmentName,
+          projectName: r.projectName,
+          quantity: Number(r.quantity),
+          quantityRemaining: Number(r.quantityRemaining),
+          unitCost: r.unitCost != null ? Number(r.unitCost) : null,
+          totalCost: r.totalCost != null ? Number(r.totalCost) : null,
+          purchasedOn: r.purchasedOn,
+          reference: r.reference,
+          recordedByName: r.recordedByName,
+          notes: r.notes,
+        };
+      })
+      .filter((r) =>
+        wantedClasses.size ? wantedClasses.has(r.classification) : true
+      )
+      .filter((r) => (wantedStatuses.size ? wantedStatuses.has(r.status) : true));
+
+    const paged = enriched.slice(offset, offset + limit);
     const allow = new Set(purchaseOrdersDef.columns.map((c) => c.key));
     return {
-      total: Number(totalRow?.total ?? 0),
-      rows: rowsRaw.map((r) =>
-        pickColumns(
-          {
-            ...r,
-            quantity: Number(r.quantity),
-            quantityRemaining: Number(r.quantityRemaining),
-            unitCost: r.unitCost != null ? Number(r.unitCost) : null,
-            totalCost: r.totalCost != null ? Number(r.totalCost) : null,
-          },
-          columns,
-          allow
-        )
-      ),
+      total: enriched.length,
+      rows: paged.map((r) => pickColumns(r, columns, allow)),
     };
   },
 };
 
 const requestsDef: DatasetDefinition = {
   key: "requests",
-  label: "Borrow requests",
+  label: "Borrow & assign requests",
   description: "Asset borrow / assignment requests",
   filterFields: [
     field("search", "Search", "search", { filterKey: "search" }),
@@ -811,6 +1011,225 @@ const requestsDef: DatasetDefinition = {
           allow
         )
       ),
+    };
+  },
+};
+
+const consumableRequestsDef: DatasetDefinition = {
+  key: "consumable-requests",
+  label: "Consumable requests",
+  description: "Supplies, Materials & mixed requisitions with separated line metrics",
+  filterFields: [
+    field("search", "Search", "search", { filterKey: "search" }),
+    field("departments", "Departments", "multi", {
+      filterKey: "departmentIds",
+      optionsSource: "departments",
+      searchable: true,
+    }),
+    field("projects", "Projects", "multi", {
+      filterKey: "projectIds",
+      optionsSource: "projects",
+      searchable: true,
+    }),
+    field("classifications", "Supply / material", "multi", {
+      filterKey: "classifications",
+      optionsSource: "static",
+      staticOptions: CONSUMABLE_REQUEST_CLASS_OPTIONS,
+    }),
+    field("categories", "Item categories", "multi", {
+      filterKey: "categories",
+      optionsSource: "consumableCategories",
+      searchable: true,
+    }),
+    field("consumables", "Specific items", "multi", {
+      filterKey: "consumableIds",
+      optionsSource: "consumables",
+      searchable: true,
+    }),
+    field("statuses", "Status", "multi", {
+      filterKey: "statuses",
+      optionsSource: "static",
+      staticOptions: CONSUMABLE_REQUEST_STATUS_OPTIONS,
+    }),
+    field("dateRange", "Requested date", "dateRange"),
+  ],
+  columns: [
+    col("requestCode", "Request code"),
+    col("requesterName", "Requester"),
+    col("requesterEmail", "Email"),
+    col("department", "Department"),
+    col("projectName", "Project"),
+    col("classification", "Classification"),
+    col("status", "Status"),
+    col("itemsCount", "Total lines", "number"),
+    col("suppliesCount", "Supply lines", "number"),
+    col("materialsCount", "Material lines", "number"),
+    col("itemsSummary", "Items summary"),
+    col("purpose", "Purpose"),
+    col("receivedBy", "Received by"),
+    col("approvedByName", "Approved by"),
+    col("releasedByName", "Released by"),
+    col("requestedAt", "Requested at", "date"),
+    col("approvedAt", "Approved at", "date"),
+    col("releasedAt", "Released at", "date"),
+    col("notes", "Notes"),
+  ],
+  async execute(tenantId, filters, columns, limit, offset) {
+    const db = getDb();
+    const conditions: SQL[] = [
+      eq(consumableRequests.tenantId, tenantId),
+      or(isNull(consumableRequests.departmentId), eq(departments.isSandbox, false))!,
+    ];
+    applySearch(conditions, filters.search, [
+      consumableRequests.requestCode,
+      consumableRequests.requesterName,
+      consumableRequests.purpose,
+    ]);
+    applyIn(conditions, consumableRequests.departmentId, filters.departmentIds);
+    const deptNames = await resolveDepartmentNames(tenantId, filters);
+    if (hasValues(deptNames) && !hasValues(filters.departmentIds)) {
+      applyIn(conditions, consumableRequests.department, deptNames);
+    }
+    applyIn(conditions, consumableRequests.projectId, filters.projectIds);
+    applyIn(conditions, consumableRequests.status, filters.statuses);
+    if (filters.startDate) {
+      conditions.push(gte(consumableRequests.requestedAt, new Date(filters.startDate)));
+    }
+    if (filters.endDate) {
+      const end = new Date(filters.endDate);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(consumableRequests.requestedAt, end));
+    }
+
+    const reqRows = await db
+      .select({
+        id: consumableRequests.id,
+        requestCode: consumableRequests.requestCode,
+        requesterName: consumableRequests.requesterName,
+        requesterEmail: consumableRequests.requesterEmail,
+        department: consumableRequests.department,
+        projectName: projects.name,
+        purpose: consumableRequests.purpose,
+        status: consumableRequests.status,
+        receivedBy: consumableRequests.receivedBy,
+        approvedByName: consumableRequests.approvedByName,
+        releasedByName: consumableRequests.releasedByName,
+        requestedAt: consumableRequests.requestedAt,
+        approvedAt: consumableRequests.approvedAt,
+        releasedAt: consumableRequests.releasedAt,
+        notes: consumableRequests.notes,
+      })
+      .from(consumableRequests)
+      .leftJoin(departments, eq(consumableRequests.departmentId, departments.id))
+      .leftJoin(projects, eq(consumableRequests.projectId, projects.id))
+      .where(and(...conditions))
+      .orderBy(desc(consumableRequests.requestedAt));
+
+    const reqIds = reqRows.map((r) => r.id);
+    const lineMap = new Map<
+      string,
+      Array<{
+        consumableId: string;
+        itemName: string;
+        category: string;
+        unit: string;
+        qty: number;
+        classification: string;
+      }>
+    >();
+
+    if (reqIds.length > 0) {
+      const lineRows = await db
+        .select({
+          requestId: consumableRequestLines.requestId,
+          consumableId: consumableRequestLines.consumableId,
+          itemName: consumableRequestLines.itemName,
+          category: consumableRequestLines.category,
+          unit: consumableRequestLines.unit,
+          qty: consumableRequestLines.quantityRequested,
+          classification: consumables.classification,
+          isSandbox: consumables.isSandbox,
+        })
+        .from(consumableRequestLines)
+        .leftJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
+        .where(inArray(consumableRequestLines.requestId, reqIds));
+
+      for (const l of lineRows) {
+        if (l.isSandbox) continue;
+        const arr = lineMap.get(l.requestId) ?? [];
+        arr.push({
+          consumableId: l.consumableId,
+          itemName: l.itemName,
+          category: l.category,
+          unit: l.unit,
+          qty: Number(l.qty) || 0,
+          classification: normalizeConsumableClassification(l.classification),
+        });
+        lineMap.set(l.requestId, arr);
+      }
+    }
+
+    const wantedClasses = new Set(
+      (filters.classifications ?? []).map((c) => c.trim().toLowerCase()).filter(Boolean)
+    );
+    const wantedCategories = new Set(filters.categories ?? []);
+    const wantedConsumableIds = new Set(filters.consumableIds ?? []);
+
+    const enriched = reqRows
+      .filter((r) => {
+        const lines = lineMap.get(r.id) ?? [];
+        if (wantedCategories.size && !lines.some((l) => wantedCategories.has(l.category))) {
+          return false;
+        }
+        if (
+          wantedConsumableIds.size &&
+          !lines.some((l) => wantedConsumableIds.has(l.consumableId))
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((r) => {
+        const lines = lineMap.get(r.id) ?? [];
+        const kind = deriveConsumableRequestKind(lines.map((l) => l.classification));
+        const suppliesCount = lines.filter((l) => l.classification === "supply").length;
+        const materialsCount = lines.filter((l) => l.classification === "material").length;
+        const itemsSummary =
+          lines.length > 0
+            ? lines
+                .map((l) => `${l.itemName} (${l.qty} ${l.unit})`)
+                .join("; ")
+            : r.purpose || "Consumable Requisition";
+
+        return {
+          requestCode: r.requestCode,
+          requesterName: r.requesterName,
+          requesterEmail: r.requesterEmail,
+          department: r.department,
+          projectName: r.projectName ?? null,
+          classification: kind,
+          status: r.status,
+          itemsCount: lines.length,
+          suppliesCount,
+          materialsCount,
+          itemsSummary,
+          purpose: r.purpose,
+          receivedBy: r.receivedBy,
+          approvedByName: r.approvedByName,
+          releasedByName: r.releasedByName,
+          requestedAt: r.requestedAt?.toISOString?.() ?? r.requestedAt,
+          approvedAt: r.approvedAt?.toISOString?.() ?? r.approvedAt,
+          releasedAt: r.releasedAt?.toISOString?.() ?? r.releasedAt,
+          notes: r.notes,
+        };
+      })
+      .filter((r) => (wantedClasses.size ? wantedClasses.has(r.classification) : true));
+
+    const paged = enriched.slice(offset, offset + limit);
+    const allow = new Set(consumableRequestsDef.columns.map((c) => c.key));
+    return {
+      total: enriched.length,
+      rows: paged.map((r) => pickColumns(r, columns, allow)),
     };
   },
 };
@@ -1036,6 +1455,7 @@ const DATASET_LIST: DatasetDefinition[] = [
   stockMovementsDef,
   purchaseOrdersDef,
   requestsDef,
+  consumableRequestsDef,
   maintenanceDef,
   projectsDef,
 ];

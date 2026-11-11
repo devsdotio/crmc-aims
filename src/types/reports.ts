@@ -52,6 +52,14 @@ export interface ExecutiveKpiSummary {
     lowStockCount: number;
     totalValuation: number;
     monthBurnRateValue: number;
+    suppliesCount?: number;
+    materialsCount?: number;
+    suppliesLowStockCount?: number;
+    materialsLowStockCount?: number;
+    suppliesValuation?: number;
+    materialsValuation?: number;
+    suppliesBurnRateValue?: number;
+    materialsBurnRateValue?: number;
   };
   procurement: {
     openOrdersCount: number;
@@ -62,6 +70,10 @@ export interface ExecutiveKpiSummary {
     pendingCount: number;
     fulfilledThisMonth: number;
     avgApprovalHours: number;
+    supplyPendingCount?: number;
+    materialPendingCount?: number;
+    mixedPendingCount?: number;
+    borrowPendingCount?: number;
   };
   maintenance: {
     activeIssuesCount: number;
@@ -70,7 +82,12 @@ export interface ExecutiveKpiSummary {
     totalRepairSpend30d: number;
   };
   charts: {
-    categoryDistribution: Array<{ name: string; count: number; value: number }>;
+    categoryDistribution: Array<{
+      name: string;
+      count: number;
+      value: number;
+      kind?: "asset" | "supply" | "material";
+    }>;
     monthlySpendTrend: Array<{ month: string; procurement: number; maintenance: number }>;
     statusDistribution: Array<{ status: string; count: number }>;
   };
@@ -219,6 +236,17 @@ export interface ConsumableStockSummary {
   totalInventoryValuation: number;
   totalDispatched30d: number;
   totalDispatchedValue30d: number;
+  totalReservedQty?: number;
+  suppliesCount?: number;
+  materialsCount?: number;
+  suppliesLowStockCount?: number;
+  materialsLowStockCount?: number;
+  suppliesValuation?: number;
+  materialsValuation?: number;
+  suppliesDispatched30d?: number;
+  materialsDispatched30d?: number;
+  suppliesDispatchedValue30d?: number;
+  materialsDispatchedValue30d?: number;
   topConsumingDepartments?: Array<{
     departmentName: string;
     unitsConsumed: number;
@@ -233,6 +261,7 @@ export interface PurchaseOrderRow {
   supplierName: string;
   status: string;
   itemType: "consumable" | "asset" | "mixed";
+  classification?: "supply" | "material" | null;
   totalAmount: number | null;
   totalQuantity: number;
   lineItemCount: number;
@@ -248,6 +277,12 @@ export interface PurchaseOrdersSummary {
   openOrdersCount: number;
   deliveredCount: number;
   avgLeadTimeDays: number;
+  suppliesSpend?: number;
+  materialsSpend?: number;
+  assetsSpend?: number;
+  suppliesOrdersCount?: number;
+  materialsOrdersCount?: number;
+  assetsOrdersCount?: number;
   topSuppliers: Array<{ name: string; spend: number }>;
 }
 
@@ -257,6 +292,7 @@ export interface RequestReportRow {
   id: string;
   requestCode: string;
   requestType: "asset_borrow" | "consumable_issue";
+  classification?: "borrowable" | "assignable" | "supply" | "material" | "mixed";
   requesterName: string;
   department: string;
   status: string;
@@ -276,6 +312,11 @@ export interface RequestsSummary {
   fulfilledCount: number;
   rejectedCount: number;
   avgTurnaroundHours: number;
+  supplyRequestsCount?: number;
+  materialRequestsCount?: number;
+  mixedRequestsCount?: number;
+  borrowRequestsCount?: number;
+  assignRequestsCount?: number;
   departmentBreakdown: Array<{ department: string; count: number }>;
 }
 
@@ -358,6 +399,9 @@ export interface ConsumedSupplyItem {
   itemCode: string;
   name: string;
   category?: string | null;
+  classification?: "supply" | "material";
+  source?: "request" | "direct_issue" | "inventory" | "manual_material";
+  referenceCode?: string | null;
   quantity: number;
   unit: string;
   unitCost?: number | null;
@@ -379,6 +423,10 @@ export interface ProjectReportRow {
   assignedAssetsCount: number;
   consumablesConsumedCount: number;
   consumablesValue: number | null;
+  suppliesConsumedCount?: number;
+  suppliesValue?: number | null;
+  materialsConsumedCount?: number;
+  materialsValue?: number | null;
   totalProjectCost: number | null;
   managerName: string | null;
   description: string | null;
@@ -392,6 +440,8 @@ export interface ProjectReportSummary {
   completedProjects: number;
   totalAssetsAssigned: number;
   totalConsumablesConsumed: number;
+  totalSuppliesConsumed?: number;
+  totalMaterialsConsumed?: number;
   totalProjectSpend: number;
 }
 
@@ -413,6 +463,10 @@ export interface DepartmentReportRow {
   assetsValue: number | null;
   consumablesConsumedCount: number;
   consumablesValue: number | null;
+  suppliesConsumedCount?: number;
+  suppliesValue?: number | null;
+  materialsConsumedCount?: number;
+  materialsValue?: number | null;
   activeMaintenanceCount: number;
   staffCount?: number | null;
   activeProjects: number;
@@ -431,5 +485,9 @@ export interface DepartmentReportSummary {
   totalAssetsValue: number;
   totalConsumablesConsumed: number;
   totalConsumablesValue: number;
+  totalSuppliesConsumed?: number;
+  totalSuppliesValue?: number;
+  totalMaterialsConsumed?: number;
+  totalMaterialsValue?: number;
   mostActiveByAssets: string | null;
 }

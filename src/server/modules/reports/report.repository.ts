@@ -1,4 +1,19 @@
-import { and, asc, desc, eq, gte, ilike, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  not,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import { toQty } from "@/lib/qty";
 import { getDb } from "@/server/db";
@@ -25,6 +40,12 @@ import {
   suppliers,
 } from "@/server/db/schema";
 import { effectiveRepairAmount } from "@/lib/repair-cost";
+import {
+  deriveConsumableRequestKind,
+  normalizeConsumableClassification,
+  resolvePurchaseLotClassification,
+} from "@/lib/consumable-classification";
+import { parseNotesMetadata } from "@/server/modules/purchase-lots/purchase-lot.service";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import type {
   AssignedAssetItem,
@@ -37,6 +58,67 @@ import type {
   ProjectReportSummary,
 } from "@/types/reports";
 import type { BaseReportQuery } from "./report.validation";
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuid(value?: string | null): boolean {
+  return Boolean(value && UUID_REGEX.test(value.trim()));
+}
+
+function normalizedConsumableClassSql() {
+  return sql<string>`case when lower(trim(coalesce(${consumables.classification}, ''))) = 'material' then 'material' else 'supply' end`;
+}
+
+function consumableClassFilterSql(raw?: string): SQL | undefined {
+  const normalized = raw?.trim().toLowerCase();
+  if (!normalized || normalized === "all") return undefined;
+  if (normalized === "material") {
+    return sql`lower(trim(coalesce(${consumables.classification}, ''))) = 'material'`;
+  }
+  if (normalized === "supply") {
+    return sql`lower(trim(coalesce(${consumables.classification}, ''))) <> 'material'`;
+  }
+  return undefined;
+}
+
+function nonVoidedOutIssueConditions(): SQL[] {
+  return [
+    eq(stockMovements.direction, "out"),
+    eq(stockMovements.reason, "issue"),
+    or(
+      isNull(stockMovements.notes),
+      not(ilike(stockMovements.notes, "%[VOIDED]%"))
+    )!,
+    sql`not exists (
+      select 1 from stock_movements rev
+      where rev.notes ilike ('%[REVERSES:' || ${stockMovements.id}::text || ']%')
+    )`,
+  ];
+}
+
+function nonVoidedAllocationCondition(): SQL {
+  return sql`not exists (
+    select 1 from stock_movements smv
+    where smv.request_id = ${consumableRequests.id}
+      and smv.consumable_id = ${consumableRequestReleaseAllocations.consumableId}
+      and (smv.purchase_lot_id is not distinct from ${consumableRequestReleaseAllocations.purchaseLotId})
+      and smv.qty = ${consumableRequestReleaseAllocations.quantity}
+      and smv.direction = 'out'
+      and smv.reason = 'issue'
+      and (
+        smv.notes ilike '%[VOIDED]%'
+        or exists (
+          select 1 from stock_movements rev
+          where rev.notes ilike ('%[REVERSES:' || smv.id::text || ']%')
+        )
+      )
+  )`;
+}
+
+function effectiveMovementValueSql() {
+  return sql`coalesce(${stockMovements.lineTotal}::numeric, coalesce(${stockMovements.qty}::numeric, 0) * coalesce(${stockMovements.unitCost}::numeric, 0), 0)`;
+}
 
 /** Part-line sum when any line has a cost; otherwise the stored overall cost. */
 function effectiveRepairCostSql() {
@@ -63,24 +145,40 @@ export class ReportRepository {
 
   // ─── 1. Executive Rollup ──────────────────────────────────────────────────
 
-  async getExecutiveData(explicitTenantId?: string) {
+  async getExecutiveData(explicitTenantId?: string, includeSandbox = false) {
     const db = this.db();
     const tenantId = explicitTenantId || this.tenantId();
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgoIso = thirtyDaysAgo.toISOString();
     const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
+
+    // 6-month calendar buckets (oldest -> current)
+    const monthBuckets: Array<{ key: string; label: string; procurement: number; maintenance: number }> = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("en-US", { month: "short" });
+      monthBuckets.push({ key, label, procurement: 0, maintenance: 0 });
+    }
+    const oldestBucketStart = `${monthBuckets[0].key}-01`;
+
+    const nonSandboxAsset = includeSandbox ? undefined : eq(assets.isSandbox, false);
+    const nonSandboxConsumable = includeSandbox ? undefined : eq(consumables.isSandbox, false);
+    const isMaterialSql = sql`lower(trim(coalesce(${consumables.classification}, ''))) = 'material'`;
+    const isLowSql = sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty}) <= ${consumables.minThreshold}`;
 
     const [
       [assetStats],
       [consumableStats],
       [consumableValuation],
       [monthBurn],
-      [poStats],
-      [borrowReqStats],
-      [consumableReqStats],
-      [maintStats],
-      categoryRows,
+      poLotRows,
+      borrowReqRows,
+      consumableReqRows,
+      pendingConsReqLines,
+      maintRows,
+      assetCategoryRows,
+      consumableCategoryRows,
     ] = await Promise.all([
       db
         .select({
@@ -90,67 +188,114 @@ export class ReportRepository {
           totalValue: sql<number>`coalesce(sum(${assets.value}::numeric), 0)::float`,
         })
         .from(assets)
-        .where(tenantId ? eq(assets.tenantId, tenantId) : undefined),
+        .where(and(...(tenantId ? [eq(assets.tenantId, tenantId)] : []), ...(nonSandboxAsset ? [nonSandboxAsset] : []))),
       db
         .select({
           totalItems: sql<number>`count(*)::int`,
-          lowStockCount: sql<number>`count(case when ${consumables.currentQty} <= ${consumables.minThreshold} then 1 end)::int`,
+          lowStockCount: sql<number>`count(case when ${isLowSql} then 1 end)::int`,
+          suppliesCount: sql<number>`count(case when not ${isMaterialSql} then 1 end)::int`,
+          materialsCount: sql<number>`count(case when ${isMaterialSql} then 1 end)::int`,
+          suppliesLowStockCount: sql<number>`count(case when not ${isMaterialSql} and ${isLowSql} then 1 end)::int`,
+          materialsLowStockCount: sql<number>`count(case when ${isMaterialSql} and ${isLowSql} then 1 end)::int`,
         })
         .from(consumables)
-        .where(tenantId ? eq(consumables.tenantId, tenantId) : undefined),
+        .where(and(...(tenantId ? [eq(consumables.tenantId, tenantId)] : []), ...(nonSandboxConsumable ? [nonSandboxConsumable] : []))),
       db
         .select({
           totalValuation: sql<number>`coalesce(sum(${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric), 0)::float`,
+          suppliesValuation: sql<number>`coalesce(sum(case when not ${isMaterialSql} and ${purchaseLots.projectId} is null then ${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric else 0 end), 0)::float`,
+          materialsValuation: sql<number>`coalesce(sum(case when ${isMaterialSql} or ${purchaseLots.projectId} is not null then ${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric else 0 end), 0)::float`,
         })
         .from(purchaseLots)
+        .leftJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
         .where(
           and(
             eq(purchaseLots.itemType, "consumable"),
-            gte(purchaseLots.quantityRemaining, "0"),
-            ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+            sql`${purchaseLots.quantityRemaining} > 0`,
+            ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : []),
+            ...(includeSandbox ? [] : [or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!])
           )
         ),
       db
         .select({
-          burnValue: sql<number>`coalesce(sum(${stockMovements.lineTotal}::numeric), 0)::float`,
+          burnValue: sql<number>`coalesce(sum(${effectiveMovementValueSql()}), 0)::float`,
+          suppliesBurn: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${effectiveMovementValueSql()} else 0 end), 0)::float`,
+          materialsBurn: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${effectiveMovementValueSql()} else 0 end), 0)::float`,
         })
         .from(stockMovements)
+        .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
         .where(
           and(
-            eq(stockMovements.direction, "out"),
+            ...nonVoidedOutIssueConditions(),
             gte(stockMovements.createdAt, thirtyDaysAgo),
-            ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
+            ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : []),
+            ...(nonSandboxConsumable ? [nonSandboxConsumable] : [])
           )
         ),
       db
         .select({
-          openOrdersCount: sql<number>`count(case when ${purchaseLots.quantityRemaining} > 0 then 1 end)::int`,
-          totalSpend30d: sql<number>`coalesce(sum(case when ${purchaseLots.purchasedOn} >= ${thirtyDaysAgoStr} then ${purchaseLots.totalCost}::numeric else 0 end), 0)::float`,
+          id: purchaseLots.id,
+          lotCode: purchaseLots.lotCode,
+          reference: purchaseLots.reference,
+          notes: purchaseLots.notes,
+          totalCost: sql<number>`coalesce(${purchaseLots.totalCost}::numeric, 0)::float`,
+          purchasedOn: purchaseLots.purchasedOn,
         })
         .from(purchaseLots)
-        .where(tenantId ? eq(purchaseLots.tenantId, tenantId) : undefined),
+        .leftJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
+        .where(
+          and(
+            ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : []),
+            ...(includeSandbox ? [] : [or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!])
+          )
+        ),
       db
         .select({
-          pendingCount: sql<number>`count(case when ${borrowRequests.status} = 'pending' then 1 end)::int`,
+          status: borrowRequests.status,
+          requestedAt: borrowRequests.requestedAt,
+          updatedAt: borrowRequests.updatedAt,
         })
         .from(borrowRequests)
         .where(tenantId ? eq(borrowRequests.tenantId, tenantId) : undefined),
       db
         .select({
-          pendingCount: sql<number>`count(case when ${consumableRequests.status} = 'pending' then 1 end)::int`,
-          fulfilledMonth: sql<number>`count(case when ${consumableRequests.status} = 'released' and ${consumableRequests.releasedAt} >= ${thirtyDaysAgoIso}::timestamptz then 1 end)::int`,
+          id: consumableRequests.id,
+          status: consumableRequests.status,
+          requestedAt: consumableRequests.requestedAt,
+          approvedAt: consumableRequests.approvedAt,
+          releasedAt: consumableRequests.releasedAt,
         })
         .from(consumableRequests)
         .where(tenantId ? eq(consumableRequests.tenantId, tenantId) : undefined),
       db
         .select({
-          activeCount: sql<number>`count(case when ${maintenanceLogs.isResolved} = false then 1 end)::int`,
-          resolvedMonth: sql<number>`count(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} >= ${thirtyDaysAgoStr} then 1 end)::int`,
-          totalRepairSpend30d: sql<number>`coalesce(sum(case when ${maintenanceLogs.dateLogged} >= ${thirtyDaysAgoStr} then ${effectiveRepairCostSql()} else 0 end), 0)::float`,
-          avgMttrDays: sql<number>`coalesce(avg(case when ${maintenanceLogs.isResolved} = true and ${maintenanceLogs.resolutionDate} is not null then (${maintenanceLogs.resolutionDate}::date - ${maintenanceLogs.dateLogged}::date) end), 0)::float`,
+          requestId: consumableRequestLines.requestId,
+          classification: consumables.classification,
+        })
+        .from(consumableRequestLines)
+        .innerJoin(consumableRequests, eq(consumableRequestLines.requestId, consumableRequests.id))
+        .innerJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
+        .where(
+          and(
+            eq(consumableRequests.status, "pending"),
+            ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : [])
+          )
+        ),
+      db
+        .select({
+          isResolved: maintenanceLogs.isResolved,
+          dateLogged: maintenanceLogs.dateLogged,
+          resolutionDate: maintenanceLogs.resolutionDate,
+          cost: sql<number>`coalesce(${effectiveRepairCostSql()}, 0)::float`,
         })
         .from(maintenanceLogs)
-        .where(tenantId ? eq(maintenanceLogs.tenantId, tenantId) : undefined),
+        .leftJoin(assets, eq(maintenanceLogs.assetId, assets.id))
+        .where(
+          and(
+            ...(tenantId ? [eq(maintenanceLogs.tenantId, tenantId)] : []),
+            ...(includeSandbox ? [] : [or(isNull(maintenanceLogs.assetId), eq(assets.isSandbox, false))!])
+          )
+        ),
       db
         .select({
           name: assets.category,
@@ -158,9 +303,123 @@ export class ReportRepository {
           value: sql<number>`coalesce(sum(${assets.value}::numeric), 0)::float`,
         })
         .from(assets)
-        .where(tenantId ? eq(assets.tenantId, tenantId) : undefined)
+        .where(and(...(tenantId ? [eq(assets.tenantId, tenantId)] : []), ...(nonSandboxAsset ? [nonSandboxAsset] : [])))
         .groupBy(assets.category),
+      db
+        .select({
+          name: consumables.category,
+          kind: normalizedConsumableClassSql(),
+          count: sql<number>`count(*)::int`,
+        })
+        .from(consumables)
+        .where(and(...(tenantId ? [eq(consumables.tenantId, tenantId)] : []), ...(nonSandboxConsumable ? [nonSandboxConsumable] : [])))
+        .groupBy(consumables.category, normalizedConsumableClassSql()),
     ]);
+
+    // Resolve real PO open/pending/spend + 6-month trend
+    let openOrdersCount = 0;
+    let pendingDeliveryCount = 0;
+    let totalSpend30d = 0;
+    const bucketMap = new Map(monthBuckets.map((b) => [b.key, b]));
+
+    for (const po of poLotRows) {
+      const isOpening =
+        po.lotCode?.startsWith("OPEN-") || po.reference === "INITIAL-STOCK";
+      const hasJsonMeta = Boolean(po.notes?.trim().startsWith("{") && po.notes.includes('"status"'));
+      const meta = parseNotesMetadata(po.notes);
+      const resolvedStatus = hasJsonMeta || (po.notes && /\[STATUS:\s*[a-z_]+\]/i.test(po.notes))
+        ? meta.status
+        : "delivered";
+      if (resolvedStatus === "cancelled") continue;
+      if (!isOpening && (resolvedStatus === "pending_approval" || resolvedStatus === "approved")) {
+        openOrdersCount += 1;
+      }
+      if (!isOpening && resolvedStatus === "ordered") {
+        pendingDeliveryCount += 1;
+      }
+      if (!isOpening && po.purchasedOn && po.purchasedOn >= thirtyDaysAgoStr) {
+        totalSpend30d += po.totalCost || 0;
+      }
+      if (!isOpening && po.purchasedOn && po.purchasedOn >= oldestBucketStart) {
+        const b = bucketMap.get(po.purchasedOn.slice(0, 7));
+        if (b) b.procurement += po.totalCost || 0;
+      }
+    }
+
+    // Resolve real maintenance stats + monthly trend
+    let activeMaint = 0;
+    let resolvedMaintMonth = 0;
+    let totalRepairSpend30d = 0;
+    let mttrSum = 0;
+    let mttrCount = 0;
+    for (const m of maintRows) {
+      if (!m.isResolved) {
+        activeMaint += 1;
+      } else if (m.resolutionDate) {
+        if (m.resolutionDate >= thirtyDaysAgoStr) resolvedMaintMonth += 1;
+        if (m.dateLogged) {
+          const days = Math.max(
+            0,
+            (new Date(m.resolutionDate).getTime() - new Date(m.dateLogged).getTime()) /
+              (1000 * 60 * 60 * 24)
+          );
+          if (Number.isFinite(days)) {
+            mttrSum += days;
+            mttrCount += 1;
+          }
+        }
+      }
+      if (m.dateLogged && m.dateLogged >= thirtyDaysAgoStr) {
+        totalRepairSpend30d += m.cost || 0;
+      }
+      if (m.dateLogged && m.dateLogged >= oldestBucketStart) {
+        const b = bucketMap.get(m.dateLogged.slice(0, 7));
+        if (b) b.maintenance += m.cost || 0;
+      }
+    }
+
+    // Resolve request breakdown & average turnaround
+    let borrowPendingCount = 0;
+    let fulfilledMonth = 0;
+    let turnaroundSum = 0;
+    let turnaroundCount = 0;
+    for (const r of borrowReqRows) {
+      if (r.status === "pending") borrowPendingCount += 1;
+      if (r.status === "released" && r.updatedAt >= thirtyDaysAgo) fulfilledMonth += 1;
+      if ((r.status === "released" || r.status === "approved") && r.updatedAt && r.requestedAt) {
+        const hrs = Math.max(0.1, (r.updatedAt.getTime() - r.requestedAt.getTime()) / (1000 * 60 * 60));
+        turnaroundSum += hrs;
+        turnaroundCount += 1;
+      }
+    }
+    const classesByPendingReq = new Map<string, string[]>();
+    for (const line of pendingConsReqLines) {
+      const list = classesByPendingReq.get(line.requestId) ?? [];
+      list.push(normalizeConsumableClassification(line.classification));
+      classesByPendingReq.set(line.requestId, list);
+    }
+    let supplyPendingCount = 0;
+    let materialPendingCount = 0;
+    let mixedPendingCount = 0;
+    let consumablePendingTotal = 0;
+    for (const r of consumableReqRows) {
+      if (r.status === "pending") {
+        consumablePendingTotal += 1;
+        const kind = deriveConsumableRequestKind(classesByPendingReq.get(r.id) ?? []);
+        if (kind === "material") materialPendingCount += 1;
+        else if (kind === "mixed") mixedPendingCount += 1;
+        else supplyPendingCount += 1;
+      }
+      if (r.status === "released" && r.releasedAt && new Date(r.releasedAt) >= thirtyDaysAgo) {
+        fulfilledMonth += 1;
+      }
+      const endTs = r.releasedAt ?? r.approvedAt;
+      if (endTs && r.requestedAt) {
+        const hrs = Math.max(0.1, (new Date(endTs).getTime() - new Date(r.requestedAt).getTime()) / (1000 * 60 * 60));
+        turnaroundSum += hrs;
+        turnaroundCount += 1;
+      }
+    }
 
     return {
       assets: {
@@ -174,41 +433,68 @@ export class ReportRepository {
         lowStockCount: consumableStats?.lowStockCount ?? 0,
         totalValuation: consumableValuation?.totalValuation ?? 0,
         monthBurnRateValue: monthBurn?.burnValue ?? 0,
+        suppliesCount: consumableStats?.suppliesCount ?? 0,
+        materialsCount: consumableStats?.materialsCount ?? 0,
+        suppliesLowStockCount: consumableStats?.suppliesLowStockCount ?? 0,
+        materialsLowStockCount: consumableStats?.materialsLowStockCount ?? 0,
+        suppliesValuation: consumableValuation?.suppliesValuation ?? 0,
+        materialsValuation: consumableValuation?.materialsValuation ?? 0,
+        suppliesBurnRateValue: monthBurn?.suppliesBurn ?? 0,
+        materialsBurnRateValue: monthBurn?.materialsBurn ?? 0,
       },
       procurement: {
-        openOrdersCount: poStats?.openOrdersCount ?? 0,
-        totalSpend30d: poStats?.totalSpend30d ?? 0,
-        pendingDeliveryCount: 0,
+        openOrdersCount,
+        totalSpend30d,
+        pendingDeliveryCount,
       },
       requests: {
-        pendingCount: (borrowReqStats?.pendingCount ?? 0) + (consumableReqStats?.pendingCount ?? 0),
-        fulfilledThisMonth: consumableReqStats?.fulfilledMonth ?? 0,
-        avgApprovalHours: 4.2,
+        pendingCount: borrowPendingCount + consumablePendingTotal,
+        fulfilledThisMonth: fulfilledMonth,
+        avgApprovalHours:
+          turnaroundCount > 0 ? Math.round((turnaroundSum / turnaroundCount) * 10) / 10 : 0,
+        supplyPendingCount,
+        materialPendingCount,
+        mixedPendingCount,
+        borrowPendingCount,
       },
       maintenance: {
-        activeIssuesCount: maintStats?.activeCount ?? 0,
-        resolvedThisMonth: maintStats?.resolvedMonth ?? 0,
-        avgMttrDays: Math.round((maintStats?.avgMttrDays ?? 0) * 10) / 10,
-        totalRepairSpend30d: maintStats?.totalRepairSpend30d ?? 0,
+        activeIssuesCount: activeMaint,
+        resolvedThisMonth: resolvedMaintMonth,
+        avgMttrDays: mttrCount > 0 ? Math.round((mttrSum / mttrCount) * 10) / 10 : 0,
+        totalRepairSpend30d,
       },
       charts: {
-        categoryDistribution: categoryRows.map((r) => ({
-          name: r.name,
-          count: r.count,
-          value: r.value,
-        })),
-        monthlySpendTrend: [
-          { month: "Jan", procurement: 12400, maintenance: 1800 },
-          { month: "Feb", procurement: 9800, maintenance: 2100 },
-          { month: "Mar", procurement: 14500, maintenance: 1400 },
-          { month: "Apr", procurement: 11200, maintenance: 2800 },
-          { month: "May", procurement: 16800, maintenance: 1900 },
-          { month: "Jun", procurement: poStats?.totalSpend30d || 13500, maintenance: maintStats?.totalRepairSpend30d || 2200 },
+        categoryDistribution: [
+          ...assetCategoryRows.map((r) => ({
+            name: r.name,
+            count: r.count,
+            value: r.value,
+            kind: "asset" as const,
+          })),
+          ...consumableCategoryRows.map((r) => ({
+            name: `${r.name} (${r.kind === "material" ? "Material" : "Supply"})`,
+            count: r.count,
+            value: 0,
+            kind: r.kind as "supply" | "material",
+          })),
         ],
+        monthlySpendTrend: monthBuckets.map((b) => ({
+          month: b.label,
+          procurement: Math.round(b.procurement * 100) / 100,
+          maintenance: Math.round(b.maintenance * 100) / 100,
+        })),
         statusDistribution: [
           { status: "Active", count: assetStats?.activeCount ?? 0 },
           { status: "Needs Repair", count: assetStats?.inRepairCount ?? 0 },
-          { status: "Other", count: Math.max(0, (assetStats?.totalCount ?? 0) - (assetStats?.activeCount ?? 0) - (assetStats?.inRepairCount ?? 0)) },
+          {
+            status: "Other",
+            count: Math.max(
+              0,
+              (assetStats?.totalCount ?? 0) -
+                (assetStats?.activeCount ?? 0) -
+                (assetStats?.inRepairCount ?? 0)
+            ),
+          },
         ],
       },
     };
@@ -223,6 +509,9 @@ export class ReportRepository {
 
     if (tenantId) {
       conditions.push(eq(assets.tenantId, tenantId));
+    }
+    if (!filters.includeSandbox) {
+      conditions.push(eq(assets.isSandbox, false));
     }
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(assets.category, filters.category));
@@ -491,14 +780,22 @@ export class ReportRepository {
     if (tenantId) {
       conditions.push(eq(consumables.tenantId, tenantId));
     }
-    if (filters.category && filters.category !== "all") {
-      conditions.push(eq(consumables.category, filters.category));
+    if (!filters.includeSandbox) {
+      conditions.push(eq(consumables.isSandbox, false));
     }
-    if (filters.classification && filters.classification !== "all") {
-      conditions.push(eq(consumables.classification, filters.classification));
+    if (filters.category && filters.category !== "all") {
+      conditions.push(
+        sql`lower(trim(${consumables.category})) = ${filters.category.trim().toLowerCase()}`
+      );
+    }
+    const classCond = consumableClassFilterSql(filters.classification);
+    if (classCond) {
+      conditions.push(classCond);
     }
     if (filters.status === "low_stock") {
-      conditions.push(sql`${consumables.currentQty} <= ${consumables.minThreshold}`);
+      conditions.push(
+        sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty}) <= ${consumables.minThreshold}`
+      );
     }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
@@ -507,27 +804,36 @@ export class ReportRepository {
           ilike(consumables.itemCode, q),
           ilike(consumables.name, q),
           ilike(consumables.category, q),
+          ilike(consumables.categoryClass, q),
           ilike(consumables.location, q)
         )!
       );
     }
 
     const whereClause = conditions.length ? and(...conditions) : undefined;
+    const isMaterialSql = sql`lower(trim(coalesce(${consumables.classification}, ''))) = 'material'`;
+    const isLowSql = sql`greatest(0, ${consumables.currentQty} - ${consumables.reservedQty}) <= ${consumables.minThreshold}`;
 
-    // Summary counts
+    // Summary counts (scoped by active filters)
     const [summaryRow] = await db
       .select({
         totalSkus: sql<number>`count(*)::int`,
-        lowStockItemsCount: sql<number>`count(case when ${consumables.currentQty} <= ${consumables.minThreshold} then 1 end)::int`,
+        lowStockItemsCount: sql<number>`count(case when ${isLowSql} then 1 end)::int`,
+        totalReservedQty: sql<number>`coalesce(sum(${consumables.reservedQty}), 0)::float`,
+        suppliesCount: sql<number>`count(case when not ${isMaterialSql} then 1 end)::int`,
+        materialsCount: sql<number>`count(case when ${isMaterialSql} then 1 end)::int`,
+        suppliesLowStockCount: sql<number>`count(case when not ${isMaterialSql} and ${isLowSql} then 1 end)::int`,
+        materialsLowStockCount: sql<number>`count(case when ${isMaterialSql} and ${isLowSql} then 1 end)::int`,
       })
       .from(consumables)
       .where(whereClause);
 
-    // Usage totals for period
+    // Usage totals for period (issue movements only, excluding voided/reversals, scoped by consumables filter)
     const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const smConditions: SQL[] = [
-      eq(stockMovements.direction, "out"),
+      ...nonVoidedOutIssueConditions(),
       ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : []),
+      ...(whereClause ? [whereClause] : []),
     ];
     if (filters.startDate) {
       smConditions.push(gte(sql`${stockMovements.createdAt}::date`, filters.startDate));
@@ -540,23 +846,32 @@ export class ReportRepository {
 
     const [dispatchSummary] = await db
       .select({
-        totalQty: sql<number>`coalesce(sum(${stockMovements.qty}), 0)::int`,
-        totalVal: sql<number>`coalesce(sum(${stockMovements.lineTotal}::numeric), 0)::float`,
+        totalQty: sql<number>`coalesce(sum(${stockMovements.qty}::numeric), 0)::float`,
+        totalVal: sql<number>`coalesce(sum(${effectiveMovementValueSql()}), 0)::float`,
+        suppliesQty: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${stockMovements.qty}::numeric else 0 end), 0)::float`,
+        materialsQty: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${stockMovements.qty}::numeric else 0 end), 0)::float`,
+        suppliesVal: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${effectiveMovementValueSql()} else 0 end), 0)::float`,
+        materialsVal: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${effectiveMovementValueSql()} else 0 end), 0)::float`,
       })
       .from(stockMovements)
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
       .where(and(...smConditions));
 
-    // Consumable inventory valuation from active lots
+    // Consumable inventory valuation from active lots (scoped by consumables filter)
     const [consumableValuation] = await db
       .select({
         totalValuation: sql<number>`coalesce(sum(${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric), 0)::float`,
+        suppliesValuation: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric else 0 end), 0)::float`,
+        materialsValuation: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric else 0 end), 0)::float`,
       })
       .from(purchaseLots)
+      .innerJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
       .where(
         and(
           eq(purchaseLots.itemType, "consumable"),
-          gte(purchaseLots.quantityRemaining, "0"),
-          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+          sql`${purchaseLots.quantityRemaining} > 0`,
+          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : []),
+          ...(whereClause ? [whereClause] : [])
         )
       );
 
@@ -564,15 +879,17 @@ export class ReportRepository {
     const lotAggregates = await db
       .select({
         consumableId: purchaseLots.consumableId,
-        latestUnitCost: sql<number>`(max(${purchaseLots.unitCost}::numeric))::float`,
+        latestUnitCost: sql<number>`coalesce(sum(case when ${purchaseLots.quantityRemaining} > 0 then ${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric else 0 end) / nullif(sum(case when ${purchaseLots.quantityRemaining} > 0 then ${purchaseLots.quantityRemaining} else 0 end), 0), max(${purchaseLots.unitCost}::numeric), 0)::float`,
         lotValuation: sql<number>`coalesce(sum(${purchaseLots.quantityRemaining} * ${purchaseLots.unitCost}::numeric), 0)::float`,
       })
       .from(purchaseLots)
+      .innerJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
       .where(
         and(
           eq(purchaseLots.itemType, "consumable"),
           sql`${purchaseLots.consumableId} is not null`,
-          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : [])
+          ...(tenantId ? [eq(purchaseLots.tenantId, tenantId)] : []),
+          ...(whereClause ? [whereClause] : [])
         )
       )
       .groupBy(purchaseLots.consumableId);
@@ -611,21 +928,22 @@ export class ReportRepository {
       .limit(pageSize)
       .offset(offset);
 
-    // Top consuming departments from stock movements
+    // Top consuming departments from non-voided issue movements (scoped by consumables filter)
     const topDeptRows = await db
       .select({
         departmentName: sql<string>`coalesce(${departments.name}, 'General Stores')`,
-        unitsConsumed: sql<number>`coalesce(sum(${stockMovements.qty}), 0)::int`,
-        spendValue: sql<number>`coalesce(sum(${stockMovements.lineTotal}::numeric), 0)::float`,
+        unitsConsumed: sql<number>`coalesce(sum(${stockMovements.qty}::numeric), 0)::float`,
+        spendValue: sql<number>`coalesce(sum(${effectiveMovementValueSql()}), 0)::float`,
       })
       .from(stockMovements)
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
       .leftJoin(departments, eq(stockMovements.departmentId, departments.id))
       .where(and(...smConditions))
       .groupBy(departments.name)
-      .orderBy(sql`sum(${stockMovements.qty}) desc`)
+      .orderBy(sql`sum(${stockMovements.qty}::numeric) desc`)
       .limit(5);
 
-    // Query actual 30-day and 90-day outgoing stock movements for listed items
+    // Query actual 30-day and 90-day outgoing non-voided issue movements preserving fractional quantities
     const now = new Date();
     const d30Iso = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const d90Iso = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -633,15 +951,17 @@ export class ReportRepository {
     const consumableUsageAggregates = await db
       .select({
         consumableId: stockMovements.consumableId,
-        usage30d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d30Iso}::timestamptz then ${stockMovements.qty} else 0 end), 0)::int`,
-        usage90d: sql<number>`coalesce(sum(case when ${stockMovements.direction} = 'out' and ${stockMovements.createdAt} >= ${d90Iso}::timestamptz then ${stockMovements.qty} else 0 end), 0)::int`,
+        usage30d: sql<number>`coalesce(sum(case when ${stockMovements.createdAt} >= ${d30Iso}::timestamptz then ${stockMovements.qty}::numeric else 0 end), 0)::float`,
+        usage90d: sql<number>`coalesce(sum(case when ${stockMovements.createdAt} >= ${d90Iso}::timestamptz then ${stockMovements.qty}::numeric else 0 end), 0)::float`,
       })
       .from(stockMovements)
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
       .where(
         and(
-          eq(stockMovements.direction, "out"),
+          ...nonVoidedOutIssueConditions(),
           gte(stockMovements.createdAt, sql`${d90Iso}::timestamptz`),
-          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : [])
+          ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : []),
+          ...(whereClause ? [whereClause] : [])
         )
       )
       .groupBy(stockMovements.consumableId);
@@ -664,9 +984,8 @@ export class ReportRepository {
         const reservedQty = toQty(r.reservedQty);
         const minThreshold = toQty(r.minThreshold);
         const available = Math.max(0, currentQty - reservedQty);
-        const isLow = currentQty <= minThreshold;
-        
-        // Real velocity burn from aggregated stock movements
+        const isLow = available <= minThreshold;
+
         const itemUsage = usageMap.get(r.id);
         const usage30d = itemUsage?.usage30d ?? 0;
         const usage90d = itemUsage?.usage90d ?? 0;
@@ -675,14 +994,19 @@ export class ReportRepository {
 
         const lotInfo = lotMap.get(r.id);
         const unitCost = lotInfo?.latestUnitCost ?? null;
-        const stockValuation = lotInfo && lotInfo.valuation > 0 ? lotInfo.valuation : (unitCost ? currentQty * unitCost : null);
+        const stockValuation =
+          lotInfo && lotInfo.valuation > 0
+            ? lotInfo.valuation
+            : unitCost
+              ? currentQty * unitCost
+              : null;
 
         return {
           id: r.id,
           itemCode: r.itemCode,
           name: r.name,
           category: r.category,
-          classification: r.classification,
+          classification: normalizeConsumableClassification(r.classification),
           unit: r.unit,
           currentQty,
           reservedQty,
@@ -705,12 +1029,20 @@ export class ReportRepository {
       summary: {
         totalSkus: total,
         lowStockItemsCount: summaryRow?.lowStockItemsCount ?? 0,
-        totalInventoryValuation:
-          consumableValuation?.totalValuation && consumableValuation.totalValuation > 0
-            ? consumableValuation.totalValuation
-            : rows.reduce((sum, r) => sum + ((lotMap.get(r.id)?.valuation) ?? (toQty(r.currentQty) * (lotMap.get(r.id)?.latestUnitCost ?? 0))), 0),
+        totalReservedQty: summaryRow?.totalReservedQty ?? 0,
+        suppliesCount: summaryRow?.suppliesCount ?? 0,
+        materialsCount: summaryRow?.materialsCount ?? 0,
+        suppliesLowStockCount: summaryRow?.suppliesLowStockCount ?? 0,
+        materialsLowStockCount: summaryRow?.materialsLowStockCount ?? 0,
+        totalInventoryValuation: consumableValuation?.totalValuation ?? 0,
+        suppliesValuation: consumableValuation?.suppliesValuation ?? 0,
+        materialsValuation: consumableValuation?.materialsValuation ?? 0,
         totalDispatched30d: dispatchSummary?.totalQty ?? 0,
         totalDispatchedValue30d: dispatchSummary?.totalVal ?? 0,
+        suppliesDispatched30d: dispatchSummary?.suppliesQty ?? 0,
+        materialsDispatched30d: dispatchSummary?.materialsQty ?? 0,
+        suppliesDispatchedValue30d: dispatchSummary?.suppliesVal ?? 0,
+        materialsDispatchedValue30d: dispatchSummary?.materialsVal ?? 0,
         topConsumingDepartments: topDeptRows,
       },
     };
@@ -726,7 +1058,18 @@ export class ReportRepository {
     if (tenantId) {
       conditions.push(eq(purchaseLots.tenantId, tenantId));
     }
-    if (filters.category && filters.category !== "all") {
+    if (!filters.includeSandbox) {
+      conditions.push(
+        or(isNull(purchaseLots.consumableId), eq(consumables.isSandbox, false))!
+      );
+    }
+    if (
+      filters.category &&
+      filters.category !== "all" &&
+      (purchaseLotItemTypeEnum.enumValues as readonly string[]).includes(
+        filters.category
+      )
+    ) {
       conditions.push(
         eq(
           purchaseLots.itemType,
@@ -754,87 +1097,173 @@ export class ReportRepository {
 
     const whereClause = conditions.length ? and(...conditions) : undefined;
 
-    const [summaryRow] = await db
-      .select({
-        totalSpend: sql<number>`coalesce(sum(${purchaseLots.totalCost}::numeric), 0)::float`,
-        totalOrders: sql<number>`count(*)::int`,
-        openOrders: sql<number>`count(case when ${purchaseLots.quantityRemaining} > 0 then 1 end)::int`,
-      })
-      .from(purchaseLots)
-      .where(whereClause);
-
-    const page = filters.page || 1;
-    const pageSize = filters.pageSize || 25;
-    const offset = (page - 1) * pageSize;
-
-    const rows = await db
+    const rawRows = await db
       .select({
         id: purchaseLots.id,
         lotCode: purchaseLots.lotCode,
+        reference: purchaseLots.reference,
         supplierName: purchaseLots.supplierName,
         itemType: purchaseLots.itemType,
+        consumableId: purchaseLots.consumableId,
+        consumableClassification: consumables.classification,
+        projectId: purchaseLots.projectId,
         itemName: purchaseLots.itemName,
         quantity: purchaseLots.quantity,
-        totalCost: sql<number>`${purchaseLots.totalCost}::numeric::float`,
+        totalCost: sql<number>`coalesce(${purchaseLots.totalCost}::numeric, 0)::float`,
         purchasedOn: purchaseLots.purchasedOn,
         createdAt: purchaseLots.createdAt,
+        notes: purchaseLots.notes,
       })
       .from(purchaseLots)
+      .leftJoin(consumables, eq(purchaseLots.consumableId, consumables.id))
       .where(whereClause)
-      .orderBy(desc(purchaseLots.purchasedOn))
-      .limit(pageSize)
-      .offset(offset);
+      .orderBy(desc(purchaseLots.purchasedOn), desc(purchaseLots.createdAt));
 
-    const topSuppliersRows = await db
-      .select({
-        name: sql<string>`coalesce(${purchaseLots.supplierName}, 'Direct / Internal')`,
-        spend: sql<number>`coalesce(sum(${purchaseLots.totalCost}::numeric), 0)::float`,
-      })
-      .from(purchaseLots)
-      .where(whereClause)
-      .groupBy(purchaseLots.supplierName)
-      .orderBy(desc(sql`sum(${purchaseLots.totalCost}::numeric)`))
-      .limit(5);
+    const wantedClass = filters.classification?.trim().toLowerCase();
+    const wantedStatus = filters.status?.trim().toLowerCase();
 
-    const total = summaryRow?.totalOrders ?? 0;
+    const enriched = rawRows
+      .filter(
+        (r) =>
+          !(
+            r.lotCode?.startsWith("OPEN-") || r.reference === "INITIAL-STOCK"
+          )
+      )
+      .map((r) => {
+        const hasJsonMeta = Boolean(
+          r.notes?.trim().startsWith("{") && r.notes.includes('"status"')
+        );
+        const hasTagStatus = Boolean(
+          r.notes && /\[STATUS:\s*[a-z_]+\]/i.test(r.notes)
+        );
+        const meta = parseNotesMetadata(r.notes);
+        const status =
+          hasJsonMeta || hasTagStatus ? meta.status : ("delivered" as const);
+        const resolvedClassification = resolvePurchaseLotClassification({
+          itemType: r.itemType,
+          projectId: r.projectId,
+          classification:
+            r.consumableClassification ?? meta.draftItem?.classification,
+          consumableId: r.consumableId,
+        });
 
-    return {
-      data: rows.map((r) => {
         let leadTimeDays: number | null = null;
-        if (r.createdAt && r.purchasedOn) {
+        const endDateStr = meta.deliveredAt?.split("T")[0] || r.purchasedOn;
+        if (r.createdAt && endDateStr) {
           const cDate = new Date(r.createdAt).getTime();
-          const pDate = new Date(r.purchasedOn).getTime();
-          leadTimeDays = Math.max(1, Math.round(Math.abs(pDate - cDate) / (1000 * 60 * 60 * 24)));
+          const pDate = new Date(endDateStr).getTime();
+          leadTimeDays = Math.max(
+            0,
+            Math.round(Math.abs(pDate - cDate) / (1000 * 60 * 60 * 24))
+          );
         }
 
         return {
           poNumber: r.lotCode,
           supplierName: r.supplierName || "Direct / Internal",
-          status: "delivered",
+          status,
           itemType: r.itemType as "consumable" | "asset",
+          classification: resolvedClassification,
           totalAmount: r.totalCost as number | null,
-          totalQuantity: r.quantity,
+          totalQuantity: Number(r.quantity) || 0,
           lineItemCount: 1,
           purchasedOn: r.purchasedOn,
-          approvedAt: r.purchasedOn,
-          deliveredAt: r.purchasedOn,
-          leadTimeDays: leadTimeDays ?? 3,
+          approvedAt: meta.approvedAt?.split("T")[0] ?? (status !== "pending_approval" ? r.purchasedOn : null),
+          deliveredAt: status === "delivered" ? (meta.deliveredAt?.split("T")[0] ?? r.purchasedOn) : null,
+          leadTimeDays,
           itemsPreview: r.itemName,
         };
-      }),
+      })
+      .filter((r) => {
+        if (wantedClass && wantedClass !== "all") {
+          if (wantedClass === "asset") return r.itemType === "asset";
+          if (wantedClass === "supply" || wantedClass === "material") {
+            return r.itemType === "consumable" && r.classification === wantedClass;
+          }
+        }
+        return true;
+      })
+      .filter((r) => {
+        if (wantedStatus && wantedStatus !== "all") {
+          if (wantedStatus === "open") {
+            return ["pending_approval", "approved", "ordered"].includes(r.status);
+          }
+          return r.status === wantedStatus;
+        }
+        return true;
+      });
+
+    let totalSpend = 0;
+    let openOrdersCount = 0;
+    let deliveredCount = 0;
+    let suppliesSpend = 0;
+    let materialsSpend = 0;
+    let assetsSpend = 0;
+    let suppliesOrdersCount = 0;
+    let materialsOrdersCount = 0;
+    let assetsOrdersCount = 0;
+    let leadSum = 0;
+    let leadCount = 0;
+    const supplierSpendMap = new Map<string, number>();
+
+    for (const r of enriched) {
+      if (r.status === "cancelled") continue;
+      const amt = r.totalAmount ?? 0;
+      totalSpend += amt;
+      if (r.status === "delivered") {
+        deliveredCount += 1;
+      } else {
+        openOrdersCount += 1;
+      }
+      if (r.itemType === "asset") {
+        assetsOrdersCount += 1;
+        assetsSpend += amt;
+      } else if (r.classification === "material") {
+        materialsOrdersCount += 1;
+        materialsSpend += amt;
+      } else {
+        suppliesOrdersCount += 1;
+        suppliesSpend += amt;
+      }
+      if (r.status === "delivered" && r.leadTimeDays != null) {
+        leadSum += r.leadTimeDays;
+        leadCount += 1;
+      }
+      supplierSpendMap.set(
+        r.supplierName,
+        (supplierSpendMap.get(r.supplierName) ?? 0) + amt
+      );
+    }
+
+    const topSuppliers = Array.from(supplierSpendMap.entries())
+      .map(([name, spend]) => ({ name, spend }))
+      .sort((a, b) => b.spend - a.spend)
+      .slice(0, 5);
+
+    const total = enriched.length;
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 25;
+    const offset = (page - 1) * pageSize;
+
+    return {
+      data: enriched.slice(offset, offset + pageSize),
       total,
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize) || 1,
       summary: {
-        totalSpend: summaryRow?.totalSpend ?? 0,
-        openOrdersCount: summaryRow?.openOrders ?? 0,
-        deliveredCount: (summaryRow?.totalOrders ?? 0) - (summaryRow?.openOrders ?? 0),
-        avgLeadTimeDays: 3.5,
-        topSuppliers: topSuppliersRows.map((s) => ({
-          name: s.name,
-          spend: s.spend,
-        })),
+        totalSpend,
+        openOrdersCount,
+        deliveredCount,
+        avgLeadTimeDays:
+          leadCount > 0 ? Math.round((leadSum / leadCount) * 10) / 10 : 0,
+        suppliesSpend,
+        materialsSpend,
+        assetsSpend,
+        suppliesOrdersCount,
+        materialsOrdersCount,
+        assetsOrdersCount,
+        topSuppliers,
       },
     };
   }
@@ -844,15 +1273,29 @@ export class ReportRepository {
   async getRequestsReport(filters: BaseReportQuery, explicitTenantId?: string) {
     const db = this.db();
     const tenantId = explicitTenantId || this.tenantId();
+    const wantedClass = filters.classification?.trim().toLowerCase();
 
     // Borrow requests filter
     const brConditions: SQL[] = [];
     if (tenantId) brConditions.push(eq(borrowRequests.tenantId, tenantId));
     if (filters.status && filters.status !== "all") {
-      brConditions.push(eq(borrowRequests.status, filters.status as (typeof borrowRequestStatusEnum.enumValues)[number]));
+      brConditions.push(
+        eq(
+          borrowRequests.status,
+          filters.status as (typeof borrowRequestStatusEnum.enumValues)[number]
+        )
+      );
     }
     if (filters.departmentId && filters.departmentId !== "all") {
-      brConditions.push(or(eq(borrowRequests.departmentId, filters.departmentId), ilike(borrowRequests.department, `%${filters.departmentId}%`))!);
+      const deptFilter = filters.departmentId.trim();
+      brConditions.push(
+        isUuid(deptFilter)
+          ? or(
+              eq(borrowRequests.departmentId, deptFilter),
+              ilike(borrowRequests.department, `%${deptFilter}%`)
+            )!
+          : ilike(borrowRequests.department, `%${deptFilter}%`)
+      );
     }
     if (filters.startDate) {
       brConditions.push(gte(sql`${borrowRequests.requestedAt}::date`, filters.startDate));
@@ -877,10 +1320,23 @@ export class ReportRepository {
     const crConditions: SQL[] = [];
     if (tenantId) crConditions.push(eq(consumableRequests.tenantId, tenantId));
     if (filters.status && filters.status !== "all") {
-      crConditions.push(eq(consumableRequests.status, filters.status as (typeof consumableRequestStatusEnum.enumValues)[number]));
+      crConditions.push(
+        eq(
+          consumableRequests.status,
+          filters.status as (typeof consumableRequestStatusEnum.enumValues)[number]
+        )
+      );
     }
     if (filters.departmentId && filters.departmentId !== "all") {
-      crConditions.push(or(eq(consumableRequests.departmentId, filters.departmentId), ilike(consumableRequests.department, `%${filters.departmentId}%`))!);
+      const deptFilter = filters.departmentId.trim();
+      crConditions.push(
+        isUuid(deptFilter)
+          ? or(
+              eq(consumableRequests.departmentId, deptFilter),
+              ilike(consumableRequests.department, `%${deptFilter}%`)
+            )!
+          : ilike(consumableRequests.department, `%${deptFilter}%`)
+      );
     }
     if (filters.startDate) {
       crConditions.push(gte(sql`${consumableRequests.requestedAt}::date`, filters.startDate));
@@ -901,85 +1357,129 @@ export class ReportRepository {
     }
     const crWhere = crConditions.length ? and(...crConditions) : undefined;
 
-    const [
-      [brSummary],
-      [crSummary],
-      borrowRows,
-      consumableRows,
-    ] = await Promise.all([
-      db
-        .select({
-          totalRequests: sql<number>`count(*)::int`,
-          pendingCount: sql<number>`count(case when ${borrowRequests.status} = 'pending' then 1 end)::int`,
-          approvedCount: sql<number>`count(case when ${borrowRequests.status} = 'approved' then 1 end)::int`,
-          fulfilledCount: sql<number>`count(case when ${borrowRequests.status} = 'released' then 1 end)::int`,
-          rejectedCount: sql<number>`count(case when ${borrowRequests.status} = 'rejected' then 1 end)::int`,
-        })
-        .from(borrowRequests)
-        .where(brWhere),
-      db
-        .select({
-          totalRequests: sql<number>`count(*)::int`,
-          pendingCount: sql<number>`count(case when ${consumableRequests.status} = 'pending' then 1 end)::int`,
-          approvedCount: sql<number>`count(case when ${consumableRequests.status} = 'approved' then 1 end)::int`,
-          fulfilledCount: sql<number>`count(case when ${consumableRequests.status} = 'released' then 1 end)::int`,
-          rejectedCount: sql<number>`count(case when ${consumableRequests.status} = 'rejected' then 1 end)::int`,
-        })
-        .from(consumableRequests)
-        .where(crWhere),
-      db
-        .select({
-          id: borrowRequests.id,
-          requestCode: borrowRequests.requestCode,
-          requesterName: borrowRequests.requesterName,
-          department: borrowRequests.department,
-          status: borrowRequests.status,
-          purpose: borrowRequests.purpose,
-          items: borrowRequests.items,
-          requestedAt: borrowRequests.requestedAt,
-          updatedAt: borrowRequests.updatedAt,
-        })
-        .from(borrowRequests)
-        .where(brWhere)
-        .orderBy(desc(borrowRequests.requestedAt))
-        .limit(filters.pageSize ? filters.pageSize * 2 : 50),
-      db
-        .select({
-          id: consumableRequests.id,
-          requestCode: consumableRequests.requestCode,
-          requesterName: consumableRequests.requesterName,
-          department: consumableRequests.department,
-          status: consumableRequests.status,
-          purpose: consumableRequests.purpose,
-          requestedAt: consumableRequests.requestedAt,
-          releasedAt: consumableRequests.releasedAt,
-          approvedAt: consumableRequests.approvedAt,
-        })
-        .from(consumableRequests)
-        .where(crWhere)
-        .orderBy(desc(consumableRequests.requestedAt))
-        .limit(filters.pageSize ? filters.pageSize * 2 : 50),
+    const skipBorrow =
+      wantedClass === "supply" ||
+      wantedClass === "material" ||
+      wantedClass === "mixed";
+    const skipConsumable =
+      wantedClass === "borrowable" ||
+      wantedClass === "assignable" ||
+      wantedClass === "asset_borrow" ||
+      wantedClass === "asset";
+
+    const [borrowRows, consumableRows, sandboxDepts] = await Promise.all([
+      skipBorrow
+        ? Promise.resolve([])
+        : db
+            .select({
+              id: borrowRequests.id,
+              requestCode: borrowRequests.requestCode,
+              requestType: borrowRequests.requestType,
+              requesterName: borrowRequests.requesterName,
+              departmentId: borrowRequests.departmentId,
+              department: borrowRequests.department,
+              status: borrowRequests.status,
+              purpose: borrowRequests.purpose,
+              items: borrowRequests.items,
+              requestedAt: borrowRequests.requestedAt,
+              updatedAt: borrowRequests.updatedAt,
+            })
+            .from(borrowRequests)
+            .where(brWhere)
+            .orderBy(desc(borrowRequests.requestedAt)),
+      skipConsumable
+        ? Promise.resolve([])
+        : db
+            .select({
+              id: consumableRequests.id,
+              requestCode: consumableRequests.requestCode,
+              requesterName: consumableRequests.requesterName,
+              departmentId: consumableRequests.departmentId,
+              department: consumableRequests.department,
+              status: consumableRequests.status,
+              purpose: consumableRequests.purpose,
+              requestedAt: consumableRequests.requestedAt,
+              releasedAt: consumableRequests.releasedAt,
+              approvedAt: consumableRequests.approvedAt,
+            })
+            .from(consumableRequests)
+            .where(crWhere)
+            .orderBy(desc(consumableRequests.requestedAt)),
+      filters.includeSandbox
+        ? Promise.resolve([])
+        : db
+            .select({ id: departments.id })
+            .from(departments)
+            .where(
+              and(
+                eq(departments.isSandbox, true),
+                ...(tenantId ? [eq(departments.tenantId, tenantId)] : [])
+              )
+            ),
     ]);
 
-    const totalRequests = (brSummary?.totalRequests ?? 0) + (crSummary?.totalRequests ?? 0);
-    const pendingCount = (brSummary?.pendingCount ?? 0) + (crSummary?.pendingCount ?? 0);
-    const approvedCount = (brSummary?.approvedCount ?? 0) + (crSummary?.approvedCount ?? 0);
-    const fulfilledCount = (brSummary?.fulfilledCount ?? 0) + (crSummary?.fulfilledCount ?? 0);
-    const rejectedCount = (brSummary?.rejectedCount ?? 0) + (crSummary?.rejectedCount ?? 0);
+    const sandboxDeptIds = new Set(sandboxDepts.map((d) => d.id));
+    const filteredBorrowRows = borrowRows.filter(
+      (r) => !r.departmentId || !sandboxDeptIds.has(r.departmentId)
+    );
+    const filteredConsumableRows = consumableRows.filter(
+      (r) => !r.departmentId || !sandboxDeptIds.has(r.departmentId)
+    );
 
-    const mappedBorrowRows = borrowRows.map((r) => {
+    // Hydrate consumable request line items & classifications in one query
+    const consIds = filteredConsumableRows.map((r) => r.id);
+    const linesByRequest = new Map<
+      string,
+      Array<{ itemName: string; qty: string; classification: string }>
+    >();
+    if (consIds.length > 0) {
+      const lineRows = await db
+        .select({
+          requestId: consumableRequestLines.requestId,
+          itemName: consumables.name,
+          qty: consumableRequestLines.quantityRequested,
+          classification: consumables.classification,
+        })
+        .from(consumableRequestLines)
+        .innerJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
+        .where(
+          and(
+            inArray(consumableRequestLines.requestId, consIds),
+            ...(filters.includeSandbox ? [] : [eq(consumables.isSandbox, false)])
+          )
+        );
+      for (const l of lineRows) {
+        const list = linesByRequest.get(l.requestId) ?? [];
+        list.push({
+          itemName: l.itemName,
+          qty: String(l.qty),
+          classification: normalizeConsumableClassification(l.classification),
+        });
+        linesByRequest.set(l.requestId, list);
+      }
+    }
+
+    const mappedBorrowRows = filteredBorrowRows.map((r) => {
       const items = r.items || [];
       const summary = items.map((i) => i.itemDescription || "Item").join(", ");
+      const subClass =
+        r.requestType === "assignable"
+          ? ("assignable" as const)
+          : ("borrowable" as const);
       let turnaroundHours: number | null = null;
       if (r.status === "released" && r.requestedAt && r.updatedAt) {
         const reqT = new Date(r.requestedAt).getTime();
         const updT = new Date(r.updatedAt).getTime();
-        turnaroundHours = Math.max(0.5, Math.round(((updT - reqT) / (1000 * 60 * 60)) * 10) / 10);
+        turnaroundHours = Math.max(
+          0.5,
+          Math.round(((updT - reqT) / (1000 * 60 * 60)) * 10) / 10
+        );
       }
       return {
         id: r.id,
         requestCode: r.requestCode,
         requestType: "asset_borrow" as const,
+        classification: subClass,
         requesterName: r.requesterName,
         department: r.department,
         status: r.status,
@@ -993,51 +1493,100 @@ export class ReportRepository {
       };
     });
 
-    const mappedConsumableRows = consumableRows.map((r) => {
+    const mappedConsumableRows = filteredConsumableRows.map((r) => {
+      const lineItems = linesByRequest.get(r.id) ?? [];
+      const kind = deriveConsumableRequestKind(
+        lineItems.map((l) => l.classification)
+      );
+      const summaryText =
+        lineItems.length > 0
+          ? lineItems.map((l) => `${l.itemName} (${toQty(l.qty)})`).join(", ")
+          : r.purpose || (kind === "material" ? "Materials Requisition" : "Supplies Requisition");
       let turnaroundHours: number | null = null;
       if (r.releasedAt && r.requestedAt) {
         const reqT = new Date(r.requestedAt).getTime();
         const relT = new Date(r.releasedAt).getTime();
-        turnaroundHours = Math.max(0.5, Math.round(((relT - reqT) / (1000 * 60 * 60)) * 10) / 10);
+        turnaroundHours = Math.max(
+          0.5,
+          Math.round(((relT - reqT) / (1000 * 60 * 60)) * 10) / 10
+        );
       }
       return {
         id: r.id,
         requestCode: r.requestCode,
         requestType: "consumable_issue" as const,
+        classification: kind,
         requesterName: r.requesterName,
         department: r.department,
         status: r.status,
-        itemsCount: 1,
-        itemsSummary: r.purpose || "Supplies Requisition",
+        itemsCount: lineItems.length || 1,
+        itemsSummary: summaryText,
         purpose: r.purpose,
-        requestedAt: r.requestedAt ? new Date(r.requestedAt).toISOString() : new Date().toISOString(),
+        requestedAt: r.requestedAt
+          ? new Date(r.requestedAt).toISOString()
+          : new Date().toISOString(),
         approvedAt: r.approvedAt ? new Date(r.approvedAt).toISOString() : null,
         fulfilledAt: r.releasedAt ? new Date(r.releasedAt).toISOString() : null,
         turnaroundHours,
       };
     });
 
-    const allCombined = [...mappedBorrowRows, ...mappedConsumableRows].sort(
-      (a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
-    );
+    const allCombined = [...mappedBorrowRows, ...mappedConsumableRows]
+      .filter((r) => {
+        if (!wantedClass || wantedClass === "all") return true;
+        if (wantedClass === "asset" || wantedClass === "asset_borrow") {
+          return r.requestType === "asset_borrow";
+        }
+        if (wantedClass === "supply" || wantedClass === "material" || wantedClass === "mixed") {
+          if (r.requestType !== "consumable_issue") return false;
+          return r.classification === wantedClass;
+        }
+        return r.classification === wantedClass;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+      );
 
-    // Department breakdown
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let fulfilledCount = 0;
+    let rejectedCount = 0;
+    let supplyRequestsCount = 0;
+    let materialRequestsCount = 0;
+    let mixedRequestsCount = 0;
+    let borrowRequestsCount = 0;
+    let assignRequestsCount = 0;
     const deptMap = new Map<string, number>();
     let totalTurnaround = 0;
     let turnaroundCount = 0;
+
     for (const item of allCombined) {
+      if (item.status === "pending") pendingCount += 1;
+      else if (item.status === "approved") approvedCount += 1;
+      else if (item.status === "released") fulfilledCount += 1;
+      else if (item.status === "rejected") rejectedCount += 1;
+
+      if (item.classification === "supply") supplyRequestsCount += 1;
+      else if (item.classification === "material") materialRequestsCount += 1;
+      else if (item.classification === "mixed") mixedRequestsCount += 1;
+      else if (item.classification === "assignable") assignRequestsCount += 1;
+      else borrowRequestsCount += 1;
+
       const dName = item.department || "General";
       deptMap.set(dName, (deptMap.get(dName) || 0) + 1);
       if (item.turnaroundHours != null) {
         totalTurnaround += item.turnaroundHours;
-        turnaroundCount++;
+        turnaroundCount += 1;
       }
     }
+
     const departmentBreakdown = Array.from(deptMap.entries())
       .map(([department, count]) => ({ department, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
+    const totalRequests = allCombined.length;
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 25;
     const offset = (page - 1) * pageSize;
@@ -1055,7 +1604,15 @@ export class ReportRepository {
         approvedCount,
         fulfilledCount,
         rejectedCount,
-        avgTurnaroundHours: turnaroundCount > 0 ? Math.round((totalTurnaround / turnaroundCount) * 10) / 10 : 4.0,
+        avgTurnaroundHours:
+          turnaroundCount > 0
+            ? Math.round((totalTurnaround / turnaroundCount) * 10) / 10
+            : 0,
+        supplyRequestsCount,
+        materialRequestsCount,
+        mixedRequestsCount,
+        borrowRequestsCount,
+        assignRequestsCount,
         departmentBreakdown,
       },
     };
@@ -1070,6 +1627,11 @@ export class ReportRepository {
 
     if (tenantId) {
       conditions.push(eq(maintenanceLogs.tenantId, tenantId));
+    }
+    if (!filters.includeSandbox) {
+      conditions.push(
+        or(isNull(maintenanceLogs.assetId), eq(assets.isSandbox, false))!
+      );
     }
     if (filters.category && filters.category !== "all") {
       conditions.push(eq(maintenanceLogs.category, filters.category));
@@ -1249,12 +1811,31 @@ export class ReportRepository {
       );
     }
     if (filters.departmentId && filters.departmentId !== "all") {
-      conditions.push(
-        or(
-          eq(projects.department, filters.departmentId),
-          ilike(projects.department, `%${filters.departmentId}%`)
-        )!
-      );
+      const deptVal = filters.departmentId.trim();
+      if (isUuid(deptVal)) {
+        const [deptRow] = await db
+          .select({ name: departments.name, code: departments.code })
+          .from(departments)
+          .where(eq(departments.id, deptVal))
+          .limit(1);
+        if (deptRow) {
+          conditions.push(
+            or(
+              ilike(projects.department, `%${deptRow.name}%`),
+              ilike(projects.department, `%${deptRow.code}%`)
+            )!
+          );
+        } else {
+          conditions.push(eq(projects.department, deptVal));
+        }
+      } else {
+        conditions.push(
+          or(
+            eq(projects.department, deptVal),
+            ilike(projects.department, `%${deptVal}%`)
+          )!
+        );
+      }
     }
     if (filters.startDate) {
       conditions.push(
@@ -1287,6 +1868,49 @@ export class ReportRepository {
     // Nest line items for list/detail pages; skip for large CSV export pages.
     const includeLineItems = pageSize <= 100;
 
+    const wantedClass = filters.classification?.trim().toLowerCase();
+    const classCond = consumableClassFilterSql(filters.classification);
+    const categoryCond =
+      filters.category && filters.category !== "all"
+        ? sql`lower(trim(${consumables.category})) = ${filters.category.trim().toLowerCase()}`
+        : undefined;
+    const nonSandboxAssetCond = filters.includeSandbox ? undefined : eq(assets.isSandbox, false);
+    const nonSandboxConsCond = filters.includeSandbox ? undefined : eq(consumables.isSandbox, false);
+
+    // Effective classification SQL for project_expense_lines left-joined with consumables:
+    // manual lines (consumableId IS NULL & lineType='material') are always 'material'.
+    const expenseIsMaterialSql = sql`(
+      (${projectExpenseLines.consumableId} is not null and lower(trim(coalesce(${consumables.classification}, ''))) = 'material')
+      or (${projectExpenseLines.consumableId} is null and ${projectExpenseLines.lineType} = 'material')
+    )`;
+    const expenseIsStockSql = sql`${projectExpenseLines.lineType} in ('consumable', 'material')`;
+    const expenseClassMatchSql =
+      wantedClass === "material"
+        ? sql`${expenseIsStockSql} and ${expenseIsMaterialSql}`
+        : wantedClass === "supply"
+          ? sql`${expenseIsStockSql} and not ${expenseIsMaterialSql}`
+          : expenseIsStockSql;
+    const expenseDateConds: SQL[] = [
+      ...(filters.startDate ? [gte(projectExpenseLines.incurredOn, filters.startDate)] : []),
+      ...(filters.endDate ? [lte(projectExpenseLines.incurredOn, filters.endDate)] : []),
+    ];
+
+    const allocIsMaterialSql = sql`lower(trim(coalesce(${consumables.classification}, ''))) = 'material'`;
+    const allocConds: SQL[] = [
+      inArray(consumableRequests.status, ["approved", "released"]),
+      nonVoidedAllocationCondition(),
+      ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
+      ...(nonSandboxConsCond ? [nonSandboxConsCond] : []),
+      ...(classCond ? [classCond] : []),
+      ...(categoryCond ? [categoryCond] : []),
+      ...(filters.startDate
+        ? [gte(sql`${consumableRequestReleaseAllocations.releasedAt}::date`, filters.startDate)]
+        : []),
+      ...(filters.endDate
+        ? [lte(sql`${consumableRequestReleaseAllocations.releasedAt}::date`, filters.endDate)]
+        : []),
+    ];
+
     const [
       [statusSummary],
       [assetRollup],
@@ -1308,22 +1932,31 @@ export class ReportRepository {
         })
         .from(projectAssetAssignments)
         .innerJoin(projects, eq(projectAssetAssignments.projectId, projects.id))
+        .innerJoin(assets, eq(projectAssetAssignments.assetId, assets.id))
         .where(
           and(
             ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : []),
+            ...(nonSandboxAssetCond ? [nonSandboxAssetCond] : []),
             whereClause
           )
         ),
       db
         .select({
-          consumablesCount: sql<number>`coalesce(sum(case when ${projectExpenseLines.lineType} in ('consumable', 'material') then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
+          consumablesCount: sql<number>`coalesce(sum(case when ${expenseClassMatchSql} then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
+          suppliesCount: sql<number>`coalesce(sum(case when ${expenseIsStockSql} and not ${expenseIsMaterialSql} then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
+          materialsCount: sql<number>`coalesce(sum(case when ${expenseIsStockSql} and ${expenseIsMaterialSql} then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
           totalCost: sql<number>`coalesce(sum(${projectExpenseLines.amount}::numeric), 0)::float`,
         })
         .from(projectExpenseLines)
         .innerJoin(projects, eq(projectExpenseLines.projectId, projects.id))
+        .leftJoin(consumables, eq(projectExpenseLines.consumableId, consumables.id))
         .where(
           and(
             ...(tenantId ? [eq(projectExpenseLines.tenantId, tenantId)] : []),
+            ...(filters.includeSandbox
+              ? []
+              : [or(isNull(projectExpenseLines.consumableId), eq(consumables.isSandbox, false))!]),
+            ...expenseDateConds,
             whereClause
           )
         ),
@@ -1331,20 +1964,20 @@ export class ReportRepository {
         .select({
           count: sql<number>`coalesce(sum(${consumableRequestReleaseAllocations.quantity}), 0)::float`,
           value: sql<number>`coalesce(sum(${consumableRequestReleaseAllocations.lineTotal}::numeric), 0)::float`,
+          suppliesCount: sql<number>`coalesce(sum(case when not ${allocIsMaterialSql} then ${consumableRequestReleaseAllocations.quantity} else 0 end), 0)::float`,
+          materialsCount: sql<number>`coalesce(sum(case when ${allocIsMaterialSql} then ${consumableRequestReleaseAllocations.quantity} else 0 end), 0)::float`,
         })
         .from(consumableRequests)
         .innerJoin(
           consumableRequestReleaseAllocations,
           eq(consumableRequestReleaseAllocations.requestId, consumableRequests.id)
         )
+        .innerJoin(
+          consumables,
+          eq(consumableRequestReleaseAllocations.consumableId, consumables.id)
+        )
         .innerJoin(projects, eq(consumableRequests.projectId, projects.id))
-        .where(
-          and(
-            eq(consumableRequests.status, "released"),
-            ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
-            whereClause
-          )
-        ),
+        .where(and(...allocConds, whereClause)),
       db
         .select({
           id: projects.id,
@@ -1369,6 +2002,12 @@ export class ReportRepository {
     const activeProjects = statusSummary?.activeProjects ?? 0;
     const completedProjects = statusSummary?.completedProjects ?? 0;
     const totalAssetsAssigned = assetRollup?.total ?? 0;
+    const totalSuppliesConsumed =
+      (wantedClass === "material" ? 0 : expenseRollup?.suppliesCount ?? 0) +
+      (releasedRollup?.suppliesCount ?? 0);
+    const totalMaterialsConsumed =
+      (wantedClass === "supply" ? 0 : expenseRollup?.materialsCount ?? 0) +
+      (releasedRollup?.materialsCount ?? 0);
     const totalConsumablesConsumed =
       (expenseRollup?.consumablesCount ?? 0) + (releasedRollup?.count ?? 0);
     const totalProjectSpend =
@@ -1376,19 +2015,26 @@ export class ReportRepository {
 
     const rowIds = rows.map((r) => r.id);
 
-    // Per-page summary aggregates + optional line items (paged IDs only)
     const emptyAgg = {
       assetCounts: [] as { projectId: string; count: number }[],
       expenseStats: [] as {
         projectId: string;
         consumablesCount: number;
         consumablesValue: number;
+        suppliesCount: number;
+        suppliesValue: number;
+        materialsCount: number;
+        materialsValue: number;
         totalCost: number;
       }[],
       releasedConsumables: [] as {
         projectId: string | null;
         count: number;
         value: number;
+        suppliesCount: number;
+        suppliesValue: number;
+        materialsCount: number;
+        materialsValue: number;
       }[],
       assignedAssetsData: [] as {
         projectId: string;
@@ -1406,10 +2052,17 @@ export class ReportRepository {
       expenseRows: [] as {
         projectId: string;
         id: string;
+        lineType: string;
         description: string;
         amount: number;
         quantity: number;
         unitCost: number;
+        consumableId: string | null;
+        consumableCode: string | null;
+        consumableName: string | null;
+        consumableCategory: string | null;
+        consumableClassification: string | null;
+        consumableUnit: string | null;
         metadata: { consumableCode?: string; consumableName?: string; consumableUnit?: string } | null;
         incurredOn: string | null;
         category: string;
@@ -1417,9 +2070,11 @@ export class ReportRepository {
       releasedReqRows: [] as {
         projectId: string | null;
         id: string;
+        requestCode: string;
         itemCode: string;
         name: string;
         category: string;
+        classification: string;
         quantity: number;
         unit: string;
         unitCost: number;
@@ -1447,25 +2102,36 @@ export class ReportRepository {
                   count: sql<number>`count(*)::int`,
                 })
                 .from(projectAssetAssignments)
+                .innerJoin(assets, eq(projectAssetAssignments.assetId, assets.id))
                 .where(
                   and(
                     inArray(projectAssetAssignments.projectId, rowIds),
-                    ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : [])
+                    ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : []),
+                    ...(nonSandboxAssetCond ? [nonSandboxAssetCond] : [])
                   )
                 )
                 .groupBy(projectAssetAssignments.projectId),
               db
                 .select({
                   projectId: projectExpenseLines.projectId,
-                  consumablesCount: sql<number>`coalesce(sum(case when ${projectExpenseLines.lineType} in ('consumable', 'material') then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
-                  consumablesValue: sql<number>`coalesce(sum(case when ${projectExpenseLines.lineType} in ('consumable', 'material') then ${projectExpenseLines.amount}::numeric else 0 end), 0)::float`,
+                  consumablesCount: sql<number>`coalesce(sum(case when ${expenseClassMatchSql} then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
+                  consumablesValue: sql<number>`coalesce(sum(case when ${expenseClassMatchSql} then ${projectExpenseLines.amount}::numeric else 0 end), 0)::float`,
+                  suppliesCount: sql<number>`coalesce(sum(case when ${expenseIsStockSql} and not ${expenseIsMaterialSql} then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
+                  suppliesValue: sql<number>`coalesce(sum(case when ${expenseIsStockSql} and not ${expenseIsMaterialSql} then ${projectExpenseLines.amount}::numeric else 0 end), 0)::float`,
+                  materialsCount: sql<number>`coalesce(sum(case when ${expenseIsStockSql} and ${expenseIsMaterialSql} then ${projectExpenseLines.quantity}::numeric else 0 end), 0)::float`,
+                  materialsValue: sql<number>`coalesce(sum(case when ${expenseIsStockSql} and ${expenseIsMaterialSql} then ${projectExpenseLines.amount}::numeric else 0 end), 0)::float`,
                   totalCost: sql<number>`coalesce(sum(${projectExpenseLines.amount}::numeric), 0)::float`,
                 })
                 .from(projectExpenseLines)
+                .leftJoin(consumables, eq(projectExpenseLines.consumableId, consumables.id))
                 .where(
                   and(
                     inArray(projectExpenseLines.projectId, rowIds),
-                    ...(tenantId ? [eq(projectExpenseLines.tenantId, tenantId)] : [])
+                    ...(tenantId ? [eq(projectExpenseLines.tenantId, tenantId)] : []),
+                    ...(filters.includeSandbox
+                      ? []
+                      : [or(isNull(projectExpenseLines.consumableId), eq(consumables.isSandbox, false))!]),
+                    ...expenseDateConds
                   )
                 )
                 .groupBy(projectExpenseLines.projectId),
@@ -1474,19 +2140,21 @@ export class ReportRepository {
                   projectId: consumableRequests.projectId,
                   count: sql<number>`coalesce(sum(${consumableRequestReleaseAllocations.quantity}), 0)::float`,
                   value: sql<number>`coalesce(sum(${consumableRequestReleaseAllocations.lineTotal}::numeric), 0)::float`,
+                  suppliesCount: sql<number>`coalesce(sum(case when not ${allocIsMaterialSql} then ${consumableRequestReleaseAllocations.quantity} else 0 end), 0)::float`,
+                  suppliesValue: sql<number>`coalesce(sum(case when not ${allocIsMaterialSql} then ${consumableRequestReleaseAllocations.lineTotal}::numeric else 0 end), 0)::float`,
+                  materialsCount: sql<number>`coalesce(sum(case when ${allocIsMaterialSql} then ${consumableRequestReleaseAllocations.quantity} else 0 end), 0)::float`,
+                  materialsValue: sql<number>`coalesce(sum(case when ${allocIsMaterialSql} then ${consumableRequestReleaseAllocations.lineTotal}::numeric else 0 end), 0)::float`,
                 })
                 .from(consumableRequests)
                 .innerJoin(
                   consumableRequestReleaseAllocations,
                   eq(consumableRequestReleaseAllocations.requestId, consumableRequests.id)
                 )
-                .where(
-                  and(
-                    eq(consumableRequests.status, "released"),
-                    inArray(consumableRequests.projectId, rowIds),
-                    ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : [])
-                  )
+                .innerJoin(
+                  consumables,
+                  eq(consumableRequestReleaseAllocations.consumableId, consumables.id)
                 )
+                .where(and(...allocConds, inArray(consumableRequests.projectId, rowIds)))
                 .groupBy(consumableRequests.projectId),
               includeLineItems
                 ? db
@@ -1509,7 +2177,8 @@ export class ReportRepository {
                       and(
                         inArray(projectAssetAssignments.projectId, rowIds),
                         eq(projectAssetAssignments.status, "assigned"),
-                        ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : [])
+                        ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : []),
+                        ...(nonSandboxAssetCond ? [nonSandboxAssetCond] : [])
                       )
                     )
                 : Promise.resolve([] as typeof emptyAgg.assignedAssetsData),
@@ -1518,24 +2187,34 @@ export class ReportRepository {
                     .select({
                       projectId: projectExpenseLines.projectId,
                       id: projectExpenseLines.id,
+                      lineType: projectExpenseLines.lineType,
                       description: projectExpenseLines.description,
                       amount: sql<number>`${projectExpenseLines.amount}::float`,
                       quantity: sql<number>`coalesce(${projectExpenseLines.quantity}::float, 1)`,
                       unitCost: sql<number>`coalesce(${projectExpenseLines.unitCost}::float, 0)`,
+                      consumableId: projectExpenseLines.consumableId,
+                      consumableCode: consumables.itemCode,
+                      consumableName: consumables.name,
+                      consumableCategory: consumables.category,
+                      consumableClassification: consumables.classification,
+                      consumableUnit: consumables.unit,
                       metadata: projectExpenseLines.metadata,
                       incurredOn: projectExpenseLines.incurredOn,
                       category: projectExpenseLines.category,
                     })
                     .from(projectExpenseLines)
+                    .leftJoin(consumables, eq(projectExpenseLines.consumableId, consumables.id))
                     .where(
                       and(
                         inArray(projectExpenseLines.projectId, rowIds),
-                        inArray(projectExpenseLines.lineType, [
-                          "consumable",
-                          "material",
-                          "miscellaneous",
-                        ]),
-                        ...(tenantId ? [eq(projectExpenseLines.tenantId, tenantId)] : [])
+                        // Exclude non-inventory "miscellaneous" lines (travel/labor/fees) from stock ledger
+                        inArray(projectExpenseLines.lineType, ["consumable", "material"]),
+                        ...(tenantId ? [eq(projectExpenseLines.tenantId, tenantId)] : []),
+                        ...(filters.includeSandbox
+                          ? []
+                          : [or(isNull(projectExpenseLines.consumableId), eq(consumables.isSandbox, false))!]),
+                        ...expenseDateConds,
+                        ...(categoryCond ? [categoryCond] : [])
                       )
                     )
                 : Promise.resolve([] as typeof emptyAgg.expenseRows),
@@ -1544,9 +2223,11 @@ export class ReportRepository {
                     .select({
                       projectId: consumableRequests.projectId,
                       id: consumableRequestReleaseAllocations.id,
+                      requestCode: consumableRequests.requestCode,
                       itemCode: consumables.itemCode,
                       name: consumables.name,
                       category: consumables.category,
+                      classification: normalizedConsumableClassSql(),
                       quantity: sql<number>`${consumableRequestReleaseAllocations.quantity}`,
                       unit: consumables.unit,
                       unitCost: sql<number>`${consumableRequestReleaseAllocations.unitCost}::float`,
@@ -1563,13 +2244,7 @@ export class ReportRepository {
                       consumables,
                       eq(consumableRequestReleaseAllocations.consumableId, consumables.id)
                     )
-                    .where(
-                      and(
-                        eq(consumableRequests.status, "released"),
-                        inArray(consumableRequests.projectId, rowIds),
-                        ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : [])
-                      )
-                    )
+                    .where(and(...allocConds, inArray(consumableRequests.projectId, rowIds)))
                 : Promise.resolve([] as typeof emptyAgg.releasedReqRows),
             ]);
 
@@ -1614,6 +2289,17 @@ export class ReportRepository {
 
     const projectSuppliesMap = new Map<string, ConsumedSupplyItem[]>();
     for (const e of pageData.expenseRows) {
+      const resolvedClass = e.consumableId
+        ? normalizeConsumableClassification(e.consumableClassification)
+        : e.lineType === "material"
+          ? ("material" as const)
+          : ("supply" as const);
+      if (
+        (wantedClass === "material" || wantedClass === "supply") &&
+        resolvedClass !== wantedClass
+      ) {
+        continue;
+      }
       let list = projectSuppliesMap.get(e.projectId);
       if (!list) {
         list = [];
@@ -1621,11 +2307,17 @@ export class ReportRepository {
       }
       list.push({
         id: e.id,
-        itemCode: e.metadata?.consumableCode || "EXP-ITEM",
-        name: e.metadata?.consumableName || e.description,
-        category: e.category,
+        itemCode: e.consumableCode || e.metadata?.consumableCode || "MAT-MANUAL",
+        name: e.consumableName || e.metadata?.consumableName || e.description,
+        category: e.consumableCategory || e.category,
+        classification: resolvedClass,
+        source:
+          e.lineType === "material" && !e.consumableId
+            ? "manual_material"
+            : "inventory",
+        referenceCode: null,
         quantity: e.quantity,
-        unit: e.metadata?.consumableUnit || "units",
+        unit: e.consumableUnit || e.metadata?.consumableUnit || "units",
         unitCost: e.unitCost,
         totalCost: e.amount,
         incurredOn: e.incurredOn,
@@ -1634,6 +2326,7 @@ export class ReportRepository {
     }
     for (const reqItem of pageData.releasedReqRows) {
       if (!reqItem.projectId) continue;
+      const resolvedClass = normalizeConsumableClassification(reqItem.classification);
       let list = projectSuppliesMap.get(reqItem.projectId);
       if (!list) {
         list = [];
@@ -1644,6 +2337,9 @@ export class ReportRepository {
         itemCode: reqItem.itemCode,
         name: reqItem.name,
         category: reqItem.category,
+        classification: resolvedClass,
+        source: "request",
+        referenceCode: reqItem.requestCode,
         quantity: reqItem.quantity,
         unit: reqItem.unit,
         unitCost: reqItem.unitCost,
@@ -1658,9 +2354,25 @@ export class ReportRepository {
       const exp = expenseMap.get(r.id);
       const req = releasedConsumablesMap.get(r.id);
 
+      const suppliesConsumedCount =
+        (wantedClass === "material" ? 0 : exp?.suppliesCount ?? 0) +
+        (req?.suppliesCount ?? 0);
+      const suppliesValue =
+        (wantedClass === "material" ? 0 : exp?.suppliesValue ?? 0) +
+        (req?.suppliesValue ?? 0);
+      const materialsConsumedCount =
+        (wantedClass === "supply" ? 0 : exp?.materialsCount ?? 0) +
+        (req?.materialsCount ?? 0);
+      const materialsValue =
+        (wantedClass === "supply" ? 0 : exp?.materialsValue ?? 0) +
+        (req?.materialsValue ?? 0);
+
       const consumablesConsumedCount = (exp?.consumablesCount ?? 0) + (req?.count ?? 0);
       const consumablesValue = (exp?.consumablesValue ?? 0) + (req?.value ?? 0);
       const totalProjectCost = (exp?.totalCost ?? 0) + (req?.value ?? 0);
+      const sortedItems = (projectSuppliesMap.get(r.id) ?? []).sort((a, b) =>
+        (b.incurredOn ?? "").localeCompare(a.incurredOn ?? "")
+      );
 
       return {
         id: r.id,
@@ -1677,13 +2389,17 @@ export class ReportRepository {
         assignedAssetsCount: aCount,
         consumablesConsumedCount,
         consumablesValue,
+        suppliesConsumedCount,
+        suppliesValue,
+        materialsConsumedCount,
+        materialsValue,
         totalProjectCost,
         managerName: r.managerName ?? null,
         description: r.description ?? null,
         ...(includeLineItems
           ? {
               assignedAssets: projectAssetsMap.get(r.id) ?? [],
-              consumedSupplies: projectSuppliesMap.get(r.id) ?? [],
+              consumedSupplies: sortedItems,
             }
           : {}),
       };
@@ -1701,6 +2417,8 @@ export class ReportRepository {
         completedProjects,
         totalAssetsAssigned,
         totalConsumablesConsumed,
+        totalSuppliesConsumed,
+        totalMaterialsConsumed,
         totalProjectSpend,
       },
     };
@@ -1723,6 +2441,17 @@ export class ReportRepository {
     if (tenantId) {
       conditions.push(eq(departments.tenantId, tenantId));
     }
+    if (!filters.includeSandbox) {
+      conditions.push(eq(departments.isSandbox, false));
+    }
+    if (filters.departmentId && filters.departmentId !== "all") {
+      const deptVal = filters.departmentId.trim();
+      conditions.push(
+        isUuid(deptVal)
+          ? eq(departments.id, deptVal)
+          : or(ilike(departments.name, deptVal), ilike(departments.code, deptVal))!
+      );
+    }
     if (filters.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(or(ilike(departments.name, q), ilike(departments.code, q))!);
@@ -1734,9 +2463,20 @@ export class ReportRepository {
     const offset = (page - 1) * pageSize;
     const includeLineItems = pageSize <= 100;
 
+    const classCond = consumableClassFilterSql(filters.classification);
+    const categoryCond =
+      filters.category && filters.category !== "all"
+        ? sql`lower(trim(${consumables.category})) = ${filters.category.trim().toLowerCase()}`
+        : undefined;
+    const nonSandboxConsCond = filters.includeSandbox ? undefined : eq(consumables.isSandbox, false);
+    const nonSandboxAssetCond = filters.includeSandbox ? undefined : eq(assets.isSandbox, false);
+
     const assetConditions: SQL[] = [];
     if (tenantId) {
       assetConditions.push(eq(assets.tenantId, tenantId));
+    }
+    if (nonSandboxAssetCond) {
+      assetConditions.push(nonSandboxAssetCond);
     }
     if (filters.startDate) {
       assetConditions.push(
@@ -1751,15 +2491,41 @@ export class ReportRepository {
     const assetWhere = assetConditions.length ? and(...assetConditions) : undefined;
 
     const crConditions: SQL[] = [
-      eq(consumableRequests.status, "released"),
+      inArray(consumableRequests.status, ["approved", "released"]),
+      nonVoidedAllocationCondition(),
       ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
+      ...(nonSandboxConsCond ? [nonSandboxConsCond] : []),
+      ...(classCond ? [classCond] : []),
+      ...(categoryCond ? [categoryCond] : []),
     ];
     if (filters.startDate) {
-      crConditions.push(gte(sql`${consumableRequests.requestedAt}::date`, filters.startDate));
+      crConditions.push(
+        gte(sql`${consumableRequestReleaseAllocations.releasedAt}::date`, filters.startDate)
+      );
     }
     if (filters.endDate) {
-      crConditions.push(lte(sql`${consumableRequests.requestedAt}::date`, filters.endDate));
+      crConditions.push(
+        lte(sql`${consumableRequestReleaseAllocations.releasedAt}::date`, filters.endDate)
+      );
     }
+
+    const directMoveConditions: SQL[] = [
+      ...nonVoidedOutIssueConditions(),
+      isNull(stockMovements.requestId),
+      isNotNull(stockMovements.departmentId),
+      ...(tenantId ? [eq(stockMovements.tenantId, tenantId)] : []),
+      ...(nonSandboxConsCond ? [nonSandboxConsCond] : []),
+      ...(classCond ? [classCond] : []),
+      ...(categoryCond ? [categoryCond] : []),
+    ];
+    if (filters.startDate) {
+      directMoveConditions.push(gte(sql`${stockMovements.createdAt}::date`, filters.startDate));
+    }
+    if (filters.endDate) {
+      directMoveConditions.push(lte(sql`${stockMovements.createdAt}::date`, filters.endDate));
+    }
+
+    const isMaterialSql = sql`lower(trim(coalesce(${consumables.classification}, ''))) = 'material'`;
 
     const [
       [countRow],
@@ -1768,6 +2534,7 @@ export class ReportRepository {
       assetAggRows,
       maintAggRows,
       consumableStats,
+      directIssueStats,
       activeProjects,
     ] = await Promise.all([
       db
@@ -1830,14 +2597,36 @@ export class ReportRepository {
           departmentName: consumableRequests.department,
           quantity: sql<number>`coalesce(sum(${consumableRequestReleaseAllocations.quantity}), 0)::float`,
           value: sql<number>`coalesce(sum(${consumableRequestReleaseAllocations.lineTotal}::numeric), 0)::float`,
+          suppliesQty: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${consumableRequestReleaseAllocations.quantity} else 0 end), 0)::float`,
+          suppliesVal: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${consumableRequestReleaseAllocations.lineTotal}::numeric else 0 end), 0)::float`,
+          materialsQty: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${consumableRequestReleaseAllocations.quantity} else 0 end), 0)::float`,
+          materialsVal: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${consumableRequestReleaseAllocations.lineTotal}::numeric else 0 end), 0)::float`,
         })
         .from(consumableRequests)
         .innerJoin(
           consumableRequestReleaseAllocations,
           eq(consumableRequestReleaseAllocations.requestId, consumableRequests.id)
         )
+        .innerJoin(
+          consumables,
+          eq(consumableRequestReleaseAllocations.consumableId, consumables.id)
+        )
         .where(and(...crConditions))
         .groupBy(consumableRequests.departmentId, consumableRequests.department),
+      db
+        .select({
+          departmentId: stockMovements.departmentId,
+          quantity: sql<number>`coalesce(sum(${stockMovements.qty}::numeric), 0)::float`,
+          value: sql<number>`coalesce(sum(${effectiveMovementValueSql()}), 0)::float`,
+          suppliesQty: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${stockMovements.qty}::numeric else 0 end), 0)::float`,
+          suppliesVal: sql<number>`coalesce(sum(case when not ${isMaterialSql} then ${effectiveMovementValueSql()} else 0 end), 0)::float`,
+          materialsQty: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${stockMovements.qty}::numeric else 0 end), 0)::float`,
+          materialsVal: sql<number>`coalesce(sum(case when ${isMaterialSql} then ${effectiveMovementValueSql()} else 0 end), 0)::float`,
+        })
+        .from(stockMovements)
+        .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
+        .where(and(...directMoveConditions))
+        .groupBy(stockMovements.departmentId),
       db
         .select({
           department: projects.department,
@@ -1883,16 +2672,35 @@ export class ReportRepository {
     const resolveConsumables = (d: { id: string; code: string; name: string }) => {
       let cCount = 0;
       let cVal = 0;
+      let sCount = 0;
+      let sVal = 0;
+      let mCount = 0;
+      let mVal = 0;
       for (const cs of consumableStats) {
-        if (
-          cs.departmentId === d.id ||
-          cs.departmentName.toLowerCase() === d.name.toLowerCase()
-        ) {
+        const matchesDept = cs.departmentId
+          ? cs.departmentId === d.id
+          : cs.departmentName.toLowerCase() === d.name.toLowerCase() ||
+            cs.departmentName.toLowerCase() === d.code.toLowerCase();
+        if (matchesDept) {
           cCount += cs.quantity;
           cVal += cs.value;
+          sCount += cs.suppliesQty;
+          sVal += cs.suppliesVal;
+          mCount += cs.materialsQty;
+          mVal += cs.materialsVal;
         }
       }
-      return { cCount, cVal };
+      for (const di of directIssueStats) {
+        if (di.departmentId === d.id) {
+          cCount += di.quantity;
+          cVal += di.value;
+          sCount += di.suppliesQty;
+          sVal += di.suppliesVal;
+          mCount += di.materialsQty;
+          mVal += di.materialsVal;
+        }
+      }
+      return { cCount, cVal, sCount, sVal, mCount, mVal };
     };
 
     const resolveActiveProjects = (d: { id: string; code: string; name: string }) => {
@@ -1912,6 +2720,10 @@ export class ReportRepository {
     let totalAssetsValue = 0;
     let totalConsumablesConsumed = 0;
     let totalConsumablesValue = 0;
+    let totalSuppliesConsumed = 0;
+    let totalSuppliesValue = 0;
+    let totalMaterialsConsumed = 0;
+    let totalMaterialsValue = 0;
     let maxAssetsCount = -1;
     let mostActiveByAssets: string | null = null;
 
@@ -1919,12 +2731,16 @@ export class ReportRepository {
       const assetEntry = resolveAssetEntry(d);
       const assetsAssignedCount = assetEntry?.count ?? 0;
       const assetsVal = assetEntry?.value ?? 0;
-      const { cCount, cVal } = resolveConsumables(d);
+      const { cCount, cVal, sCount, sVal, mCount, mVal } = resolveConsumables(d);
 
       totalAssetsDeployed += assetsAssignedCount;
       totalAssetsValue += assetsVal;
       totalConsumablesConsumed += cCount;
       totalConsumablesValue += cVal;
+      totalSuppliesConsumed += sCount;
+      totalSuppliesValue += sVal;
+      totalMaterialsConsumed += mCount;
+      totalMaterialsValue += mVal;
 
       if (assetsAssignedCount > maxAssetsCount && assetsAssignedCount > 0) {
         maxAssetsCount = assetsAssignedCount;
@@ -1946,7 +2762,7 @@ export class ReportRepository {
       ),
     ];
 
-    const [itemizedAssets, itemizedConsumables] =
+    const [itemizedAssets, itemizedConsumables, itemizedDirectIssues] =
       includeLineItems && pagedDeptIds.length > 0
         ? await Promise.all([
             db
@@ -1973,9 +2789,11 @@ export class ReportRepository {
                 departmentId: consumableRequests.departmentId,
                 departmentName: consumableRequests.department,
                 id: consumableRequestReleaseAllocations.id,
+                requestCode: consumableRequests.requestCode,
                 itemCode: consumables.itemCode,
                 name: consumables.name,
                 category: consumables.category,
+                classification: normalizedConsumableClassSql(),
                 quantity: sql<number>`${consumableRequestReleaseAllocations.quantity}`,
                 unit: consumables.unit,
                 unitCost: sql<number>`${consumableRequestReleaseAllocations.unitCost}::float`,
@@ -1994,22 +2812,39 @@ export class ReportRepository {
               )
               .where(
                 and(
-                  eq(consumableRequests.status, "released"),
-                  ...(tenantId ? [eq(consumableRequests.tenantId, tenantId)] : []),
-                  ...(filters.startDate
-                    ? [gte(sql`${consumableRequests.requestedAt}::date`, filters.startDate)]
-                    : []),
-                  ...(filters.endDate
-                    ? [lte(sql`${consumableRequests.requestedAt}::date`, filters.endDate)]
-                    : []),
+                  ...crConditions,
                   or(
                     inArray(consumableRequests.departmentId, pagedDeptIds),
                     inArray(sql`lower(${consumableRequests.department})`, pagedDeptKeys)
                   )
                 )
               ),
+            db
+              .select({
+                departmentId: stockMovements.departmentId,
+                id: stockMovements.id,
+                movementCode: stockMovements.movementCode,
+                itemCode: consumables.itemCode,
+                name: consumables.name,
+                category: consumables.category,
+                classification: normalizedConsumableClassSql(),
+                quantity: sql<number>`${stockMovements.qty}::float`,
+                unit: consumables.unit,
+                unitCost: sql<number | null>`${stockMovements.unitCost}::float`,
+                totalCost: sql<number | null>`${effectiveMovementValueSql()}::float`,
+                incurredOn: sql<string>`${stockMovements.createdAt}::text`,
+                purpose: stockMovements.notes,
+              })
+              .from(stockMovements)
+              .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
+              .where(
+                and(
+                  ...directMoveConditions,
+                  inArray(stockMovements.departmentId, pagedDeptIds)
+                )
+              ),
           ])
-        : [[], []];
+        : [[], [], []];
 
     // ─── Maintenance logs for paged dept assets ───────────────────────────────
     const pagedAssetIds = itemizedAssets.map((a) => a.id);
@@ -2132,7 +2967,7 @@ export class ReportRepository {
       const assetsAssignedCount = assetEntry?.count ?? 0;
       const assetsVal = assetEntry?.value ?? 0;
       const topAssets = assetEntry?.topCodes ?? [];
-      const { cCount, cVal } = resolveConsumables(d);
+      const { cCount, cVal, sCount, sVal, mCount, mVal } = resolveConsumables(d);
       const activeProjectsCount = resolveActiveProjects(d);
       const activeMaintenanceCount = resolveMaintCount(d);
 
@@ -2144,24 +2979,47 @@ export class ReportRepository {
         : undefined;
 
       const consumedSupplies: ConsumedSupplyItem[] | undefined = includeLineItems
-        ? itemizedConsumables
-            .filter(
-              (c) =>
-                c.departmentId === d.id ||
-                c.departmentName?.toLowerCase() === d.name.toLowerCase()
-            )
-            .map((c) => ({
-              id: c.id,
-              itemCode: c.itemCode,
-              name: c.name,
-              category: c.category,
-              quantity: c.quantity,
-              unit: c.unit,
-              unitCost: c.unitCost,
-              totalCost: c.totalCost,
-              incurredOn: c.incurredOn?.split("T")[0] || c.incurredOn,
-              purpose: c.purpose,
-            }))
+        ? [
+            ...itemizedConsumables
+              .filter((c) =>
+                c.departmentId
+                  ? c.departmentId === d.id
+                  : c.departmentName?.toLowerCase() === d.name.toLowerCase() ||
+                    c.departmentName?.toLowerCase() === d.code.toLowerCase()
+              )
+              .map((c) => ({
+                id: c.id,
+                itemCode: c.itemCode,
+                name: c.name,
+                category: c.category,
+                classification: normalizeConsumableClassification(c.classification),
+                source: "request" as const,
+                referenceCode: c.requestCode,
+                quantity: c.quantity,
+                unit: c.unit,
+                unitCost: c.unitCost,
+                totalCost: c.totalCost,
+                incurredOn: c.incurredOn?.split("T")[0] || c.incurredOn,
+                purpose: c.purpose,
+              })),
+            ...itemizedDirectIssues
+              .filter((m) => m.departmentId === d.id)
+              .map((m) => ({
+                id: m.id,
+                itemCode: m.itemCode,
+                name: m.name,
+                category: m.category,
+                classification: normalizeConsumableClassification(m.classification),
+                source: "direct_issue" as const,
+                referenceCode: m.movementCode,
+                quantity: m.quantity,
+                unit: m.unit,
+                unitCost: m.unitCost,
+                totalCost: m.totalCost,
+                incurredOn: m.incurredOn?.split("T")[0] || m.incurredOn,
+                purpose: m.purpose?.trim() || `Direct issue (${m.movementCode})`,
+              })),
+          ].sort((a, b) => (b.incurredOn ?? "").localeCompare(a.incurredOn ?? ""))
         : undefined;
 
       // Attach maintenance logs to each asset item, build dept-level logs list, and compute dept maintenance summary
@@ -2231,6 +3089,10 @@ export class ReportRepository {
         assetsValue: assetsVal,
         consumablesConsumedCount: cCount,
         consumablesValue: cVal,
+        suppliesConsumedCount: sCount,
+        suppliesValue: sVal,
+        materialsConsumedCount: mCount,
+        materialsValue: mVal,
         activeMaintenanceCount,
         activeProjects: activeProjectsCount,
         topAssets,
@@ -2258,6 +3120,10 @@ export class ReportRepository {
         totalAssetsValue,
         totalConsumablesConsumed,
         totalConsumablesValue,
+        totalSuppliesConsumed,
+        totalSuppliesValue,
+        totalMaterialsConsumed,
+        totalMaterialsValue,
         mostActiveByAssets,
       },
     };

@@ -8,6 +8,11 @@ import { reportController } from "@/server/modules/reports";
  *     tags: [Reports]
  *     parameters:
  *       - in: query
+ *         name: classification
+ *         schema:
+ *           type: string
+ *           enum: [all, supply, material]
+ *       - in: query
  *         name: category
  *         schema:
  *           type: string
@@ -16,6 +21,14 @@ import { reportController } from "@/server/modules/reports";
  *         schema:
  *           type: string
  *           enum: [all, low_stock]
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
  *       - in: query
  *         name: search
  *         schema:
