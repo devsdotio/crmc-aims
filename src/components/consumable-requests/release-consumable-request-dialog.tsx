@@ -10,12 +10,14 @@ import {
   Layers,
   Loader2,
   Package,
+  HardHat,
   User,
   X,
 } from "lucide-react";
 
 import { formatPhp } from "@/components/projects/format-money";
 import { formatItemDescription, formatAssetCodeDisplay } from "@/lib/sanitize-display";
+import { splitByConsumableClassification } from "@/lib/consumable-classification";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { usePurchaseLotsQuery } from "@/features/purchase-lots/client/use-purchase-lots";
 import { cn } from "@/lib/utils";
@@ -523,27 +525,63 @@ export function ReleaseConsumableRequestDialog({
               </div>
 
               <div className="space-y-3">
-                {request.lines.map((line) => (
-                  <ReleaseLineLotRow
-                    key={line.id}
-                    line={line}
-                    lots={lots}
-                    isLoading={lotsLoading}
-                    draft={
-                      draftByLine[line.id] ?? { lotId: "", quantity: "0" }
-                    }
-                    onChange={(patch) =>
-                      setDraftByLine((prev) => ({
-                        ...prev,
-                        [line.id]: {
-                          lotId: prev[line.id]?.lotId ?? "",
-                          quantity: prev[line.id]?.quantity ?? "0",
-                          ...patch,
-                        },
-                      }))
-                    }
-                  />
-                ))}
+                {(() => {
+                  const split = splitByConsumableClassification(request.lines);
+                  const renderLotRow = (
+                    line: ConsumableRequest["lines"][number]
+                  ) => (
+                    <ReleaseLineLotRow
+                      key={line.id}
+                      line={line}
+                      lots={lots}
+                      isLoading={lotsLoading}
+                      draft={
+                        draftByLine[line.id] ?? { lotId: "", quantity: "0" }
+                      }
+                      onChange={(patch) =>
+                        setDraftByLine((prev) => ({
+                          ...prev,
+                          [line.id]: {
+                            lotId: prev[line.id]?.lotId ?? "",
+                            quantity: prev[line.id]?.quantity ?? "0",
+                            ...patch,
+                          },
+                        }))
+                      }
+                    />
+                  );
+
+                  if (split.isCombined) {
+                    return (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                              Supplies ({split.supplies.length})
+                            </span>
+                          </div>
+                          <div className="space-y-3">
+                            {split.supplies.map(renderLotRow)}
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <HardHat className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300">
+                              Materials ({split.materials.length})
+                            </span>
+                          </div>
+                          <div className="space-y-3">
+                            {split.materials.map(renderLotRow)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return request.lines.map(renderLotRow);
+                })()}
               </div>
             </div>
 

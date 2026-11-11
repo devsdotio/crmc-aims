@@ -2,6 +2,71 @@ import type { WhatsNewFeature } from "./types";
 
 export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
   {
+    id: "supplies-materials-portal-v1-3",
+    version: "v1.3.0",
+    releaseDate: "November 2026",
+    title: "Supplies & Materials Separation, Cart & Pending Edits",
+    tagline:
+      "Separate Supplies, Materials, and Mixed views across your portal and queues—plus a unified Request Cart, live stock checks, and pending request editing.",
+    category: "Requests",
+    badge: "Latest Update",
+    isNew: true,
+    steps: [
+      {
+        badge: "Supplies · Materials · Mixed",
+        title: "Clear Separation of Supplies & Materials",
+        subtitle: "Dedicated views, badges, and filters across Portal & Queues",
+        description:
+          "Supplies and Materials are now visually separated across sidebar links, browse tabs, request cards, issued logs, and Admin approval queues—with a clear Mixed badge whenever one request combines both.",
+        highlights: [
+          "Dedicated Supplies and Materials navigation under Requests, plus separated Issued Supplies and Issued Materials under Inventory",
+          "Filter tabs for All, Borrow, Assign, Supplies, Materials, and Mixed across My Requests and Admin Queues",
+          "Distinct visual badges differentiate Supplies, Materials, and Mixed (Supplies & Materials) items at a glance",
+        ],
+        mockupType: "supplies-materials-ui",
+      },
+      {
+        badge: "Cart & Multi-Type Wizard",
+        title: "Unified Request Cart & Multi-Type Wizard",
+        subtitle: "Checkout Assets, Supplies & Materials together without losing items",
+        description:
+          "Select assets, supplies, and materials together in the catalog—the sticky Request Cart keeps every item and automatically groups them into clean type bundles in the New Request Wizard.",
+        highlights: [
+          "Single sticky Request Cart retains borrowed equipment, assignments, supplies, and materials across tabs",
+          "One-click 'Add all to Purpose 1' batch button assigns ungrouped items to your first purpose in seconds",
+          "Smooth decimal quantity typing (e.g., 1.5 m or 2.5 L) with automatic unit display",
+        ],
+        mockupType: "cart-wizard-ui",
+      },
+      {
+        badge: "Pending Request Edits",
+        title: "Edit Pending Requests (Owners & Admin Office)",
+        subtitle: "Update items, quantities, purpose, and schedules before approval",
+        description:
+          "Requesters can revise or cancel their own pending requests before review, and Admin Office staff can edit any requester's pending Borrow, Assign, Supplies, Materials, or Mixed request directly from the queue or detail panel.",
+        highlights: [
+          "Owners can edit their own pending requests while other requesters' submissions remain view-only",
+          "Admin Office can adjust lines, quantities, purpose, schedule dates, and assignee for any requester",
+          "Request Details show live Issued quantities alongside Requested quantities on every line item",
+        ],
+        mockupType: "pending-edit-ui",
+      },
+      {
+        badge: "Out-of-Stock Requests & History",
+        title: "Request Out-of-Stock Items, Custody Filter & Sheet Polish",
+        subtitle: "Request any Supply or Material for restock, filter history & close sheets easily",
+        description:
+          "All Supplies and Materials remain visible and requestable—even when Out of Stock—so you can request what you need for Admin restock, filter History by Custody type, and close detail sheets easily on mobile.",
+        highlights: [
+          "Browse, Request Wizard, and 'Request again' on Issued views keep Out-of-Stock Supplies & Materials requestable for Admin restock",
+          "History includes Custody filter buttons (All, Borrowed, Assigned) plus a quick search clear button",
+          "Mobile Close footer button, full keyboard focus trapping, and clearer empty-state actions on detail sheets",
+        ],
+        mockupType: "issued-history-ui",
+      },
+    ],
+  },
+  {
     id: "asset-sheet-button-layout",
     version: "v1.2.0",
     releaseDate: "October 2026",
@@ -9,7 +74,7 @@ export const WHATS_NEW_REGISTRY: WhatsNewFeature[] = [
     tagline: "Action buttons are now docked at the bottom of the asset details sheet.",
     category: "Assets",
     badge: "Recent Update",
-    isNew: true,
+    isNew: false,
     steps: [
       {
         badge: "Step 1 of 4 · Bottom Action Bar",

@@ -18,9 +18,15 @@ import {
   Package,
   Loader2,
   RotateCcw,
+  Edit3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatItemDescription } from "@/lib/sanitize-display";
+import {
+  deriveConsumableRequestKind,
+  splitByConsumableClassification,
+  type ConsumableRequestKind,
+} from "@/lib/consumable-classification";
 import { purposePreviewLabel } from "@/lib/request-purpose";
 import { LinkedRequestsNote } from "@/components/requests/linked-requests-note";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
@@ -28,6 +34,7 @@ import { QueryErrorBanner } from "@/components/shared/query-error-banner";
 import { ReleaseConsumableRequestDialog } from "@/components/consumable-requests/release-consumable-request-dialog";
 import { ApproveRejectConsumableDialog } from "@/components/consumable-requests/approve-reject-consumable-dialog";
 import { SupplyRequestDetailPanel } from "@/components/consumable-requests/supply-request-detail-panel";
+import { EditRequestDialog } from "@/components/borrower-db/edit-request-dialog";
 import { useToast } from "@/components/providers/toast-context";
 import { useAssetOperator } from "@/hooks/use-asset-operator";
 import {
@@ -74,6 +81,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 export interface SupplyRequestsQueueProps {
   status?: ConsumableRequest["status"];
+  lockedClassification?: "supply" | "material";
   searchQuery?: string;
   department?: string;
   /** Lift list meta.counts so the parent can drop a duplicate limit:1 meta query. */
@@ -191,6 +199,7 @@ export function SupplyRequestStatusTabs({
 
 export function SupplyRequestsQueue({
   status = "pending",
+  lockedClassification,
   searchQuery = "",
   department,
   onCountsChange,
@@ -200,6 +209,16 @@ export function SupplyRequestsQueue({
   const resolveCategoryStyle = useCategoryStyleResolver();
   const [releaseTarget, setReleaseTarget] = useState<ConsumableRequest | null>(null);
   const [detailTarget, setDetailTarget] = useState<ConsumableRequest | null>(null);
+  const [editTarget, setEditTarget] = useState<ConsumableRequest | null>(null);
+  const [classFilter, setClassFilter] = useState<"all" | ConsumableRequestKind>(
+    lockedClassification ?? "all"
+  );
+
+  useEffect(() => {
+    if (lockedClassification) {
+      setClassFilter(lockedClassification);
+    }
+  }, [lockedClassification]);
   const [dialogState, setDialogState] = useState<{
     request: ConsumableRequest | null;
     mode: "approve" | "reject" | null;
@@ -215,6 +234,7 @@ export function SupplyRequestsQueue({
   const { data, isLoading, isError, error, refetch, isPlaceholderData } =
     useConsumableRequests({
       status,
+      classification: classFilter === "all" ? undefined : classFilter,
       search: searchQuery.trim() || undefined,
       department: deptParam,
       limit: 50,
@@ -341,12 +361,63 @@ export function SupplyRequestsQueue({
     setReleaseTarget(null);
   };
 
+  const classOptions: Array<{ key: "all" | ConsumableRequestKind; label: string }> =
+    lockedClassification === "supply"
+      ? [
+          { key: "supply", label: "Supplies" },
+          { key: "mixed", label: "Combined (Supplies & Materials)" },
+        ]
+      : lockedClassification === "material"
+        ? [
+            { key: "material", label: "Materials" },
+            { key: "mixed", label: "Combined (Supplies & Materials)" },
+          ]
+        : [
+            { key: "all", label: "All" },
+            { key: "supply", label: "Supplies" },
+            { key: "material", label: "Materials" },
+            { key: "mixed", label: "Mixed" },
+          ];
+  const queueNoun =
+    classFilter === "material"
+      ? "material"
+      : classFilter === "mixed"
+        ? "mixed"
+        : classFilter === "supply"
+          ? "supply"
+          : lockedClassification === "material"
+            ? "material"
+            : lockedClassification === "supply"
+              ? "supply"
+              : "consumable";
+
   return (
     <>
+      <div className="px-4 md:px-6 py-2.5 bg-bg-subtle/40 border-b border-border flex flex-wrap items-center gap-1.5 shrink-0">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-text-secondary mr-1">
+          Requisition Class:
+        </span>
+        {classOptions.map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            aria-pressed={classFilter === opt.key}
+            onClick={() => setClassFilter(opt.key)}
+            className={cn(
+              "px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors cursor-pointer",
+              classFilter === opt.key
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-bg border-border text-text-secondary hover:text-text"
+            )}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
 
       {isError && (
         <QueryErrorBanner
-          message={error?.message || "Failed to load supply requests."}
+          message={error?.message || `Failed to load ${queueNoun} requests.`}
           onRetry={() => void refetch()}
         />
       )}
@@ -391,16 +462,16 @@ export function SupplyRequestsQueue({
             <div>
               <h3 className="text-base font-bold text-text">
                 {status === "pending"
-                  ? "All supply requests reviewed"
+                  ? `All ${queueNoun} requests reviewed`
                   : status === "approved"
                     ? "No approved requests pending issue"
                     : status === "released"
-                      ? "No issued supply records"
+                      ? `No issued ${queueNoun} records`
                       : status === "rejected"
-                        ? "No rejected supply requests"
+                        ? `No rejected ${queueNoun} requests`
                         : status === "cancelled"
-                          ? "No cancelled supply requests"
-                          : "No supply requests found"}
+                          ? `No cancelled ${queueNoun} requests`
+                          : `No ${queueNoun} requests found`}
               </h3>
               <p className="text-xs text-text-secondary mt-1 max-w-sm leading-relaxed">
                 {status === "pending"
@@ -419,11 +490,16 @@ export function SupplyRequestsQueue({
               "divide-y divide-border transition-opacity duration-150",
               isPlaceholderData && "opacity-40"
             )}
-            aria-label="Supply requests queue"
+            aria-label={`${queueNoun === "material" ? "Material" : queueNoun === "mixed" ? "Mixed" : queueNoun === "supply" ? "Supply" : "Consumable"} requests queue`}
           >
             {rows.map((row) => {
               const firstLine = row.lines?.[0];
               const categoryMeta = resolveCategoryStyle(firstLine?.category);
+              const reqClass =
+                row.classification ??
+                deriveConsumableRequestKind(
+                  (row.lines ?? []).map((l) => l.classification)
+                );
               const statusMeta = STATUS_STYLES[row.status] || {
                 bg: "bg-bg-subtle",
                 text: "text-text-secondary font-bold",
@@ -438,10 +514,27 @@ export function SupplyRequestsQueue({
                 >
                   {/* Left Column: Requester & Item Info */}
                   <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-                    {/* Row 1: Code & Category Tag */}
-                    <div className="flex items-center gap-2 text-xs">
+                    {/* Row 1: Code, Class & Category Tag */}
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
                       <span className="font-mono font-semibold text-text-secondary">
                         {row.requestCode}
+                      </span>
+                      <span className="text-text-secondary/40">·</span>
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border",
+                          reqClass === "mixed"
+                            ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25"
+                            : reqClass === "material"
+                              ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25"
+                              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+                        )}
+                      >
+                        {reqClass === "mixed"
+                          ? "Mixed (Supplies & Materials)"
+                          : reqClass === "material"
+                            ? "Materials"
+                            : "Supplies"}
                       </span>
                       <span className="text-text-secondary/40">·</span>
                       <span
@@ -500,14 +593,20 @@ export function SupplyRequestsQueue({
                           </span>
                         );
                       })()}
-                      {row.lines.length > 1 && (
-                        <span className="hidden sm:inline-flex items-center gap-1 text-text-secondary/80">
-                          <Package className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
-                          <span className="truncate max-w-sm">
-                            {row.lines.map((l) => `${l.itemName} (${l.quantityRequested})`).join(", ")}
+                      {row.lines.length > 1 && (() => {
+                        const split = splitByConsumableClassification(row.lines);
+                        const summaryText = split.isCombined
+                          ? `Supplies: ${split.supplies.map((l) => `${l.itemName} (${l.quantityRequested})`).join(", ")} | Materials: ${split.materials.map((l) => `${l.itemName} (${l.quantityRequested})`).join(", ")}`
+                          : row.lines
+                              .map((l) => `${l.itemName} (${l.quantityRequested})`)
+                              .join(", ");
+                        return (
+                          <span className="hidden sm:inline-flex items-center gap-1 text-text-secondary/80">
+                            <Package className="h-3.5 w-3.5 text-text-secondary/70 shrink-0" />
+                            <span className="truncate max-w-md">{summaryText}</span>
                           </span>
-                        </span>
-                      )}
+                        );
+                      })()}
                       <LinkedRequestsNote related={row.relatedRequests} />
                     </div>
                   </div>
@@ -528,6 +627,15 @@ export function SupplyRequestsQueue({
                     {/* Inline Actions for Pending */}
                     {canOperate && row.status === "pending" && (
                       <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setEditTarget(row); }}
+                          aria-label={`Edit request ${row.requestCode}`}
+                          className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-text hover:bg-accent/10 hover:text-accent hover:border-accent/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                          <Edit3 className="h-3 w-3" />
+                          Edit
+                        </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); handleOpenApproveModal(row); }}
@@ -577,7 +685,7 @@ export function SupplyRequestsQueue({
                           type="button"
                           onClick={(e) => { e.stopPropagation(); setReleaseTarget(row); }}
                           disabled={cancel.isPending}
-                          aria-label={`Issue supplies for request ${row.requestCode}`}
+                          aria-label={`Issue ${reqClass === "material" ? "materials" : reqClass === "mixed" ? "items" : "supplies"} for request ${row.requestCode}`}
                           className={cn(
                             "inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground",
                             "shadow-xs transition-colors duration-150 hover:opacity-90 cursor-pointer",
@@ -640,11 +748,26 @@ export function SupplyRequestsQueue({
         request={detailTarget}
         isOpen={Boolean(detailTarget)}
         onClose={() => setDetailTarget(null)}
+        onEdit={canOperate ? (req) => { setDetailTarget(null); setEditTarget(req); } : undefined}
         onApprove={canOperate ? (req) => { setDetailTarget(null); handleOpenApproveModal(req); } : undefined}
         onReject={canOperate ? (req) => { setDetailTarget(null); handleOpenRejectModal(req); } : undefined}
         onUndoApproval={canOperate ? (req) => { handleOpenUndoApproval(req); } : undefined}
         onRelease={canOperate ? (req) => { setDetailTarget(null); setReleaseTarget(req); } : undefined}
       />
+
+      {editTarget && (
+        <EditRequestDialog
+          request={editTarget}
+          open={Boolean(editTarget)}
+          onOpenChange={(open) => {
+            if (!open) setEditTarget(null);
+          }}
+          onSuccess={() => {
+            setEditTarget(null);
+            void refetch();
+          }}
+        />
+      )}
 
       {/* ── Undo Approval Confirmation Modal ───────────────────────────── */}
       {undoApprovalTarget && (

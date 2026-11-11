@@ -57,7 +57,14 @@ export function PendingDeliveriesCard({
         code: `${r.requesterName} (${r.department})`,
         delayText: r.relativeTime || "Pending",
         isOverdue: false,
-        href: r.kind === "supply" ? `/borrow-requests/supplies` : `/borrow-requests/borrow?status=pending`,
+        href:
+          r.kind === "material"
+            ? `/borrow-requests/materials`
+            : r.kind === "supply" || r.kind === "mixed"
+              ? `/borrow-requests/supplies`
+              : r.kind === "assign"
+                ? `/borrow-requests/assign?status=pending`
+                : `/borrow-requests/borrow?status=pending`,
       });
     });
   }

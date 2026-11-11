@@ -1,7 +1,7 @@
 "use client";
  
 import { useEffect, useRef, useState } from "react";
-import { Check, X, Calendar, User, Building2, Tag, Loader2, RotateCcw, FileText } from "lucide-react";
+import { Check, X, Calendar, User, Building2, Tag, Loader2, RotateCcw, FileText, Edit3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatItemDescription } from "@/lib/sanitize-display";
 import { purposePreviewLabel } from "@/lib/request-purpose";
@@ -192,21 +192,34 @@ export function RequestListItem({
         </span>
 
         {/* Inline Actions (only for Pending requests) */}
-        {request.status === "pending" && onApprove && (
+        {request.status === "pending" && (onApprove || onEdit) && (
           <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={() => onApprove(request)}
-              aria-label={`Approve request ${request.requestCode} from ${request.requesterName}`}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground cursor-pointer",
-                "shadow-xs transition-colors duration-150 hover:opacity-90",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1"
-              )}
-            >
-              <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-              Approve
-            </button>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(request)}
+                aria-label={`Edit request ${request.requestCode}`}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-text hover:bg-accent/10 hover:text-accent hover:border-accent/30 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <Edit3 className="h-3 w-3" />
+                Edit
+              </button>
+            )}
+            {onApprove && (
+              <button
+                type="button"
+                onClick={() => onApprove(request)}
+                aria-label={`Approve request ${request.requestCode} from ${request.requesterName}`}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground cursor-pointer",
+                  "shadow-xs transition-colors duration-150 hover:opacity-90",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1"
+                )}
+              >
+                <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                Approve
+              </button>
+            )}
             {onReject && (
               <button
                 type="button"

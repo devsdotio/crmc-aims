@@ -6,6 +6,8 @@ const KIND_LABEL: Record<string, string> = {
   borrow: "Borrow",
   assign: "Assignment",
   supply: "Supplies",
+  material: "Materials",
+  mixed: "Supplies & Materials",
 };
 
 export function LinkedRequestsNote({
@@ -13,7 +15,7 @@ export function LinkedRequestsNote({
 }: {
   related?: Array<{
     requestCode: string;
-    kind: "borrow" | "assign" | "supply" | string;
+    kind: "borrow" | "assign" | "supply" | "material" | "mixed" | string;
   }>;
 }) {
   if (!related || related.length === 0) return null;

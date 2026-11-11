@@ -93,7 +93,7 @@ export function MaintenanceLogDetailPanel({
     setEditingAssignee(false);
     setAssigneeValue(record.assignedToName?.trim() || "");
     setAssigneeError("");
-  }, [isOpen, record?.id, record?.assignedToName]);
+  }, [isOpen, record]);
 
   if (!isOpen || !record) return null;
 

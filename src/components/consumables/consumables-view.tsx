@@ -309,7 +309,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
 
   return (
     <div
-      className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:h-auto print:overflow-visible print:bg-white"
+      className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle rounded-md print:block print:h-auto print:overflow-visible print:bg-white"
       data-theme="light"
     >
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden print:hidden">
@@ -476,6 +476,7 @@ export function ConsumablesView({ lockedClassification }: ConsumablesViewProps) 
           <IssueConsumableDialog
             item={issueItem}
             allItems={items}
+            defaultClassification={lockedClassification}
             isOpen={issueOpen}
             initialLotId={issueLotId}
             onClose={() => {
