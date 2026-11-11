@@ -7,7 +7,7 @@ export type PettyCashDTO = {
   status: PettyCashStatus;
   voucherDate: string;
   payeeName: string;
-  amount: string;
+  amount: string | null;
   category: string;
   purpose: string;
   particulars: string;

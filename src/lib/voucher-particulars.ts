@@ -66,6 +66,44 @@ export function serializeParticulars(items: ParticularLineItem[]): string {
   return JSON.stringify(cleaned);
 }
 
+const INLINE_MONEY_TOKEN = /\s*(?:₱|PHP\s*)[\d,]+(?:\.\d{1,2})?/gi;
+
+/**
+ * Strip itemized unit costs and line totals from particulars JSON or legacy
+ * text for non-operator roles, preserving descriptions, quantities, UOMs, and purposes.
+ */
+export function redactParticularsCosts(raw: string): string;
+export function redactParticularsCosts(
+  raw: string | null | undefined
+): string | null;
+export function redactParticularsCosts(
+  raw: string | null | undefined
+): string | null {
+  if (raw == null) return null;
+  if (!raw.trim()) return raw;
+
+  const items = parseParticulars(raw);
+  if (items.length === 0) {
+    return raw.replace(INLINE_MONEY_TOKEN, "").trim();
+  }
+
+  return JSON.stringify(
+    items.map((item) => {
+      const description = item.description.replace(INLINE_MONEY_TOKEN, "").trim();
+      const unitOfMeasure = item.unitOfMeasure?.trim() ?? "";
+      const purpose = item.purpose?.trim() ?? "";
+      return {
+        description: description || "Item",
+        quantity: item.quantity,
+        ...(unitOfMeasure ? { unitOfMeasure } : {}),
+        unitCost: "",
+        amount: "",
+        ...(purpose ? { purpose } : {}),
+      };
+    })
+  );
+}
+
 export function parseParticulars(
   raw: string | null | undefined
 ): ParticularLineItem[] {

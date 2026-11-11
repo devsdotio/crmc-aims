@@ -186,7 +186,7 @@ export function LotReleaseDialog({
 
   const maxQty = activeLot.quantityRemaining;
   const qtyValue = parseUnsignedDecimal(quantity, 0);
-  const unitCostNum = parseFloat(activeLot.unitCost) || 0;
+  const unitCostNum = parseFloat(activeLot.unitCost ?? "0") || 0;
   const totalReleaseValue = qtyValue * unitCostNum;
 
   const handleLotChange = (nextId: string) => {

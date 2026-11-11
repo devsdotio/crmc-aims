@@ -22,6 +22,7 @@ import {
 } from "@/server/shared/errors";
 import { encodeLotQr, parseScanPayload } from "@/server/shared/qr";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import { SupplierRepository } from "@/server/modules/suppliers/supplier.repository";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
@@ -565,6 +566,7 @@ async function withPoDepartments(
   ];
   if (tenantId) {
     conditions.push(eq(purchaseOrderDepartments.tenantId, tenantId));
+    conditions.push(eq(departments.tenantId, tenantId));
   }
 
   const rows = await db
@@ -603,6 +605,25 @@ async function withPoDepartments(
     }
     return dto;
   });
+}
+
+function redactPurchaseLotForActor(
+  dto: PurchaseLotDTO,
+  actor?: ActorContext
+): PurchaseLotDTO {
+  if (!actor || isAssetOperatorRole(actor.role)) {
+    return dto;
+  }
+  return {
+    ...dto,
+    unitCost: null,
+    totalCost: null,
+    items: dto.items?.map((item) => ({
+      ...item,
+      unitCost: null,
+      totalCost: null,
+    })),
+  };
 }
 
 export class PurchaseLotService {
@@ -659,7 +680,11 @@ export class PurchaseLotService {
     return `${prefix}-${padAssetSeq(seq)}`;
   }
 
-  async list(rawQuery: unknown, actorTenantId?: string): Promise<PurchaseLotDTO[]> {
+  async list(
+    rawQuery: unknown,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<PurchaseLotDTO[]> {
     const filters = listPurchaseLotsQuerySchema.parse(rawQuery ?? {});
     // Flat list — never strips opening-balance / initial-stock lots.
     // PO index UIs exclude those via groupLotsByPO({ excludeInitialStock: true }).
@@ -737,10 +762,15 @@ export class PurchaseLotService {
     dtos = await withConsumableClassifications(dtos, actorTenantId);
     dtos = await withAssetClassifications(dtos, actorTenantId);
     dtos = await withPoDepartments(dtos, actorTenantId);
-    return withDisbursementClaims(dtos, actorTenantId);
+    const enriched = await withDisbursementClaims(dtos, actorTenantId);
+    return enriched.map((dto) => redactPurchaseLotForActor(dto, actor));
   }
 
-  async getById(rawId: string, actorTenantId?: string): Promise<PurchaseLotDTO> {
+  async getById(
+    rawId: string,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<PurchaseLotDTO> {
     const id = purchaseLotIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Purchase lot / PO", id);
@@ -753,10 +783,14 @@ export class PurchaseLotService {
     );
     const withDepts = await withPoDepartments(classified, actorTenantId);
     const [dto] = await withDisbursementClaims(withDepts, actorTenantId);
-    return dto;
+    return redactPurchaseLotForActor(dto!, actor);
   }
 
-  async getByCode(rawCode: string, actorTenantId?: string): Promise<PurchaseLotDTO> {
+  async getByCode(
+    rawCode: string,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<PurchaseLotDTO> {
     const parsed = parseScanPayload(rawCode);
     if (!parsed.code) {
       throw new BadRequestError("Lot / PO code is required.");
@@ -772,7 +806,7 @@ export class PurchaseLotService {
     );
     const withDepts = await withPoDepartments(classified, actorTenantId);
     const [dto] = await withDisbursementClaims(withDepts, actorTenantId);
-    return dto;
+    return redactPurchaseLotForActor(dto!, actor);
   }
 
   /**
@@ -1523,7 +1557,7 @@ export class PurchaseLotService {
             poNumber,
             status: initialStatus,
             itemCount: body.items.length,
-            totalCost: results.reduce((sum, r) => sum + parseFloat(r.totalCost), 0).toFixed(2),
+            totalCost: results.reduce((sum, r) => sum + parseFloat(r.totalCost ?? "0"), 0).toFixed(2),
             supplierName:
               resolvedSupplierName ||
               results.map((r) => r.supplierName).filter(Boolean)[0] ||

@@ -1,5 +1,7 @@
 import type { VoucherRow } from "@/server/db/schema";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
+import { redactParticularsCosts } from "@/lib/voucher-particulars";
 import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
 import type { VoucherType } from "@/types/vouchers";
@@ -130,7 +132,11 @@ export class VoucherService {
     return `${prefix}${String(parsed + 1).padStart(6, "0")}`;
   }
 
-  async list(rawFilters: unknown, actorTenantId?: string): Promise<{ vouchers: VoucherDTO[]; total: number }> {
+  async list(
+    rawFilters: unknown,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<{ vouchers: VoucherDTO[]; total: number }> {
     const filters = listVouchersQuerySchema.parse(rawFilters);
     const tenantId =
       actorTenantId ??
@@ -138,7 +144,7 @@ export class VoucherService {
       "global";
     const cacheKey = `tenant:${tenantId}:vouchers:list:${JSON.stringify(filters)}`;
 
-    return serverCache.wrap(
+    const result = await serverCache.wrap(
       cacheKey,
       30 * 1000,
       async () => {
@@ -153,13 +159,35 @@ export class VoucherService {
       },
       ["vouchers", `tenant:${tenantId}:vouchers`]
     );
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      return {
+        ...result,
+        vouchers: result.vouchers.map((v) => ({
+          ...v,
+          amount: null,
+          particulars: redactParticularsCosts(v.particulars),
+        })),
+      };
+    }
+    return result;
   }
 
-  async getById(rawId: string, actorTenantId?: string): Promise<VoucherDTO> {
+  async getById(
+    rawId: string,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<VoucherDTO> {
     const id = voucherIdSchema.parse(rawId);
     const row = await this.repo.findById(id, undefined, actorTenantId);
     if (!row) throw new NotFoundError("Voucher", id);
     const [dto] = await attachVoucherDepartments([toDTO(row)], actorTenantId);
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      return {
+        ...dto!,
+        amount: null,
+        particulars: redactParticularsCosts(dto!.particulars),
+      };
+    }
     return dto!;
   }
 

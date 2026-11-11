@@ -174,7 +174,7 @@ export function PettyCashDetailSheet({
   useEffect(() => {
     if (voucher) {
       setEditPayee(voucher.payeeName);
-      setEditAmount(voucher.amount);
+      setEditAmount(voucher.amount ?? "0");
       setEditDate(voucher.voucherDate);
       setEditCategory(voucher.category || "supplies");
       setEditDepartmentId(voucher.departmentId);
@@ -553,7 +553,7 @@ export function PettyCashDetailSheet({
                   Total Valuation
                 </span>
                 <span className="font-bold font-mono block mt-0.5 text-primary">
-                  {formatPhp(voucher.amount)}
+                  {voucher.amount != null ? formatPhp(voucher.amount) : "Restricted"}
                 </span>
               </div>
 
@@ -926,7 +926,7 @@ export function PettyCashDetailSheet({
                       <div>
                         <span className="text-[11px] text-text-muted block">Total Disbursed:</span>
                         <span className="font-bold text-primary font-mono mt-0.5 block text-sm">
-                          {formatPhp(voucher.amount)}
+                          {voucher.amount != null ? formatPhp(voucher.amount) : "Restricted"}
                         </span>
                       </div>
                       <div>
@@ -987,6 +987,7 @@ export function PettyCashDetailSheet({
                     <PurposeParticularsView
                       purpose={voucher.purpose}
                       items={particularItems}
+                      hideCosts={voucher.amount == null}
                     />
                   </div>
                 </>

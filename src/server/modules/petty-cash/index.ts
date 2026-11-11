@@ -25,7 +25,8 @@ export class PettyCashController {
           limit: url.searchParams.get("limit") ?? undefined,
           offset: url.searchParams.get("offset") ?? undefined,
         },
-        actor.tenantId
+        actor.tenantId,
+        actor
       );
       return ok(data);
     } catch (error) {
@@ -58,7 +59,7 @@ export class PettyCashController {
   async get(id: string) {
     try {
       const { actor } = await requireStaffShell();
-      return ok(await this.service.getById(id, actor.tenantId));
+      return ok(await this.service.getById(id, actor.tenantId, actor));
     } catch (error) {
       return handleError(error);
     }

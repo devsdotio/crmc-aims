@@ -17,8 +17,8 @@ export interface POLineItemDetail {
   quantity: number;
   /** Unit of measure (e.g. pcs, set, pair, ream). Assets default to "unit" when unset. */
   unit?: string | null;
-  unitCost: string;
-  totalCost: string;
+  unitCost: string | null;
+  totalCost: string | null;
   purpose?: string | null;
   suggestedDealer?: string | null;
   lotCode?: string;
@@ -40,8 +40,8 @@ export interface PurchaseLot {
   quantityRemaining: number;
   orderedQuantity?: number;
   receivedQuantity?: number | null;
-  unitCost: string;
-  totalCost: string;
+  unitCost: string | null;
+  totalCost: string | null;
   purchasedOn: string;
   reference: string | null;
   purpose?: string | null;

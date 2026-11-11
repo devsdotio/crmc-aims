@@ -347,7 +347,9 @@ export function PurchaseOrdersGrid({
                   <div className="flex justify-between items-center">
                     <span className="text-text-secondary font-medium">Unit Cost:</span>
                     <span className="font-mono font-semibold text-text">
-                      ₱{(parseFloat(lot.unitCost) || 0).toFixed(2)}
+                      {lot.unitCost != null
+                        ? `₱${(parseFloat(lot.unitCost) || 0).toFixed(2)}`
+                        : "Restricted"}
                     </span>
                   </div>
                 )}

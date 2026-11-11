@@ -63,8 +63,8 @@ type MergedConsumableLog = {
   changes?: Record<string, { from: unknown; to: unknown }>;
 };
 
-function formatPhp(amount: number | string | undefined): string {
-  if (amount === undefined || amount === null) return "₱0.00";
+function formatPhp(amount: number | string | null | undefined): string {
+  if (amount === undefined || amount === null) return "Restricted";
   const n = typeof amount === "number" ? amount : Number(amount);
   if (isNaN(n)) return "₱0.00";
   return `₱${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

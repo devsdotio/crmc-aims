@@ -93,7 +93,7 @@ export function groupLotsByPO(
     let totalQuantity = 0;
 
     for (const item of lineItems) {
-      totalCost += parseFloat(item.totalCost) || 0;
+      totalCost += parseFloat(item.totalCost ?? "0") || 0;
       totalQuantity += item.quantity;
     }
 

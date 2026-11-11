@@ -348,7 +348,7 @@ export function EditPoLinesDialog({
         const cost = Number.parseFloat(draft.unitCost);
         const nameChanged = draft.itemName.trim() !== li.itemName;
         const qtyChanged = qty !== li.quantity;
-        const costChanged = cost !== (parseFloat(li.unitCost) || 0);
+        const costChanged = cost !== (parseFloat(li.unitCost ?? "0") || 0);
         if (nameChanged || qtyChanged || costChanged) {
           await updateMutation.mutateAsync({
             id: li.id,

@@ -306,8 +306,8 @@ export function PurchaseOrderDetailSheet({
   };
 
   const payload = lot.qrPayload?.trim() || `CRMC-AIMS-LOT:${lot.lotCode.trim()}`;
-  const totalCostNum = parseFloat(lot.totalCost) || 0;
-  const unitCostNum = parseFloat(lot.unitCost) || 0;
+  const totalCostNum = parseFloat(lot.totalCost ?? "0") || 0;
+  const unitCostNum = parseFloat(lot.unitCost ?? "0") || 0;
   const consumedUnits = Math.max(0, lot.quantity - lot.quantityRemaining);
   const remainingValue = lot.quantityRemaining * unitCostNum;
   const remainingRatio = lot.quantity > 0 ? (lot.quantityRemaining / lot.quantity) * 100 : 0;
@@ -318,8 +318,8 @@ export function PurchaseOrderDetailSheet({
   const totalLineItems = lotsToUpdate.length > 1 ? lotsToUpdate.length : lot.items?.length || 1;
   const aggregateTotalCost = isMultiItem
     ? (lot.items?.length
-        ? lot.items.reduce((acc, item) => acc + (parseFloat(item.totalCost) || 0), 0)
-        : lotsToUpdate.reduce((acc, li) => acc + (parseFloat(li.totalCost) || 0), 0))
+        ? lot.items.reduce((acc, item) => acc + (parseFloat(item.totalCost ?? "0") || 0), 0)
+        : lotsToUpdate.reduce((acc, li) => acc + (parseFloat(li.totalCost ?? "0") || 0), 0))
     : totalCostNum;
   const aggregateTotalQuantity = isMultiItem
     ? (lot.items?.length
@@ -1249,9 +1249,9 @@ export function PurchaseOrderDetailSheet({
                                 )}
                                 {section.lines.map((item) => {
                                   lineNo += 1;
-                                  const iUnitCost = parseFloat(item.unitCost) || 0;
+                                  const iUnitCost = parseFloat(item.unitCost ?? "0") || 0;
                                   const iTotalCost =
-                                    parseFloat(item.totalCost) || 0;
+                                    parseFloat(item.totalCost ?? "0") || 0;
                                   return (
                                     <tr
                                       key={item.id}
@@ -1317,7 +1317,7 @@ export function PurchaseOrderDetailSheet({
                               {formatPhp(
                                 lotsToUpdate.reduce(
                                   (sum, li) =>
-                                    sum + (parseFloat(li.totalCost) || 0),
+                                    sum + (parseFloat(li.totalCost ?? "0") || 0),
                                   0
                                 )
                               )}

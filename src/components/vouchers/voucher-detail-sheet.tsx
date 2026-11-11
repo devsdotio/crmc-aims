@@ -864,6 +864,7 @@ export function VoucherDetailSheet({
                     purpose={voucher.purpose}
                     items={particularItems}
                     displayPurpose={cleanPurpose}
+                    hideCosts={voucher.amount == null}
                   />
                 </div>
               </div>
@@ -913,9 +914,9 @@ export function VoucherDetailSheet({
                               </span>
                               <span>•</span>
                               <span className="font-mono text-emerald-600 dark:text-emerald-400 font-medium">
-                                {formatPhp(
-                                  parseFloat(linkedLot.totalCost) || 0,
-                                )}
+                                {linkedLot.totalCost != null
+                                  ? formatPhp(parseFloat(linkedLot.totalCost) || 0)
+                                  : "Restricted"}
                               </span>
                             </div>
                           )}
@@ -993,7 +994,9 @@ export function VoucherDetailSheet({
                     </div>
                     <span className="font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                       PO Total:{" "}
-                      {formatPhp(parseFloat(linkedLot.totalCost) || 0)}
+                      {linkedLot.totalCost != null
+                        ? formatPhp(parseFloat(linkedLot.totalCost) || 0)
+                        : "Restricted"}
                     </span>
                   </div>
 
@@ -1022,10 +1025,14 @@ export function VoucherDetailSheet({
                             {linkedLot.itemType === "asset" ? "unit(s)" : "pcs"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono text-text">
-                            {formatPhp(parseFloat(linkedLot.unitCost) || 0)}
+                            {linkedLot.unitCost != null
+                              ? formatPhp(parseFloat(linkedLot.unitCost) || 0)
+                              : "Restricted"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                            {formatPhp(parseFloat(linkedLot.totalCost) || 0)}
+                            {linkedLot.totalCost != null
+                              ? formatPhp(parseFloat(linkedLot.totalCost) || 0)
+                              : "Restricted"}
                           </td>
                         </tr>
                       </tbody>

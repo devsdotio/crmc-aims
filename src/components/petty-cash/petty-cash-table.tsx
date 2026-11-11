@@ -153,7 +153,9 @@ export function PettyCashTable({
           comparison = (a.category || "").localeCompare(b.category || "");
           break;
         case "amount":
-          comparison = parseFloat(a.amount) - parseFloat(b.amount);
+          comparison =
+            (parseFloat(a.amount ?? "0") || 0) -
+            (parseFloat(b.amount ?? "0") || 0);
           break;
         case "status":
           comparison = a.status.localeCompare(b.status);
@@ -396,7 +398,7 @@ export function PettyCashTable({
 
                   {/* Amount */}
                   <td className="py-3.5 px-4 text-right font-mono font-bold text-text whitespace-nowrap">
-                    {formatPhp(voucher.amount)}
+                    {voucher.amount != null ? formatPhp(voucher.amount) : "Restricted"}
                   </td>
 
                   {/* Status */}

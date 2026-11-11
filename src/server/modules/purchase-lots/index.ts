@@ -75,7 +75,8 @@ export class PurchaseLotController {
               actor.role
             ),
           },
-          actor.tenantId
+          actor.tenantId,
+          actor
         )
       );
     } catch (error) {
@@ -86,7 +87,7 @@ export class PurchaseLotController {
   async get(id: string) {
     try {
       const { actor } = await requireStaffShell();
-      return ok(await this.service.getById(id, actor.tenantId));
+      return ok(await this.service.getById(id, actor.tenantId, actor));
     } catch (error) {
       return handleError(error);
     }
@@ -97,7 +98,7 @@ export class PurchaseLotController {
       const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const code = url.searchParams.get("code") ?? "";
-      return ok(await this.service.getByCode(code, actor.tenantId));
+      return ok(await this.service.getByCode(code, actor.tenantId, actor));
     } catch (error) {
       return handleError(error);
     }

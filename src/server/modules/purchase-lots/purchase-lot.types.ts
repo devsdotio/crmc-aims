@@ -22,8 +22,8 @@ export type PurchaseLotDTO = {
   orderedQuantity?: number;
   /** Qty actually stocked on deliver (from notes metadata). */
   receivedQuantity?: number | null;
-  unitCost: string;
-  totalCost: string;
+  unitCost: string | null;
+  totalCost: string | null;
   purchasedOn: string;
   reference: string | null;
   purpose?: string | null;
