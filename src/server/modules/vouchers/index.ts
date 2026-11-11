@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireActor, requireAssetOperator } from "@/server/shared/auth";
+import { requireAssetOperator, requireStaffShell } from "@/server/shared/auth";
 import { created, handleError, ok } from "@/server/shared/http";
 
 import { VoucherService } from "./voucher.service";
@@ -12,7 +12,7 @@ export class VoucherController {
 
   async list(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const data = await this.service.list(
         {
@@ -34,7 +34,7 @@ export class VoucherController {
 
   async nextCode(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const type = (url.searchParams.get("type") as "disbursement" | "property_transfer" | "liquidation") ?? "disbursement";
       const yearRaw = url.searchParams.get("year");
@@ -56,7 +56,7 @@ export class VoucherController {
 
   async get(id: string) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);

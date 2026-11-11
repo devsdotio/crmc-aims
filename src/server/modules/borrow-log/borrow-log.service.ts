@@ -195,9 +195,8 @@ export class BorrowLogService {
         delete filters.department;
       } else {
         filters.borrowerUserId = actor.userId;
-        if (actor.email) {
-          filters.borrowerEmail = actor.email;
-        }
+        delete filters.borrowerEmail;
+        delete filters.department;
       }
     }
 

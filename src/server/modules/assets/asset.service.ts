@@ -300,6 +300,7 @@ export class AssetService {
     if (actor?.role === "borrower") {
       // Never trust client department filters — session only.
       delete (filters as { departmentHeldId?: string }).departmentHeldId;
+      filters.borrowerSafeSearch = true;
       if (!filters.catalog) {
         if (!actor.departmentId) {
           throw new BadRequestError(
@@ -317,8 +318,19 @@ export class AssetService {
     );
 
     if (actor?.role === "borrower" && filters.catalog) {
-      // Narrow catalog: hide valuation for request pickers.
-      return dtos.map((d) => ({ ...d, value: undefined }));
+      // Narrow catalog: hide valuation, holder PII, notes, serial numbers, and supplier links.
+      return dtos.map((d) => ({
+        ...d,
+        value: undefined,
+        currentHolder: d.currentHolder ? "In Custody" : undefined,
+        department: undefined,
+        notes: undefined,
+        serialNumber: undefined,
+        supplierId: undefined,
+        purchaseDate: undefined,
+        reservedForRequestId: d.reservedForRequestId ? "reserved" : null,
+        maintenanceHistory: [],
+      }));
     }
     return dtos;
   }

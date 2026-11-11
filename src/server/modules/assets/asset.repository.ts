@@ -193,15 +193,23 @@ export class AssetRepository implements IAssetRepository {
     if (filters?.search?.trim()) {
       const q = `%${filters.search.trim()}%`;
       conditions.push(
-        or(
-          ilike(assets.assetCode, q),
-          ilike(assets.name, q),
-          ilike(assets.serialNumber, q),
-          ilike(assets.location, q),
-          ilike(assets.currentHolder, q),
-          ilike(assets.category, q),
-          ilike(assets.classification, q)
-        )!
+        filters.borrowerSafeSearch
+          ? or(
+              ilike(assets.assetCode, q),
+              ilike(assets.name, q),
+              ilike(assets.location, q),
+              ilike(assets.category, q),
+              ilike(assets.classification, q)
+            )!
+          : or(
+              ilike(assets.assetCode, q),
+              ilike(assets.name, q),
+              ilike(assets.serialNumber, q),
+              ilike(assets.location, q),
+              ilike(assets.currentHolder, q),
+              ilike(assets.category, q),
+              ilike(assets.classification, q)
+            )!
       );
     }
     const base = db

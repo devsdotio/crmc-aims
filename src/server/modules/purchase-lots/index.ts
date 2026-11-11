@@ -1,7 +1,8 @@
 import type { NextRequest } from "next/server";
 
-import { requireActor, requireAssetOperator } from "@/server/shared/auth";
+import { requireAssetOperator, requireStaffShell } from "@/server/shared/auth";
 import { handleError, ok } from "@/server/shared/http";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import { ConsumableService } from "@/server/modules/consumables/consumable.service";
 
 import { PurchaseLotService } from "./purchase-lot.service";
@@ -14,7 +15,7 @@ export class PurchaseLotController {
 
   async list(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       const consumableId = url.searchParams.get("consumableId") ?? undefined;
@@ -28,14 +29,16 @@ export class PurchaseLotController {
                 .filter(Boolean)
             )
           : undefined;
-      const ensureIds = [
-        ...new Set([
-          ...(consumableId ? [consumableId] : []),
-          ...(consumableIds ?? []),
-        ]),
-      ];
-      for (const id of ensureIds) {
-        await this.consumables.ensureOpeningLotIfMissing(id, actor);
+      if (isAssetOperatorRole(actor.role)) {
+        const ensureIds = [
+          ...new Set([
+            ...(consumableId ? [consumableId] : []),
+            ...(consumableIds ?? []),
+          ]),
+        ];
+        for (const id of ensureIds) {
+          await this.consumables.ensureOpeningLotIfMissing(id, actor);
+        }
       }
       return ok(
         await this.service.list(
@@ -82,7 +85,7 @@ export class PurchaseLotController {
 
   async get(id: string) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);
@@ -91,7 +94,7 @@ export class PurchaseLotController {
 
   async getByCode(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const code = url.searchParams.get("code") ?? "";
       return ok(await this.service.getByCode(code, actor.tenantId));

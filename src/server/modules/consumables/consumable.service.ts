@@ -33,6 +33,18 @@ import {
   allocationsToMovementLines,
 } from "@/server/modules/stock-movements";
 import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
+
+export function combineIssueMovementNotes(
+  destNote: string,
+  inputNotes?: string | null
+): string | null {
+  const trimmedDest = destNote.trim();
+  const trimmedInput = inputNotes?.trim() ?? "";
+  if (!trimmedDest && !trimmedInput) return null;
+  if (!trimmedDest) return trimmedInput;
+  if (!trimmedInput || trimmedDest.includes(trimmedInput)) return trimmedDest;
+  return `${trimmedDest}. ${trimmedInput}`;
+}
 import { AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 
 import { ConsumableRepository } from "./consumable.repository";
@@ -235,7 +247,10 @@ export class ConsumableService {
       classification: filters.classification,
       categoryClass: filters.categoryClass,
       search: filters.search,
-      stockLevel: filters.stockLevel === "critical" ? "critical" : undefined,
+      stockLevel:
+        filters.stockLevel && filters.stockLevel !== "all"
+          ? filters.stockLevel
+          : undefined,
       page: filters.page,
       limit: filters.limit,
       includeSandbox: filters.includeSandbox === true,
@@ -243,22 +258,13 @@ export class ConsumableService {
 
     let dtos = result.data.map(toDTO);
 
-    if (filters.stockLevel && filters.stockLevel !== "all") {
-      dtos = dtos.filter((row) => {
-        const severity = getStockSeverity(row.currentQty, row.minThreshold);
-        if (filters.stockLevel === "healthy") return severity === "healthy";
-        if (filters.stockLevel === "low") return severity === "low";
-        if (filters.stockLevel === "critical") return severity === "critical";
-        return true;
-      });
-    }
-
     if (actor?.role === "borrower" && filters.catalog) {
-      // Narrow catalog: no movement history / supplier for request pickers.
+      // Narrow catalog: no movement history / supplier / internal notes for request pickers.
       dtos = dtos.map((row) => ({
         ...row,
         history: [],
         supplier: undefined,
+        notes: undefined,
       }));
     }
 
@@ -514,6 +520,13 @@ export class ConsumableService {
         input.categoryClass
       );
       categoryName = resolved.categoryName;
+      categoryClass = resolved.categoryClass;
+    } else if (input.categoryClass !== undefined) {
+      const resolved = await this.resolveConsumableCategoryAndClass(
+        existing.category,
+        actorTenantId,
+        input.categoryClass
+      );
       categoryClass = resolved.categoryClass;
     }
 
@@ -1059,7 +1072,7 @@ export class ConsumableService {
           actor,
           departmentId: dest.departmentId,
           projectId: dest.projectId,
-          notes: input.notes ?? destNote ?? null,
+          notes: combineIssueMovementNotes(destNote, input.notes),
           lines: allocationsToMovementLines(allocations),
         },
         tx

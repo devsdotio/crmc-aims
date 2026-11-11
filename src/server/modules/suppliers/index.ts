@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireActor, requireAssetOperator } from "@/server/shared/auth";
+import { requireAssetOperator, requireStaffShell } from "@/server/shared/auth";
 import { created, handleError, ok, okWithEtag } from "@/server/shared/http";
 
 import { SupplierService } from "./supplier.service";
@@ -12,7 +12,7 @@ export class SupplierController {
 
   async list(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const data = await this.service.list(
         {
@@ -32,7 +32,7 @@ export class SupplierController {
 
   async get(id: string) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       return ok(await this.service.getById(id, actor.tenantId));
     } catch (error) {
       return handleError(error);

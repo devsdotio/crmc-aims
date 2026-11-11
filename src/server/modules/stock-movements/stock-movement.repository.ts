@@ -4,6 +4,7 @@ import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
+  consumableRequests,
   consumables,
   stockMovements,
   type NewStockMovementRow,
@@ -15,6 +16,8 @@ export type StockMovementListRow = StockMovementRow & {
   itemCode: string;
   itemName: string;
   unit: string;
+  classification?: string | null;
+  requestCode?: string | null;
 };
 
 /** Notes marker linking a compensating restock back to the original issue. */
@@ -244,6 +247,8 @@ export class StockMovementRepository {
       itemCode: consumables.itemCode,
       itemName: consumables.name,
       unit: consumables.unit,
+      classification: consumables.classification,
+      requestCode: consumableRequests.requestCode,
     };
 
     const conditions = [];
@@ -284,7 +289,11 @@ export class StockMovementRepository {
     const base = db
       .select(columns)
       .from(stockMovements)
-      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id));
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
+      .leftJoin(
+        consumableRequests,
+        eq(stockMovements.requestId, consumableRequests.id)
+      );
 
     const filtered =
       conditions.length > 0 ? base.where(and(...conditions)) : base;

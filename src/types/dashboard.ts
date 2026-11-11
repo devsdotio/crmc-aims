@@ -8,6 +8,10 @@ export type DashboardSummary = {
   pendingBorrowRequests?: number;
   /** Borrower sidebar: pending supply requisitions. */
   pendingSupplyRequests?: number;
+  /** Borrower sidebar: pending material requisitions. */
+  pendingMaterialRequests?: number;
+  /** Borrower sidebar: pending mixed (supply + material) requisitions. */
+  pendingMixedRequests?: number;
   overdueAssets: number;
   lowStockItems: number;
   totalRequests?: number;

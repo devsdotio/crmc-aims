@@ -4,7 +4,7 @@ type Params = { params: Promise<{ id: string }> };
 
 /**
  * @swagger
- * /api/borrow-requests/{id}/cancel:
+ * /api/requests/{id}/cancel:
  *   post:
  *     summary: Cancel a pending borrow request (requester or operator)
  *     tags: [BorrowRequests]

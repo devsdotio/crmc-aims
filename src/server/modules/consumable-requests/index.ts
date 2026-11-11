@@ -19,6 +19,7 @@ export class ConsumableRequestController {
         await this.service.list(
           {
             status: url.searchParams.get("status") ?? undefined,
+            classification: url.searchParams.get("classification") ?? undefined,
             department: url.searchParams.get("department") ?? undefined,
             search: url.searchParams.get("search") ?? undefined,
             startDate: url.searchParams.get("startDate") ?? undefined,
@@ -128,9 +129,9 @@ export class ConsumableRequestController {
 
   async update(request: NextRequest | Request, id: string) {
     try {
-      const session = await requireAssetOperator();
+      const actor = await requireActor();
       const body = await request.json();
-      return ok(await this.service.update(id, body, session.actor));
+      return ok(await this.service.update(id, body, actor));
     } catch (error) {
       return handleError(error);
     }

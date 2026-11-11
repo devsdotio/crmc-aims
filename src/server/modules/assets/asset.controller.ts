@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireAssetOperator, requireActor } from "@/server/shared/auth";
+import { requireAssetOperator, requireActor, requireStaffShell } from "@/server/shared/auth";
 import {
   created,
   handleError,
@@ -60,7 +60,7 @@ export class AssetController {
 
   async peekNextAssetCode(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const url = new URL(request.url);
       const category = url.searchParams.get("category")?.trim();
       if (!category) {
@@ -86,7 +86,7 @@ export class AssetController {
 
   async getAsset(id: string) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const data = await this.assetService.getAssetById(id, session.tenantId);
       return ok(data);
     } catch (error) {
@@ -96,7 +96,7 @@ export class AssetController {
 
   async getByCode(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const url = new URL(request.url);
       const code = url.searchParams.get("code") ?? "";
       const data = await this.assetService.getAssetByCode(code, session.tenantId);
@@ -227,7 +227,7 @@ export class AssetController {
 
   async listLifecycle(request: NextRequest | Request, id: string) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const url = new URL(request.url);
       const limitRaw = url.searchParams.get("limit");
       const limit = limitRaw ? Number(limitRaw) : undefined;
@@ -246,7 +246,7 @@ export class AssetController {
 
   async listModels(request: NextRequest | Request) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
@@ -279,7 +279,7 @@ export class AssetController {
 
   async getModel(id: string) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       return ok(await this.modelService.getById(id, session.tenantId));
     } catch (error) {
       return handleError(error);
@@ -308,7 +308,7 @@ export class AssetController {
 
   async listModelUnits(id: string) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       return ok(await this.assetService.listUnitsForModel(id, session.tenantId));
     } catch (error) {
       return handleError(error);

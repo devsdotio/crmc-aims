@@ -11,6 +11,7 @@ export const consumableRequestStatusSchema = z.enum([
 
 export const listConsumableRequestsQuerySchema = z.object({
   status: consumableRequestStatusSchema.optional(),
+  classification: z.enum(["supply", "material", "mixed"]).optional(),
   department: z.string().trim().max(120).optional(),
   search: z.string().trim().max(200).optional(),
   requesterUserId: z.string().uuid().optional(),

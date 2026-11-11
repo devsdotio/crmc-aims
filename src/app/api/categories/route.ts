@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
-import { requireActor } from "@/server/shared/auth";
+import { requireActor, requireAssetOperator } from "@/server/shared/auth";
 import {
   CategoryRepository,
   type CategoryType,
@@ -55,7 +55,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireActor();
+    const { actor } = await requireAssetOperator();
     const db = getDb();
     const body = await request.json();
 

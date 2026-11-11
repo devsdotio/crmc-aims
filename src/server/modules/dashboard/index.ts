@@ -1,4 +1,4 @@
-import { requireActor } from "@/server/shared/auth";
+import { requireActor, requireStaffShell } from "@/server/shared/auth";
 import { isAssetOperatorRole } from "@/server/shared/roles";
 import { handleError, ok, okWithEtag } from "@/server/shared/http";
 
@@ -80,7 +80,7 @@ export class DashboardController {
   /** Stock volume inflow vs outflow time-series bucketed by timeframe and category. */
   async stockVolume(request: Request) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const tenantId = session.tenantId;
       const url = new URL(request.url);
       const timeframe = (url.searchParams.get("timeframe") ?? "monthly") as
@@ -107,7 +107,7 @@ export class DashboardController {
   /** Dashboard asset rows with custody precedence, condition status, and valuation. */
   async assets(request: Request) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const tenantId = session.tenantId;
       const url = new URL(request.url);
       const limit = Math.min(
@@ -139,7 +139,7 @@ export class DashboardController {
   /** Combined asset and consumable category distribution. */
   async topCategories(request: Request) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       const tenantId = session.tenantId;
       const url = new URL(request.url);
       const limit = Math.min(

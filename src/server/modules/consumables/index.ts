@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireAssetOperator, requireActor } from "@/server/shared/auth";
+import { requireActor, requireAssetOperator, requireStaffShell } from "@/server/shared/auth";
 import { BadRequestError } from "@/server/shared/errors";
 import { created, handleError, ok } from "@/server/shared/http";
 
@@ -25,6 +25,7 @@ export class ConsumableController {
           {
             category: url.searchParams.get("category") ?? undefined,
             classification: url.searchParams.get("classification") ?? undefined,
+            categoryClass: url.searchParams.get("categoryClass") ?? undefined,
             stockLevel: url.searchParams.get("stockLevel") ?? undefined,
             search: url.searchParams.get("search") ?? undefined,
             page: pageParam ? parseInt(pageParam, 10) : undefined,
@@ -46,7 +47,7 @@ export class ConsumableController {
 
   async get(id: string) {
     try {
-      const session = await requireActor();
+      const { actor: session } = await requireStaffShell();
       return ok(await this.service.getById(id, session.tenantId));
     } catch (error) {
       return handleError(error);

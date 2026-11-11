@@ -137,6 +137,14 @@ export class ConsumableRepository implements IConsumableRepository {
       conditions.push(
         sql`${consumables.currentQty} <= ${consumables.minThreshold}`
       );
+    } else if (filters.stockLevel === "low") {
+      conditions.push(
+        sql`${consumables.currentQty} > ${consumables.minThreshold} and ${consumables.currentQty} <= (${consumables.minThreshold} * 1.2)`
+      );
+    } else if (filters.stockLevel === "healthy") {
+      conditions.push(
+        sql`${consumables.currentQty} > (${consumables.minThreshold} * 1.2)`
+      );
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;

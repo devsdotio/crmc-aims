@@ -7,6 +7,7 @@ import {
   consumableRequestLines,
   consumableRequestReleaseAllocations,
   consumableRequests,
+  consumables,
   type ConsumableRequestLineRow,
   type ConsumableRequestReleaseAllocationRow,
   type ConsumableRequestRow,
@@ -87,6 +88,29 @@ export class ConsumableRequestRepository
       conditions.push(
         sql`date(${consumableRequests.requestedAt}) <= ${filters.endDate}`
       );
+    }
+    if (filters.classification) {
+      const materialExists = sql`exists (
+        select 1
+        from ${consumableRequestLines} l
+        inner join ${consumables} c on c.id = l.consumable_id
+        where l.request_id = ${consumableRequests.id}
+          and lower(trim(c.classification)) = 'material'
+      )`;
+      const supplyExists = sql`exists (
+        select 1
+        from ${consumableRequestLines} l
+        inner join ${consumables} c on c.id = l.consumable_id
+        where l.request_id = ${consumableRequests.id}
+          and (c.classification is null or lower(trim(c.classification)) <> 'material')
+      )`;
+      if (filters.classification === "material") {
+        conditions.push(sql`${materialExists} and not ${supplyExists}`);
+      } else if (filters.classification === "mixed") {
+        conditions.push(sql`${materialExists} and ${supplyExists}`);
+      } else {
+        conditions.push(sql`not ${materialExists}`);
+      }
     }
     return conditions;
   }
@@ -177,6 +201,69 @@ export class ConsumableRequestRepository
       .from(consumableRequests)
       .where(and(...conditions));
     return Number(row?.value ?? 0);
+  }
+
+  /**
+   * Pending consumable request counts split strictly into pure supplies,
+   * pure materials, and mixed requests (both line classifications present).
+   */
+  async countPendingByClassification(
+    session?: DbSession,
+    userId?: string,
+    tenantId?: string
+  ): Promise<{ supply: number; material: number; mixed: number }> {
+    const db = this.db(session);
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const conditions = [eq(consumableRequests.status, "pending")];
+    if (resolvedTenantId) {
+      conditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+    }
+    if (userId) {
+      conditions.push(eq(consumableRequests.requesterUserId, userId));
+    }
+
+    const rows = await db
+      .select({
+        id: consumableRequests.id,
+        classification: consumables.classification,
+      })
+      .from(consumableRequests)
+      .leftJoin(
+        consumableRequestLines,
+        eq(consumableRequestLines.requestId, consumableRequests.id)
+      )
+      .leftJoin(
+        consumables,
+        eq(consumableRequestLines.consumableId, consumables.id)
+      )
+      .where(and(...conditions));
+
+    const flagsByRequest = new Map<
+      string,
+      { hasSupply: boolean; hasMaterial: boolean }
+    >();
+    for (const row of rows) {
+      const entry = flagsByRequest.get(row.id) ?? {
+        hasSupply: false,
+        hasMaterial: false,
+      };
+      if (row.classification?.trim().toLowerCase() === "material") {
+        entry.hasMaterial = true;
+      } else if (row.classification != null) {
+        entry.hasSupply = true;
+      }
+      flagsByRequest.set(row.id, entry);
+    }
+
+    let supply = 0;
+    let material = 0;
+    let mixed = 0;
+    for (const entry of flagsByRequest.values()) {
+      if (entry.hasSupply && entry.hasMaterial) mixed += 1;
+      else if (entry.hasMaterial) material += 1;
+      else supply += 1;
+    }
+    return { supply, material, mixed };
   }
 
   async create(

@@ -73,6 +73,7 @@ export type StockMovementDTO = {
   itemCode?: string;
   itemName?: string;
   unit?: string;
+  classification?: "supply" | "material";
   qty: number;
   direction: StockMovementDirection;
   reason: StockMovementReason;
@@ -84,6 +85,7 @@ export type StockMovementDTO = {
   unitCost: string | null;
   lineTotal: string | null;
   requestId: string | null;
+  requestCode?: string | null;
   notes: string | null;
   actorName: string;
   createdAt: string;
@@ -213,6 +215,12 @@ function toDTO(
     itemCode: listed.itemCode,
     itemName: listed.itemName,
     unit: listed.unit,
+    classification:
+      listed.classification === undefined
+        ? undefined
+        : listed.classification?.trim().toLowerCase() === "material"
+          ? "material"
+          : "supply",
     qty: toQty(row.qty),
     direction: row.direction,
     reason: row.reason,
@@ -224,6 +232,7 @@ function toDTO(
     unitCost: row.unitCost,
     lineTotal: row.lineTotal,
     requestId: row.requestId,
+    requestCode: listed.requestCode ?? null,
     notes: row.notes,
     actorName: row.actorName,
     createdAt: toIso(row.createdAt),
@@ -232,6 +241,8 @@ function toDTO(
     isReversal: extras?.isReversal ?? Boolean(row.notes?.includes("[REVERSES:")),
   };
 }
+
+export { toDTO as stockMovementToDTO };
 
 export class StockMovementService {
   constructor(
@@ -284,7 +295,13 @@ export class StockMovementService {
     return rows.map((row) => {
       const reversal = reversals.get(row.id);
       return toDTO(
-        { ...row, itemCode: item.itemCode, itemName: item.name, unit: item.unit },
+        {
+          ...row,
+          itemCode: item.itemCode,
+          itemName: item.name,
+          unit: item.unit,
+          classification: item.classification,
+        },
         labels,
         {
           voided: Boolean(reversal) || isVoidedNotes(row.notes),
@@ -346,6 +363,7 @@ export class StockMovementService {
           unitCost: null,
           lineTotal: null,
           purchaseLotId: null,
+          lotCode: null,
         };
       }
       return dto;
@@ -474,6 +492,7 @@ export class StockMovementService {
           itemCode: consumable?.itemCode,
           itemName: consumable?.name,
           unit: consumable?.unit,
+          classification: consumable?.classification,
         } as StockMovementListRow,
         labels,
         {

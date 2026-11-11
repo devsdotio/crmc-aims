@@ -1,4 +1,4 @@
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type {
   ConsumableRequestHistoryEntry,
   ConsumableRequestLineRow,
@@ -50,6 +50,9 @@ import {
   updateConsumableRequestSchema,
 } from "./consumable-request.validation";
 import { summarizePurposes } from "@/lib/request-purpose";
+import {
+  deriveConsumableRequestKind,
+} from "@/lib/consumable-classification";
 import { displayQty, formatQty, qtyEquals, roundQty, toQty } from "@/lib/qty";
 import {
   loadLinkedRequestSummaries,
@@ -136,6 +139,13 @@ function toDTO(
   const allocDtos = allocations.map(toAllocationDTO);
   const totalCost = allocDtos.reduce((sum, a) => sum + Number(a.lineTotal), 0);
   const releasedByLine = releasedQtyByLineId(allocations);
+  const lineDtos = lines.map((line) =>
+    toLineDTO(
+      line,
+      releasedByLine.get(line.id) ?? 0,
+      classificationByConsumableId.get(line.consumableId)
+    )
+  );
   return {
     id: row.id,
     requestCode: row.requestCode,
@@ -148,6 +158,9 @@ function toDTO(
     projectId: row.projectId,
     source: row.source ?? "portal",
     requestedByName: row.requestedByName ?? undefined,
+    classification: deriveConsumableRequestKind(
+      lineDtos.map((line) => line.classification)
+    ),
     submissionGroupId: row.submissionGroupId ?? undefined,
     relatedRequests,
     purpose: row.purpose,
@@ -157,13 +170,7 @@ function toDTO(
     cancellationReason: row.cancellationReason ?? undefined,
     receivedBy: row.receivedBy ?? undefined,
     history,
-    lines: lines.map((line) =>
-      toLineDTO(
-        line,
-        releasedByLine.get(line.id) ?? 0,
-        classificationByConsumableId.get(line.consumableId)
-      )
-    ),
+    lines: lineDtos,
     allocations: allocDtos,
     totalCost: money(totalCost),
     approvedAt: row.approvedAt
@@ -219,18 +226,21 @@ export class ConsumableRequestService {
   ) {}
 
   private async classificationMapForLines(
-    lines: ConsumableRequestLineRow[]
+    lines: ConsumableRequestLineRow[],
+    tenantId?: string
   ): Promise<Map<string, "supply" | "material">> {
     const map = new Map<string, "supply" | "material">();
     const ids = [...new Set(lines.map((l) => l.consumableId))];
     if (ids.length === 0) return map;
+    const conditions = [inArray(consumables.id, ids)];
+    if (tenantId) conditions.push(eq(consumables.tenantId, tenantId));
     const rows = await getDb()
       .select({
         id: consumables.id,
         classification: consumables.classification,
       })
       .from(consumables)
-      .where(inArray(consumables.id, ids));
+      .where(and(...conditions));
     for (const row of rows) {
       map.set(
         row.id,
@@ -252,7 +262,7 @@ export class ConsumableRequestService {
       loadLinkedRequestSummaries([row.submissionGroupId], tenantId),
     ]);
     const classificationByConsumableId =
-      await this.classificationMapForLines(lines);
+      await this.classificationMapForLines(lines, tenantId ?? row.tenantId);
     return toDTO(
       row,
       lines,
@@ -308,7 +318,7 @@ export class ConsumableRequestService {
       actor?.tenantId
     );
     const classificationByConsumableId =
-      await this.classificationMapForLines(allLines);
+      await this.classificationMapForLines(allLines, actor?.tenantId);
 
     return {
       data: rows.map((row) =>
@@ -414,6 +424,12 @@ export class ConsumableRequestService {
       requireDepartment: !input.projectId,
     });
 
+    const isBorrower = actor.role === "borrower";
+    const requesterName = isBorrower ? actor.displayName : input.requesterName;
+    const requesterEmail = (
+      isBorrower ? (actor.email ?? input.requesterEmail) : input.requesterEmail
+    ).toLowerCase();
+
     const headerPurpose =
       input.purpose?.trim() ||
       summarizePurposes(input.lines.map((l) => l.purpose));
@@ -426,8 +442,8 @@ export class ConsumableRequestService {
           tenantId: actor.tenantId,
           requestCode,
           requesterUserId,
-          requesterName: input.requesterName,
-          requesterEmail: input.requesterEmail.toLowerCase(),
+          requesterName,
+          requesterEmail,
           requesterPhone: input.requesterPhone ?? "",
           department: dest.departmentName ?? "",
           departmentId: dest.departmentId,
@@ -624,7 +640,8 @@ export class ConsumableRequestService {
         note: input.note ?? null,
       },
     });
-    return this.hydrate(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.hydrate(updated, actor.tenantId);
   }
 
   async reject(
@@ -673,7 +690,8 @@ export class ConsumableRequestService {
         reason: input.reason,
       },
     });
-    return this.hydrate(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.hydrate(updated, actor.tenantId);
   }
 
   async cancel(
@@ -766,7 +784,8 @@ export class ConsumableRequestService {
         reason: reason || null,
       },
     });
-    return this.hydrate(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.hydrate(updated, actor.tenantId);
   }
 
   async undoApproval(
@@ -851,7 +870,8 @@ export class ConsumableRequestService {
         note: noteText,
       },
     });
-    return this.hydrate(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.hydrate(updated, actor.tenantId);
   }
 
   /**
@@ -900,7 +920,7 @@ export class ConsumableRequestService {
       ? `Released to: ${input.receivedBy}. ${input.note}`
       : `Released to: ${input.receivedBy}`;
 
-    const dto = await withTransaction(async (tx) => {
+    const updated = await withTransaction(async (tx) => {
       const allocationRows: Array<{
         requestId: string;
         requestLineId: string;
@@ -1076,9 +1096,11 @@ export class ConsumableRequestService {
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
-      const lines = await this.repo.listLinesByRequestId(id, tx);
-      return toDTO(up, lines, allAllocations);
+      return up;
     });
+
+    invalidateDashboardCache(actor.tenantId);
+    const dto = await this.hydrate(updated, actor.tenantId);
 
     await this.auditLogs.log({
       entityType: AUDIT_ENTITY.consumableRequest,
@@ -1110,15 +1132,36 @@ export class ConsumableRequestService {
     const input = updateConsumableRequestSchema.parse(rawInput);
     const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Consumable request", id);
+
+    const isOperator = isAssetOperatorRole(actor.role);
+    if (!isOperator && existing.requesterUserId !== actor.userId) {
+      throw new ForbiddenError("You can only edit your own pending requests.");
+    }
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be edited.");
+    }
+
+    if (input.projectId && !isOperator) {
+      throw new ForbiddenError(
+        "Department accounts cannot assign requests to a project."
+      );
     }
 
     let departmentName = existing.department;
     let departmentId = existing.departmentId;
     let projectId = existing.projectId;
 
-    if (
+    if (actor.role === "borrower") {
+      const dest = await resolveDepartmentSnapshot({
+        actor,
+        submittedDepartmentId: input.departmentId ?? null,
+        submittedDepartmentName: input.department ?? null,
+        requireDepartment: true,
+      });
+      departmentName = dest.departmentName ?? existing.department;
+      departmentId = dest.departmentId;
+      projectId = null;
+    } else if (
       input.departmentId !== undefined ||
       input.projectId !== undefined ||
       input.department !== undefined
@@ -1187,7 +1230,7 @@ export class ConsumableRequestService {
       historyEntry("edited", actor.displayName, input.editReason),
     ];
 
-    const dto = await withTransaction(async (tx) => {
+    const updated = await withTransaction(async (tx) => {
       if (lineRowsToInsert) {
         await this.repo.deleteLinesByRequestId(id, tx);
         await this.repo.createLines(lineRowsToInsert, tx);
@@ -1196,8 +1239,12 @@ export class ConsumableRequestService {
       const up = await this.repo.update(
         id,
         {
-          ...(input.requesterName !== undefined ? { requesterName: input.requesterName } : {}),
-          ...(input.requesterEmail !== undefined ? { requesterEmail: input.requesterEmail.toLowerCase() } : {}),
+          ...(isOperator && input.requesterName !== undefined
+            ? { requesterName: input.requesterName }
+            : {}),
+          ...(isOperator && input.requesterEmail !== undefined
+            ? { requesterEmail: input.requesterEmail.toLowerCase() }
+            : {}),
           ...(input.requesterPhone !== undefined ? { requesterPhone: input.requesterPhone } : {}),
           ...(input.requestedByName !== undefined ? { requestedByName: input.requestedByName } : {}),
           department: departmentName,
@@ -1215,10 +1262,10 @@ export class ConsumableRequestService {
       );
       if (!up) throw new NotFoundError("Consumable request", id);
 
-      const lines = await this.repo.listLinesByRequestId(id, tx);
-      return toDTO(up, lines, []);
+      return up;
     });
 
-    return dto;
+    invalidateDashboardCache(actor.tenantId);
+    return this.hydrate(updated, actor.tenantId);
   }
 }

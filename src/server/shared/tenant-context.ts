@@ -143,18 +143,24 @@ export function runWithTenant<T>(
  * Sets the TenantContext for the remainder of the current request.
  * Avoids `enterWith()` (unimplemented on Cloudflare Workers).
  */
-export function setTenantContext(context: TenantContext): void {
+export function setTenantContext(
+  context: TenantContext,
+  opts?: { allowProcessFallback?: boolean }
+): void {
   const execCtx = getExecutionCtx();
   if (execCtx) {
     tenantByExecutionCtx.set(execCtx, context);
     return;
   }
 
-  // Local Node: enterWith works. Soft-fail to a process fallback for scripts.
+  // Local Node: enterWith works per-async-chain. Never fall back to a shared
+  // process global for web requests; reserve nodeFallbackContext for explicit CLI/test harnesses.
   try {
     tenantStorage.enterWith(context);
   } catch {
-    nodeFallbackContext = context;
+    if (opts?.allowProcessFallback) {
+      nodeFallbackContext = context;
+    }
   }
 }
 

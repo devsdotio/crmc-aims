@@ -157,9 +157,9 @@ export class BorrowRequestController {
 
   async update(request: NextRequest | Request, id: string) {
     try {
-      const session = await requireAssetOperator();
+      const actor = await requireActor();
       const body = await request.json();
-      return ok(await this.service.update(id, body, session.actor));
+      return ok(await this.service.update(id, body, actor));
     } catch (error) {
       return handleError(error);
     }
