@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 export interface ConfirmDialogProps {
   isOpen: boolean;
@@ -27,23 +28,18 @@ export function ConfirmDialog({
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
-  useEffect(() => {
-    if (!isOpen) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && !isLoading) {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isLoading, onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(isOpen, dialogRef, () => {
+    if (!isLoading) onClose();
+  });
 
   if (!isOpen) return null;
 
   const isDestructive = variant === "destructive";
 
   return (
-    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-150 print:hidden no-print">
       <div
         className="absolute inset-0"
         onClick={isLoading ? undefined : onClose}
@@ -51,10 +47,12 @@ export function ConfirmDialog({
       />
 
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
-        className="relative w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-xl z-10 animate-in fade-in zoom-in-95 duration-150 overflow-hidden"
+        className="relative w-full max-w-sm rounded-xl border border-border bg-bg p-5 shadow-xl z-10 animate-in fade-in zoom-in-95 duration-150 overflow-hidden focus:outline-none"
       >
         <div className="space-y-2">
           <h3

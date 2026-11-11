@@ -1299,7 +1299,7 @@ export function ProjectDetailPanel({
         onClose={() => setDeleteExpenseTarget(null)}
       />
 
-    <div className="hidden print:block">
+    <div className="hidden print:block print:w-full">
       <IndividualProjectPrintableReport
         project={project}
         assignedAssets={assignments}

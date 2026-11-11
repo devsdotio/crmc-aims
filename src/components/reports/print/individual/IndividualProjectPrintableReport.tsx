@@ -6,6 +6,7 @@ import {
   PrintStatusBadge,
   PrintSignatories,
 } from "../PrintCharts";
+import { normalizeConsumableClassification } from "@/lib/consumable-classification";
 
 export interface IndividualProjectAsset {
   id: string;
@@ -24,6 +25,11 @@ export interface IndividualProjectExpense {
   name?: string | null;
   consumableName?: string | null;
   category?: string | null;
+  classification?: string | null;
+  source?: string | null;
+  referenceCode?: string | null;
+  lineType?: string | null;
+  consumableId?: string | null;
   quantity?: number | string | null;
   unit?: string | null;
   consumableUnit?: string | null;
@@ -95,14 +101,46 @@ export function IndividualProjectPrintableReport({
     project.consumedSupplies?.map((s) => ({
       id: s.id,
       incurredOn: s.incurredOn || null,
-      description: s.name || s.description || "Consumable Supply",
+      description: s.name || s.description || "Consumed Item",
       consumableName: s.name || s.description,
-      category: s.category || "Consumable",
+      category: s.category || "Uncategorized",
+      classification: s.classification ?? null,
+      source: s.source ?? null,
+      referenceCode: s.referenceCode ?? null,
+      lineType: s.lineType ?? null,
+      consumableId: s.consumableId ?? null,
       quantity: s.quantity,
       consumableUnit: s.unit || s.consumableUnit,
       amount: s.totalCost ?? s.amount ?? 0,
     })) ||
     [];
+
+  const classifiedExpenses = effectiveExpenses.reduce<{
+    supplies: IndividualProjectExpense[];
+    materials: IndividualProjectExpense[];
+    misc: IndividualProjectExpense[];
+  }>(
+    (acc, line) => {
+      const isMisc =
+        line.source === "miscellaneous" ||
+        line.lineType === "miscellaneous" ||
+        (!line.consumableId &&
+          !line.classification &&
+          ["labor", "services", "other"].includes((line.category || "").toLowerCase()));
+      if (isMisc) {
+        acc.misc.push(line);
+      } else if (
+        normalizeConsumableClassification(line.classification) === "material" ||
+        (!line.classification && (line.category || "").toLowerCase() === "materials")
+      ) {
+        acc.materials.push(line);
+      } else {
+        acc.supplies.push(line);
+      }
+      return acc;
+    },
+    { supplies: [], materials: [], misc: [] }
+  );
 
   const totalBudget = Number(project.budget || 0);
   const totalExpenseSpend = effectiveExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
@@ -110,7 +148,7 @@ export function IndividualProjectPrintableReport({
   const budgetVariance = totalBudget > 0 ? totalBudget - actualSpend : 0;
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
+    <div className="print-page print-dossier-portrait mx-auto w-full max-w-[7.8in] print:max-w-none print:w-full bg-white text-black text-[11px] leading-normal font-sans space-y-3">
       {/* ─── Institutional Header ───────────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
         <div className="flex items-start justify-between">
@@ -200,7 +238,7 @@ export function IndividualProjectPrintableReport({
 
       {/* ─── Section 1: Project Overview & Metadata ─────────────────────── */}
       <section className="avoid-break">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>1. Capital Project Overview &amp; Site Allocation</span>
             <span className="text-[10px] text-neutral-500 font-mono">Code: {projectCode}</span>
@@ -248,7 +286,7 @@ export function IndividualProjectPrintableReport({
 
       {/* ─── Section 2: Allocated Capital Assets Table ──────────────────── */}
       <section>
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>2. Allocated Capital Equipment &amp; Assets</span>
             <span className="text-[10px] text-neutral-500 font-mono">
@@ -297,58 +335,105 @@ export function IndividualProjectPrintableReport({
         </div>
       </section>
 
-      {/* ─── Section 3: Project Material & Expense Ledger ────────────────── */}
-      <section>
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
-            <span>3. Bill of Materials &amp; Project Expense Ledger</span>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              {effectiveExpenses.length} Expense / Material Lines
-            </span>
-          </div>
-          <table className="w-full border-collapse text-[11px] table-auto">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Date</th>
-                <th className="py-1.5 px-3 text-left">Item / Expense Description</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap">Category</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">Quantity</th>
-                {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Total Spend</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {effectiveExpenses.map((line) => (
-                <tr key={line.id}>
-                  <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap">
-                    {line.incurredOn || "Unrecorded"}
-                  </td>
-                  <td className="py-1.5 px-3 font-medium">
-                    {line.consumableName || line.description || "Project material disbursement"}
-                  </td>
-                  <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap">
-                    {line.category || "Materials"}
-                  </td>
-                  <td className="py-1.5 px-3 text-right font-mono text-neutral-800 whitespace-nowrap">
-                    {line.quantity ? `${line.quantity} ${line.consumableUnit || "units"}` : "1 lot"}
-                  </td>
-                  {canViewCosts && (
-                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
-                      {line.amount != null ? `₱${Number(line.amount).toLocaleString()}` : "—"}
-                    </td>
+      {/* ─── Section 3: Project Consumables (Supplies vs Materials) & Misc Expenses ── */}
+      {[
+        {
+          key: "3a-supplies",
+          title: "3A. Consumable Supplies Dispatched",
+          items: classifiedExpenses.supplies,
+          fallbackCat: "Supply",
+          emptyText: "No consumable supply disbursements recorded for this project.",
+        },
+        {
+          key: "3b-materials",
+          title: "3B. Operational & Project Materials Dispatched",
+          items: classifiedExpenses.materials,
+          fallbackCat: "Materials",
+          emptyText: "No operational or construction material disbursements recorded for this project.",
+        },
+        {
+          key: "3c-misc",
+          title: "3C. Direct Labor & Services (Miscellaneous)",
+          items: classifiedExpenses.misc,
+          fallbackCat: "Services",
+          emptyText: "No direct labor or miscellaneous service lines logged for this project.",
+        },
+      ]
+        .filter((part) => part.items.length > 0 || part.key !== "3c-misc")
+        .map((part) => {
+          const sectionSpend = part.items.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+          return (
+            <section key={part.key}>
+              <div className="rounded-xs border border-black/30 bg-white overflow-hidden print:overflow-visible w-full">
+                <div className="border-b border-black/30 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-black flex items-center justify-between">
+                  <span>{part.title}</span>
+                  <span className="text-[10px] text-neutral-600 font-mono">
+                    {part.items.length} Line(s)
+                    {canViewCosts ? ` · ₱${sectionSpend.toLocaleString()}` : ""}
+                  </span>
+                </div>
+                <table className="w-full border-collapse text-[11px] table-auto">
+                  <thead>
+                    <tr className="border-b border-black/30 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-700">
+                      <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Date</th>
+                      <th className="py-1.5 px-3 text-left">Item / Expense Description</th>
+                      <th className="py-1.5 px-3 text-left whitespace-nowrap">Category</th>
+                      <th className="py-1.5 px-3 text-right whitespace-nowrap">Quantity</th>
+                      {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Total Spend</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 text-[11px] text-neutral-900">
+                    {part.items.map((line) => (
+                      <tr key={line.id}>
+                        <td className="py-1.5 px-3 font-mono text-neutral-700 whitespace-nowrap">
+                          {line.incurredOn || "Unrecorded"}
+                        </td>
+                        <td className="py-1.5 px-3 font-medium">
+                          <div>{line.consumableName || line.description || "Project line item"}</div>
+                          {line.referenceCode && (
+                            <div className="text-[9.5px] font-mono text-neutral-500">
+                              Ref: {line.referenceCode}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-3 text-neutral-700 capitalize whitespace-nowrap">
+                          {line.category || part.fallbackCat}
+                        </td>
+                        <td className="py-1.5 px-3 text-right font-mono text-neutral-900 whitespace-nowrap">
+                          {line.quantity ? `${line.quantity} ${line.consumableUnit || "units"}` : "1 lot"}
+                        </td>
+                        {canViewCosts && (
+                          <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
+                            {line.amount != null ? `₱${Number(line.amount).toLocaleString()}` : "—"}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                    {part.items.length === 0 && (
+                      <tr>
+                        <td colSpan={canViewCosts ? 5 : 4} className="py-2.5 text-center text-neutral-500 italic text-[11px]">
+                          {part.emptyText}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                  {part.items.length > 0 && canViewCosts && (
+                    <tfoot>
+                      <tr className="border-t border-black/40 bg-neutral-50 font-bold text-[10.5px]">
+                        <td colSpan={4} className="py-1.5 px-3 text-right uppercase tracking-wider">
+                          Section Subtotal ({part.items.length} line(s)):
+                        </td>
+                        <td className="py-1.5 px-3 text-right font-mono whitespace-nowrap">
+                          ₱{sectionSpend.toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
                   )}
-                </tr>
-              ))}
-              {effectiveExpenses.length === 0 && (
-                <tr>
-                  <td colSpan={canViewCosts ? 5 : 4} className="py-2.5 text-center text-neutral-400 italic text-[11px]">
-                    No material disbursements or expense lines logged for this project yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </table>
+              </div>
+            </section>
+          );
+        })}
 
       {/* ─── Institutional Footer ───────────────────────────────────────── */}
       <footer className="avoid-break pt-2 border-t border-neutral-200">

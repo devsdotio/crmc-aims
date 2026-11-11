@@ -225,7 +225,7 @@ export function LoadingProvider({ children }: LoadingProviderProps) {
           aria-live="polite"
           aria-label={currentTask.message || "Loading"}
           className={cn(
-            "fixed inset-0 z-100 flex items-center justify-center transition-all duration-200",
+            "fixed inset-0 z-100 flex items-center justify-center transition-all duration-200 print:hidden no-print",
             currentTask.backdrop === "blur"
               ? "bg-bg/70 backdrop-blur-sm"
               : currentTask.backdrop === "subtle"

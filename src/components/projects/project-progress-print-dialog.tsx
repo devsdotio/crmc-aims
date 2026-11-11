@@ -113,9 +113,9 @@ export function ProjectProgressPrintDialog({
   <meta charset="utf-8" />
   <title>CRMC-AIMS — Custodian Project Progress Report — ${escapeHtml(project.projectCode)}</title>
   <style>
-    @page { size: 14in 8.5in; margin: 10mm; }
+    @page { size: auto; margin: 10mm; }
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 10px; line-height: 1.35; color: #000000; margin: 0; padding: 0; background: #ffffff; vertical-align: top; display: flex; flex-direction: column; justify-content: flex-start; }
+    html, body { height: auto !important; min-height: 0 !important; overflow: visible !important; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; font-size: 10px; line-height: 1.35; color: #000000; margin: 0 !important; padding: 0 !important; background: #ffffff; display: block !important; }
     
     .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #000000; padding-bottom: 8px; margin-bottom: 10px; }
     .header-left { display: flex; align-items: center; gap: 12px; }
@@ -145,7 +145,7 @@ export function ProjectProgressPrintDialog({
     .kpi-val.pending { color: #000000; }
 
     table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 9px; border: 1.5px solid #000000; break-inside: auto; }
-    tr { break-inside: auto; page-break-inside: auto; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
     thead { break-inside: avoid; break-after: avoid; page-break-after: avoid; display: table-header-group; }
     th { background: #ffffff; color: #000000; font-weight: 800; text-transform: uppercase; font-size: 8px; letter-spacing: 0.4px; padding: 5px 6px; border: 1px solid #000000; text-align: center; }
     td { padding: 4px 6px; border: 1px solid #000000; vertical-align: top; color: #000000; }
@@ -292,7 +292,7 @@ export function ProjectProgressPrintDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto print:hidden">
       <div
         className="absolute inset-0"
         onClick={onClose}

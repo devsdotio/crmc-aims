@@ -137,7 +137,7 @@ function ChartsRow({ charts }: { charts: ChartBlock[] }) {
 
 function ReportTable({ table }: { table: TableBlock }) {
   return (
-    <div className="mt-2 rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+    <div className="mt-2 rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
       {table.title && (
         <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800">
           {table.title}
@@ -208,7 +208,7 @@ export function PrintableReport({
   });
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
+    <div className="print-page mx-auto w-full max-w-[7.8in] print:max-w-none print:w-full bg-white text-text text-[11px] leading-normal font-sans space-y-3">
       {/* ─── Standard Report Header ───────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
         <div className="flex items-start justify-between">

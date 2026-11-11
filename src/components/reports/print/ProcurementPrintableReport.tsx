@@ -35,10 +35,24 @@ export function ProcurementPrintableReport({
   filters,
   generatedAt = new Date(),
 }: ProcurementPrintableReportProps) {
-  const totalSpend = summary?.totalSpend || data.reduce((sum, d) => sum + (d.totalAmount || 0), 0);
-  const openOrders = summary?.openOrdersCount || data.filter((d) => d.status !== "received").length;
-  const deliveredCount = summary?.deliveredCount || data.filter((d) => d.status === "received").length;
-  const avgLeadTime = summary?.avgLeadTimeDays || 0;
+  const totalSpend = summary?.totalSpend ?? data.reduce((sum, d) => sum + (d.totalAmount || 0), 0);
+  const openOrders =
+    summary?.openOrdersCount ??
+    data.filter((d) => ["pending_approval", "approved", "ordered"].includes(d.status)).length;
+  const deliveredCount =
+    summary?.deliveredCount ??
+    data.filter((d) => d.status === "delivered" || d.status === "received").length;
+  const avgLeadTime = summary?.avgLeadTimeDays ?? 0;
+
+  const suppliesSpend =
+    summary?.suppliesSpend ??
+    data.filter((d) => d.classification === "supply").reduce((sum, d) => sum + (d.totalAmount || 0), 0);
+  const materialsSpend =
+    summary?.materialsSpend ??
+    data.filter((d) => d.classification === "material").reduce((sum, d) => sum + (d.totalAmount || 0), 0);
+  const assetsSpend =
+    summary?.assetsSpend ??
+    data.filter((d) => d.itemType === "asset").reduce((sum, d) => sum + (d.totalAmount || 0), 0);
 
   const formattedGeneratedDate = formatChedDate(generatedAt.toISOString().slice(0, 10));
   const reportingPeriod = filters?.startDate && filters?.endDate
@@ -49,54 +63,6 @@ export function ProcurementPrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -149,7 +115,7 @@ export function ProcurementPrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Total Purchase Orders
@@ -181,17 +147,23 @@ export function ProcurementPrintableReport({
           <span className="text-sm font-black font-mono">
             {canViewCosts ? formatPhp(totalSpend) : "Restricted"}
           </span>
+          {canViewCosts && (
+            <span className="text-[7.5px] font-mono block">
+              Sup: {formatPhp(suppliesSpend)} · Mat: {formatPhp(materialsSpend)} · Asset: {formatPhp(assetsSpend)}
+            </span>
+          )}
         </div>
       </section>
 
       {/* ─── 3. Standard CHED Procurement Ledger Table (Pure Black Ink) ───── */}
       <section className="w-full">
-        <div className="border-2 border-black overflow-hidden bg-white">
+        <div className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
           <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">PO Number</th>
+                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Class / Type</th>
                 <th className="py-2 px-2 border-r border-black min-w-36">Supplier / Vendor</th>
                 <th className="py-2 px-2 border-r border-black min-w-44">Items Description Preview</th>
                 <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Status</th>
@@ -202,10 +174,25 @@ export function ProcurementPrintableReport({
             </thead>
             <tbody className="divide-y divide-black/40 text-black">
               {data.map((row, index) => {
-                const isDelivered = row.status === "received";
+                const isDelivered = row.status === "delivered" || row.status === "received";
+                const isCancelled = row.status === "cancelled";
+                const classLabel =
+                  row.classification === "supply"
+                    ? "SUPPLY"
+                    : row.classification === "material"
+                    ? "MATERIAL"
+                    : row.itemType === "asset"
+                    ? "ASSET"
+                    : row.itemType === "mixed"
+                    ? "MIXED"
+                    : "CONSUMABLE";
                 const remarks = isDelivered
                   ? "Inspected, verified & accepted into inventory"
-                  : "Awaiting supplier fulfillment & delivery";
+                  : isCancelled
+                  ? "Order cancelled / voided"
+                  : row.status === "ordered"
+                  ? "Issued to supplier; awaiting delivery"
+                  : "Awaiting approval / supplier fulfillment";
 
                 return (
                   <tr key={row.poNumber}>
@@ -215,6 +202,11 @@ export function ProcurementPrintableReport({
                     <td className="py-1.5 px-2 border-r border-black font-mono font-bold whitespace-nowrap">
                       {row.poNumber}
                     </td>
+                    <td className="py-1.5 px-2 border-r border-black text-center whitespace-nowrap">
+                      <span className="border border-black px-1 py-0.5 font-mono font-bold text-[7.5px] uppercase">
+                        {classLabel}
+                      </span>
+                    </td>
                     <td className="py-1.5 px-2 border-r border-black font-semibold text-black">
                       {row.supplierName}
                     </td>
@@ -223,7 +215,7 @@ export function ProcurementPrintableReport({
                     </td>
                     <td className="py-1.5 px-2 border-r border-black text-center whitespace-nowrap">
                       <span className="font-bold text-[8px] uppercase">
-                        {row.status}
+                        {row.status.replace(/_/g, " ")}
                       </span>
                     </td>
                     <td className="py-1.5 px-2 border-r border-black text-center font-mono whitespace-nowrap">
@@ -241,7 +233,7 @@ export function ProcurementPrintableReport({
 
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center italic text-[10px]">
+                  <td colSpan={9} className="py-6 text-center italic text-[10px]">
                     No purchase order or acquisition records found matching specified filters.
                   </td>
                 </tr>
@@ -252,7 +244,7 @@ export function ProcurementPrintableReport({
             {data.length > 0 && (
               <tfoot>
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
-                  <td colSpan={6} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                  <td colSpan={7} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
                     Grand Total Acquisitions:
                   </td>
                   <td className="py-1.5 px-2 text-right font-mono border-r border-black">

@@ -35,11 +35,20 @@ export function DepartmentsPrintableReport({
   filters,
   generatedAt = new Date(),
 }: DepartmentsPrintableReportProps) {
-  const totalDepts = summary?.totalDepartments || data.length || 0;
-  const totalAssets = summary?.totalAssetsDeployed || data.reduce((sum, d) => sum + (d.assetsAssignedCount || 0), 0);
-  const totalConsumablesConsumed = data.reduce((sum, d) => sum + (d.consumablesConsumedCount || 0), 0);
+  const totalDepts = summary?.totalDepartments ?? data.length;
+  const totalAssets = summary?.totalAssetsDeployed ?? data.reduce((sum, d) => sum + (d.assetsAssignedCount || 0), 0);
+  const totalConsumablesConsumed =
+    summary?.totalConsumablesConsumed ?? data.reduce((sum, d) => sum + (d.consumablesConsumedCount || 0), 0);
+  const totalSuppliesConsumed =
+    summary?.totalSuppliesConsumed ?? data.reduce((sum, d) => sum + (d.suppliesConsumedCount || 0), 0);
+  const totalMaterialsConsumed =
+    summary?.totalMaterialsConsumed ?? data.reduce((sum, d) => sum + (d.materialsConsumedCount || 0), 0);
+  const totalSuppliesValue =
+    summary?.totalSuppliesValue ?? data.reduce((sum, d) => sum + (d.suppliesValue || 0), 0);
+  const totalMaterialsValue =
+    summary?.totalMaterialsValue ?? data.reduce((sum, d) => sum + (d.materialsValue || 0), 0);
   const totalProjectsActive = data.reduce((sum, d) => sum + (d.activeProjects || 0), 0);
-  const totalAssetsValue = summary?.totalAssetsValue || data.reduce((sum, d) => sum + (d.assetsValue || 0), 0);
+  const totalAssetsValue = summary?.totalAssetsValue ?? data.reduce((sum, d) => sum + (d.assetsValue || 0), 0);
 
   const formattedGeneratedDate = formatChedDate(generatedAt.toISOString().slice(0, 10));
   const reportingPeriod = filters?.startDate && filters?.endDate
@@ -50,54 +59,6 @@ export function DepartmentsPrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -150,7 +111,7 @@ export function DepartmentsPrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Operating Departments
@@ -168,6 +129,9 @@ export function DepartmentsPrintableReport({
             Consumables Issued
           </span>
           <span className="text-sm font-black font-mono">{totalConsumablesConsumed.toLocaleString()} units</span>
+          <span className="text-[8px] font-mono block">
+            {totalSuppliesConsumed.toLocaleString()} Sup · {totalMaterialsConsumed.toLocaleString()} Mat
+          </span>
         </div>
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
@@ -187,14 +151,15 @@ export function DepartmentsPrintableReport({
 
       {/* ─── 3. Standard CHED Department Ledger Table (Pure Black Ink) ─────── */}
       <section className="w-full">
-        <div className="border-2 border-black overflow-hidden bg-white">
+        <div className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
           <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black min-w-44">Department / Operating Unit</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Assigned Assets</th>
-                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Consumables Issued</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Supplies Issued</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Materials Issued</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Active Projects</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Maintenance Issues</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Holding Valuation</th>
@@ -203,6 +168,8 @@ export function DepartmentsPrintableReport({
             </thead>
             <tbody className="divide-y divide-black/40 text-black">
               {data.map((row, index) => {
+                const suppliesCount = row.suppliesConsumedCount ?? 0;
+                const materialsCount = row.materialsConsumedCount ?? 0;
                 const remarks =
                   row.activeMaintenanceCount > 0
                     ? `${row.activeMaintenanceCount} active maintenance repair(s)`
@@ -222,7 +189,16 @@ export function DepartmentsPrintableReport({
                       {row.assetsAssignedCount.toLocaleString()}
                     </td>
                     <td className="py-1.5 px-2 text-right font-mono border-r border-black">
-                      {row.consumablesConsumedCount.toLocaleString()}
+                      <div className="font-semibold">{suppliesCount.toLocaleString()}</div>
+                      {canViewCosts && row.suppliesValue != null && row.suppliesValue > 0 && (
+                        <div className="text-[7.5px]">{formatPhp(row.suppliesValue)}</div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-right font-mono border-r border-black">
+                      <div className="font-semibold">{materialsCount.toLocaleString()}</div>
+                      {canViewCosts && row.materialsValue != null && row.materialsValue > 0 && (
+                        <div className="text-[7.5px]">{formatPhp(row.materialsValue)}</div>
+                      )}
                     </td>
                     <td className="py-1.5 px-2 text-right font-mono border-r border-black">
                       {row.activeProjects}
@@ -242,7 +218,7 @@ export function DepartmentsPrintableReport({
 
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center italic text-[10px]">
+                  <td colSpan={9} className="py-6 text-center italic text-[10px]">
                     No department allocation records found.
                   </td>
                 </tr>
@@ -260,7 +236,16 @@ export function DepartmentsPrintableReport({
                     {totalAssets.toLocaleString()}
                   </td>
                   <td className="py-1.5 px-2 text-right font-mono border-r border-black">
-                    {totalConsumablesConsumed.toLocaleString()}
+                    <div>{totalSuppliesConsumed.toLocaleString()}</div>
+                    {canViewCosts && totalSuppliesValue > 0 && (
+                      <div className="text-[7.5px] font-normal">{formatPhp(totalSuppliesValue)}</div>
+                    )}
+                  </td>
+                  <td className="py-1.5 px-2 text-right font-mono border-r border-black">
+                    <div>{totalMaterialsConsumed.toLocaleString()}</div>
+                    {canViewCosts && totalMaterialsValue > 0 && (
+                      <div className="text-[7.5px] font-normal">{formatPhp(totalMaterialsValue)}</div>
+                    )}
                   </td>
                   <td className="py-1.5 px-2 text-right font-mono border-r border-black">
                     {totalProjectsActive}

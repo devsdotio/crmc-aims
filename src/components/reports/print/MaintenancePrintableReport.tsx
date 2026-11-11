@@ -51,54 +51,6 @@ export function MaintenancePrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -151,7 +103,7 @@ export function MaintenancePrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Total Work Orders
@@ -188,20 +140,20 @@ export function MaintenancePrintableReport({
 
       {/* ─── 3. Standard CHED Maintenance Ledger Table (Pure Black Ink) ───── */}
       <section className="w-full">
-        <div className="border-2 border-black overflow-hidden bg-white">
+        <div className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
           <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">WO / Log Code</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Property Tag No.</th>
-                <th className="py-2 px-2 border-r border-black min-w-36">Equipment Description</th>
-                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Department</th>
-                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Fault Condition</th>
-                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Status</th>
+                <th className="py-2 px-2 border-r border-black">Equipment Description</th>
+                <th className="py-2 px-2 border-r border-black">Department</th>
+                <th className="py-2 px-2 border-r border-black">Fault Condition</th>
+                <th className="py-2 px-2 border-r border-black text-center">Status</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Date Logged</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Repair Cost</th>
-                <th className="py-2 px-2 min-w-28">Action Remarks</th>
+                <th className="py-2 px-2">Action Remarks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/40 text-black">
@@ -240,7 +192,7 @@ export function MaintenancePrintableReport({
                     <td className="py-1.5 px-2 border-r border-black font-semibold text-black">
                       {row.assetName}
                     </td>
-                    <td className="py-1.5 px-2 border-r border-black text-[8.5px] truncate max-w-28">
+                    <td className="py-1.5 px-2 border-r border-black text-[8.5px] wrap-break-word">
                       {row.department || "General"}
                     </td>
                     <td className="py-1.5 px-2 border-r border-black capitalize">

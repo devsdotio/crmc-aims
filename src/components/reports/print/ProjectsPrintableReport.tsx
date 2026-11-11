@@ -42,11 +42,15 @@ export function ProjectsPrintableReport({
   filters,
   generatedAt = new Date(),
 }: ProjectsPrintableReportProps) {
-  const totalProjects = summary?.totalProjects || data.length || 0;
-  const activeProjects = summary?.activeProjects || data.filter((d) => d.status === "active").length;
-  const completedProjects = summary?.completedProjects || data.filter((d) => d.status === "completed").length;
+  const totalProjects = summary?.totalProjects ?? data.length;
+  const activeProjects = summary?.activeProjects ?? data.filter((d) => d.status === "active").length;
+  const completedProjects = summary?.completedProjects ?? data.filter((d) => d.status === "completed").length;
   const suspendedProjects = data.filter((d) => d.status === "on_hold" || d.status === "cancelled").length;
   const totalProjectCostSum = data.reduce((sum, d) => sum + (d.totalProjectCost || 0), 0);
+  const totalSuppliesConsumed =
+    summary?.totalSuppliesConsumed ?? data.reduce((sum, d) => sum + (d.suppliesConsumedCount || 0), 0);
+  const totalMaterialsConsumed =
+    summary?.totalMaterialsConsumed ?? data.reduce((sum, d) => sum + (d.materialsConsumedCount || 0), 0);
 
   const formattedGeneratedDate = formatChedDate(generatedAt.toISOString().slice(0, 10));
 
@@ -62,54 +66,6 @@ export function ProjectsPrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -162,7 +118,7 @@ export function ProjectsPrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Total Projects
@@ -194,20 +150,23 @@ export function ProjectsPrintableReport({
           <span className="text-sm font-black font-mono">
             {canViewCosts ? formatPhp(totalProjectCostSum) : "—"}
           </span>
+          <span className="text-[7.5px] font-mono block">
+            {totalSuppliesConsumed.toLocaleString()} Sup · {totalMaterialsConsumed.toLocaleString()} Mat
+          </span>
         </div>
       </section>
 
       {/* ─── 3. Standard CHED Custodian Projects Table (Pure Black Ink) ───── */}
       <section className="w-full">
-        <div className="border-2 border-black overflow-hidden bg-white">
+        <div className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
           <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black min-w-44">Project Title / Description</th>
                 <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Status</th>
-                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Fund Source</th>
-                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Budget / Cost</th>
+                <th className="py-2 px-2 border-r border-black whitespace-nowrap">Supplies / Materials</th>
+                <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Total Project Cost</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Date Started</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Target / Actual Completion</th>
                 <th className="py-2 px-2 border-r border-black min-w-32">Accountable Person / Office</th>
@@ -217,10 +176,15 @@ export function ProjectsPrintableReport({
             <tbody className="divide-y divide-black/40 text-black">
               {data.map((row, index) => {
                 const statusLabel = formatChedStatus(row.status);
-                const fundSource = "Institutional Fund";
-                const accountable = row.department || "[TO BE FILLED]";
-                const budgetCost = row.totalProjectCost != null ? formatPhp(row.totalProjectCost) : "[TO BE FILLED]";
-                const completionDate = row.endDate ? formatChedDate(row.endDate) : "[TO BE FILLED]";
+                const suppliesCount = row.suppliesConsumedCount ?? 0;
+                const materialsCount = row.materialsConsumedCount ?? 0;
+                const accountable = row.department || "Unassigned";
+                const budgetCost = row.totalProjectCost != null ? formatPhp(row.totalProjectCost) : "—";
+                const completionDate = row.endDate
+                  ? formatChedDate(row.endDate)
+                  : row.status === "completed"
+                  ? "—"
+                  : "Ongoing";
 
                 const remarks =
                   row.status === "completed"
@@ -247,14 +211,19 @@ export function ProjectsPrintableReport({
                         {statusLabel}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 border-r border-black text-black">
-                      {fundSource}
+                    <td className="py-1.5 px-2 border-r border-black text-black font-mono text-[8px]">
+                      <div>{suppliesCount.toLocaleString()} Sup · {materialsCount.toLocaleString()} Mat</div>
+                      {canViewCosts && (row.suppliesValue || row.materialsValue) ? (
+                        <div className="text-[7.5px]">
+                          {formatPhp(row.suppliesValue ?? 0)} / {formatPhp(row.materialsValue ?? 0)}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="py-1.5 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap">
                       {canViewCosts ? budgetCost : "—"}
                     </td>
                     <td className="py-1.5 px-2 border-r border-black font-mono whitespace-nowrap">
-                      {row.startDate ? formatChedDate(row.startDate) : "[TO BE FILLED]"}
+                      {row.startDate ? formatChedDate(row.startDate) : "—"}
                     </td>
                     <td className="py-1.5 px-2 border-r border-black font-mono whitespace-nowrap">
                       {completionDate}
@@ -289,7 +258,7 @@ export function ProjectsPrintableReport({
                     {canViewCosts ? formatPhp(totalProjectCostSum) : "—"}
                   </td>
                   <td colSpan={4} className="py-1.5 px-2 text-[8.5px] font-sans font-normal">
-                    Factual summary of project capital equipment &amp; material requisitions.
+                    {totalSuppliesConsumed.toLocaleString()} supplies &amp; {totalMaterialsConsumed.toLocaleString()} materials logged across {data.length} project(s).
                   </td>
                 </tr>
               </tfoot>

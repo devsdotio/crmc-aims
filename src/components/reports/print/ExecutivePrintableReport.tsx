@@ -31,7 +31,7 @@ export function ExecutivePrintableReport({
   generatedAt = new Date(),
   filtersSummary = "Scope: Institutional Rollup · Academic & Administrative Departments · All Categories",
 }: ExecutivePrintableReportProps) {
-  const { assets, consumables, procurement, requests, maintenance, charts, canViewCosts } = data;
+  const { assets, consumables, procurement, maintenance, charts, canViewCosts } = data;
 
   const operationalRate =
     assets?.totalCount && assets.totalCount > 0
@@ -43,54 +43,6 @@ export function ExecutivePrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -143,7 +95,7 @@ export function ExecutivePrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Capital Assets Value
@@ -157,13 +109,28 @@ export function ExecutivePrintableReport({
         </div>
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
-            Stores Stock Value
+            Consumable Supplies
           </span>
           <span className="text-sm font-black font-mono">
-            {canViewCosts ? formatPhp(consumables?.totalValuation) : `${consumables?.totalItems || 0} SKUs`}
+            {canViewCosts
+              ? formatPhp(consumables?.suppliesValuation)
+              : `${consumables?.suppliesCount || 0} SKUs`}
           </span>
           <span className="text-[8px] block font-semibold">
-            {consumables?.lowStockCount || 0} Below Buffer Threshold
+            {consumables?.suppliesCount || 0} SKUs · {consumables?.suppliesLowStockCount || 0} Low Stock
+          </span>
+        </div>
+        <div className="border border-black p-1.5 bg-white">
+          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
+            Consumable Materials
+          </span>
+          <span className="text-sm font-black font-mono">
+            {canViewCosts
+              ? formatPhp(consumables?.materialsValuation)
+              : `${consumables?.materialsCount || 0} SKUs`}
+          </span>
+          <span className="text-[8px] block font-semibold">
+            {consumables?.materialsCount || 0} SKUs · {consumables?.materialsLowStockCount || 0} Low Stock
           </span>
         </div>
         <div className="border border-black p-1.5 bg-white">
@@ -175,17 +142,6 @@ export function ExecutivePrintableReport({
           </span>
           <span className="text-[8px] block font-semibold">
             {canViewCosts ? formatPhp(procurement?.totalSpend30d) : "Active Pipeline"}
-          </span>
-        </div>
-        <div className="border border-black p-1.5 bg-white">
-          <span className="text-[8.5px] font-bold uppercase tracking-wider block">
-            Active Requisitions
-          </span>
-          <span className="text-sm font-black font-mono">
-            {requests?.pendingCount || 0} Pending
-          </span>
-          <span className="text-[8px] block font-semibold">
-            {requests?.fulfilledThisMonth || 0} Fulfilled this Month
           </span>
         </div>
         <div className="border border-black p-1.5 bg-white">
@@ -202,9 +158,9 @@ export function ExecutivePrintableReport({
       </section>
 
       {/* ─── 3. Detailed Institutional Domain Matrices (Pure Black Ink) ───── */}
-      <section className="grid grid-cols-12 gap-3 text-black">
+      <section className="grid grid-cols-1 sm:grid-cols-12 gap-3 text-black">
         {/* Table 1: Category Valuation Share Table */}
-        <div className="col-span-6 border border-black overflow-hidden bg-white">
+        <div className="sm:col-span-6 border border-black overflow-hidden print:overflow-visible bg-white">
           <div className="bg-white px-2.5 py-1.5 border-b border-black font-bold uppercase text-[8.5px] tracking-wider text-black flex justify-between items-center">
             <span>Equipment Category Fleet Valuation</span>
             <span className="font-mono">{charts?.categoryDistribution?.length || 0} Categories</span>
@@ -244,7 +200,7 @@ export function ExecutivePrintableReport({
         </div>
 
         {/* Table 2: Spend & Trend Summary Table */}
-        <div className="col-span-6 border border-black overflow-hidden bg-white">
+        <div className="sm:col-span-6 border border-black overflow-hidden print:overflow-visible bg-white">
           <div className="bg-white px-2.5 py-1.5 border-b border-black font-bold uppercase text-[8.5px] tracking-wider text-black flex justify-between items-center">
             <span>6-Month Spend Summary (Procurement vs Repair)</span>
             <span className="font-mono">Historical Trend</span>
@@ -289,7 +245,7 @@ export function ExecutivePrintableReport({
       </section>
 
       {/* ─── 4. Operational Domain Status Matrix (Pure Black Ink) ─────────── */}
-      <section className="border-2 border-black overflow-hidden bg-white">
+      <section className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
         <div className="bg-white px-2.5 py-1.5 border-b-2 border-black font-bold uppercase text-[8.5px] tracking-wider text-black">
           Custodian Operational Domain Matrix
         </div>
@@ -318,18 +274,37 @@ export function ExecutivePrintableReport({
               </td>
             </tr>
             <tr>
-              <td className="py-1.5 px-2.5 font-bold border-r border-black">2. Consumable Supply Stores</td>
+              <td className="py-1.5 px-2.5 font-bold border-r border-black">2A. Consumable Supplies</td>
               <td className="py-1.5 px-2.5 font-mono font-semibold border-r border-black">
-                {canViewCosts ? formatPhp(consumables?.totalValuation) : "—"}
+                {canViewCosts ? formatPhp(consumables?.suppliesValuation) : "—"}
               </td>
-              <td className="py-1.5 px-2.5 font-mono border-r border-black">{consumables?.totalItems || 0} Active SKUs</td>
+              <td className="py-1.5 px-2.5 font-mono border-r border-black">
+                {consumables?.suppliesCount || 0} Supply SKUs
+              </td>
               <td className="py-1.5 px-2.5 border-r border-black uppercase font-bold text-[8px]">
-                {consumables?.lowStockCount && consumables.lowStockCount > 0
-                  ? `${consumables.lowStockCount} SKUs Low Stock`
-                  : "Optimal Stock Buffer"}
+                {consumables?.suppliesLowStockCount && consumables.suppliesLowStockCount > 0
+                  ? `${consumables.suppliesLowStockCount} SKUs Low Stock`
+                  : "Optimal Supply Buffer"}
               </td>
               <td className="py-1.5 px-2.5 text-right font-mono">
-                {canViewCosts ? `${formatPhp(consumables?.monthBurnRateValue)} Monthly Burn` : "Normal Burn"}
+                {canViewCosts ? `${formatPhp(consumables?.suppliesBurnRateValue)} Monthly Burn` : "Normal Burn"}
+              </td>
+            </tr>
+            <tr>
+              <td className="py-1.5 px-2.5 font-bold border-r border-black">2B. Consumable Materials</td>
+              <td className="py-1.5 px-2.5 font-mono font-semibold border-r border-black">
+                {canViewCosts ? formatPhp(consumables?.materialsValuation) : "—"}
+              </td>
+              <td className="py-1.5 px-2.5 font-mono border-r border-black">
+                {consumables?.materialsCount || 0} Material SKUs
+              </td>
+              <td className="py-1.5 px-2.5 border-r border-black uppercase font-bold text-[8px]">
+                {consumables?.materialsLowStockCount && consumables.materialsLowStockCount > 0
+                  ? `${consumables.materialsLowStockCount} SKUs Low Stock`
+                  : "Optimal Material Buffer"}
+              </td>
+              <td className="py-1.5 px-2.5 text-right font-mono">
+                {canViewCosts ? `${formatPhp(consumables?.materialsBurnRateValue)} Monthly Burn` : "Normal Burn"}
               </td>
             </tr>
             <tr>
@@ -346,20 +321,7 @@ export function ExecutivePrintableReport({
               </td>
             </tr>
             <tr>
-              <td className="py-1.5 px-2.5 font-bold border-r border-black">4. Department Requisitions</td>
-              <td className="py-1.5 px-2.5 font-mono font-semibold border-r border-black">Requisition Pipeline</td>
-              <td className="py-1.5 px-2.5 font-mono border-r border-black">{requests?.fulfilledThisMonth || 0} Fulfilled this Period</td>
-              <td className="py-1.5 px-2.5 border-r border-black uppercase font-bold text-[8px]">
-                {requests?.pendingCount && requests.pendingCount > 0
-                  ? `${requests.pendingCount} In Queue`
-                  : "Queue Clear"}
-              </td>
-              <td className="py-1.5 px-2.5 text-right font-mono">
-                {requests?.avgApprovalHours || 0}h Avg Turnaround
-              </td>
-            </tr>
-            <tr>
-              <td className="py-1.5 px-2.5 font-bold border-r border-black">5. Equipment Maintenance &amp; Work Orders</td>
+              <td className="py-1.5 px-2.5 font-bold border-r border-black">4. Equipment Maintenance &amp; Work Orders</td>
               <td className="py-1.5 px-2.5 font-mono font-semibold border-r border-black">
                 {canViewCosts ? formatPhp(maintenance?.totalRepairSpend30d) : "—"}
               </td>

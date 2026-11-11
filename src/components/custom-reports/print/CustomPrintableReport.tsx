@@ -45,6 +45,14 @@ function formatPrintCell(col: CustomReportColumnDef, rawVal: unknown): string {
     return rawVal ? "Yes" : "No";
   }
 
+  if (col.key === "classification") {
+    const lower = String(rawVal).trim().toLowerCase();
+    if (lower === "supply") return "SUPPLY";
+    if (lower === "material") return "MATERIAL";
+    if (lower === "mixed") return "MIXED (SUPPLY + MATERIAL)";
+    if (lower === "asset") return "ASSET";
+  }
+
   const str = String(rawVal);
   if (col.type === "date" || /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?/.test(str)) {
     const parsed = new Date(str);
@@ -100,7 +108,6 @@ export function CustomPrintableReport({
   // Standard Narrow print margin (approx 8mm top/bottom, 10mm left/right) to prevent zero-margin clipping
   const pageMarginRule = margin === "narrow" ? "8mm 10mm" : "14mm 16mm";
   const screenPaddingClass = margin === "narrow" ? "p-3 sm:p-5 md:p-6" : "p-6 sm:p-8 md:p-10";
-  const printPaddingRule = margin === "narrow" ? "8mm 10mm" : "14mm 16mm";
 
   // Dimensions for simulated paper sheet (fitWidth expands to container width, otherwise simulated physical mm)
   const containerDimensionClasses = fitWidth
@@ -132,6 +139,12 @@ export function CustomPrintableReport({
         }
         @media print {
           html, body {
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
             background: #ffffff !important;
             color: #000000 !important;
             -webkit-print-color-adjust: exact;
@@ -142,11 +155,11 @@ export function CustomPrintableReport({
             display: none !important;
           }
           .custom-print-root {
-            padding: ${printPaddingRule} !important;
+            padding: 0 !important;
             max-width: none !important;
             width: 100% !important;
             min-height: auto !important;
-            margin: 0 auto !important;
+            margin: 0 !important;
             box-shadow: none !important;
             box-sizing: border-box !important;
           }
@@ -195,7 +208,7 @@ export function CustomPrintableReport({
             : "ISO A4 (210mm × 297mm)"}
           {" · "}
           {isLandscape ? "Landscape View" : "Portrait View"}
-          {margin === "narrow" ? " · Narrow Margin (6mm)" : " · Normal Margin (15mm)"}
+          {margin === "narrow" ? " · Narrow Margin (8mm)" : " · Normal Margin (15mm)"}
         </span>
         <span className="text-gray-400">
           {fitWidth ? "Fit to Dialog Width" : "Sheet Dimensions Simulated (1:1)"}
@@ -272,8 +285,38 @@ export function CustomPrintableReport({
           const cellPadding =
             colCount > 10 ? "py-0.5 px-1" : colCount > 7 ? "py-1 px-1.5" : "py-1 px-2";
 
+          const hasClassCol = (data.columns ?? []).some((c) => c.key === "classification");
+          let printSupplyCount = 0;
+          let printMaterialCount = 0;
+          let printMixedCount = 0;
+          if (hasClassCol) {
+            for (const r of data.rows ?? []) {
+              const cls = typeof r.classification === "string" ? r.classification.trim().toLowerCase() : "";
+              if (cls === "supply") printSupplyCount += 1;
+              else if (cls === "material") printMaterialCount += 1;
+              else if (cls === "mixed") printMixedCount += 1;
+            }
+          }
+          const showClassSummary =
+            printSupplyCount + printMaterialCount + printMixedCount > 0;
+
           return (
             <div key={block.id} className="w-full overflow-x-auto print:overflow-visible mb-2 sm:mb-3">
+              {showClassSummary && (
+                <div className="mb-2 flex flex-wrap items-center gap-2 text-[9px] uppercase tracking-wider font-bold text-black">
+                  <span className="border border-black px-1.5 py-0.5">
+                    SUPPLIES: {printSupplyCount}
+                  </span>
+                  <span className="border-2 border-black px-1.5 py-0.5">
+                    MATERIALS: {printMaterialCount}
+                  </span>
+                  {printMixedCount > 0 && (
+                    <span className="border border-dashed border-black px-1.5 py-0.5">
+                      MIXED: {printMixedCount}
+                    </span>
+                  )}
+                </div>
+              )}
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-gray-300">
@@ -290,14 +333,44 @@ export function CustomPrintableReport({
                 <tbody>
                   {(data.rows ?? []).map((row, idx) => (
                     <tr key={idx} className="border-b border-gray-100 print:border-gray-200">
-                      {(data.columns ?? []).map((c) => (
-                        <td
-                          key={c.key}
-                          className={`${cellPadding} ${tableFontSize} text-left align-top wrap-anywhere`}
-                        >
-                          {formatPrintCell(c, row[c.key])}
-                        </td>
-                      ))}
+                      {(data.columns ?? []).map((c) => {
+                        const raw = row[c.key];
+                        const clsLower =
+                          c.key === "classification" && typeof raw === "string"
+                            ? raw.trim().toLowerCase()
+                            : "";
+                        if (
+                          c.key === "classification" &&
+                          ["supply", "material", "mixed", "asset"].includes(clsLower)
+                        ) {
+                          return (
+                            <td
+                              key={c.key}
+                              className={`${cellPadding} ${tableFontSize} text-left align-top wrap-anywhere`}
+                            >
+                              <span
+                                className={`inline-block px-1 py-0.2 text-[8px] font-bold uppercase tracking-wider ${
+                                  clsLower === "material"
+                                    ? "border-2 border-black"
+                                    : clsLower === "mixed"
+                                    ? "border border-dashed border-black"
+                                    : "border border-black"
+                                }`}
+                              >
+                                {formatPrintCell(c, raw)}
+                              </span>
+                            </td>
+                          );
+                        }
+                        return (
+                          <td
+                            key={c.key}
+                            className={`${cellPadding} ${tableFontSize} text-left align-top wrap-anywhere`}
+                          >
+                            {formatPrintCell(c, raw)}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                   {(data.rows?.length ?? 0) === 0 && (
