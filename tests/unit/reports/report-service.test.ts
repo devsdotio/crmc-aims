@@ -287,15 +287,213 @@ function buildProjectsFixture(): {
   };
 }
 
+function buildAssetsFixture(): Awaited<ReturnType<ReportRepository["getAssetRegisterReport"]>> {
+  return {
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
+    total: 1,
+    data: [
+      {
+        id: "ast-1",
+        assetCode: "CE-001",
+        name: "=CMD|'/C calc'!A0",
+        category: "Computers",
+        classification: "Electronics",
+        status: "active",
+        assignmentType: "borrowable",
+        location: "Lab 1",
+        department: "IT Dept",
+        currentHolder: null,
+        purchaseDate: "2026-01-10",
+        purchaseCost: 42000,
+        currentValue: 42000,
+        supplierName: null,
+        serialNumber: "SN-1",
+        hasActiveMaintenance: false,
+        lastUpdated: "2026-10-01",
+      },
+    ],
+    summary: {
+      totalAssets: 1,
+      activeCount: 1,
+      needsRepairCount: 0,
+      outOfServiceCount: 0,
+      retiredCount: 0,
+      totalValuation: 42000,
+    },
+  };
+}
+
+function buildDrilldownFixture(): NonNullable<
+  Awaited<ReturnType<ReportRepository["getAssetDrilldownReport"]>>
+> {
+  return {
+    asset: {
+      id: "ast-1",
+      assetCode: "CE-001",
+      name: "Workstation",
+      category: "Computers",
+      classification: "Electronics",
+      unit: "unit",
+      status: "active",
+      assignmentType: "borrowable",
+      location: "Lab 1",
+      department: "IT Dept",
+      currentHolder: null,
+      purchaseDate: "2026-01-10",
+      value: 42000,
+      supplierName: "TechMart",
+      serialNumber: "SN-1",
+      imageUrl: null,
+      notes: null,
+      createdAt: "2026-01-10T00:00:00Z",
+      updatedAt: "2026-10-01T00:00:00Z",
+    },
+    purchaseInfo: {
+      lotCode: "PO-2026-001",
+      poNumber: "PO-2026-001",
+      purchasedOn: "2026-01-10",
+      supplierName: "TechMart",
+      unitCost: 42000,
+      reference: "INV-1",
+      receiptUrl: null,
+    },
+    maintenanceHistory: [
+      {
+        id: "mnt-1",
+        logCode: "MNT-001",
+        condition: "resolved",
+        source: "manual_flag",
+        dateLogged: "2026-09-01",
+        isResolved: true,
+        resolutionDate: "2026-09-03",
+        repairCost: 1800,
+        totalCost: 1800,
+        serviceProvider: "Vendor",
+        loggedByName: "Admin",
+        resolvedByName: "Tech",
+        notes: "Fan",
+        workNotes: null,
+        resolutionNotes: "Replaced",
+        repairParts: [{ name: "Cooling Fan", cost: "1800.00" }],
+      },
+    ],
+    custodyHistory: [],
+    consumablesConsumed: [],
+    tco: {
+      purchaseCost: 42000,
+      maintenanceCost: 1800,
+      consumablesCost: 0,
+      totalCostOfOwnership: 43800,
+    },
+    canViewCosts: true,
+  };
+}
+
+function buildPurchaseOrdersFixture(): Awaited<
+  ReturnType<ReportRepository["getPurchaseOrdersReport"]>
+> {
+  return {
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
+    total: 1,
+    data: [
+      {
+        poNumber: "PO-2026-001",
+        supplierName: "Acme Supply",
+        status: "delivered",
+        itemType: "consumable",
+        classification: "supply",
+        totalAmount: 15000,
+        totalQuantity: 50,
+        lineItemCount: 2,
+        purchasedOn: "2026-09-15",
+        approvedAt: "2026-09-16",
+        deliveredAt: "2026-09-18",
+        leadTimeDays: 3,
+        itemsPreview: "Bond Paper (50)",
+      },
+    ],
+    summary: {
+      totalSpend: 15000,
+      openOrdersCount: 0,
+      deliveredCount: 1,
+      avgLeadTimeDays: 3,
+      suppliesSpend: 15000,
+      materialsSpend: 0,
+      assetsSpend: 0,
+      suppliesOrdersCount: 1,
+      materialsOrdersCount: 0,
+      assetsOrdersCount: 0,
+      topSuppliers: [{ name: "Acme Supply", spend: 15000 }],
+    },
+  };
+}
+
+function buildMaintenanceFixture(): Awaited<
+  ReturnType<ReportRepository["getMaintenanceReport"]>
+> {
+  return {
+    page: 1,
+    pageSize: 25,
+    totalPages: 1,
+    total: 1,
+    data: [
+      {
+        id: "mnt-1",
+        logCode: "MNT-001",
+        assetCode: "CE-001",
+        assetName: "Workstation",
+        category: "Computers",
+        department: "IT Dept",
+        condition: "resolved",
+        source: "manual_flag",
+        dateLogged: "2026-09-01",
+        isResolved: true,
+        resolutionDate: "2026-09-03",
+        repairCost: 1800,
+        mttrDays: 2,
+        loggedByName: "Admin",
+        resolvedByName: "Tech",
+        notes: "Fan",
+        workNotes: null,
+        resolutionNotes: "Done",
+        repairParts: [{ name: "Cooling Fan", cost: "1800.00" }],
+      },
+    ],
+    summary: {
+      totalWorkOrders: 1,
+      openWorkOrders: 0,
+      resolvedWorkOrders: 1,
+      totalRepairSpend: 1800,
+      avgMttrDays: 2,
+      topFaultyAssets: [
+        { assetCode: "CE-001", name: "Workstation", count: 1, totalCost: 1800 },
+      ],
+      conditionBreakdown: [{ condition: "resolved", count: 1, cost: 1800 }],
+    },
+  };
+}
+
 function createServiceHarness() {
   const execData = buildExecutiveFixture();
+  const assetsData = buildAssetsFixture();
+  const drilldownData = buildDrilldownFixture();
   const consData = buildConsumablesFixture();
+  const poData = buildPurchaseOrdersFixture();
+  const maintData = buildMaintenanceFixture();
   const deptData = buildDepartmentsFixture();
   const projData = buildProjectsFixture();
 
   const repoStub: Partial<ReportRepository> = {
     getExecutiveData: vi.fn(async () => structuredClone(execData)),
+    getAssetRegisterReport: vi.fn(async () => structuredClone(assetsData)),
+    getAssetDrilldownReport: vi.fn(async () => structuredClone(drilldownData)),
     getConsumablesReport: vi.fn(async () => structuredClone(consData)),
+    getPurchaseOrdersReport: vi.fn(async () => structuredClone(poData)),
+    getMaintenanceReport: vi.fn(async () => structuredClone(maintData)),
     getDepartmentsReport: vi.fn(async () => structuredClone(deptData)),
     getProjectsReport: vi.fn(async () => structuredClone(projData)),
   };
@@ -433,5 +631,86 @@ describe("ReportService split consumables & cost-masking behavior", () => {
         actorName: "Chief Custodian",
       })
     );
+  });
+
+  it("masks costs for staff across all report endpoints, CSV exports, and neutralizes CSV formula injections", async () => {
+    const { service, repoStub } = createServiceHarness();
+    const filters = {
+      page: 1,
+      pageSize: 25,
+      sortOrder: "desc" as const,
+      includeSandbox: false,
+    };
+
+    const exec = await service.getExecutiveSummary("staff", "tenant-1");
+    expect(exec.canViewCosts).toBe(false);
+    expect(exec.assets.totalValue).toBe(0);
+    expect(exec.consumables.suppliesValuation).toBe(0);
+
+    const assets = await service.getAssetRegisterReport(filters, "staff", "tenant-1");
+    expect(assets.canViewCosts).toBe(false);
+    expect(assets.summary.totalValuation).toBe(0);
+    expect(assets.data[0]?.purchaseCost).toBeNull();
+    expect(assets.data[0]?.currentValue).toBeNull();
+
+    const drilldown = await service.getAssetDrilldownReport("CE-001", "staff", "tenant-1");
+    expect(drilldown?.canViewCosts).toBe(false);
+    expect(drilldown?.asset.value).toBeNull();
+    expect(drilldown?.purchaseInfo?.unitCost).toBeNull();
+    expect(drilldown?.tco.totalCostOfOwnership).toBe(0);
+    expect(drilldown?.maintenanceHistory[0]?.repairCost).toBeNull();
+    expect(drilldown?.maintenanceHistory[0]?.repairParts[0]?.cost).toBeNull();
+
+    const pos = await service.getPurchaseOrdersReport(filters, "staff", "tenant-1");
+    expect(pos.canViewCosts).toBe(false);
+    expect(pos.summary.totalSpend).toBe(0);
+    expect(pos.data[0]?.totalAmount).toBeNull();
+
+    const maint = await service.getMaintenanceReport(filters, "staff", "tenant-1");
+    expect(maint.canViewCosts).toBe(false);
+    expect(maint.summary.totalRepairSpend).toBe(0);
+    expect(maint.data[0]?.repairCost).toBeNull();
+    expect(maint.data[0]?.repairParts[0]?.cost).toBeNull();
+
+    const staffAssetsCsv = await service.exportReportCsv(
+      {
+        reportType: "assets",
+        format: "csv",
+        page: 1,
+        pageSize: 200,
+        sortOrder: "desc",
+        includeSandbox: false,
+      },
+      "staff",
+      "tenant-1"
+    );
+    expect(staffAssetsCsv.csv).not.toContain("Cost / Valuation");
+    expect(staffAssetsCsv.csv).not.toContain("42000");
+    expect(staffAssetsCsv.csv).toContain("'=CMD|'/C calc'!A0");
+
+    const staffConsCsv = await service.exportReportCsv(
+      {
+        reportType: "consumables",
+        format: "csv",
+        page: 1,
+        pageSize: 200,
+        sortOrder: "desc",
+        includeSandbox: false,
+      },
+      "staff",
+      "tenant-1"
+    );
+    expect(staffConsCsv.csv).not.toContain("Unit Cost");
+    expect(staffConsCsv.csv).not.toContain("Stock Value");
+    expect(staffConsCsv.csv).not.toContain("2160");
+
+    // Null drilldown & dependency failure propagation
+    (repoStub.getAssetDrilldownReport as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+    expect(await service.getAssetDrilldownReport("MISSING", "admin", "tenant-1")).toBeNull();
+
+    (repoStub.getConsumablesReport as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("DB offline")
+    );
+    await expect(service.getConsumablesReport(filters, "admin")).rejects.toThrow("DB offline");
   });
 });
