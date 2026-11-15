@@ -99,6 +99,15 @@ function applyIn(conditions: SQL[], column: AnyColumn, values?: string[]) {
   if (hasValues(values)) conditions.push(inArray(column, values));
 }
 
+function applyInCaseInsensitive(conditions: SQL[], column: AnyColumn, values?: string[]) {
+  if (hasValues(values)) {
+    const lowerValues = values.map((v) => v.trim().toLowerCase()).filter(Boolean);
+    if (lowerValues.length > 0) {
+      conditions.push(sql`lower(trim(${column})) in ${lowerValues}`);
+    }
+  }
+}
+
 function applyConsumableClassifications(conditions: SQL[], values?: string[]) {
   if (!hasValues(values)) return;
   const normalized = new Set(
@@ -375,8 +384,8 @@ const assetsDef: DatasetDefinition = {
     applySearch(conditions, filters.search, [assets.assetCode, assets.name, assets.serialNumber]);
     const deptNames = await resolveDepartmentNames(tenantId, filters);
     applyIn(conditions, assets.department, deptNames);
-    applyIn(conditions, assets.category, filters.categories);
-    applyIn(conditions, assets.classification, filters.classifications);
+    applyInCaseInsensitive(conditions, assets.category, filters.categories);
+    applyInCaseInsensitive(conditions, assets.classification, filters.classifications);
     applyIn(conditions, assets.status, filters.statuses);
     applyIn(conditions, assets.assignmentType, filters.assignmentTypes);
     applyIn(conditions, assets.id, filters.assetIds);
@@ -1318,7 +1327,7 @@ const maintenanceDef: DatasetDefinition = {
       maintenanceLogs.assetCode,
       maintenanceLogs.assetName,
     ]);
-    applyIn(conditions, maintenanceLogs.category, filters.categories);
+    applyInCaseInsensitive(conditions, maintenanceLogs.category, filters.categories);
     applyIn(conditions, maintenanceLogs.assetId, filters.assetIds);
     applyIn(conditions, maintenanceLogs.condition, filters.conditions);
     if (hasValues(filters.statuses)) {

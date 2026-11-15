@@ -543,10 +543,10 @@ export class ReportRepository {
       conditions.push(eq(assets.isSandbox, false));
     }
     if (filters.category && filters.category !== "all") {
-      conditions.push(eq(assets.category, filters.category));
+      conditions.push(sql`lower(trim(${assets.category})) = ${filters.category.trim().toLowerCase()}`);
     }
     if (filters.classification && filters.classification !== "all") {
-      conditions.push(eq(assets.classification, filters.classification));
+      conditions.push(sql`lower(trim(${assets.classification})) = ${filters.classification.trim().toLowerCase()}`);
     }
     if (filters.status && filters.status !== "all") {
       conditions.push(
@@ -556,8 +556,30 @@ export class ReportRepository {
         )
       );
     }
-    if (filters.departmentId) {
-      conditions.push(eq(assets.department, filters.departmentId));
+    if (filters.departmentId && filters.departmentId !== "all") {
+      const deptVal = filters.departmentId.trim();
+      let matchedNames = [deptVal];
+      if (isUuid(deptVal)) {
+        const [deptRec] = await db
+          .select({ id: departments.id, name: departments.name, code: departments.code })
+          .from(departments)
+          .where(eq(departments.id, deptVal))
+          .limit(1);
+        if (deptRec) {
+          matchedNames = [deptRec.name, deptRec.code, deptRec.id];
+        }
+      }
+      conditions.push(
+        or(
+          inArray(assets.department, matchedNames),
+          sql`exists (
+            select 1 from ${borrowTransactions} bt
+            where bt.asset_id = ${assets.id}
+              and bt.status = 'active'
+              and (bt.department in ${matchedNames} or bt.department_id::text in ${matchedNames})
+          )`
+        )!
+      );
     }
     if (filters.startDate) {
       conditions.push(sql`coalesce(${assets.purchaseDate}, ${assets.createdAt}::date::text) >= ${filters.startDate}`);
@@ -573,6 +595,8 @@ export class ReportRepository {
           ilike(assets.name, q),
           ilike(assets.location, q),
           ilike(assets.category, q),
+          ilike(assets.classification, q),
+          ilike(assets.department, q),
           ilike(assets.serialNumber, q),
           ilike(assets.currentHolder, q)
         )!
@@ -625,14 +649,44 @@ export class ReportRepository {
       .limit(pageSize)
       .offset(offset);
 
+    const assetIds = rows.map((r) => r.id);
+    const activeBorrows =
+      assetIds.length > 0
+        ? await db
+            .select({
+              assetId: borrowTransactions.assetId,
+              department: borrowTransactions.department,
+              requestedByName: borrowTransactions.requestedByName,
+            })
+            .from(borrowTransactions)
+            .where(
+              and(
+                inArray(borrowTransactions.assetId, assetIds),
+                eq(borrowTransactions.status, "active")
+              )
+            )
+        : [];
+    const borrowMap = new Map(activeBorrows.map((b) => [b.assetId, b]));
+
     const total = summaryRow?.totalAssets ?? 0;
 
     return {
-      data: rows.map((r) => ({
-        ...r,
-        hasActiveMaintenance: r.status === "needs_repair" || r.status === "out_of_service",
-        lastUpdated: r.lastUpdated.toISOString(),
-      })),
+      data: rows.map((r) => {
+        const activeBorrow = borrowMap.get(r.id);
+        const custodyStatus: "available" | "assigned" | "on_loan" =
+          activeBorrow
+            ? "on_loan"
+            : r.currentHolder
+              ? "assigned"
+              : "available";
+        return {
+          ...r,
+          borrowingDepartment: activeBorrow?.department ?? null,
+          custodyStatus,
+          hasActiveMaintenance: r.status === "needs_repair" || r.status === "out_of_service",
+          lastUpdated: r.lastUpdated.toISOString(),
+        };
+      }),
       total,
       page,
       pageSize,
@@ -1675,15 +1729,37 @@ export class ReportRepository {
       );
     }
     if (filters.category && filters.category !== "all") {
-      conditions.push(eq(maintenanceLogs.category, filters.category));
-    }
-    if (filters.departmentId && filters.departmentId !== "all") {
       conditions.push(
         or(
-          eq(assets.department, filters.departmentId),
-          ilike(assets.department, `%${filters.departmentId}%`),
-          eq(maintenanceLogs.assignedToName, filters.departmentId),
-          ilike(maintenanceLogs.assignedToName, `%${filters.departmentId}%`)
+          sql`lower(trim(${maintenanceLogs.category})) = ${filters.category.trim().toLowerCase()}`,
+          sql`lower(trim(${assets.category})) = ${filters.category.trim().toLowerCase()}`
+        )!
+      );
+    }
+    if (filters.classification && filters.classification !== "all") {
+      conditions.push(
+        sql`lower(trim(${assets.classification})) = ${filters.classification.trim().toLowerCase()}`
+      );
+    }
+    if (filters.departmentId && filters.departmentId !== "all") {
+      const deptVal = filters.departmentId.trim();
+      let matchedNames = [deptVal];
+      if (isUuid(deptVal)) {
+        const [deptRec] = await db
+          .select({ id: departments.id, name: departments.name, code: departments.code })
+          .from(departments)
+          .where(eq(departments.id, deptVal))
+          .limit(1);
+        if (deptRec) {
+          matchedNames = [deptRec.name, deptRec.code, deptRec.id];
+        }
+      }
+      conditions.push(
+        or(
+          inArray(assets.department, matchedNames),
+          inArray(maintenanceLogs.assignedToName, matchedNames),
+          ilike(assets.department, `%${matchedNames[0]}%`),
+          ilike(maintenanceLogs.assignedToName, `%${matchedNames[0]}%`)
         )!
       );
     }
@@ -1912,7 +1988,7 @@ export class ReportRepository {
     const pageSize = filters.pageSize || 25;
     const offset = (page - 1) * pageSize;
     // Nest line items for list/detail pages; skip for large CSV export pages.
-    const includeLineItems = pageSize <= 100;
+    const includeLineItems = pageSize <= 500;
 
     const wantedClass = filters.classification?.trim().toLowerCase();
     const classCond = consumableClassFilterSql(filters.classification);
@@ -1981,6 +2057,7 @@ export class ReportRepository {
         .innerJoin(assets, eq(projectAssetAssignments.assetId, assets.id))
         .where(
           and(
+            eq(projectAssetAssignments.status, "assigned"),
             ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : []),
             ...(nonSandboxAssetCond ? [nonSandboxAssetCond] : []),
             whereClause
@@ -2152,6 +2229,7 @@ export class ReportRepository {
                 .where(
                   and(
                     inArray(projectAssetAssignments.projectId, rowIds),
+                    eq(projectAssetAssignments.status, "assigned"),
                     ...(tenantId ? [eq(projectAssetAssignments.tenantId, tenantId)] : []),
                     ...(nonSandboxAssetCond ? [nonSandboxAssetCond] : [])
                   )
@@ -2507,7 +2585,7 @@ export class ReportRepository {
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 25;
     const offset = (page - 1) * pageSize;
-    const includeLineItems = pageSize <= 100;
+    const includeLineItems = pageSize <= 500;
 
     const classCond = consumableClassFilterSql(filters.classification);
     const categoryCond =
@@ -2523,6 +2601,16 @@ export class ReportRepository {
     }
     if (nonSandboxAssetCond) {
       assetConditions.push(nonSandboxAssetCond);
+    }
+    if (filters.category && filters.category !== "all") {
+      assetConditions.push(
+        sql`lower(trim(${assets.category})) = ${filters.category.trim().toLowerCase()}`
+      );
+    }
+    if (filters.classification && filters.classification !== "all") {
+      assetConditions.push(
+        sql`lower(trim(${assets.classification})) = ${filters.classification.trim().toLowerCase()}`
+      );
     }
     if (filters.startDate) {
       assetConditions.push(
@@ -2809,7 +2897,7 @@ export class ReportRepository {
       ),
     ];
 
-    const [itemizedAssets, itemizedConsumables, itemizedDirectIssues] =
+    const [itemizedAssets, itemizedBorrowed, itemizedConsumables, itemizedDirectIssues] =
       includeLineItems && pagedDeptIds.length > 0
         ? await Promise.all([
             db
@@ -2829,6 +2917,34 @@ export class ReportRepository {
                 and(
                   assetWhere,
                   inArray(sql`lower(trim(${assets.department}))`, pagedDeptKeys)
+                )
+              ),
+            db
+              .select({
+                id: assets.id,
+                assetCode: assets.assetCode,
+                name: assets.name,
+                category: assets.category,
+                homeDepartment: assets.department,
+                borrowingDepartment: borrowTransactions.department,
+                borrowingDepartmentId: borrowTransactions.departmentId,
+                status: assets.status,
+                serialNumber: assets.serialNumber,
+                location: assets.location,
+                value: sql<number>`coalesce(${assets.value}::numeric, 0)::float`,
+                assignedAt: sql<string>`${borrowTransactions.releasedAt}::text`,
+                assignedByName: borrowTransactions.releasedByName,
+              })
+              .from(borrowTransactions)
+              .innerJoin(assets, eq(borrowTransactions.assetId, assets.id))
+              .where(
+                and(
+                  eq(borrowTransactions.status, "active"),
+                  assetWhere,
+                  or(
+                    inArray(borrowTransactions.departmentId, pagedDeptIds),
+                    inArray(sql`lower(trim(${borrowTransactions.department}))`, pagedDeptKeys)
+                  )
                 )
               ),
             db
@@ -2891,10 +3007,15 @@ export class ReportRepository {
                 )
               ),
           ])
-        : [[], [], []];
+        : [[], [], [], []];
 
     // ─── Maintenance logs for paged dept assets ───────────────────────────────
-    const pagedAssetIds = itemizedAssets.map((a) => a.id);
+    const pagedAssetIds = [
+      ...new Set([
+        ...itemizedAssets.map((a) => a.id),
+        ...itemizedBorrowed.map((b) => b.id),
+      ]),
+    ];
     let rawMaintenanceLogs: Array<{
       assetId: string | null;
       id: string;
@@ -3006,7 +3127,40 @@ export class ReportRepository {
         serialNumber: a.serialNumber,
         value: a.value,
         location: a.location,
+        custodyType: "owned",
+        homeDepartment: a.department,
       });
+    }
+
+    for (const b of itemizedBorrowed) {
+      const keys = [
+        b.borrowingDepartmentId?.toLowerCase(),
+        b.borrowingDepartment?.trim().toLowerCase(),
+      ].filter((k): k is string => Boolean(k));
+      for (const key of keys) {
+        let list = assetsByDeptKey.get(key);
+        if (!list) {
+          list = [];
+          assetsByDeptKey.set(key, list);
+        }
+        if (!list.some((existing) => existing.id === b.id)) {
+          list.push({
+            id: b.id,
+            assetCode: b.assetCode,
+            name: b.name,
+            category: b.category,
+            status: b.status,
+            serialNumber: b.serialNumber,
+            value: b.value,
+            location: b.location,
+            assignedAt: b.assignedAt,
+            assignedByName: b.assignedByName,
+            custodyType: "borrowed",
+            homeDepartment: b.homeDepartment,
+            borrowingDepartment: b.borrowingDepartment,
+          });
+        }
+      }
     }
 
     const data: DepartmentReportRow[] = pagedDepts.map((d) => {
