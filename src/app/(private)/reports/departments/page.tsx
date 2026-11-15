@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 
 import { useDepartmentReportQuery } from "@/features/reports/client/use-reports";
+import { useCategoriesQuery } from "@/features/categories/client/use-categories";
+import { useDepartmentsQuery } from "@/features/departments/client";
 import type { BaseReportFilters, DepartmentReportRow } from "@/types/reports";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { ReportFilterBar } from "@/components/reports/report-filter-bar";
@@ -39,9 +41,28 @@ export default function DepartmentReportsPage() {
     page: 1,
     pageSize: 20,
     search: "",
+    category: "",
     classification: "",
+    departmentId: "",
   });
   const [selectedDepartment, setSelectedDepartment] = useState<DepartmentReportRow | null>(null);
+
+  const { data: categoriesData = [] } = useCategoriesQuery();
+  const { data: deptData = [] } = useDepartmentsQuery();
+
+  const categoryOptions = useMemo(() => {
+    return categoriesData
+      .filter((c) => c.type === "asset" || c.type === "consumable")
+      .map((c) => ({ label: c.name, value: c.name }));
+  }, [categoriesData]);
+
+  const departmentOptions = useMemo(
+    () =>
+      deptData
+        .map((d) => ({ label: d.name, value: d.id }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [deptData]
+  );
 
   const effectiveFilters = useMemo<BaseReportFilters>(
     () => ({
@@ -67,7 +88,7 @@ export default function DepartmentReportsPage() {
   };
 
   const handleReset = () => {
-    setFilters({ page: 1, pageSize: 20, search: "", classification: "" });
+    setFilters({ page: 1, pageSize: 20, search: "", category: "", classification: "", departmentId: "" });
   };
 
   const columns: ColumnDef<DepartmentReportRow>[] = [
@@ -287,6 +308,8 @@ export default function DepartmentReportsPage() {
           filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
+          categories={categoryOptions}
+          departments={departmentOptions}
           classifications={CLASSIFICATION_OPTIONS}
           searchPlaceholder="Search department name…"
         />

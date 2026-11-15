@@ -854,6 +854,11 @@ export function DepartmentDetailDialog({
                               </td>
                               <td className="px-4 py-3">
                                 <div className="font-semibold text-text">{asset.name}</div>
+                                {asset.custodyType === "borrowed" && (
+                                  <div className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.25 rounded border border-amber-500/20 mt-0.5">
+                                    Borrowed from {asset.homeDepartment || "General Services"}
+                                  </div>
+                                )}
                                 {hasMaintenance && (
                                   <div className="text-[10px] text-accent mt-0.5 font-semibold">
                                     {asset.maintenanceLogs!.length} Maintenance Logs

@@ -26,6 +26,7 @@ const CATEGORY_CHANGE_DOMAINS = [
   "dashboard",
   "maintenance",
   "purchaseLots",
+  "reports",
 ] as const satisfies readonly CacheDomain[];
 
 function invalidateCategoryChange(queryClient: ReturnType<typeof useQueryClient>) {
