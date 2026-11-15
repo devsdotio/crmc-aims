@@ -4,7 +4,7 @@ type Params = { params: Promise<{ id: string }> };
 
 /**
  * @swagger
- * /api/borrow-requests/{id}/undo-approval:
+ * /api/requests/{id}/undo-approval:
  *   post:
  *     summary: Revert an approved request back to pending review
  *     tags: [BorrowRequests]

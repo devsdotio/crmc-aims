@@ -113,54 +113,6 @@ export function AssetRegisterPrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead, tr.category-header-row {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -213,7 +165,7 @@ export function AssetRegisterPrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Total Equipment Units
@@ -250,23 +202,23 @@ export function AssetRegisterPrintableReport({
 
       {/* ─── 3. Standard CHED Custodian RPCPPE Table (Pure Black Ink) ─────── */}
       <section className="w-full">
-        <div className="border-2 border-black overflow-hidden bg-white">
+        <div className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
           <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
-                <th className="py-2 px-2 border-r border-black min-w-36">Property / Article Description</th>
-                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Class</th>
+                <th className="py-2 px-2 border-r border-black">Property / Article Description</th>
+                <th className="py-2 px-2 border-r border-black text-center">Class</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Property No. / Tag</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Date Acquired</th>
                 <th className="py-2 px-1 text-center border-r border-black w-10">Unit</th>
                 <th className="py-2 px-1 text-right border-r border-black w-9">Qty</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Unit Cost</th>
                 <th className="py-2 px-2 text-right border-r border-black whitespace-nowrap">Total Cost</th>
-                <th className="py-2 px-2 border-r border-black min-w-28">Location / Office Assigned</th>
-                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Condition</th>
-                <th className="py-2 px-2 border-r border-black min-w-28">Accountable Person</th>
-                <th className="py-2 px-2 min-w-24">Remarks</th>
+                <th className="py-2 px-2 border-r border-black">Location / Office Assigned</th>
+                <th className="py-2 px-2 border-r border-black text-center">Condition</th>
+                <th className="py-2 px-2 border-r border-black">Accountable Person</th>
+                <th className="py-2 px-2">Remarks</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black/40 text-black">
@@ -297,11 +249,11 @@ export function AssetRegisterPrintableReport({
                           : "In regular operational service";
 
                       return (
-                        <tr key={row.id}>
-                          <td className="py-1 px-1 text-center font-mono font-bold border-r border-black">
+                        <tr key={row.id} className="align-top">
+                          <td className="py-1 px-1 text-center font-mono font-bold border-r border-black align-top">
                             {itemNo}
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-semibold text-black">
+                          <td className="py-1 px-2 border-r border-black font-semibold text-black align-top">
                             <div>{row.name}</div>
                             {row.serialNumber && (
                               <div className="text-[8px] font-mono font-normal">
@@ -309,39 +261,44 @@ export function AssetRegisterPrintableReport({
                               </div>
                             )}
                           </td>
-                          <td className="py-1 px-2 border-r border-black text-center font-bold text-[8px] uppercase">
+                          <td className="py-1 px-2 border-r border-black text-center font-bold text-[8px] uppercase align-top">
                             {row.classification || "—"}
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-mono font-bold whitespace-nowrap">
+                          <td className="py-1 px-2 border-r border-black font-mono font-bold whitespace-nowrap align-top">
                             {row.assetCode || "[TO BE FILLED]"}
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-mono whitespace-nowrap">
+                          <td className="py-1 px-2 border-r border-black font-mono whitespace-nowrap align-top">
                             {row.purchaseDate ? formatChedDate(row.purchaseDate) : "[TO BE FILLED]"}
                           </td>
-                          <td className="py-1 px-1 text-center border-r border-black uppercase text-[8px]">
+                          <td className="py-1 px-1 text-center border-r border-black uppercase text-[8px] align-top">
                             Unit
                           </td>
-                          <td className="py-1 px-1 text-right font-mono font-bold border-r border-black">
+                          <td className="py-1 px-1 text-right font-mono font-bold border-r border-black align-top">
                             1
                           </td>
-                          <td className="py-1 px-2 text-right font-mono border-r border-black whitespace-nowrap">
+                          <td className="py-1 px-2 text-right font-mono border-r border-black whitespace-nowrap align-top">
                             {canViewCosts ? unitCost : "—"}
                           </td>
-                          <td className="py-1 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap">
+                          <td className="py-1 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap align-top">
                             {canViewCosts ? totalCost : "—"}
                           </td>
-                          <td className="py-1 px-2 border-r border-black">
+                          <td className="py-1 px-2 border-r border-black align-top">
                             {assignedLocation}
                           </td>
-                          <td className="py-1 px-2 border-r border-black text-center whitespace-nowrap">
+                          <td className="py-1 px-2 border-r border-black text-center whitespace-nowrap align-top">
                             <span className="font-semibold text-[8px] uppercase">
                               {conditionLabel}
                             </span>
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-medium">
-                            {accountableOfficer}
+                          <td className="py-1 px-2 border-r border-black font-medium align-top">
+                            <div>{accountableOfficer}</div>
+                            {row.borrowingDepartment && (
+                              <div className="text-[7.5px] font-bold uppercase text-black mt-0.5">
+                                [Loan: {row.borrowingDepartment}]
+                              </div>
+                            )}
                           </td>
-                          <td className="py-1 px-2 text-[8px]">
+                          <td className="py-1 px-2 text-[8px] align-top">
                             {remarks}
                           </td>
                         </tr>

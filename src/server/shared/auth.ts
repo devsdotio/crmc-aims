@@ -104,51 +104,57 @@ export function toActorContext(
 
 /**
  * Resolve department from the departments table (source of truth).
- * Portal accounts always use the session's department_id — never client text.
+ * Portal accounts (`borrower`) are strictly pinned to their session `departmentId` — never client text.
  */
 export async function resolveDepartmentSnapshot(opts: {
   actor: ActorContext;
   submittedDepartmentId?: string | null;
-  /** Free-text department when no catalog id is selected (portal override). */
+  /** Free-text department when an operator submits without catalog id. */
   submittedDepartmentName?: string | null;
   requireDepartment?: boolean;
 }): Promise<{ departmentId: string | null; departmentName: string | null }> {
   const submittedId = opts.submittedDepartmentId?.trim() || null;
   const submittedName = opts.submittedDepartmentName?.trim() || null;
 
-  // Operators always use submitted id when provided. Borrowers may override their
-  // linked department via submitted id or free-text name.
-  const departmentId: string | null =
-    opts.actor.role === "borrower" && !submittedId && !submittedName
-      ? opts.actor.departmentId
-      : submittedId;
-
-  if (!departmentId && submittedName) {
-    const db = getDb();
-    const [dept] = await db
-      .select({ id: departments.id, name: departments.name })
-      .from(departments)
-      .where(
-        and(
-          sql`lower(trim(${departments.name})) = ${submittedName.toLowerCase()}`,
-          eq(departments.tenantId, opts.actor.tenantId)
-        )
-      )
-      .limit(1);
-    if (dept) {
-      return { departmentId: dept.id, departmentName: dept.name };
+  let departmentId: string | null;
+  if (opts.actor.role === "borrower") {
+    if (!opts.actor.departmentId) {
+      throw new BadRequestError(
+        "Your account is not linked to a department. Ask Property Custodian to assign one."
+      );
     }
-    // Unmatched free text — store denormalized name only.
-    return { departmentId: null, departmentName: submittedName };
+    if (submittedId && submittedId !== opts.actor.departmentId) {
+      throw new ForbiddenError(
+        "Portal accounts can only submit requests for their assigned department."
+      );
+    }
+    departmentId = opts.actor.departmentId;
+  } else {
+    departmentId = submittedId;
+
+    if (!departmentId && submittedName) {
+      const db = getDb();
+      const [dept] = await db
+        .select({ id: departments.id, name: departments.name })
+        .from(departments)
+        .where(
+          and(
+            sql`lower(trim(${departments.name})) = ${submittedName.toLowerCase()}`,
+            eq(departments.tenantId, opts.actor.tenantId)
+          )
+        )
+        .limit(1);
+      if (dept) {
+        return { departmentId: dept.id, departmentName: dept.name };
+      }
+      // Unmatched free text — store denormalized name only (operators only).
+      return { departmentId: null, departmentName: submittedName };
+    }
   }
 
   if (!departmentId) {
-    if (opts.requireDepartment || (opts.actor.role === "borrower" && !submittedName)) {
-      throw new BadRequestError(
-        opts.actor.role === "borrower"
-          ? "Select or enter a requesting department."
-          : "A department is required."
-      );
+    if (opts.requireDepartment) {
+      throw new BadRequestError("A department is required.");
     }
     return { departmentId: null, departmentName: null };
   }

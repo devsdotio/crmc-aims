@@ -7,6 +7,8 @@ export const stockMovementQueryKeys = {
     offset?: number;
     departmentId?: string;
     classification?: string;
+    fromDate?: string;
+    excludeVoided?: boolean;
     includeSandbox?: boolean;
     fetchAll?: boolean;
   }) => [...stockMovementQueryKeys.lists(), filters ?? {}] as const,

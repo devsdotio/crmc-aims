@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
-export type WhatsNewCategory = "Assets" | "Maintenance" | "Reports" | "General";
+export type WhatsNewCategory =
+  | "Requests"
+  | "Assets"
+  | "Maintenance"
+  | "Reports"
+  | "General";
 
 export interface WhatsNewStep {
   badge: string;
@@ -8,7 +13,15 @@ export interface WhatsNewStep {
   subtitle: string;
   description: string;
   highlights: string[];
-  mockupType?: "sheet-buttons" | "custom-condition" | "dossier-print" | "generic";
+  mockupType?:
+    | "sheet-buttons"
+    | "custom-condition"
+    | "dossier-print"
+    | "supplies-materials-ui"
+    | "cart-wizard-ui"
+    | "pending-edit-ui"
+    | "issued-history-ui"
+    | "generic";
   mockupHighlight?: "footer-primary" | "footer-destructive" | "footer-contextual" | "header";
   customIllustration?: ReactNode;
 }

@@ -7,6 +7,7 @@ import type { LinkedRequestSummary } from "@/server/shared/linked-requests";
 export type BorrowRequestDTO = {
   id: string;
   requestCode: string;
+  requesterUserId?: string | null;
   requesterName: string;
   requesterEmail: string;
   requesterPhone: string;

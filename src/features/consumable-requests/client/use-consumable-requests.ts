@@ -17,6 +17,10 @@ import {
 import { dashboardQueryKeys } from "@/features/dashboard/client/query-keys";
 
 import {
+  deriveConsumableRequestKind,
+  type ConsumableRequestKind,
+} from "@/lib/consumable-classification";
+import {
   consumableRequestsApi,
   type ApproveConsumableRequestPayload,
   type ConsumableRequest,
@@ -36,6 +40,7 @@ function invalidate(qc: ReturnType<typeof useQueryClient>) {
 
 export function useConsumableRequests(filters?: {
   status?: ConsumableRequest["status"];
+  classification?: ConsumableRequestKind;
   department?: string;
   search?: string;
   page?: number;
@@ -70,27 +75,36 @@ export function useCreateConsumableRequestMutation(): UseMutationResult<
       const firstLine = newRequest.lines?.[0];
       const itemDesc = firstLine
         ? `${firstLine.itemName}${newRequest.lines.length > 1 ? ` (+${newRequest.lines.length - 1} more)` : ""}`
-        : "Supply Requisition";
+        : "Consumable Requisition";
+      const requestKind =
+        newRequest.classification ??
+        deriveConsumableRequestKind(
+          (newRequest.lines ?? []).map((l) => l.classification)
+        );
 
-      qc.setQueriesData<PaginatedResponse<ConsumableRequest[]>>(
-        { queryKey: consumableRequestQueryKeys.lists() },
-        (old) => {
-          if (!old) {
-            return {
-              data: [newRequest],
-              meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
-            };
-          }
-          return {
-            ...old,
-            data: [newRequest, ...old.data],
-            meta: {
-              ...old.meta,
-              total: old.meta.total + 1,
-            },
-          };
-        }
-      );
+      const listQueries = qc.getQueriesData<PaginatedResponse<ConsumableRequest[]>>({
+        queryKey: consumableRequestQueryKeys.lists(),
+      });
+      for (const [queryKey, old] of listQueries) {
+        const filters = (queryKey[2] ?? {}) as {
+          status?: string;
+          classification?: ConsumableRequestKind;
+          search?: string;
+        };
+        if (filters.status && filters.status !== "pending") continue;
+        if (filters.search?.trim()) continue;
+        if (filters.classification && filters.classification !== requestKind) continue;
+        if (!old) continue;
+        if (old.data.some((r) => r.id === newRequest.id)) continue;
+        qc.setQueryData<PaginatedResponse<ConsumableRequest[]>>(queryKey, {
+          ...old,
+          data: [newRequest, ...old.data],
+          meta: {
+            ...old.meta,
+            total: old.meta.total + 1,
+          },
+        });
+      }
 
       // Optimistically update dashboard snapshot
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -105,18 +119,29 @@ export function useCreateConsumableRequestMutation(): UseMutationResult<
               ...old.summary,
               pendingApprovals: (old.summary?.pendingApprovals || 0) + 1,
               totalRequests: (old.summary?.totalRequests || 0) + 1,
+              ...(requestKind === "material"
+                ? {
+                    pendingMaterialRequests:
+                      (old.summary?.pendingMaterialRequests || 0) + 1,
+                  }
+                : requestKind === "mixed"
+                  ? {
+                      pendingMixedRequests:
+                        (old.summary?.pendingMixedRequests || 0) + 1,
+                    }
+                  : {
+                      pendingSupplyRequests:
+                        (old.summary?.pendingSupplyRequests || 0) + 1,
+                    }),
             },
             pendingRequests: [
               {
                 id: newRequest.id,
+                requestCode: newRequest.requestCode,
+                kind: requestKind,
                 itemDescription: itemDesc,
                 requesterName: newRequest.requesterName,
                 department: newRequest.department,
-                items: newRequest.lines.map((l) => ({
-                  itemDescription: l.itemName,
-                  quantity: l.quantityRequested,
-                  itemType: "consumable",
-                })),
                 requestedAt: newRequest.requestedAt,
                 relativeTime: newRequest.relativeTime || "Just now",
               },
@@ -182,20 +207,79 @@ export function useCancelConsumableRequestMutation(): UseMutationResult<
   return useMutation({
     mutationFn: ({ id, reason, note }) =>
       consumableRequestsApi.cancel(id, { reason, note }),
-    onSuccess: (_, { id }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      qc.setQueriesData<any>({ queryKey: dashboardQueryKeys.snapshot() }, (old: any) => {
+    onMutate: async ({ id, reason, note }) => {
+      await qc.cancelQueries({ queryKey: consumableRequestQueryKeys.lists() });
+      const prevLists = qc.getQueriesData<PaginatedResponse<ConsumableRequest[]>>({
+        queryKey: consumableRequestQueryKeys.lists(),
+      });
+      const prevSnapshots = qc.getQueriesData<{
+        summary?: { pendingApprovals?: number };
+        pendingRequests?: Array<{ id: string }>;
+      }>({
+        queryKey: dashboardQueryKeys.snapshot(),
+      });
+      let cancelledPending = false;
+      for (const [queryKey, old] of prevLists) {
+        if (!old) continue;
+        const match = old.data.find((r) => r.id === id);
+        if (match?.status === "pending") cancelledPending = true;
+        const filters = (queryKey[2] ?? {}) as { status?: string };
+        const shouldRemove = Boolean(filters.status && filters.status !== "cancelled");
+        qc.setQueryData<PaginatedResponse<ConsumableRequest[]>>(queryKey, {
+          ...old,
+          data: shouldRemove
+            ? old.data.filter((r) => r.id !== id)
+            : old.data.map((r) =>
+                r.id === id
+                  ? {
+                      ...r,
+                      status: "cancelled",
+                      cancellationReason: (reason ?? note ?? "").trim() || r.cancellationReason,
+                    }
+                  : r
+              ),
+        });
+      }
+      qc.setQueriesData<{
+        summary?: { pendingApprovals?: number };
+        pendingRequests?: Array<{ id: string }>;
+      }>({ queryKey: dashboardQueryKeys.snapshot() }, (old) => {
         if (!old) return old;
+        const inPending = (old.pendingRequests || []).some((r) => r.id === id);
         return {
           ...old,
           summary: {
             ...old.summary,
-            pendingApprovals: Math.max(0, (old.summary?.pendingApprovals || 1) - 1),
+            pendingApprovals:
+              cancelledPending || inPending
+                ? Math.max(0, (old.summary?.pendingApprovals || 1) - 1)
+                : old.summary?.pendingApprovals,
           },
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          pendingRequests: (old.pendingRequests || []).filter((r: any) => r.id !== id),
+          pendingRequests: (old.pendingRequests || []).filter((r) => r.id !== id),
         };
       });
+      return { prevLists, prevSnapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      const typed = ctx as {
+        prevLists?: Array<[readonly unknown[], PaginatedResponse<ConsumableRequest[]> | undefined]>;
+        prevSnapshots?: Array<
+          [
+            readonly unknown[],
+            | {
+                summary?: { pendingApprovals?: number };
+                pendingRequests?: Array<{ id: string }>;
+              }
+            | undefined,
+          ]
+        >;
+      } | undefined;
+      for (const [key, data] of typed?.prevLists ?? []) {
+        qc.setQueryData(key, data);
+      }
+      for (const [key, data] of typed?.prevSnapshots ?? []) {
+        qc.setQueryData(key, data);
+      }
     },
     onSettled: () => invalidate(qc),
   });

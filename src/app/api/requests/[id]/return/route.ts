@@ -4,7 +4,7 @@ type Params = { params: Promise<{ id: string }> };
 
 /**
  * @swagger
- * /api/borrow-requests/{id}/return:
+ * /api/requests/{id}/return:
  *   post:
  *     summary: Mark a released borrow request as returned (closes borrow log)
  *     tags: [BorrowRequests]

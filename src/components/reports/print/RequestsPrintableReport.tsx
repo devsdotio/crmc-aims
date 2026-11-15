@@ -28,12 +28,14 @@ export function RequestsPrintableReport({
   filters,
   generatedAt = new Date(),
 }: RequestsPrintableReportProps) {
-  const totalRequests = summary?.totalRequests || data.length || 0;
-  const pendingCount = summary?.pendingCount || data.filter((d) => d.status === "pending").length;
-  const approvedCount = summary?.approvedCount || data.filter((d) => d.status === "approved").length;
-  const fulfilledCount = summary?.fulfilledCount || data.filter((d) => d.status === "fulfilled").length;
-  const rejectedCount = summary?.rejectedCount || data.filter((d) => d.status === "rejected").length;
-  const avgTurnaround = summary?.avgTurnaroundHours || 0;
+  const totalRequests = summary?.totalRequests ?? data.length;
+  const pendingCount = summary?.pendingCount ?? data.filter((d) => d.status === "pending").length;
+  const approvedCount = summary?.approvedCount ?? data.filter((d) => d.status === "approved").length;
+  const fulfilledCount =
+    summary?.fulfilledCount ??
+    data.filter((d) => d.status === "released" || d.status === "fulfilled").length;
+  const rejectedCount = summary?.rejectedCount ?? data.filter((d) => d.status === "rejected").length;
+  const avgTurnaround = summary?.avgTurnaroundHours ?? 0;
   const fulfillmentRate = totalRequests > 0 ? Math.round((fulfilledCount / totalRequests) * 100) : 0;
 
   const formattedGeneratedDate = formatChedDate(generatedAt.toISOString().slice(0, 10));
@@ -45,54 +47,6 @@ export function RequestsPrintableReport({
 
   return (
     <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2 p-0">
-      <style>{`
-        @page {
-          size: 14in 8.5in;
-          margin: 10mm;
-        }
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
 
       {/* ─── 1. Formal Institutional Header Block (Pure Black Ink) ────────── */}
       <header className="avoid-break border-b-2 border-black pb-2">
@@ -132,7 +86,7 @@ export function RequestsPrintableReport({
         <div className="mt-2 pt-1.5 border-t border-black flex items-end justify-between text-black">
           <div>
             <h1 className="text-sm font-black tracking-tight uppercase text-black">
-              Custodian Report on Department Supplies &amp; Equipment Requisitions
+              Custodian Report on Department Requisitions (Supplies, Materials &amp; Equipment)
             </h1>
             <div className="text-[10px] font-medium mt-0.5 text-black">
               <span className="font-bold">Reporting Period:</span> {reportingPeriod}
@@ -145,7 +99,7 @@ export function RequestsPrintableReport({
       </header>
 
       {/* ─── 2. Quantitative Summary Rollup (Pure Black Ink) ──────────────── */}
-      <section className="avoid-break grid grid-cols-5 gap-2 text-center text-[10px] text-black">
+      <section className="avoid-break grid grid-cols-2 sm:grid-cols-5 print:grid-cols-[repeat(auto-fit,minmax(1.3in,1fr))] gap-2 text-center text-[10px] text-black">
         <div className="border border-black p-1.5 bg-white">
           <span className="text-[8.5px] font-bold uppercase tracking-wider block">
             Total Requisitions
@@ -182,12 +136,13 @@ export function RequestsPrintableReport({
 
       {/* ─── 3. Standard CHED Requisition Ledger Table (Pure Black Ink) ───── */}
       <section className="w-full">
-        <div className="border-2 border-black overflow-hidden bg-white">
+        <div className="border-2 border-black overflow-hidden print:overflow-visible bg-white">
           <table className="w-full border-collapse text-left text-[9px] text-black">
             <thead>
               <tr className="bg-white text-black border-b-2 border-black uppercase font-bold text-[8.5px] tracking-wider avoid-orphan-header">
                 <th className="py-2 px-1 text-center w-8 border-r border-black">Item No.</th>
                 <th className="py-2 px-2 border-r border-black whitespace-nowrap">Request Code</th>
+                <th className="py-2 px-2 border-r border-black text-center whitespace-nowrap">Class / Type</th>
                 <th className="py-2 px-2 border-r border-black min-w-32">Requester Name</th>
                 <th className="py-2 px-2 border-r border-black min-w-32">Department</th>
                 <th className="py-2 px-2 border-r border-black min-w-44">Requisition Summary</th>
@@ -198,14 +153,28 @@ export function RequestsPrintableReport({
             </thead>
             <tbody className="divide-y divide-black/40 text-black">
               {data.map((row, index) => {
-                const remarks =
-                  row.status === "fulfilled"
-                    ? "Items issued and signed for by requester"
-                    : row.status === "approved"
-                    ? "Approved by Dean/Head; pending store release"
-                    : row.status === "rejected"
-                    ? "Requisition disapproved / cancelled"
-                    : "Awaiting administrative approval";
+                const isFulfilled = row.status === "released" || row.status === "fulfilled";
+                const classLabel =
+                  row.classification === "supply"
+                    ? "SUPPLY"
+                    : row.classification === "material"
+                    ? "MATERIAL"
+                    : row.classification === "mixed"
+                    ? "MIXED"
+                    : row.classification === "borrowable"
+                    ? "BORROW"
+                    : row.classification === "assignable"
+                    ? "ASSIGN"
+                    : row.requestType === "asset_borrow"
+                    ? "BORROW"
+                    : "SUPPLY";
+                const remarks = isFulfilled
+                  ? "Items issued and signed for by requester"
+                  : row.status === "approved"
+                  ? "Approved by Dean/Head; pending store release"
+                  : row.status === "rejected"
+                  ? "Requisition disapproved / cancelled"
+                  : "Awaiting administrative approval";
 
                 return (
                   <tr key={row.id}>
@@ -214,6 +183,11 @@ export function RequestsPrintableReport({
                     </td>
                     <td className="py-1.5 px-2 border-r border-black font-mono font-bold whitespace-nowrap">
                       {row.requestCode}
+                    </td>
+                    <td className="py-1.5 px-2 border-r border-black text-center whitespace-nowrap">
+                      <span className="border border-black px-1 py-0.5 font-mono font-bold text-[7.5px] uppercase">
+                        {classLabel}
+                      </span>
                     </td>
                     <td className="py-1.5 px-2 border-r border-black font-semibold text-black">
                       {row.requesterName}
@@ -241,7 +215,7 @@ export function RequestsPrintableReport({
 
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-6 text-center italic text-[10px]">
+                  <td colSpan={9} className="py-6 text-center italic text-[10px]">
                     No requisition pipeline records found matching specified filters.
                   </td>
                 </tr>
@@ -252,7 +226,7 @@ export function RequestsPrintableReport({
             {data.length > 0 && (
               <tfoot>
                 <tr className="bg-white font-black border-t-2 border-b-2 border-black text-black text-[9.5px]">
-                  <td colSpan={5} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
+                  <td colSpan={6} className="py-1.5 px-2 text-right uppercase tracking-wider border-r border-black">
                     Grand Total Requisition Orders:
                   </td>
                   <td className="py-1.5 px-2 text-center font-mono border-r border-black">

@@ -21,6 +21,7 @@ import {
 
 import { useAssetRegisterReportQuery } from "@/features/reports/client/use-reports";
 import { useCategoriesQuery, useCategoryStyleMap } from "@/features/categories/client/use-categories";
+import { useDepartmentsQuery } from "@/features/departments/client";
 import type { AssetRegisterRow, BaseReportFilters } from "@/types/reports";
 import { StatCardGrid } from "@/components/ui/stat-card";
 import { KpiCard } from "@/components/reports/kpi-card";
@@ -36,13 +37,6 @@ import { AssetCardSkeleton } from "@/components/reports/report-card-skeleton";
 
 import { AssetRegisterPrintableReport } from "@/components/reports/print/AssetRegisterPrintableReport";
 import { cn } from "@/lib/utils";
-
-const CATEGORY_OPTIONS = [
-  { label: "Computing", value: "computing" },
-  { label: "Transport", value: "transport" },
-  { label: "Audio/Visual", value: "av" },
-  { label: "Furniture", value: "furniture" },
-];
 
 const STATUS_OPTIONS = [
   { label: "Active", value: "active" },
@@ -62,6 +56,7 @@ export default function AssetRegisterReportPage() {
     category: "",
     classification: "",
     status: "",
+    departmentId: "",
   });
 
   const effectiveFilters = useMemo<BaseReportFilters>(
@@ -75,14 +70,37 @@ export default function AssetRegisterReportPage() {
 
   const { data, isLoading } = useAssetRegisterReportQuery(effectiveFilters);
   const { data: categoriesData = [] } = useCategoriesQuery();
+  const { data: deptData = [] } = useDepartmentsQuery();
 
-  const CLASSIFICATION_OPTIONS = useMemo(() => {
-    return categoriesData
-      .filter((c) => c.type === "asset_class")
-      .map((c) => ({ label: c.name, value: c.name.toLowerCase() }));
+  const categoryOptions = useMemo(() => {
+    const list = categoriesData
+      .filter((c) => c.type === "asset")
+      .map((c) => ({ label: c.name, value: c.name }));
+    if (list.length === 0) {
+      return [
+        { label: "Computing", value: "computing" },
+        { label: "Transport", value: "transport" },
+        { label: "Audio/Visual", value: "av" },
+        { label: "Furniture", value: "furniture" },
+        { label: "General Services", value: "General Services" },
+      ];
+    }
+    return list;
   }, [categoriesData]);
 
-  const canViewCosts = data?.canViewCosts ?? true;
+  const classificationOptions = useMemo(() => {
+    return categoriesData
+      .filter((c) => c.type === "asset_class")
+      .map((c) => ({ label: c.name, value: c.name }));
+  }, [categoriesData]);
+
+  const departmentOptions = useMemo(() => {
+    return deptData
+      .map((d) => ({ label: d.name, value: d.id }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [deptData]);
+
+  const canViewCosts = data?.canViewCosts ?? false;
   const summary = data?.summary;
 
   const statusDonutData = useMemo(() => {
@@ -267,7 +285,14 @@ export default function AssetRegisterReportPage() {
       key: "currentHolder",
       header: "Holder / Custody",
       render: (row) => (
-        <span className="text-text-secondary">{row.currentHolder || "—"}</span>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-text">{row.currentHolder || "—"}</span>
+          {row.borrowingDepartment && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.25 rounded border border-amber-500/20 w-fit">
+              On loan to {row.borrowingDepartment}
+            </span>
+          )}
+        </div>
       ),
     },
     {
@@ -473,9 +498,10 @@ export default function AssetRegisterReportPage() {
           filters={filters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
-          categories={CATEGORY_OPTIONS}
-          classifications={CLASSIFICATION_OPTIONS}
+          categories={categoryOptions}
+          classifications={classificationOptions}
           statuses={STATUS_OPTIONS}
+          departments={departmentOptions}
           searchPlaceholder="Search by code, name, serial number, location…"
         />
       </div>
@@ -615,6 +641,11 @@ export default function AssetRegisterReportPage() {
                             <span className="truncate text-[11px]">
                               Holder: <strong className="text-text font-medium">{row.currentHolder}</strong>
                             </span>
+                          </div>
+                        )}
+                        {row.borrowingDepartment && (
+                          <div className="flex items-center gap-1.5 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            On loan to: {row.borrowingDepartment}
                           </div>
                         )}
                       </div>

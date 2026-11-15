@@ -20,7 +20,7 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   },
   "/borrow-requests": {
     title: "Requests",
-    subtitle: "Borrow, assignment, and supply request queues",
+    subtitle: "Borrow, assignment, supply, and material request queues",
     category: "Operations",
   },
   "/borrow-requests/borrow": {
@@ -35,7 +35,12 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   },
   "/borrow-requests/supplies": {
     title: "Supply Requests",
-    subtitle: "Consumable requisitions awaiting approval and issue",
+    subtitle: "Office and recurring supply requisitions awaiting approval and issue",
+    category: "Operations",
+  },
+  "/borrow-requests/materials": {
+    title: "Material Requests",
+    subtitle: "Construction and project material requisitions awaiting approval and issue",
     category: "Operations",
   },
   "/assets": {
@@ -240,7 +245,7 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   },
   "/borrower-db": {
     title: "Borrower Portal",
-    subtitle: "Department equipment & supplies portal",
+    subtitle: "Department equipment, supplies & materials portal",
     category: "Borrower",
   },
   "/borrower-db/dashboard": {
@@ -250,48 +255,53 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   },
   "/borrower-db/catalog": {
     title: "Browse Catalog",
-    subtitle: "Explore available equipment and stock consumables",
-    category: "Request",
+    subtitle: "Explore warehouse assets, supplies, and materials available to request",
+    category: "Catalog",
   },
   "/borrower-db/assets": {
     title: "Department Assets",
     subtitle: "Assets currently borrowed or assigned to your department",
-    category: "Operations",
+    category: "Inventory",
   },
   "/borrower-db/supplies": {
     title: "Issued Supplies",
     subtitle: "Supplies released to your department",
-    category: "Operations",
+    category: "Inventory",
   },
   "/borrower-db/materials": {
     title: "Issued Materials",
     subtitle: "Materials released to your department",
-    category: "Operations",
+    category: "Inventory",
   },
   "/borrower-db/inventory": {
     title: "Department Assets",
     subtitle: "Assets currently borrowed or assigned to your department",
-    category: "Operations",
+    category: "Inventory",
   },
   "/borrower-db/requests": {
     title: "My Requests",
-    subtitle: "Track status of borrow, assignment, and supply requests",
-    category: "Operations",
+    subtitle: "Track borrow, assignment, supply, and material requisitions",
+    category: "Requests",
   },
   "/borrower-db/requests/borrow": {
     title: "Borrow Requests",
     subtitle: "Temporary equipment loans with a return due date",
-    category: "Operations",
+    category: "Requests",
   },
   "/borrower-db/requests/assignment": {
     title: "Assignment Requests",
     subtitle: "Long-term department equipment with open custody",
-    category: "Operations",
+    category: "Requests",
   },
   "/borrower-db/requests/supplies": {
-    title: "Supply Requests",
-    subtitle: "Consumable requisitions issued from stock",
-    category: "Operations",
+    title: "Supplies Requests",
+    subtitle: "Consumable supply requisitions issued from stock",
+    category: "Requests",
+  },
+  "/borrower-db/requests/materials": {
+    title: "Materials Requests",
+    subtitle: "Construction and project material requisitions issued from stock",
+    category: "Requests",
   },
   "/borrower-db/history": {
     title: "Equipment History",
@@ -301,7 +311,7 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
   "/borrower-db/requisition": {
     title: "Requisition Slip",
     subtitle: "Submit a new supply or asset requisition request",
-    category: "Operations",
+    category: "Requests",
   },
 };
 

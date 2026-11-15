@@ -548,7 +548,7 @@ export function ProjectExpensePrintDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200 print:hidden">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
       <div
         role="dialog"

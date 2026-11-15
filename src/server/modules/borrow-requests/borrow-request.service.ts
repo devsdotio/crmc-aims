@@ -65,6 +65,7 @@ function toDTO(
   return {
     id: row.id,
     requestCode: row.requestCode,
+    requesterUserId: row.requesterUserId ?? null,
     requesterName: row.requesterName,
     requesterEmail: row.requesterEmail,
     requesterPhone: row.requesterPhone,
@@ -175,11 +176,13 @@ export class BorrowRequestService {
 
   private async toDTOWithLinked(
     row: BorrowRequestRow,
-    tenantId?: string
+    tenantId?: string,
+    requesterUserId?: string
   ): Promise<BorrowRequestDTO> {
     const linked = await loadLinkedRequestSummaries(
       [row.submissionGroupId],
-      tenantId
+      tenantId,
+      requesterUserId
     );
     return toDTO(row, relatedForRow(row.id, row.submissionGroupId, linked));
   }
@@ -229,7 +232,8 @@ export class BorrowRequestService {
     ]);
     const linked = await loadLinkedRequestSummaries(
       rows.map((row) => row.submissionGroupId),
-      actor?.tenantId
+      actor?.tenantId,
+      actor && !isAssetOperatorRole(actor.role) ? actor.userId : undefined
     );
 
     return {
@@ -253,7 +257,11 @@ export class BorrowRequestService {
     if (actor && !isAssetOperatorRole(actor.role) && row.requesterUserId !== actor.userId) {
       throw new ForbiddenError("You are not allowed to view this request.");
     }
-    return this.toDTOWithLinked(row, actor?.tenantId);
+    return this.toDTOWithLinked(
+      row,
+      actor?.tenantId,
+      actor && !isAssetOperatorRole(actor.role) ? actor.userId : undefined
+    );
   }
 
   async create(rawInput: unknown, actor: ActorContext): Promise<BorrowRequestDTO> {
@@ -263,6 +271,11 @@ export class BorrowRequestService {
     const requesterUserId = isAssetOperatorRole(actor.role)
       ? (input.requesterUserId ?? actor.userId)
       : actor.userId;
+    const isBorrower = actor.role === "borrower";
+    const requesterName = isBorrower ? actor.displayName : input.requesterName;
+    const requesterEmail = (
+      isBorrower ? (actor.email ?? input.requesterEmail) : input.requesterEmail
+    ).toLowerCase();
 
     const dest = await resolveDepartmentSnapshot({
       actor,
@@ -284,8 +297,8 @@ export class BorrowRequestService {
         tenantId: actor.tenantId,
         requestCode,
         requesterUserId,
-        requesterName: input.requesterName,
-        requesterEmail: input.requesterEmail.toLowerCase(),
+        requesterName,
+        requesterEmail,
         requesterPhone: input.requesterPhone ?? "",
         department: dest.departmentName!,
         departmentId: dest.departmentId,
@@ -325,7 +338,11 @@ export class BorrowRequestService {
         departmentId: row.departmentId,
       },
     });
-    return toDTO(row);
+    return this.toDTOWithLinked(
+      row,
+      actor.tenantId,
+      !isAssetOperatorRole(actor.role) ? actor.userId : undefined
+    );
   }
 
   async approve(
@@ -418,7 +435,8 @@ export class BorrowRequestService {
         note: historyNote ?? null,
       },
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async reject(
@@ -461,7 +479,8 @@ export class BorrowRequestService {
         reason: input.reason,
       },
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async release(
@@ -665,7 +684,8 @@ export class BorrowRequestService {
         ),
       },
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async cancel(
@@ -724,7 +744,8 @@ export class BorrowRequestService {
         reason: reason || null,
       },
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async undoApproval(
@@ -776,7 +797,8 @@ export class BorrowRequestService {
         note: noteText,
       },
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async markUnreleased(
@@ -819,7 +841,8 @@ export class BorrowRequestService {
         note: input.note ?? null,
       },
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async markReturned(rawId: string, rawInput: unknown, actor: ActorContext): Promise<BorrowRequestDTO> {
@@ -917,7 +940,8 @@ export class BorrowRequestService {
 
       return up;
     });
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 
   async update(
@@ -929,13 +953,28 @@ export class BorrowRequestService {
     const input = updateBorrowRequestSchema.parse(rawInput);
     const existing = await this.repo.findById(id, undefined, actor.tenantId);
     if (!existing) throw new NotFoundError("Borrow request", id);
+
+    const isOperator = isAssetOperatorRole(actor.role);
+    if (!isOperator && existing.requesterUserId !== actor.userId) {
+      throw new ForbiddenError("You can only edit your own pending requests.");
+    }
     if (existing.status !== "pending") {
       throw new ConflictError("Only pending requests can be edited.");
     }
 
     let departmentName = existing.department;
     let departmentId = existing.departmentId;
-    if (input.departmentId !== undefined || input.department !== undefined) {
+    if (actor.role === "borrower") {
+      // Lock borrowers to their session department and account identity.
+      const dest = await resolveDepartmentSnapshot({
+        actor,
+        submittedDepartmentId: input.departmentId ?? null,
+        submittedDepartmentName: input.department ?? null,
+        requireDepartment: true,
+      });
+      departmentName = dest.departmentName ?? existing.department;
+      departmentId = dest.departmentId;
+    } else if (input.departmentId !== undefined || input.department !== undefined) {
       if (input.departmentId || input.department?.trim()) {
         const dest = await resolveDepartmentSnapshot({
           actor,
@@ -976,12 +1015,15 @@ export class BorrowRequestService {
     ];
 
     const updated = await withTransaction(async (tx) => {
-
       const up = await this.repo.update(
         id,
         {
-          ...(input.requesterName !== undefined ? { requesterName: input.requesterName } : {}),
-          ...(input.requesterEmail !== undefined ? { requesterEmail: input.requesterEmail.toLowerCase() } : {}),
+          ...(isOperator && input.requesterName !== undefined
+            ? { requesterName: input.requesterName }
+            : {}),
+          ...(isOperator && input.requesterEmail !== undefined
+            ? { requesterEmail: input.requesterEmail.toLowerCase() }
+            : {}),
           ...(input.requesterPhone !== undefined ? { requesterPhone: input.requesterPhone } : {}),
           ...(input.requestedByName !== undefined ? { requestedByName: input.requestedByName } : {}),
           ...(input.assignedToName !== undefined
@@ -1016,6 +1058,7 @@ export class BorrowRequestService {
       return up;
     });
 
-    return toDTO(updated);
+    invalidateDashboardCache(actor.tenantId);
+    return this.toDTOWithLinked(updated, actor.tenantId);
   }
 }

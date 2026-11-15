@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Printer } from "lucide-react";
@@ -54,16 +54,16 @@ const REPORT_DOMAINS: Record<string, DomainMeta> = {
     scopeText: "Scope: Capital Equipment Registry · Physical Inventory & Custody",
   },
   consumables: {
-    title: "Consumable Supply Stores",
+    title: "Consumables Stock (Part 1: Supplies & Part 2: Materials)",
     backHref: "/reports/consumables",
     backLabel: "Back to Consumables",
-    scopeText: "Scope: Consumable Supply Inventory · Stock Levels & Lot Allocations",
+    scopeText: "Scope: Consumable Inventory · Part 1: Supplies & Part 2: Materials Stock & Lot Allocations",
   },
   consumable: {
-    title: "Consumable Supply Stores",
+    title: "Consumables Stock (Part 1: Supplies & Part 2: Materials)",
     backHref: "/reports/consumables",
     backLabel: "Back to Consumables",
-    scopeText: "Scope: Consumable Supply Inventory · Stock Levels & Lot Allocations",
+    scopeText: "Scope: Consumable Inventory · Part 1: Supplies & Part 2: Materials Stock & Lot Allocations",
   },
   departments: {
     title: "Departmental Custody & Consumption",
@@ -183,7 +183,7 @@ function AssetsPrintContent({ filters }: { filters: BaseReportFilters }) {
   );
 }
 
-function ConsumablesPrintContent({ filters }: { filters: BaseReportFilters }) {
+function ConsumablesFilteredPrintContent({ filters }: { filters: BaseReportFilters }) {
   const { data, isLoading, error } = useConsumablesReportQuery(filters);
 
   if (isLoading) return <PrintLoadingSpinner message="Loading consumable inventory & lot allocations..." />;
@@ -199,6 +199,63 @@ function ConsumablesPrintContent({ filters }: { filters: BaseReportFilters }) {
       generatedAt={new Date()}
     />
   );
+}
+
+function ConsumablesAllPrintContent({ filters }: { filters: BaseReportFilters }) {
+  const supplyFilters = useMemo<BaseReportFilters>(
+    () => ({ ...filters, classification: "supply" }),
+    [filters]
+  );
+  const materialFilters = useMemo<BaseReportFilters>(
+    () => ({ ...filters, classification: "material" }),
+    [filters]
+  );
+
+  const suppliesQuery = useConsumablesReportQuery(supplyFilters);
+  const materialsQuery = useConsumablesReportQuery(materialFilters);
+
+  const isLoading = suppliesQuery.isLoading || materialsQuery.isLoading;
+  const error = suppliesQuery.error || materialsQuery.error;
+
+  const combinedData = useMemo(
+    () => [...(suppliesQuery.data?.data ?? []), ...(materialsQuery.data?.data ?? [])],
+    [suppliesQuery.data?.data, materialsQuery.data?.data]
+  );
+
+  if (isLoading) return <PrintLoadingSpinner message="Loading Part 1 (Supplies) & Part 2 (Materials) inventory..." />;
+  if (error) return <PrintErrorDisplay error={error} title="Error loading consumables report" />;
+  if (!suppliesQuery.data && !materialsQuery.data) return <PrintEmptyDisplay />;
+
+  const s1 = suppliesQuery.data?.summary;
+  const s2 = materialsQuery.data?.summary;
+  const canViewCosts = suppliesQuery.data?.canViewCosts ?? materialsQuery.data?.canViewCosts ?? false;
+  const combinedSummary =
+    s1 && s2
+      ? {
+          ...s1,
+          totalSkus: s1.totalSkus + s2.totalSkus,
+          lowStockItemsCount: s1.lowStockItemsCount + s2.lowStockItemsCount,
+          totalInventoryValuation: s1.totalInventoryValuation + s2.totalInventoryValuation,
+          totalDispatched30d: s1.totalDispatched30d + s2.totalDispatched30d,
+        }
+      : s1 || s2;
+
+  return (
+    <ConsumablesPrintableReport
+      data={combinedData}
+      summary={combinedSummary}
+      canViewCosts={canViewCosts}
+      filters={filters}
+      generatedAt={new Date()}
+    />
+  );
+}
+
+function ConsumablesPrintContent({ filters }: { filters: BaseReportFilters }) {
+  if (filters.classification === "supply" || filters.classification === "material") {
+    return <ConsumablesFilteredPrintContent filters={filters} />;
+  }
+  return <ConsumablesAllPrintContent filters={filters} />;
 }
 
 function DepartmentsPrintContent({ filters }: { filters: BaseReportFilters }) {
@@ -301,11 +358,12 @@ function PrintableReportView() {
   const filters: BaseReportFilters = useMemo(
     () => ({
       page: 1,
-      // Print route should dump a large slice; list pages keep pageSize 20 for cache.
-      pageSize: 2000,
+      // Keep within validation ceiling (max 200 per request); multi-part reports merge dual queries.
+      pageSize: 200,
       search: searchParams.get("search") || undefined,
       departmentId: searchParams.get("departmentId") || searchParams.get("department") || undefined,
       category: searchParams.get("category") || undefined,
+      classification: searchParams.get("classification") || undefined,
       status: searchParams.get("status") || undefined,
       startDate: searchParams.get("dateFrom") || searchParams.get("startDate") || undefined,
       endDate: searchParams.get("dateTo") || searchParams.get("endDate") || undefined,
@@ -313,16 +371,45 @@ function PrintableReportView() {
     [searchParams]
   );
 
-  const isLandscape = true; // All official CHED / Custodian reports adhere to the landscape A4 folio standard
+  const [paperSize, setPaperSize] = useState<"auto" | "letter" | "legal" | "long" | "a4">("auto");
+  const [orientation, setOrientation] = useState<"auto" | "landscape" | "portrait">("auto");
+
+  const effectiveOrientation = orientation === "auto" ? "landscape" : orientation;
+  const pageSizeRule =
+    paperSize === "auto"
+      ? orientation === "auto"
+        ? "auto"
+        : orientation
+      : paperSize === "legal"
+      ? effectiveOrientation === "landscape"
+        ? "14in 8.5in"
+        : "8.5in 14in"
+      : paperSize === "long"
+      ? effectiveOrientation === "landscape"
+        ? "13in 8.5in"
+        : "8.5in 13in"
+      : paperSize === "letter"
+      ? effectiveOrientation === "landscape"
+        ? "11in 8.5in"
+        : "8.5in 11in"
+      : `A4 ${effectiveOrientation}`;
+
+  const screenPreviewWidthClass =
+    effectiveOrientation === "portrait"
+      ? "max-w-[7.9in]"
+      : paperSize === "legal" || paperSize === "long"
+      ? "max-w-[13.2in]"
+      : "max-w-[10.6in]";
 
   return (
-    <div className="h-full w-full overflow-y-auto bg-[#E5E7EB] py-3 sm:py-5 px-2 sm:px-4 print:bg-white print:p-0 print:m-0 print:overflow-visible">
+    <div className="h-full w-full overflow-y-auto bg-[#E5E7EB] py-3 sm:py-5 px-2 sm:px-4 print:h-auto print:bg-white print:p-0 print:m-0 print:overflow-visible">
+      <style>{`@page { size: ${pageSizeRule}; margin: 10mm; }`}</style>
       {/* ─── Top Control Toolbar (Screen Only) ──────────────────────────── */}
-      <div className={`no-print mx-auto mb-3 flex ${isLandscape ? "max-w-[10.4in]" : "max-w-[7.6in]"} flex-wrap items-center justify-between gap-3 rounded-md border border-neutral-300 bg-white p-2.5 sm:p-3 shadow-xs`}>
+      <div className={`no-print print:hidden mx-auto mb-3 flex ${screenPreviewWidthClass} flex-wrap items-center justify-between gap-3 rounded-md border border-neutral-300 bg-white p-2.5 sm:p-3 shadow-xs`}>
         <div className="flex items-center gap-3">
           <Link
             href={meta.backHref}
-            className="flex h-8 items-center gap-1.5 rounded-md border border-neutral-300 bg-neutral-50 px-2.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 hover:border-neutral-400 transition-all cursor-pointer"
+            className="flex h-9 sm:h-8 items-center gap-1.5 rounded-md border border-neutral-300 bg-neutral-50 px-2.5 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 hover:border-neutral-400 transition-all cursor-pointer"
           >
             <ArrowLeft className="h-3.5 w-3.5 text-neutral-600" />
             <span>{meta.backLabel}</span>
@@ -332,21 +419,47 @@ function PrintableReportView() {
             <div className="text-xs font-bold text-neutral-900">
               Print Preview: {meta.title}
             </div>
-            <div className="text-[10px] text-neutral-500 font-mono">
-              {isLandscape
-                ? "Legal Landscape (14\" × 8.5\") · CHED / COA Custodian Report Standard"
-                : "Standard Letter (8.5\" × 11\") · Live Institutional Data"}
+            <div className="text-[10px] text-neutral-600 font-mono">
+              {paperSize === "auto"
+                ? "Responsive Paper Size (Matches Printer Dialog)"
+                : `${paperSize.toUpperCase()} · ${effectiveOrientation.toUpperCase()} · Live Institutional Data`}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label="Paper size"
+            value={paperSize}
+            onChange={(e) =>
+              setPaperSize(e.target.value as "auto" | "letter" | "legal" | "long" | "a4")
+            }
+            className="h-9 sm:h-8 rounded-md border border-neutral-300 bg-neutral-50 px-2 text-xs font-semibold text-neutral-800 cursor-pointer"
+          >
+            <option value="auto">Auto (Printer Setting)</option>
+            <option value="letter">US Letter (8.5&quot; × 11&quot;)</option>
+            <option value="legal">US Legal (8.5&quot; × 14&quot;)</option>
+            <option value="long">Long Bond (8.5&quot; × 13&quot;)</option>
+            <option value="a4">ISO A4 (210 × 297mm)</option>
+          </select>
+          <select
+            aria-label="Orientation"
+            value={orientation}
+            onChange={(e) =>
+              setOrientation(e.target.value as "auto" | "landscape" | "portrait")
+            }
+            className="h-9 sm:h-8 rounded-md border border-neutral-300 bg-neutral-50 px-2 text-xs font-semibold text-neutral-800 cursor-pointer"
+          >
+            <option value="auto">Orientation: Auto</option>
+            <option value="landscape">Landscape</option>
+            <option value="portrait">Portrait</option>
+          </select>
           <PrintTriggerButton />
         </div>
       </div>
 
       {/* ─── Printable Document Sheet Container ─────────────────────────── */}
-      <div className={`mx-auto ${isLandscape ? "max-w-[10.4in]" : "max-w-[7.6in]"} rounded-xs border border-neutral-300 bg-white p-5 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none`}>
+      <div className={`mx-auto ${screenPreviewWidthClass} rounded-xs border border-neutral-300 bg-white p-5 shadow-sm print:border-none print:shadow-none print:p-0 print:m-0 print:max-w-none print:w-full`}>
         {rawType === "executive" && <ExecutivePrintContent filtersSummary={meta.scopeText} />}
         {(rawType === "assets" || rawType === "asset") && <AssetsPrintContent filters={filters} />}
         {(rawType === "consumables" || rawType === "consumable") && <ConsumablesPrintContent filters={filters} />}

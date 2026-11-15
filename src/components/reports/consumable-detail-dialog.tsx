@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Printer,
   Copy,
@@ -16,8 +16,8 @@ import {
   X,
   PieChart as PieChartIcon,
   BarChart3,
-  Flame,
-  ShieldCheck,
+  Package,
+  HardHat,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -38,6 +38,9 @@ import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { cn } from "@/lib/utils";
 import type { ConsumableStockRow } from "@/types/reports";
 import { IndividualConsumablePrintableReport } from "@/components/reports/print/individual/IndividualConsumablePrintableReport";
+import { ConsumableClassificationBadge } from "@/components/reports/consumable-classification-badge";
+import { normalizeConsumableClassification } from "@/lib/consumable-classification";
+import { useFocusTrap } from "@/hooks/use-focus-trap";
 
 interface ConsumableDetailDialogProps {
   consumable: ConsumableStockRow | null;
@@ -58,6 +61,7 @@ export function ConsumableDetailDialog({
   const [copied, setCopied] = useState(false);
   const [isRendered, setIsRendered] = useState(isOpen);
   const [isClosing, setIsClosing] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [cachedConsumable, setCachedConsumable] = useState<ConsumableStockRow | null>(
     consumable
   );
@@ -85,16 +89,7 @@ export function ConsumableDetailDialog({
     }, 200);
   }, [isClosing, onClose]);
 
-  // Close on Escape key press with smooth exit
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen && !isClosing) {
-        handleInitiateClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isClosing, handleInitiateClose]);
+  useFocusTrap(isRendered && !isClosing, dialogRef, handleInitiateClose);
 
   const effectiveConsumable = isOpen ? consumable : cachedConsumable;
 
@@ -154,79 +149,102 @@ export function ConsumableDetailDialog({
 
       {/* ── Centered Modal Dialog ────────────────────────────────────── */}
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="consumable-dialog-title"
         className={cn(
-          "relative z-10 w-full sm:w-[88vw] max-w-6xl h-[85vh] bg-card rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden transform-gpu transition-all duration-200 ease-out will-change-transform",
+          "relative z-10 w-full sm:w-[88vw] max-w-6xl h-[85vh] bg-card rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden transform-gpu transition-all duration-200 ease-out will-change-transform outline-none",
           isClosing
             ? "scale-95 opacity-0"
             : "animate-in fade-in zoom-in-95 duration-200 scale-100 opacity-100"
         )}
       >
         {/* ── Header ──────────────────────────────────────────────────── */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border/80 px-5 py-3.5 bg-bg-subtle/50">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
-              <Layers className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-bold text-text">
-                  {effectiveConsumable.itemCode}
-                </span>
-                <span className="text-[10px] font-semibold capitalize text-text-secondary">
-                  {effectiveConsumable.category.replace(/_/g, " ")}
-                </span>
-                {effectiveConsumable.isLowStock ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/20 px-2 py-0.5 text-[10px] font-bold">
-                    <AlertTriangle className="h-3 w-3" />
-                    Low Stock Alert
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Optimal Stock
-                  </span>
-                )}
+        {(() => {
+          const cls = normalizeConsumableClassification(effectiveConsumable.classification);
+          const isMaterial = cls === "material";
+          const ClassIcon = isMaterial ? HardHat : Package;
+          return (
+            <div className="flex shrink-0 items-center justify-between border-b border-border/80 px-5 py-3.5 bg-bg-subtle/50">
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-xl border",
+                    isMaterial
+                      ? "bg-amber-500/12 text-amber-800 dark:text-amber-300 border-amber-500/30"
+                      : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25"
+                  )}
+                >
+                  <ClassIcon className="h-5 w-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs font-bold text-text">
+                      {effectiveConsumable.itemCode}
+                    </span>
+                    <ConsumableClassificationBadge classification={cls} compact />
+                    <span className="text-[10px] font-semibold capitalize text-text-secondary">
+                      {effectiveConsumable.category.replace(/_/g, " ")}
+                    </span>
+                    {effectiveConsumable.isLowStock ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20 px-2 py-0.5 text-[10px] font-bold">
+                        <AlertTriangle className="h-3 w-3" />
+                        Low Stock Alert
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-bold">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Optimal Stock
+                      </span>
+                    )}
+                  </div>
+                  <h2
+                    id="consumable-dialog-title"
+                    className="text-base font-bold text-text truncate max-w-md"
+                  >
+                    {effectiveConsumable.name}
+                  </h2>
+                </div>
               </div>
-              <h2
-                id="consumable-dialog-title"
-                className="text-base font-bold text-text truncate max-w-md"
-              >
-                {effectiveConsumable.name}
-              </h2>
-            </div>
-          </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleCopyCode}
-              title="Copy SKU code"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
-            >
-              {copied ? (
-                <Check className="h-4 w-4 text-emerald-600" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </button>
-            <button
-              onClick={handlePrint}
-              title="Print consumable report"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
-            >
-              <Printer className="h-4 w-4" />
-            </button>
-            <button
-              onClick={handleInitiateClose}
-              title="Close dialog (Esc)"
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCopyCode}
+                  title="Copy SKU code"
+                  aria-label="Copy SKU code"
+                  className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  title="Print consumable report"
+                  aria-label="Print consumable report"
+                  className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <Printer className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleInitiateClose}
+                  title="Close dialog (Esc)"
+                  aria-label="Close consumable dialog"
+                  className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Section Navigator (Sticky quick-jump bar) ────────────────── */}
         <div className="flex shrink-0 items-center justify-between border-b border-border/80 bg-card px-5 py-2 overflow-x-auto text-xs gap-3">
@@ -436,17 +454,17 @@ export function ConsumableDetailDialog({
                         data={velocityData}
                         margin={{ top: 15, right: 15, left: -20, bottom: 5 }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border, #E5E7EB)" vertical={false} />
                         <XAxis
                           dataKey="name"
                           tickLine={false}
                           axisLine={false}
-                          tick={{ fontSize: 10, fill: "#5A5F73", fontWeight: 600 }}
+                          tick={{ fontSize: 10, fill: "var(--text-secondary, #5A5F73)", fontWeight: 600 }}
                         />
                         <YAxis
                           tickLine={false}
                           axisLine={false}
-                          tick={{ fontSize: 10, fill: "#5A5F73", fontFamily: "monospace" }}
+                          tick={{ fontSize: 10, fill: "var(--text-secondary, #5A5F73)", fontFamily: "monospace" }}
                         />
                         <Tooltip
                           cursor={false}
@@ -486,11 +504,17 @@ export function ConsumableDetailDialog({
                 <h4 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                   Warehouse Location &amp; Reorder Specification
                 </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                  <div>
+                    <span className="text-text-secondary block mb-1">Classification</span>
+                    <ConsumableClassificationBadge
+                      classification={normalizeConsumableClassification(effectiveConsumable.classification)}
+                    />
+                  </div>
                   <div>
                     <span className="text-text-secondary block mb-1">Warehouse Bin / Rack</span>
                     <span className="font-semibold text-text font-mono flex items-center gap-1.5">
-                      <Warehouse className="h-3.5 w-3.5 text-accent" />
+                      <Warehouse className="h-3.5 w-3.5 text-primary dark:text-blue-300" />
                       {effectiveConsumable.location || "General Warehouse"}
                     </span>
                   </div>

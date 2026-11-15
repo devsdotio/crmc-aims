@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { WhatsNewFeature, WhatsNewStep } from "./types";
+import { RequestsPortalMockup } from "./requests-portal-mockups";
 import { WHATS_NEW_REGISTRY } from "./registry";
 import { SheetSpotlightTour } from "./sheet-spotlight-tour";
 
@@ -276,8 +277,12 @@ export function WhatsNewDialog({
       if (activeFeature) {
         onMarkSeen?.(activeFeature.id);
       }
+    } else {
+      setSelectedFeatureId(initialFeatureId || features[0]?.id || "");
+      setViewMode("tour");
+      setCurrentStepIndex(0);
     }
-  }, [isOpen, initialFeatureId, activeFeature, onMarkSeen]);
+  }, [isOpen, initialFeatureId, features, activeFeature, onMarkSeen]);
 
   const handleClose = useCallback(() => {
     if (activeFeature) {
@@ -346,7 +351,7 @@ export function WhatsNewDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="whats-new-modal-title"
-      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in-50 duration-200"
+      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in-50 duration-200 print:hidden no-print"
     >
       <div className="absolute inset-0" onClick={handleClose} aria-hidden="true" />
 
@@ -469,9 +474,17 @@ export function WhatsNewDialog({
               )}
               {currentStep.mockupType === "custom-condition" && <CustomConditionMockup />}
               {currentStep.mockupType === "dossier-print" && <DossierPrintMockup />}
-              {(!currentStep.mockupType || currentStep.mockupType === "generic") && (
-                <SheetButtonsMockup highlight={currentStep.mockupHighlight} />
+              {(currentStep.mockupType === "supplies-materials-ui" ||
+                currentStep.mockupType === "cart-wizard-ui" ||
+                currentStep.mockupType === "pending-edit-ui" ||
+                currentStep.mockupType === "issued-history-ui") && (
+                <RequestsPortalMockup type={currentStep.mockupType} />
               )}
+              {currentStep.customIllustration}
+              {!currentStep.customIllustration &&
+                (!currentStep.mockupType || currentStep.mockupType === "generic") && (
+                  <SheetButtonsMockup highlight={currentStep.mockupHighlight} />
+                )}
             </div>
 
             {/* Step Body */}

@@ -1,9 +1,10 @@
-import { and, desc, eq, gte, ilike, not, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, isNull, not, or, sql } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import type { DbSession } from "@/server/db/transaction";
 import { getTenantContext } from "@/server/shared/tenant-context";
 import {
+  consumableRequests,
   consumables,
   stockMovements,
   type NewStockMovementRow,
@@ -15,6 +16,8 @@ export type StockMovementListRow = StockMovementRow & {
   itemCode: string;
   itemName: string;
   unit: string;
+  classification?: string | null;
+  requestCode?: string | null;
 };
 
 /** Notes marker linking a compensating restock back to the original issue. */
@@ -27,7 +30,7 @@ export function voidedMarker(): string {
 }
 
 export function isVoidedNotes(notes?: string | null): boolean {
-  return Boolean(notes?.includes("[VOIDED]"));
+  return Boolean(notes?.toUpperCase().includes("[VOIDED]"));
 }
 
 export function extractReversedId(notes?: string | null): string | null {
@@ -244,6 +247,8 @@ export class StockMovementRepository {
       itemCode: consumables.itemCode,
       itemName: consumables.name,
       unit: consumables.unit,
+      classification: consumables.classification,
+      requestCode: consumableRequests.requestCode,
     };
 
     const conditions = [];
@@ -257,12 +262,15 @@ export class StockMovementRepository {
       conditions.push(eq(stockMovements.departmentId, filters.departmentId));
     }
     if (filters.classification) {
-      const wanted = filters.classification.toLowerCase();
-      // Blank / odd-cased rows still belong on Supplies (DTO treats them as supply).
+      const wanted = filters.classification.trim().toLowerCase();
+      // Blank, null, or unknown values default to Supplies (matching normalizeConsumableClassification).
       conditions.push(
-        wanted === "supply"
-          ? sql`lower(trim(${consumables.classification})) in ('supply', '')`
-          : sql`lower(trim(${consumables.classification})) = ${wanted}`
+        wanted === "material"
+          ? sql`lower(trim(${consumables.classification})) = 'material'`
+          : or(
+              isNull(consumables.classification),
+              sql`lower(trim(${consumables.classification})) <> 'material'`
+            )!
       );
     }
     if (filters.fromDate?.trim()) {
@@ -275,8 +283,11 @@ export class StockMovementRepository {
     if (filters.excludeVoided) {
       conditions.push(
         or(
-          sql`${stockMovements.notes} is null`,
-          not(ilike(stockMovements.notes, "%[VOIDED]%"))
+          isNull(stockMovements.notes),
+          and(
+            not(ilike(stockMovements.notes, "%[VOIDED]%")),
+            not(ilike(stockMovements.notes, "%[REVERSES:%"))
+          )!
         )!
       );
     }
@@ -284,7 +295,11 @@ export class StockMovementRepository {
     const base = db
       .select(columns)
       .from(stockMovements)
-      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id));
+      .innerJoin(consumables, eq(stockMovements.consumableId, consumables.id))
+      .leftJoin(
+        consumableRequests,
+        eq(stockMovements.requestId, consumableRequests.id)
+      );
 
     const filtered =
       conditions.length > 0 ? base.where(and(...conditions)) : base;

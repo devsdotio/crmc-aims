@@ -69,9 +69,12 @@ export function VouchersView() {
       if (v.status === "disbursed") awaitingReceiptCount++;
       if (v.status === "completed") completedCount++;
       if (v.status === "disbursed" || v.status === "completed") {
-        totalDisbursed += parseFloat(v.amount) || 0;
+        totalDisbursed += parseFloat(v.amount ?? "0") || 0;
       }
     }
+
+    const hasRestrictedAmounts =
+      vouchers.length > 0 && vouchers.every((v) => v.amount == null);
 
     return {
       total: vouchers.length,
@@ -80,6 +83,7 @@ export function VouchersView() {
       awaitingReceiptCount,
       completedCount,
       totalDisbursed,
+      hasRestrictedAmounts,
     };
   }, [vouchers]);
 
@@ -193,7 +197,11 @@ export function VouchersView() {
           />
           <StatCard
             title="Total Disbursed"
-            value={formatPhp(stats.totalDisbursed)}
+            value={
+              stats.hasRestrictedAmounts
+                ? "Restricted"
+                : formatPhp(stats.totalDisbursed)
+            }
             subtitle={`${stats.awaitingReceiptCount} awaiting receipt · ${stats.completedCount} closed`}
             icon={Banknote}
             tone="emerald"

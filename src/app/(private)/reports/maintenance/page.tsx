@@ -25,6 +25,7 @@ import {
 
 import { useMaintenanceReportQuery } from "@/features/reports/client/use-reports";
 import { useDepartmentsQuery } from "@/features/departments/client";
+import { useCategoriesQuery } from "@/features/categories/client/use-categories";
 import type { BaseReportFilters, MaintenanceReportRow } from "@/types/reports";
 import { StatCard, StatCardGrid } from "@/components/ui/stat-card";
 import { KpiCard } from "@/components/reports/kpi-card";
@@ -40,13 +41,6 @@ import { AssetDetailDialog } from "@/components/reports/asset-detail-dialog";
 import { MaintenancePrintableReport } from "@/components/reports/print/MaintenancePrintableReport";
 import { MaintenanceCardSkeleton } from "@/components/reports/report-card-skeleton";
 import { cn } from "@/lib/utils";
-
-const CATEGORY_OPTIONS = [
-  { label: "Computing", value: "computing" },
-  { label: "Transport", value: "transport" },
-  { label: "Audio/Visual", value: "av" },
-  { label: "Furniture", value: "furniture" },
-];
 
 const STATUS_OPTIONS = [
   { label: "All Work Orders", value: "all" },
@@ -74,11 +68,36 @@ export default function MaintenanceReportPage() {
     pageSize: 20,
     search: "",
     category: "",
+    classification: "",
     status: "",
     departmentId: "",
   });
 
   const { data: deptData = [] } = useDepartmentsQuery();
+  const { data: categoriesData = [] } = useCategoriesQuery();
+
+  const categoryOptions = useMemo(() => {
+    const list = categoriesData
+      .filter((c) => c.type === "asset")
+      .map((c) => ({ label: c.name, value: c.name }));
+    if (list.length === 0) {
+      return [
+        { label: "Computing", value: "computing" },
+        { label: "Transport", value: "transport" },
+        { label: "Audio/Visual", value: "av" },
+        { label: "Furniture", value: "furniture" },
+        { label: "General Services", value: "General Services" },
+      ];
+    }
+    return list;
+  }, [categoriesData]);
+
+  const classificationOptions = useMemo(() => {
+    return categoriesData
+      .filter((c) => c.type === "asset_class")
+      .map((c) => ({ label: c.name, value: c.name }));
+  }, [categoriesData]);
+
   const departmentOptions = useMemo(
     () =>
       deptData
@@ -541,7 +560,8 @@ export default function MaintenanceReportPage() {
           filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
-          categories={CATEGORY_OPTIONS}
+          categories={categoryOptions}
+          classifications={classificationOptions}
           departments={departmentOptions}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search log code, asset code, technician, description…"

@@ -104,61 +104,7 @@ export function IndividualAssetPrintableReport({
     : null;
 
   return (
-    <div className="print-page mx-auto w-full bg-white text-black text-[9.5px] leading-tight font-sans space-y-2.5 p-6 sm:p-8">
-      <style>{`
-        @page {
-          size: portrait;
-          margin: 12mm 14mm;
-        }
-        @media print {
-          html,
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            color: #000000 !important;
-            background: #ffffff !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page {
-            width: 100% !important;
-            max-width: 100% !important;
-            box-sizing: border-box !important;
-            margin: 0 auto !important;
-            padding: 10mm 12mm !important;
-            color: #000000 !important;
-            background: #ffffff !important;
-            vertical-align: top;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-start;
-          }
-          .print-page img {
-            filter: none !important;
-            -webkit-filter: none !important;
-          }
-          .avoid-break {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-          table {
-            break-inside: auto;
-          }
-          tr {
-            break-inside: auto;
-            page-break-inside: auto;
-          }
-          thead {
-            break-inside: avoid;
-            break-after: avoid;
-            page-break-after: avoid;
-          }
-        }
-      `}</style>
+    <div className="print-page print-dossier-portrait mx-auto w-full max-w-[7.8in] bg-white text-black text-[9.5px] leading-tight font-sans space-y-2.5 p-6 sm:p-8 print:p-0 print:max-w-none print:w-full">
 
       {/* ─── Institutional Header (Pure Black Ink) ───────────────────────── */}
       <header className="avoid-break border-b-2 border-black pb-2.5">
@@ -279,7 +225,7 @@ export function IndividualAssetPrintableReport({
               ? `${repairVsAcquisitionPct.toFixed(1)}% of acquisition value has been spent on repairs.`
               : "Acquisition value is not available; percentage comparison is unavailable."}
             {suppliesSpend != null && suppliesSpend > 0
-              ? ` Supplies used: ${formatPeso(suppliesSpend)}.`
+              ? ` Consumables used: ${formatPeso(suppliesSpend)}.`
               : ""}
             {` Total ownership: ${formatPeso(ownershipTotal) ?? "—"}.`}
           </div>
@@ -288,7 +234,7 @@ export function IndividualAssetPrintableReport({
 
       {/* ─── Section 1: Specifications & Identification ─────────────────── */}
       <section className="avoid-break">
-        <div className="rounded-xs border border-black bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-black bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-black bg-white px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-black flex items-center justify-between">
             <span>1. Technical Specifications &amp; Identification</span>
             <span className="text-[9.5px] text-black font-mono">
@@ -363,7 +309,7 @@ export function IndividualAssetPrintableReport({
 
       {/* ─── Section 2: Maintenance & Repair Work Orders Log ────────────── */}
       <section>
-        <div className="rounded-xs border border-black bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-black bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-black bg-white px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wider text-black flex items-center justify-between">
             <span>2. Maintenance &amp; Repair Work Orders Log</span>
             <span className="text-[9.5px] text-black font-mono">
@@ -501,11 +447,11 @@ export function IndividualAssetPrintableReport({
                 Acknowledged Custody:
               </div>
               <div className="border-b border-black text-center pb-1">
-                <div className="font-bold text-[10px] uppercase truncate">
+                <div className="font-bold text-[10px] uppercase wrap-break-word">
                   {asset.currentHolder || "Institutional Pool"}
                 </div>
               </div>
-              <div className="text-[8px] text-center text-black/70 truncate">
+              <div className="text-[8px] text-center text-black/70 wrap-break-word">
                 {asset.department || "Department Custodian"}
               </div>
             </div>

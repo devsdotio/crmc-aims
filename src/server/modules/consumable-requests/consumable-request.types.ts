@@ -8,6 +8,7 @@ import type {
   NewConsumableRequestRow,
 } from "@/server/db/schema";
 import type { PaginationParams } from "@/types/filters";
+import type { ConsumableRequestKind } from "@/lib/consumable-classification";
 import type { LinkedRequestSummary } from "@/server/shared/linked-requests";
 
 export type ConsumableRequestLineDTO = {
@@ -38,8 +39,8 @@ export type ConsumableRequestReleaseAllocationDTO = {
   supplierId: string | null;
   supplierName: string | null;
   quantity: number;
-  unitCost: string;
-  lineTotal: string;
+  unitCost: string | null;
+  lineTotal: string | null;
   releasedAt: string;
   releasedByName: string;
 };
@@ -56,6 +57,8 @@ export type ConsumableRequestDTO = {
   projectId?: string | null;
   source?: "portal" | "admin_manual";
   requestedByName?: string;
+  /** supply | material | mixed — derived from line item classifications. */
+  classification?: ConsumableRequestKind;
   /** Present when this row was submitted with other request types. */
   submissionGroupId?: string | null;
   relatedRequests?: LinkedRequestSummary[];
@@ -68,7 +71,7 @@ export type ConsumableRequestDTO = {
   history: ConsumableRequestHistoryEntry[];
   lines: ConsumableRequestLineDTO[];
   allocations: ConsumableRequestReleaseAllocationDTO[];
-  totalCost: string;
+  totalCost: string | null;
   approvedAt?: string;
   approvedByName?: string;
   releasedAt?: string;
@@ -79,6 +82,7 @@ export type ConsumableRequestDTO = {
 
 export type ListConsumableRequestFilters = PaginationParams & {
   status?: ConsumableRequestRow["status"];
+  classification?: ConsumableRequestKind;
   department?: string;
   search?: string;
   requesterUserId?: string;

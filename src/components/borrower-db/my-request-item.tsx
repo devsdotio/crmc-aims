@@ -58,6 +58,24 @@ const WORKFLOW_STATUS_STYLES: Record<
     bg: "bg-bg-subtle",
     text: "text-text-secondary font-bold",
   },
+  unreleased: {
+    label: "Returned Unreleased",
+    bg: "bg-slate-500/15",
+    text: "text-text-secondary font-bold",
+  },
+};
+
+const KIND_BADGE_STYLES: Record<string, string> = {
+  Supplies:
+    "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25",
+  Materials:
+    "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/25",
+  Mixed:
+    "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25",
+  Assignment:
+    "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/25",
+  Borrow:
+    "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/25",
 };
 
 function Skeleton({ className }: { className?: string }) {
@@ -73,19 +91,20 @@ function Skeleton({ className }: { className?: string }) {
 
 export function MyRequestItemSkeleton() {
   return (
-    <div className="flex items-center justify-between p-4 bg-bg rounded-xl border border-border">
-      <div className="flex items-center gap-3.5 min-w-0">
-        <Skeleton className="w-9 h-9 rounded-lg shrink-0" />
-        <div className="space-y-1.5 min-w-0">
-          <div className="flex items-center gap-2">
-            <Skeleton className="w-16 h-3.5 rounded" />
-            <Skeleton className="w-20 h-4 rounded-full" />
-          </div>
-          <Skeleton className="w-32 h-4 rounded" />
-          <Skeleton className="w-48 h-3 rounded" />
+    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:px-6 bg-bg">
+      <div className="space-y-2 flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <Skeleton className="w-20 h-3.5 rounded" />
+          <Skeleton className="w-16 h-4 rounded-full" />
+          <Skeleton className="w-20 h-4 rounded-full" />
         </div>
+        <Skeleton className="w-56 h-4 rounded" />
+        <Skeleton className="w-44 h-3 rounded" />
       </div>
-      <Skeleton className="w-24 h-5 rounded-full shrink-0" />
+      <div className="flex items-center gap-2.5 shrink-0">
+        <Skeleton className="w-16 h-7 rounded-lg" />
+        <Skeleton className="w-24 h-6 rounded-full" />
+      </div>
     </div>
   );
 }
@@ -108,26 +127,24 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
     request.items?.reduce((acc, i) => acc + (i.quantity || 1), 0) || 1;
 
   const kindLabel = portalRequestKindLabel(request);
+  const kindStyle =
+    KIND_BADGE_STYLES[kindLabel] ??
+    "bg-bg-subtle text-text-secondary border-border";
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onViewDetails?.(request)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onViewDetails?.(request);
-        }
-      }}
+    <article
       className={cn(
-        "group relative flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:px-6 bg-bg border-b border-border transition-colors duration-150 cursor-pointer select-none",
-        "hover:bg-bg-subtle/80 focus:outline-none focus-visible:bg-bg-subtle focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+        "group relative flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 md:px-6 bg-bg transition-colors duration-150",
+        "hover:bg-bg-subtle/80"
       )}
-      aria-label={`View details for ${request.requestCode}: ${itemSummary}`}
     >
-      {/* Left Column: Code, Category, Title, Metadata */}
-      <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+      {/* Left Column: Semantic clickable trigger */}
+      <button
+        type="button"
+        onClick={() => onViewDetails?.(request)}
+        aria-label={`View details for ${request.requestCode}: ${itemSummary}`}
+        className="flex flex-col gap-1.5 flex-1 min-w-0 text-left cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-lg"
+      >
         {/* Row 1: Code, Category Badge, Type Tag */}
         <div className="flex items-center gap-2 text-xs flex-wrap">
           <span className="font-mono font-semibold text-text-secondary group-hover:text-accent transition-colors">
@@ -145,8 +162,13 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
             {categoryMeta.label}
           </span>
           <span className="text-text-secondary/40">·</span>
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-secondary bg-bg-subtle border border-border px-2 py-0.5 rounded-full uppercase tracking-wider">
-            {kindLabel}
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] font-bold border px-2 py-0.5 rounded-full uppercase tracking-wider",
+              kindStyle
+            )}
+          >
+            {kindLabel === "Mixed" ? "Mixed (Supplies & Materials)" : kindLabel}
           </span>
         </div>
 
@@ -208,18 +230,15 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
           )}
           <LinkedRequestsNote related={request.relatedRequests} />
         </div>
-      </div>
+      </button>
 
-      {/* Right Column: Cancel Action, Status Badge & Chevron */}
+      {/* Right Column: Action Buttons, Status Badge & View Button */}
       <div className="flex items-center gap-2.5 shrink-0 self-end md:self-center">
         {onEdit && request.status === "pending" && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(request);
-            }}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-border text-text hover:bg-accent/10 hover:text-accent hover:border-accent/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
+            onClick={() => onEdit(request)}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-border text-text hover:bg-accent/10 hover:text-accent hover:border-accent/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent cursor-pointer"
             title="Edit this request"
           >
             <Edit3 className="h-3 w-3" />
@@ -229,11 +248,8 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
         {onCancel && (request.status === "pending" || request.status === "approved") && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCancel(request);
-            }}
-            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive cursor-pointer"
+            onClick={() => onCancel(request)}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-destructive cursor-pointer"
             title="Cancel this request"
           >
             <X className="h-3 w-3" />
@@ -249,8 +265,15 @@ export function MyRequestItem({ request, onCancel, onViewDetails, onEdit }: MyRe
         >
           {statusStyle.label}
         </span>
-        <ChevronRight className="h-4 w-4 text-text-secondary/50 group-hover:text-accent group-hover:translate-x-0.5 transition-all" />
+        <button
+          type="button"
+          onClick={() => onViewDetails?.(request)}
+          aria-label={`Open details for ${request.requestCode}`}
+          className="h-7 w-7 rounded-md flex items-center justify-center text-text-secondary/60 hover:text-accent hover:bg-bg-subtle cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+        </button>
       </div>
-    </div>
+    </article>
   );
 }

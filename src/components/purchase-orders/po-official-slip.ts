@@ -1,6 +1,7 @@
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import type { PurchaseLot, POLineItemDetail } from "@/types/purchase-lots";
+import { escapeHtml, sanitizeImgSrc } from "@/lib/html";
 import { stripPoPurposePrefix } from "@/lib/po-purpose";
 import { resolvePurchaseUnit } from "@/lib/purchase-unit";
 import { groupByPurpose } from "@/lib/request-purpose";
@@ -43,14 +44,6 @@ export function buildPoPurposeCardsHtml(lot: PurchaseLot): string {
       </div>`
     )
     .join("\n");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function resolveLinePurpose(
@@ -132,8 +125,8 @@ function buildItemCellsHtml(
   lot: PurchaseLot,
   purposeCell: string
 ): string {
-  const iUnit = parseFloat(item.unitCost) || 0;
-  const iTotal = parseFloat(item.totalCost) || 0;
+  const iUnit = parseFloat(item.unitCost ?? "0") || 0;
+  const iTotal = parseFloat(item.totalCost ?? "0") || 0;
   const uom = resolvePoSlipUnit(item.itemType, item.unit);
   return `<tr>
             <td class="col-qty">${item.quantity} <span style="font-size: 9px; color: #666;">${escapeHtml(uom)}</span></td>
@@ -169,7 +162,7 @@ function buildLineItemsRows(lot: PurchaseLot): string {
 
   const qtyTotal = allLines.reduce((s, i) => s + i.quantity, 0);
   const costTotal = allLines.reduce(
-    (s, i) => s + (parseFloat(i.totalCost) || 0),
+    (s, i) => s + (parseFloat(i.totalCost ?? "0") || 0),
     0
   );
 
@@ -445,12 +438,13 @@ export function buildPoSlipBodyHtml(data: PoSlipRenderData): string {
     data;
   const effectiveRequestedBy =
     requestedBy.trim() || lot.recordedByName || "Authorized Staff";
+  const safeLogoUrl = escapeHtml(sanitizeImgSrc(logoUrl, "/CRMC%20LOGO.png"));
 
   return `
     <div class="po-document">
       <div class="header-container">
         <div class="letterhead">
-          <img src="${logoUrl}" alt="CRMC Logo" class="college-logo-img" />
+          <img src="${safeLogoUrl}" alt="CRMC Logo" class="college-logo-img" />
           <div class="college-titles">
             <h1>Cebu Roosevelt Memorial Colleges, Inc.</h1>
             <p>Upper Pandan, Bogo City, Cebu, Philippines</p>
@@ -464,18 +458,18 @@ export function buildPoSlipBodyHtml(data: PoSlipRenderData): string {
         <div class="meta-strip">
           <div class="meta-col-left">
             <div class="meta-item">
-              PO Number: <span class="po-number-highlight">${lot.poNumber || lot.lotCode}</span>
+              PO Number: <span class="po-number-highlight">${escapeHtml(lot.poNumber || lot.lotCode)}</span>
             </div>
             <div class="meta-item" style="color: #333; margin-top: 2px;">
-              Suggested Dealer: <strong style="font-size: 12px;">${displayDealer}</strong>
+              Suggested Dealer: <strong style="font-size: 12px;">${escapeHtml(displayDealer)}</strong>
             </div>
           </div>
           <div class="meta-col-right">
             <div class="meta-item">
-              Date: <strong style="font-size: 12px;">${poDate}</strong> &nbsp;·&nbsp; Time: <strong style="font-size: 11px; font-family: Arial, Helvetica, sans-serif;">${poTimestamp}</strong>
+              Date: <strong style="font-size: 12px;">${escapeHtml(poDate)}</strong> &nbsp;·&nbsp; Time: <strong style="font-size: 11px; font-family: Arial, Helvetica, sans-serif;">${escapeHtml(poTimestamp)}</strong>
             </div>
             <div class="meta-item" style="color: #555; font-size: 10.5px; margin-top: 2px;">
-              Lot Code: <strong style="font-size: 10.5px; border-bottom: none; min-width: auto; font-family: monospace;">${displayLotCode}</strong>
+              Lot Code: <strong style="font-size: 10.5px; border-bottom: none; min-width: auto; font-family: monospace;">${escapeHtml(displayLotCode)}</strong>
             </div>
           </div>
         </div>
@@ -500,8 +494,8 @@ export function buildPoSlipBodyHtml(data: PoSlipRenderData): string {
       <div class="signatures-container">
         <div class="sig-block">
           <div class="sig-label">Requested by:</div>
-          <div class="sig-line">${effectiveRequestedBy}</div>
-          <div class="sig-title">${requestedByTitle}</div>
+          <div class="sig-line">${escapeHtml(effectiveRequestedBy)}</div>
+          <div class="sig-title">${escapeHtml(requestedByTitle)}</div>
         </div>
         <div class="sig-block">
           <div class="sig-label">Approved by:</div>
@@ -518,7 +512,7 @@ export function buildPoSlipFullHtml(data: PoSlipRenderData): string {
   return `<!DOCTYPE html>
 <html>
   <head>
-    <title>${title}</title>
+    <title>${escapeHtml(title)}</title>
     <style>${buildPoSlipStyles()}</style>
   </head>
   <body>

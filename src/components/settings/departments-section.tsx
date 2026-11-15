@@ -45,6 +45,8 @@ export function DepartmentsSection({
 
   const handlePrintDossier = (dept: DepartmentDTO) => {
     setPrintDepartment(dept);
+    const clearAfterPrint = () => setPrintDepartment(null);
+    window.addEventListener("afterprint", clearAfterPrint, { once: true });
     setTimeout(() => {
       window.print();
     }, 100);
@@ -393,7 +395,7 @@ export function DepartmentsSection({
     </div>
 
     {printDepartment && (
-      <div className="hidden print:block">
+      <div className="hidden print:block print:w-full">
         <IndividualDepartmentPrintableReport department={printDepartment} />
       </div>
     )}

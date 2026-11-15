@@ -40,6 +40,8 @@ export interface ListAssetsFilters extends PaginationParams {
    * Set from session for borrowers — never from client departmentId.
    */
   departmentHeldId?: string;
+  /** Server-enforced search restriction for borrowers (omits currentHolder/serialNumber). */
+  borrowerSafeSearch?: boolean;
   /** Superadmin-only: include sandbox/testing catalog rows. */
   includeSandbox?: boolean;
 }

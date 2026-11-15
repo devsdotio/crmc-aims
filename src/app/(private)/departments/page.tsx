@@ -63,9 +63,9 @@ export default function DepartmentsPage() {
   };
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle">
+    <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg-subtle print:block print:h-auto print:overflow-visible print:bg-white">
       {/* Top Header */}
-      <div className="px-4 md:px-6 py-4 bg-bg shrink-0 border-b border-border flex items-center justify-between">
+      <div className="px-4 md:px-6 py-4 bg-bg shrink-0 border-b border-border flex items-center justify-between print:hidden no-print">
         <div>
           <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold tracking-tight text-text">
@@ -84,7 +84,7 @@ export default function DepartmentsPage() {
         </div>
 
       {/* Main Scoped Scroll Area */}
-      <main className="flex-1 overflow-y-auto scrollbar-gutter-stable p-4 md:p-6 min-h-0">
+      <main className="flex-1 overflow-y-auto scrollbar-gutter-stable p-4 md:p-6 min-h-0 print:overflow-visible print:h-auto print:p-0">
         <div className="w-full space-y-6">
           {departmentsError ? (
             <QueryErrorBanner

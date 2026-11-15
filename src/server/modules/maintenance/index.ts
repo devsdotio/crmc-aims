@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireActor, requireAssetOperator } from "@/server/shared/auth";
+import { requireAssetOperator, requireStaffShell } from "@/server/shared/auth";
 import { created, handleError, ok } from "@/server/shared/http";
 
 import { MaintenanceLogService } from "./maintenance.service";
@@ -12,7 +12,7 @@ export class MaintenanceController {
 
   async list(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const { parseIncludeSandbox } = await import("@/server/shared/sandbox");
       return ok(
@@ -57,7 +57,7 @@ export class MaintenanceController {
 
   async get(id: string) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       return ok(await this.service.getById(id, actor));
     } catch (error) {
       return handleError(error);

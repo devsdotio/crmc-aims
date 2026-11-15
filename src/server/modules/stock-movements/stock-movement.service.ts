@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { generateOperationalCode } from "@/server/shared/codes";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
+import { normalizeConsumableClassification } from "@/lib/consumable-classification";
 import { getDb } from "@/server/db";
 import { withTransaction, type DbSession } from "@/server/db/transaction";
 import { departments, projects, type StockMovementRow } from "@/server/db/schema";
@@ -73,6 +75,7 @@ export type StockMovementDTO = {
   itemCode?: string;
   itemName?: string;
   unit?: string;
+  classification?: "supply" | "material";
   qty: number;
   direction: StockMovementDirection;
   reason: StockMovementReason;
@@ -84,6 +87,7 @@ export type StockMovementDTO = {
   unitCost: string | null;
   lineTotal: string | null;
   requestId: string | null;
+  requestCode?: string | null;
   notes: string | null;
   actorName: string;
   createdAt: string;
@@ -213,6 +217,10 @@ function toDTO(
     itemCode: listed.itemCode,
     itemName: listed.itemName,
     unit: listed.unit,
+    classification:
+      listed.classification === undefined
+        ? undefined
+        : normalizeConsumableClassification(listed.classification),
     qty: toQty(row.qty),
     direction: row.direction,
     reason: row.reason,
@@ -224,12 +232,31 @@ function toDTO(
     unitCost: row.unitCost,
     lineTotal: row.lineTotal,
     requestId: row.requestId,
+    requestCode: listed.requestCode ?? null,
     notes: row.notes,
     actorName: row.actorName,
     createdAt: toIso(row.createdAt),
     voided: extras?.voided ?? isVoidedNotes(row.notes),
     reversalMovementCode: extras?.reversalMovementCode ?? null,
     isReversal: extras?.isReversal ?? Boolean(row.notes?.includes("[REVERSES:")),
+  };
+}
+
+export { toDTO as stockMovementToDTO };
+
+function redactMovementForActor(
+  dto: StockMovementDTO,
+  actor?: ActorContext
+): StockMovementDTO {
+  if (!actor || isAssetOperatorRole(actor.role)) {
+    return dto;
+  }
+  return {
+    ...dto,
+    unitCost: null,
+    lineTotal: null,
+    purchaseLotId: null,
+    lotCode: null,
   };
 }
 
@@ -269,27 +296,41 @@ export class StockMovementService {
     );
   }
 
-  async listByConsumable(rawId: string, actorTenantId?: string): Promise<StockMovementDTO[]> {
+  async listByConsumable(
+    rawId: string,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<StockMovementDTO[]> {
     const id = consumableIdSchema.parse(rawId);
-    const item = await this.consumables.findById(id, undefined, actorTenantId);
+    const resolvedTenantId = actor?.tenantId ?? actorTenantId;
+    const item = await this.consumables.findById(id, undefined, resolvedTenantId);
     if (!item) throw new NotFoundError("Consumable", id);
 
-    const rows = await this.repo.listByConsumableId(id, undefined, actorTenantId);
-    const labels = await destinationLabelsFor(rows, actorTenantId);
+    const rows = await this.repo.listByConsumableId(id, undefined, resolvedTenantId);
+    const labels = await destinationLabelsFor(rows, resolvedTenantId);
     const issueIds = rows
       .filter((r) => r.direction === "out" && r.reason === "issue")
       .map((r) => r.id);
-    const reversals = await this.repo.findReversalsForIds(issueIds, undefined, actorTenantId);
+    const reversals = await this.repo.findReversalsForIds(issueIds, undefined, resolvedTenantId);
 
     return rows.map((row) => {
       const reversal = reversals.get(row.id);
-      return toDTO(
-        { ...row, itemCode: item.itemCode, itemName: item.name, unit: item.unit },
-        labels,
-        {
-          voided: Boolean(reversal) || isVoidedNotes(row.notes),
-          reversalMovementCode: reversal?.movementCode ?? null,
-        }
+      return redactMovementForActor(
+        toDTO(
+          {
+            ...row,
+            itemCode: item.itemCode,
+            itemName: item.name,
+            unit: item.unit,
+            classification: item.classification,
+          },
+          labels,
+          {
+            voided: Boolean(reversal) || isVoidedNotes(row.notes),
+            reversalMovementCode: reversal?.movementCode ?? null,
+          }
+        ),
+        actor
       );
     });
   }
@@ -340,15 +381,7 @@ export class StockMovementService {
         voided: Boolean(reversal) || isVoidedNotes(row.notes),
         reversalMovementCode: reversal?.movementCode ?? null,
       });
-      if (actor?.role === "borrower") {
-        return {
-          ...dto,
-          unitCost: null,
-          lineTotal: null,
-          purchaseLotId: null,
-        };
-      }
-      return dto;
+      return redactMovementForActor(dto, actor);
     });
   }
 
@@ -462,7 +495,7 @@ export class StockMovementService {
         await this.removeMatchingProjectExpense(existing, tx);
       }
 
-      const labels = await destinationLabelsFor([updated]);
+      const labels = await destinationLabelsFor([updated], actor.tenantId);
       const consumable = await this.consumables.findById(
         item.id,
         tx,
@@ -474,6 +507,7 @@ export class StockMovementService {
           itemCode: consumable?.itemCode,
           itemName: consumable?.name,
           unit: consumable?.unit,
+          classification: consumable?.classification,
         } as StockMovementListRow,
         labels,
         {

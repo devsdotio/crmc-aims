@@ -43,6 +43,7 @@ export const CACHE_DOMAIN_KEYS = {
   stockMovements: stockMovementQueryKeys.all,
   suppliers: supplierQueryKeys.all,
   users: userQueryKeys.all,
+  reports: ["reports"] as const,
 } as const;
 
 export type CacheDomain = keyof typeof CACHE_DOMAIN_KEYS;
@@ -74,6 +75,7 @@ export const CUSTODY_DOMAINS = [
   "projects",
   "maintenance",
   "dashboard",
+  "reports",
   "auditLogs",
 ] as const satisfies readonly CacheDomain[];
 

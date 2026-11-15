@@ -162,7 +162,7 @@ function BorrowLogContent() {
     limit: 1,
   });
 
-  const paginatedRecords = pageData?.data ?? [];
+  const paginatedRecords = useMemo(() => pageData?.data ?? [], [pageData?.data]);
   const filteredTotal = pageData?.total ?? 0;
   const totalPages = pageData?.totalPages ?? 1;
 

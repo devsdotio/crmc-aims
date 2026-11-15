@@ -104,11 +104,12 @@ export default function DashboardLayout({
   const pendingAssignCount = summary?.pendingAssignRequests ?? 0;
   const pendingBorrowCount = summary?.pendingBorrowRequests ?? 0;
   const pendingSupplyCount = summary?.pendingSupplyRequests ?? 0;
+  const pendingMaterialCount = summary?.pendingMaterialRequests ?? 0;
   const overdueCount = summary?.overdueAssets ?? 0;
   const lowStockCount = summary?.lowStockItems ?? 0;
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-bg-subtle text-text print:h-auto print:overflow-visible print:bg-white">
+    <div className="flex h-full w-full overflow-hidden bg-bg-subtle text-text print:block print:h-auto print:overflow-visible print:bg-white">
       <div className="hidden md:block h-full shrink-0 print:hidden no-print">
         <Sidebar
           userName={userName}
@@ -118,6 +119,7 @@ export default function DashboardLayout({
           pendingAssignCount={pendingAssignCount}
           pendingBorrowCount={pendingBorrowCount}
           pendingSupplyCount={pendingSupplyCount}
+          pendingMaterialCount={pendingMaterialCount}
           overdueCount={overdueCount}
           lowStockCount={lowStockCount}
         />
@@ -151,6 +153,7 @@ export default function DashboardLayout({
             pendingAssignCount={pendingAssignCount}
             pendingBorrowCount={pendingBorrowCount}
             pendingSupplyCount={pendingSupplyCount}
+            pendingMaterialCount={pendingMaterialCount}
             overdueCount={overdueCount}
             lowStockCount={lowStockCount}
           />
@@ -158,7 +161,7 @@ export default function DashboardLayout({
       </div>
 
       <div
-        className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden bg-bg-subtle text-text print:h-auto print:overflow-visible print:bg-white"
+        className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden bg-bg-subtle text-text print:block print:h-auto print:overflow-visible print:bg-white"
         data-theme="light"
       >
         <div className="print:hidden no-print">

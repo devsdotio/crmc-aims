@@ -241,6 +241,8 @@ function requestItemTitle(request: PortalBorrowRequest) {
 function mapSnapshotPendingToPortal(
   row: DashboardPendingRequest
 ): PortalBorrowRequest {
+  const isConsumable =
+    row.kind === "supply" || row.kind === "material" || row.kind === "mixed";
   return {
     id: row.id,
     requestCode: row.requestCode ?? "",
@@ -258,8 +260,14 @@ function mapSnapshotPendingToPortal(
       {
         itemDescription: row.itemDescription,
         category: "office_supplies",
+        classification:
+          row.kind === "material"
+            ? "material"
+            : row.kind === "supply"
+              ? "supply"
+              : undefined,
         quantity: 1,
-        itemType: row.kind === "supply" ? "consumable" : "asset",
+        itemType: isConsumable ? "consumable" : "asset",
       },
     ],
     purpose: row.itemDescription,
@@ -270,13 +278,17 @@ function mapSnapshotPendingToPortal(
     history: [],
     requestedDateFrom: row.requestedAt.slice(0, 10),
     requestedDateTo: row.requestedAt.slice(0, 10),
-    portalKind: row.kind === "supply" ? "supply" : undefined,
+    portalKind:
+      row.kind === "supply" || row.kind === "material" || row.kind === "mixed"
+        ? row.kind
+        : undefined,
   };
 }
 
 function requestKindHref(kind: ReturnType<typeof portalRequestKindLabel>) {
   if (kind === "Supplies") return "/borrower-db/requests/supplies";
   if (kind === "Materials") return "/borrower-db/requests/materials";
+  if (kind === "Mixed") return "/borrower-db/requests?type=mixed";
   if (kind === "Assignment") return "/borrower-db/requests/assignment";
   return "/borrower-db/requests/borrow";
 }
@@ -288,17 +300,34 @@ function PendingRequestCard({ request }: { request: PortalBorrowRequest }) {
       ? "bg-amber-50 text-amber-800 border-amber-200"
       : kind === "Materials"
         ? "bg-teal-50 text-teal-800 border-teal-200"
-        : kind === "Assignment"
-          ? "bg-indigo-50 text-indigo-800 border-indigo-200"
-          : "bg-blue-50 text-blue-800 border-blue-200";
+        : kind === "Mixed"
+          ? "bg-purple-50 text-purple-800 border-purple-200"
+          : kind === "Assignment"
+            ? "bg-indigo-50 text-indigo-800 border-indigo-200"
+            : "bg-blue-50 text-blue-800 border-blue-200";
+  const iconBoxClass =
+    kind === "Supplies"
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : kind === "Materials"
+        ? "bg-teal-50 text-teal-700 border-teal-200"
+        : kind === "Mixed"
+          ? "bg-purple-50 text-purple-700 border-purple-200"
+          : kind === "Assignment"
+            ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+            : "bg-blue-50 text-blue-700 border-blue-200";
 
   return (
     <Link
       href={requestKindHref(kind)}
       className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0 hover:bg-bg-subtle/50 transition-colors duration-150 border-l-4 border-l-status-repair-bg/60"
     >
-      <div className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center bg-office-bg text-office-text">
-        <Tag className="h-3.5 w-3.5 text-office-text" aria-hidden />
+      <div
+        className={cn(
+          "h-8 w-8 shrink-0 rounded-lg border flex items-center justify-center",
+          iconBoxClass
+        )}
+      >
+        <Tag className="h-3.5 w-3.5" aria-hidden />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-text truncate">{requestItemTitle(request)}</p>
@@ -440,7 +469,7 @@ export function BorrowerDashboard() {
   ];
 
   return (
-    <div className="h-full flex flex-col min-h-0 gap-3 bg-bg-subtle max-w-full">
+    <div className="flex flex-col min-h-0 gap-3 bg-bg-subtle max-w-full xl:h-full">
       <div className="rounded-lg border border-border bg-card p-6 flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
         <div className="h-12 w-12 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
           <TrendingUp className="h-6 w-6 text-accent" aria-hidden />
@@ -463,7 +492,7 @@ export function BorrowerDashboard() {
               <>
                 {" "}
                 and{" "}
-                <span className="font-bold text-status-outofservice-bg dark:text-status-outofservice-text">
+                <span className="font-bold text-status-outofservice-text">
                   {overdueCount} overdue
                 </span>
               </>
@@ -475,34 +504,42 @@ export function BorrowerDashboard() {
           <button
             type="button"
             onClick={() => openWizard(null)}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 min-h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs cursor-pointer"
           >
             <Plus className="h-4 w-4" aria-hidden />
             New Request
           </button>
           <Link
             href="/borrower-db/inventory"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
+            className="inline-flex items-center gap-2 px-4 py-2.5 min-h-10 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs"
           >
             <Package className="h-4 w-4" aria-hidden />
             Assets
           </Link>
           <Link
             href="/borrower-db/supplies"
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent shadow-xs"
+            className="inline-flex items-center gap-2 px-4 py-2.5 min-h-10 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs"
           >
-            Issued supplies
+            Issued Supplies
+          </Link>
+          <Link
+            href="/borrower-db/materials"
+            className="inline-flex items-center gap-2 px-4 py-2.5 min-h-10 rounded-lg border border-border bg-bg text-text text-sm font-semibold hover:bg-bg-subtle transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-xs"
+          >
+            Issued Materials
           </Link>
         </div>
       </div>
 
       {isError && !snapshot && !hasCustody && (
         <div className="rounded-lg border border-status-repair-bg/40 bg-status-repair-bg/10 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-status-repair-text shrink-0">
-          <span>Failed to load dashboard statistics. Default values are shown.</span>
+          <span>
+            Dashboard metrics failed to load. Check your network connection and retry before acting on zero counts.
+          </span>
           <button
             type="button"
             onClick={() => refetch()}
-            className="font-bold underline hover:opacity-80 cursor-pointer"
+            className="min-h-9 px-3 rounded-md font-bold underline hover:opacity-80 cursor-pointer shrink-0"
           >
             Retry
           </button>
@@ -525,16 +562,16 @@ export function BorrowerDashboard() {
       </section>
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 flex-1 min-h-0">
-        <div className="flex flex-col gap-3 min-h-0 h-full">
-          <section aria-labelledby="overdue-heading" className="flex-1 min-h-0 flex flex-col">
-            <div className="rounded-lg border border-border bg-card overflow-hidden h-full flex flex-col min-h-0">
+        <div className="flex flex-col gap-3 min-h-0 xl:h-full">
+          <section aria-labelledby="overdue-heading" className="flex-1 min-h-60 xl:min-h-0 flex flex-col">
+            <div className="rounded-lg border border-border bg-card overflow-hidden flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
                 <h2 id="overdue-heading" className="text-sm font-bold text-text">
                   Overdue
                 </h2>
                 <Link
                   href="/borrower-db/inventory"
-                  className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1 shrink-0"
+                  className="text-xs text-primary font-semibold hover:underline inline-flex items-center gap-1 shrink-0 min-h-8"
                 >
                   View inventory <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
@@ -564,15 +601,15 @@ export function BorrowerDashboard() {
             </div>
           </section>
 
-          <section aria-labelledby="on-hand-heading" className="flex-1 min-h-0 flex flex-col">
-            <div className="rounded-lg border border-border bg-card overflow-hidden h-full flex flex-col min-h-0">
+          <section aria-labelledby="on-hand-heading" className="flex-1 min-h-60 xl:min-h-0 flex flex-col">
+            <div className="rounded-lg border border-border bg-card overflow-hidden flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
                 <h2 id="on-hand-heading" className="text-sm font-bold text-text">
                   Equipment on hand
                 </h2>
                 <Link
                   href="/borrower-db/inventory"
-                  className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1 shrink-0"
+                  className="text-xs text-primary font-semibold hover:underline inline-flex items-center gap-1 shrink-0 min-h-8"
                 >
                   View assets <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
@@ -591,6 +628,12 @@ export function BorrowerDashboard() {
                   <p className="text-xs text-text-secondary mt-1 max-w-xs leading-relaxed">
                     Equipment released to your department will show here.
                   </p>
+                  <Link
+                    href="/borrower-db/catalog"
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-2 min-h-9 rounded-lg border border-border bg-bg text-xs font-semibold text-text hover:bg-bg-subtle transition-colors"
+                  >
+                    Browse Catalog
+                  </Link>
                 </div>
               ) : (
                 <div className="flex-1 min-h-0 overflow-y-auto">
@@ -603,15 +646,15 @@ export function BorrowerDashboard() {
           </section>
         </div>
 
-        <section aria-labelledby="recent-requests-heading" className="h-full min-h-0 flex flex-col">
-          <div className="rounded-lg border border-border bg-card overflow-hidden h-full flex flex-col min-h-0">
+        <section aria-labelledby="recent-requests-heading" className="min-h-64 xl:h-full xl:min-h-0 flex flex-col">
+          <div className="rounded-lg border border-border bg-card overflow-hidden flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0 gap-2">
               <h2 id="recent-requests-heading" className="text-sm font-bold text-text">
                 Recent Pending
               </h2>
               <Link
                 href="/borrower-db/requests"
-                className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1 shrink-0"
+                className="text-xs text-primary font-semibold hover:underline inline-flex items-center gap-1 shrink-0 min-h-8"
               >
                 View all <ArrowRight className="h-3.5 w-3.5" />
               </Link>
@@ -631,6 +674,14 @@ export function BorrowerDashboard() {
                 <p className="text-xs text-text-secondary mt-1 max-w-xs leading-relaxed">
                   You don&apos;t have any requests waiting for approval.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => openWizard(null)}
+                  className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-2 min-h-9 rounded-lg bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                  New Request
+                </button>
               </div>
             ) : (
               <div className="flex-1 min-h-0 overflow-y-auto">

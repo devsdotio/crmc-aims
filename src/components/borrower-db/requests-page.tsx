@@ -34,6 +34,11 @@ const COPY: Record<
     subtitle: "Project and construction materials requisitions issued from stock when approved.",
     cta: "New Materials Request",
   },
+  mixed: {
+    title: "Mixed Requisitions",
+    subtitle: "Requisitions combining both supplies and materials in one submission.",
+    cta: "New Request",
+  },
 };
 
 function wizardTypeForKind(

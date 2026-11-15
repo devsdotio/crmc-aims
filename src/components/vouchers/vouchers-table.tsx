@@ -100,7 +100,9 @@ export function VouchersTable({
     return [...vouchers].sort((a, b) => {
       let comparison = 0;
       if (sortField === "amount") {
-        comparison = (parseFloat(a.amount) || 0) - (parseFloat(b.amount) || 0);
+        comparison =
+          (parseFloat(a.amount ?? "0") || 0) -
+          (parseFloat(b.amount ?? "0") || 0);
       } else if (sortField === "voucherDate") {
         comparison = a.voucherDate.localeCompare(b.voucherDate);
       } else if (sortField === "voucherCode") {
@@ -315,7 +317,7 @@ export function VouchersTable({
 
                   {/* Amount */}
                   <td className="py-3.5 px-4 text-right font-mono font-bold text-text whitespace-nowrap">
-                    {formatPhp(voucher.amount)}
+                    {voucher.amount != null ? formatPhp(voucher.amount) : "Restricted"}
                   </td>
 
                   {/* Status */}

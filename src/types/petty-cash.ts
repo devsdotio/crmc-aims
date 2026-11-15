@@ -21,7 +21,7 @@ export interface PettyCashVoucher {
   status: PettyCashStatus;
   voucherDate: string;
   payeeName: string;
-  amount: string;
+  amount: string | null;
   category: string;
   purpose: string;
   particulars: string;

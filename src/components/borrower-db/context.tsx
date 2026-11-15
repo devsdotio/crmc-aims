@@ -24,13 +24,21 @@ interface BorrowerPortalContextValue {
 
 const BorrowerPortalContext = createContext<BorrowerPortalContextValue | undefined>(undefined);
 
-function inferWizardType(items: BrowseItem[]): WizardOpenType {
-  const first = items[0];
-  if (!first) return "borrow";
-  if (first.type === "asset") {
-    return first.assignmentType === "assignable" ? "assign" : "borrow";
+function inferWizardType(items: BrowseItem[]): WizardOpenType | null {
+  if (items.length === 0) return null;
+  const types = new Set<WizardOpenType>(
+    items.map((item) => {
+      if (item.type === "asset") {
+        return item.assignmentType === "assignable" ? "assign" : "borrow";
+      }
+      return item.classification === "material" ? "material" : "supply";
+    })
+  );
+  // Only lock when every selected item belongs to the exact same workflow type.
+  if (types.size === 1) {
+    return Array.from(types)[0] ?? null;
   }
-  return first.classification === "material" ? "material" : "supply";
+  return null;
 }
 
 export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
@@ -79,7 +87,10 @@ export function BorrowerPortalProvider({ children }: { children: ReactNode }) {
       {children}
       <NewBorrowRequestWizard
         open={wizardOpen}
-        onOpenChange={setWizardOpen}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen) setWizardOpen(true);
+          else closeWizard();
+        }}
         prefilledItems={wizardItems}
         initialType={wizardType}
         onSuccess={() => {

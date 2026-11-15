@@ -1,4 +1,5 @@
 import type { ConsumableRequestDTO } from "@/server/modules/consumable-requests/consumable-request.types";
+import type { ConsumableRequestKind } from "@/lib/consumable-classification";
 import { fetchJson, type ApiResponse, type PaginatedResponse } from "@/features/shared/fetch-json";
 
 export type ConsumableRequest = ConsumableRequestDTO;
@@ -70,6 +71,7 @@ export type ApproveConsumableRequestPayload = {
 export const consumableRequestsApi = {
   async list(params?: {
     status?: ConsumableRequest["status"];
+    classification?: ConsumableRequestKind;
     department?: string;
     search?: string;
     page?: number;
@@ -79,6 +81,7 @@ export const consumableRequestsApi = {
   }): Promise<PaginatedResponse<ConsumableRequest[]>> {
     const sp = new URLSearchParams();
     if (params?.status) sp.set("status", params.status);
+    if (params?.classification) sp.set("classification", params.classification);
     if (params?.department) sp.set("department", params.department);
     if (params?.search) sp.set("search", params.search);
     if (params?.startDate) sp.set("startDate", params.startDate);
@@ -95,6 +98,7 @@ export const consumableRequestsApi = {
   /** Walk pages of 100 so requester lists are not cut off at the first page. */
   async listAll(params?: {
     status?: ConsumableRequest["status"];
+    classification?: ConsumableRequestKind;
     department?: string;
     search?: string;
     startDate?: string;

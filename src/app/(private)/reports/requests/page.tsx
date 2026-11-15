@@ -15,7 +15,6 @@ import {
   User,
   Building2,
   Calendar,
-  FileText,
 } from "lucide-react";
 
 import { useRequestsReportQuery } from "@/features/reports/client/use-reports";
@@ -31,6 +30,10 @@ import { ReportTimeframeFilter } from "@/components/reports/report-timeframe-fil
 import { useReportTimeframe } from "@/components/reports/report-timeframe-context";
 import { RequestsPrintableReport } from "@/components/reports/print/RequestsPrintableReport";
 import { RequestCardSkeleton } from "@/components/reports/report-card-skeleton";
+import {
+  ClassificationFilterPills,
+  ConsumableClassificationBadge,
+} from "@/components/reports/consumable-classification-badge";
 import { cn } from "@/lib/utils";
 
 const STATUS_OPTIONS = [
@@ -40,6 +43,37 @@ const STATUS_OPTIONS = [
   { label: "Rejected", value: "rejected" },
 ];
 
+const CLASSIFICATION_OPTIONS = [
+  { label: "Consumable Supplies", value: "supply" },
+  { label: "Consumable Materials", value: "material" },
+  { label: "Mixed (Supplies + Materials)", value: "mixed" },
+  { label: "Asset Borrow", value: "borrowable" },
+  { label: "Asset Assignment", value: "assignable" },
+];
+
+function renderRequestTypeBadge(row: RequestReportRow) {
+  if (row.requestType === "consumable_issue") {
+    return (
+      <ConsumableClassificationBadge
+        classification={row.classification || "supply"}
+        compact
+      />
+    );
+  }
+  const isAssign = row.classification === "assignable";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+        isAssign
+          ? "border-purple-500/25 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+          : "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+      }`}
+    >
+      {isAssign ? "Asset Assign" : "Asset Borrow"}
+    </span>
+  );
+}
+
 export default function RequestsReportPage() {
   const { timeframe, setTimeframe } = useReportTimeframe();
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
@@ -48,6 +82,7 @@ export default function RequestsReportPage() {
     pageSize: 20,
     search: "",
     status: "",
+    classification: "",
   });
 
   const effectiveFilters = useMemo<BaseReportFilters>(
@@ -83,7 +118,16 @@ export default function RequestsReportPage() {
       return {
         id: req.id,
         title: req.requestCode,
-        tag: req.requestType === "asset_borrow" ? "Borrow" : "Consumable",
+        tag:
+          req.requestType === "asset_borrow"
+            ? req.classification === "assignable"
+              ? "Assign"
+              : "Borrow"
+            : req.classification === "material"
+            ? "Materials"
+            : req.classification === "mixed"
+            ? "Mixed"
+            : "Supplies",
         subtitle: `${req.requesterName} (${req.department}) · ${
           req.itemsSummary || `${req.itemsCount} items`
         }`,
@@ -118,6 +162,7 @@ export default function RequestsReportPage() {
       pageSize: 20,
       search: "",
       status: "",
+      classification: "",
     });
   };
 
@@ -126,10 +171,15 @@ export default function RequestsReportPage() {
       key: "requestCode",
       header: "Code",
       render: (row) => (
-        <span className="font-mono font-bold text-text hover:text-accent transition-colors">
+        <span className="font-mono font-bold text-text hover:text-primary transition-colors">
           {row.requestCode}
         </span>
       ),
+    },
+    {
+      key: "classification",
+      header: "Class / Type",
+      render: (row) => renderRequestTypeBadge(row),
     },
     {
       key: "requesterName",
@@ -224,19 +274,19 @@ export default function RequestsReportPage() {
 
       <div className="flex flex-col gap-3 w-full print:hidden">
       {/* ── Top Header Banner (Attached seamlessly below tabs) ───────── */}
-      <div className="sticky top-10.25 sm:top-11.75 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
+      <div className="sticky top-12 sm:top-11.5 z-20 bg-bg-subtle pb-1.5 pt-0 transform-gpu">
         <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4 rounded-b-xl rounded-t-none border-x border-b border-t-0 border-border/80 bg-card p-4 sm:p-5 shadow-xs">
           <div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h1 className="text-xl font-bold tracking-tight text-text">
                 Requisitions &amp; Issue Requests
               </h1>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20">
-                Supply Logistics
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-500/20">
+                Institutional Demand
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-1">
-              Borrowing requests, supply distributions, SLA approval turnaround, and department demand.
+              Separated Borrow, Assign, Supplies, Materials, and Mixed requisitions, SLA approval turnaround, and department demand.
             </p>
           </div>
 
@@ -253,13 +303,13 @@ export default function RequestsReportPage() {
           title="Total Requests"
           sublabel="REQUESTS // LOGISTICS"
           value={isLoading ? "…" : summary?.totalRequests || 0}
-          subtitle="Supply & borrow requests"
+          subtitle={`${summary?.supplyRequestsCount ?? 0} Supplies · ${summary?.materialRequestsCount ?? 0} Materials · ${summary?.mixedRequestsCount ?? 0} Mixed`}
           icon={ClipboardList}
           tone="blue"
           toneValue={true}
           loading={isLoading}
           tooltipAlign="left"
-          tooltip="The total number of supply and equipment requests submitted by staff and teachers."
+          tooltip="Total requests split across Borrow/Assign equipment and Supplies, Materials, or Mixed requisitions."
         />
 
         <KpiCard
@@ -366,15 +416,35 @@ export default function RequestsReportPage() {
           filters={effectiveFilters}
           onFilterChange={handleFilterChange}
           onReset={handleReset}
+          classifications={CLASSIFICATION_OPTIONS}
           statuses={STATUS_OPTIONS}
           searchPlaceholder="Search request code, requester name, department…"
         />
       </div>
 
-      {/* ── View Switcher Header ────────────────────────────────────────── */}
+      {/* ── Classification Switcher & View Switcher Header ──────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 pt-1 print:hidden">
-        <div className="text-xs text-text-secondary font-medium">
-          Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> requisitions &amp; requests
+        <div className="flex flex-wrap items-center gap-3">
+          <ClassificationFilterPills
+            value={effectiveFilters.classification || "all"}
+            onChange={(next) =>
+              handleFilterChange({
+                classification: next === "all" ? "" : next,
+                page: 1,
+              })
+            }
+            options={[
+              { id: "all", label: "All", count: summary?.totalRequests },
+              { id: "supply", label: "Supplies", count: summary?.supplyRequestsCount },
+              { id: "material", label: "Materials", count: summary?.materialRequestsCount },
+              { id: "mixed", label: "Mixed", count: summary?.mixedRequestsCount },
+              { id: "borrowable", label: "Borrow", count: summary?.borrowRequestsCount },
+              { id: "assignable", label: "Assign", count: summary?.assignRequestsCount },
+            ]}
+          />
+          <span className="text-xs text-text-secondary font-medium">
+            Showing <span className="font-mono font-bold text-text">{data?.total || 0}</span> requests
+          </span>
         </div>
         <div className="inline-flex items-center p-0.5 rounded-lg border border-border bg-bg-subtle/80 shadow-2xs">
           <button
@@ -417,6 +487,7 @@ export default function RequestsReportPage() {
           totalPages={data?.totalPages || 1}
           isLoading={isLoading}
           onPageChange={(page) => handleFilterChange({ page })}
+          onEmptyAction={handleReset}
         />
       ) : (
         <div className="space-y-4">
@@ -433,6 +504,13 @@ export default function RequestsReportPage() {
               <p className="text-xs text-text-secondary mt-1">
                 Try adjusting your search criteria or filter selections.
               </p>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="mt-4 inline-flex items-center justify-center rounded-xl border border-border bg-bg-subtle px-4 min-h-11 sm:min-h-9 text-xs font-semibold text-text hover:bg-border/50 transition-colors cursor-pointer"
+              >
+                Reset Filters
+              </button>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -444,18 +522,21 @@ export default function RequestsReportPage() {
                 return (
                   <div
                     key={row.id}
-                    className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-accent/40 hover:shadow-md transition-all relative"
+                    className="group flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4.5 hover:border-primary/40 hover:shadow-md transition-all relative"
                   >
                     <div>
                       {/* Top Bar: Code, Type Badge, and Status */}
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-accent transition-colors">
-                          <span>{row.requestCode}</span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-bg-subtle border border-border/60 text-xs font-mono font-bold text-text group-hover:text-primary transition-colors">
+                            <span>{row.requestCode}</span>
+                          </div>
+                          {renderRequestTypeBadge(row)}
                         </div>
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold border capitalize ${
                             isPending
-                              ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                              ? "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20"
                               : isRejected
                               ? "bg-rose-50 text-rose-700 border-rose-200"
                               : isReleased
@@ -525,12 +606,12 @@ export default function RequestsReportPage() {
               <span className="text-xs text-text-secondary">
                 Page {data.page} of {data.totalPages} ({data.total} total)
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   disabled={data.page <= 1}
                   onClick={() => handleFilterChange({ page: data.page - 1 })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-3 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                   <span>Prev</span>
@@ -539,7 +620,7 @@ export default function RequestsReportPage() {
                   type="button"
                   disabled={data.page >= data.totalPages}
                   onClick={() => handleFilterChange({ page: data.page + 1 })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 min-h-11 sm:min-h-8 px-3 text-xs rounded-md border border-border bg-card text-text disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors cursor-pointer"
                 >
                   <span>Next</span>
                   <ChevronRight className="h-3.5 w-3.5" />

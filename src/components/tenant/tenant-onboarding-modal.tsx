@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   ArrowRight,
@@ -29,6 +30,7 @@ export function TenantOnboardingModal({
   onSuccess,
   onSwitchWorkspace,
 }: TenantOnboardingModalProps) {
+  const router = useRouter();
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Form State
@@ -425,8 +427,8 @@ Admin Password: ${adminPassword}`;
                 type="button"
                 onClick={() => {
                   onClose();
-                  if (typeof window !== "undefined" && createdTenantId) {
-                    window.location.href = `/users?institution=${createdTenantId}`;
+                  if (createdTenantId) {
+                    router.push(`/users?institution=${createdTenantId}`);
                   }
                 }}
                 className="inline-flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white bg-[#2A3260] hover:bg-[#1E2548] rounded-lg transition-colors cursor-pointer shadow-xs"

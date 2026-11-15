@@ -20,11 +20,20 @@ describe("WhatsNew Feature Registry", () => {
     expect(WHATS_NEW_REGISTRY.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("includes the latest supplies and materials UI release", () => {
+    const feature = getFeatureById("supplies-materials-portal-v1-3");
+    expect(feature).toBeDefined();
+    expect(feature?.category).toBe("Requests");
+    expect(feature?.isNew).toBe(true);
+    expect(feature?.steps.length).toBe(4);
+  });
+
   it("includes the asset sheet button layout feature", () => {
     const feature = getFeatureById("asset-sheet-button-layout");
     expect(feature).toBeDefined();
     expect(feature?.title).toContain("Sticky Action Bar");
     expect(feature?.steps.length).toBe(5);
+    expect(feature?.isNew).toBe(false);
   });
 
   it("returns undefined for non-existent feature IDs", () => {
@@ -89,8 +98,13 @@ describe("WhatsNew Storage & Seen State", () => {
     expect(hasUnseenNewFeatures()).toBe(true);
     expect(getUnseenNewFeaturesCount()).toBe(1);
 
-    // After viewing the new feature (e.g. via tour or dialog)
+    // Viewing an older archived feature does not clear the new-release badge
     markFeatureSeen("asset-sheet-button-layout");
+    expect(hasUnseenNewFeatures()).toBe(true);
+    expect(getUnseenNewFeaturesCount()).toBe(1);
+
+    // After viewing the latest new feature (e.g. via tour or dialog)
+    markFeatureSeen("supplies-materials-portal-v1-3");
     expect(hasUnseenNewFeatures()).toBe(false);
     expect(getUnseenNewFeaturesCount()).toBe(0);
   });

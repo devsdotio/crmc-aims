@@ -9,12 +9,14 @@ import {
   PrintStatusBadge,
   PrintSignatories,
 } from "../PrintCharts";
+import { normalizeConsumableClassification } from "@/lib/consumable-classification";
 
 export interface IndividualConsumablePrintableReportProps {
   item: {
     id: string;
     itemCode?: string | null;
     name: string;
+    classification?: string | null;
     category?: string | null;
     unit?: string | null;
     currentQty?: number | null;
@@ -50,6 +52,9 @@ export function IndividualConsumablePrintableReport({
     minute: "2-digit",
   });
 
+  const normalizedClassification = normalizeConsumableClassification(item.classification);
+  const isMaterial = normalizedClassification === "material";
+  const classificationTitle = isMaterial ? "Consumable Material" : "Consumable Supply";
   const skuCode = item.itemCode || `CON-${item.id}`;
   const totalStock = item.currentQty ?? 0;
   const minThreshold = item.minThreshold ?? 10;
@@ -89,7 +94,7 @@ export function IndividualConsumablePrintableReport({
   }));
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
+    <div className="print-page print-dossier-portrait mx-auto w-full max-w-[7.8in] print:max-w-none print:w-full bg-white text-black text-[11px] leading-normal font-sans space-y-3">
       {/* ─── Institutional Header ───────────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
         <div className="flex items-start justify-between">
@@ -108,7 +113,7 @@ export function IndividualConsumablePrintableReport({
                 Cebu Roosevelt Memorial Colleges, Inc. · Asset &amp; Inventory Management System
               </div>
               <div className="text-[9.5px] font-medium text-neutral-500">
-                Upper Pandan, Bogo City, Cebu, Philippines · Central Consumable Stores &amp; Supplies
+                Upper Pandan, Bogo City, Cebu, Philippines · Central Consumable Stores (Supplies &amp; Materials)
               </div>
             </div>
           </div>
@@ -120,7 +125,7 @@ export function IndividualConsumablePrintableReport({
             <div>
               <span className="text-neutral-500">Doc ID:</span>{" "}
               <span className="font-bold text-neutral-800">
-                CSM-SKU-{skuCode}
+                {isMaterial ? `MAT-SKU-${skuCode}` : `SUP-SKU-${skuCode}`}
               </span>
             </div>
           </div>
@@ -132,11 +137,13 @@ export function IndividualConsumablePrintableReport({
               Individual Consumable SKU Ledger &amp; Department Usage
             </h2>
             <div className="text-[10px] text-neutral-500 mt-0.5 font-mono">
-              SKU: <span className="font-bold text-neutral-800">{skuCode}</span> · Category: {item.category || "General Supply"}
+              SKU: <span className="font-bold text-neutral-800">{skuCode}</span> · Class:{" "}
+              <span className="font-bold text-neutral-800">{classificationTitle}</span> · Category:{" "}
+              {item.category || "Uncategorized"}
             </div>
           </div>
-          <span className="text-[9.5px] font-bold tracking-wider text-teal-800 uppercase bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-xs">
-            SKU Stock Ledger
+          <span className="text-[9.5px] font-bold font-mono tracking-wider text-black uppercase bg-neutral-50 border border-black px-2 py-0.5 rounded-xs">
+            {isMaterial ? "[CONSUMABLE MATERIAL]" : "[CONSUMABLE SUPPLY]"}
           </span>
         </div>
       </header>
@@ -179,7 +186,7 @@ export function IndividualConsumablePrintableReport({
 
       {/* ─── Section 1: Item Catalog & Reorder Details ─────────────────────── */}
       <section className="avoid-break">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>1. Catalog Specifications &amp; Reorder Controls</span>
             <span className="text-[10px] text-neutral-500 font-mono">SKU: {skuCode}</span>
@@ -190,8 +197,10 @@ export function IndividualConsumablePrintableReport({
               <div className="font-bold text-[#2A3260] text-[12px]">{item.name}</div>
             </div>
             <div className="col-span-4 space-y-1">
-              <div className="text-[10px] font-bold uppercase text-neutral-500">Category</div>
-              <div className="font-semibold text-neutral-800 capitalize">{item.category || "General Supply"}</div>
+              <div className="text-[10px] font-bold uppercase text-neutral-500">Category &amp; Class</div>
+              <div className="font-semibold text-neutral-800 capitalize">
+                {item.category || "Uncategorized"} · {classificationTitle}
+              </div>
             </div>
             <div className="col-span-4 space-y-1">
               <div className="text-[10px] font-bold uppercase text-neutral-500">Unit of Measure</div>
@@ -208,7 +217,7 @@ export function IndividualConsumablePrintableReport({
             </div>
             <div className="col-span-4 space-y-1 border-t border-neutral-100 pt-1.5">
               <div className="text-[10px] font-bold uppercase text-neutral-500">Storage Location</div>
-              <div className="text-neutral-700">{item.location || "Central Supply Store Room"}</div>
+              <div className="text-neutral-700">{item.location || "Central Consumable Vault"}</div>
             </div>
           </div>
         </div>
@@ -226,7 +235,7 @@ export function IndividualConsumablePrintableReport({
 
       {/* ─── Section 3: Department Consumption Table ─────────────────────── */}
       <section className="w-full">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>3. Department Consumption Ranking</span>
             <span className="text-[10px] text-neutral-500 font-mono">

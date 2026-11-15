@@ -1,13 +1,22 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
-import { borrowRequests, consumableRequests } from "@/server/db/schema";
+import {
+  borrowRequests,
+  consumableRequestLines,
+  consumableRequests,
+  consumables,
+} from "@/server/db/schema";
+import {
+  deriveConsumableRequestKind,
+  type ConsumableRequestKind,
+} from "@/lib/consumable-classification";
 import { getTenantContext } from "@/server/shared/tenant-context";
 
 export type LinkedRequestSummary = {
   id: string;
   requestCode: string;
-  kind: "borrow" | "assign" | "supply";
+  kind: "borrow" | "assign" | ConsumableRequestKind;
   status: string;
 };
 
@@ -17,7 +26,8 @@ export type LinkedRequestSummary = {
  */
 export async function loadLinkedRequestSummaries(
   groupIds: Array<string | null | undefined>,
-  tenantId?: string
+  tenantId?: string,
+  requesterUserId?: string
 ): Promise<Map<string, LinkedRequestSummary[]>> {
   const unique = [
     ...new Set(
@@ -37,6 +47,10 @@ export async function loadLinkedRequestSummaries(
   if (resolvedTenantId) {
     assetConditions.push(eq(borrowRequests.tenantId, resolvedTenantId));
     supplyConditions.push(eq(consumableRequests.tenantId, resolvedTenantId));
+  }
+  if (requesterUserId) {
+    assetConditions.push(eq(borrowRequests.requesterUserId, requesterUserId));
+    supplyConditions.push(eq(consumableRequests.requesterUserId, requesterUserId));
   }
 
   const [assetRows, supplyRows] = await Promise.all([
@@ -67,6 +81,28 @@ export async function loadLinkedRequestSummaries(
     map.set(groupId, list);
   };
 
+  const supplyClassByRequestId = new Map<string, string[]>();
+  if (supplyRows.length > 0) {
+    const supplyIds = supplyRows.map((r) => r.id);
+    const lineConditions = [inArray(consumableRequestLines.requestId, supplyIds)];
+    if (resolvedTenantId) {
+      lineConditions.push(eq(consumables.tenantId, resolvedTenantId));
+    }
+    const lineRows = await db
+      .select({
+        requestId: consumableRequestLines.requestId,
+        classification: consumables.classification,
+      })
+      .from(consumableRequestLines)
+      .innerJoin(consumables, eq(consumableRequestLines.consumableId, consumables.id))
+      .where(and(...lineConditions));
+    for (const line of lineRows) {
+      const list = supplyClassByRequestId.get(line.requestId) ?? [];
+      list.push(line.classification);
+      supplyClassByRequestId.set(line.requestId, list);
+    }
+  }
+
   for (const row of assetRows) {
     if (!row.submissionGroupId) continue;
     push(row.submissionGroupId, {
@@ -81,7 +117,7 @@ export async function loadLinkedRequestSummaries(
     push(row.submissionGroupId, {
       id: row.id,
       requestCode: row.requestCode,
-      kind: "supply",
+      kind: deriveConsumableRequestKind(supplyClassByRequestId.get(row.id) ?? []),
       status: row.status,
     });
   }

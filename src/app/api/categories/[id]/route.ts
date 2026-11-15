@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/server/db";
 import { categories } from "@/server/db/schema";
-import { requireActor } from "@/server/shared/auth";
+import { requireAssetOperator } from "@/server/shared/auth";
 import {
   CategoryRepository,
   type CategoryType,
@@ -27,24 +27,12 @@ export async function PUT(
 ) {
   try {
     const { id } = await params;
-    const actor = await requireActor();
+    const { actor } = await requireAssetOperator();
     const categoryRepo = new CategoryRepository();
     const existing = await categoryRepo.findById(id, undefined, actor.tenantId);
 
     if (!existing) {
       return NextResponse.json({ error: "Category not found" }, { status: 404 });
-    }
-
-    const canManage =
-      actor.role === "admin" ||
-      actor.role === "superadmin" ||
-      existing.createdByUserId === actor.userId;
-
-    if (!canManage) {
-      return NextResponse.json(
-        { error: "You do not have permission to update this category" },
-        { status: 403 }
-      );
     }
 
     const body = await request.json();
@@ -186,24 +174,12 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const actor = await requireActor();
+    const { actor } = await requireAssetOperator();
     const categoryRepo = new CategoryRepository();
     const existing = await categoryRepo.findById(id, undefined, actor.tenantId);
 
     if (!existing) {
       return NextResponse.json({ error: "Category not found" }, { status: 404 });
-    }
-
-    const canManage =
-      actor.role === "admin" ||
-      actor.role === "superadmin" ||
-      existing.createdByUserId === actor.userId;
-
-    if (!canManage) {
-      return NextResponse.json(
-        { error: "You do not have permission to delete this category" },
-        { status: 403 }
-      );
     }
 
     const type = existing.type as CategoryType;

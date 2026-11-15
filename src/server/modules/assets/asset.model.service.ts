@@ -1,6 +1,7 @@
 import type { AssetModelRow } from "@/server/db/schema";
 import type { Asset } from "@/types/assets";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import {
   BadRequestError,
   ConflictError,
@@ -84,34 +85,58 @@ export function toAssetModelDTO(
   };
 }
 
+function redactAssetModelForActor(
+  dto: AssetModelDTO,
+  actor?: ActorContext
+): AssetModelDTO {
+  if (actor && !isAssetOperatorRole(actor.role)) {
+    return { ...dto, defaultUnitValue: undefined };
+  }
+  return dto;
+}
+
 export class AssetModelService {
   constructor(
     private readonly modelRepo: AssetModelRepository = new AssetModelRepository(),
     private readonly taxonomy: CategoryRepository = new CategoryRepository()
   ) {}
 
-  async list(rawQuery: unknown, tenantId?: string): Promise<AssetModelDTO[]> {
+  async list(
+    rawQuery: unknown,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<AssetModelDTO[]> {
     const filters = listAssetModelsQuerySchema.parse(rawQuery ?? {});
     const rows = await this.modelRepo.list(filters, undefined, tenantId);
     return Promise.all(
       rows.map(async (row) =>
-        toAssetModelDTO(
-          row,
-          await this.modelRepo.countUnits(row.id, undefined, tenantId),
-          await this.modelRepo.countAvailableUnits(row.id, undefined, tenantId)
+        redactAssetModelForActor(
+          toAssetModelDTO(
+            row,
+            await this.modelRepo.countUnits(row.id, undefined, tenantId),
+            await this.modelRepo.countAvailableUnits(row.id, undefined, tenantId)
+          ),
+          actor
         )
       )
     );
   }
 
-  async getById(rawId: string, tenantId?: string): Promise<AssetModelDTO> {
+  async getById(
+    rawId: string,
+    tenantId?: string,
+    actor?: ActorContext
+  ): Promise<AssetModelDTO> {
     const id = assetModelIdSchema.parse(rawId);
     const row = await this.modelRepo.findById(id, undefined, tenantId);
     if (!row) throw new NotFoundError("Asset model", id);
-    return toAssetModelDTO(
-      row,
-      await this.modelRepo.countUnits(row.id, undefined, tenantId),
-      await this.modelRepo.countAvailableUnits(row.id, undefined, tenantId)
+    return redactAssetModelForActor(
+      toAssetModelDTO(
+        row,
+        await this.modelRepo.countUnits(row.id, undefined, tenantId),
+        await this.modelRepo.countAvailableUnits(row.id, undefined, tenantId)
+      ),
+      actor
     );
   }
 

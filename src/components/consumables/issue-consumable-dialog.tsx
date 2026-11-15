@@ -24,11 +24,23 @@ import { isInitialStockLot } from "@/types/grouped-purchase-order";
 
 const ISSUE_TIMEOUT_MS = 60_000;
 
+function consumableNoun(classification?: "supply" | "material") {
+  if (classification === "material") {
+    return { noun: "material", plural: "materials", label: "Material" };
+  }
+  if (classification === "supply") {
+    return { noun: "supply", plural: "supplies", label: "Supply" };
+  }
+  return { noun: "item", plural: "items", label: "Consumable" };
+}
+
 export interface IssueConsumableDialogProps {
-  /** Pre-selected supply (e.g. from detail panel). When null, user picks from catalog. */
+  /** Pre-selected item (e.g. from detail panel). When null, user picks from catalog. */
   item: ConsumableItem | null;
-  /** Catalog for supply picker when not opened from a specific item. */
+  /** Catalog for item picker when not opened from a specific item. */
   allItems?: ConsumableItem[];
+  /** Optional classification scope when opening from Supplies vs Materials. */
+  defaultClassification?: "supply" | "material";
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (message: string) => void;
@@ -40,6 +52,7 @@ type DestinationKind = "department" | "project";
 export function IssueConsumableDialog({
   item: lockedItem,
   allItems = [],
+  defaultClassification,
   isOpen,
   onClose,
   onSuccess,
@@ -59,8 +72,14 @@ export function IssueConsumableDialog({
 
   const stockedItems = useMemo(() => {
     const list = allItems.length > 0 ? allItems : lockedItem ? [lockedItem] : [];
-    return list.filter((i) => availableQty(i) > 0);
-  }, [allItems, lockedItem]);
+    return list.filter((i) => {
+      if (availableQty(i) <= 0) return false;
+      if (!lockedItem && defaultClassification) {
+        return (i.classification ?? "supply") === defaultClassification;
+      }
+      return true;
+    });
+  }, [allItems, lockedItem, defaultClassification]);
 
   const itemLocked = Boolean(lockedItem);
   const [supplySearch, setSupplySearch] = useState("");
@@ -92,8 +111,8 @@ export function IssueConsumableDialog({
     () =>
       filteredSupplies.map((i) => ({
         value: i.id,
-        label: `${i.name} (${i.itemCode}) — ${availableQty(i)} ${i.unit}`,
-        keywords: `${i.itemCode} ${i.name}`,
+        label: `${i.name} (${i.itemCode}) · ${i.classification === "material" ? "Material" : "Supply"} — ${availableQty(i)} ${i.unit}`,
+        keywords: `${i.itemCode} ${i.name} ${i.classification ?? ""}`,
       })),
     [filteredSupplies]
   );
@@ -226,6 +245,14 @@ export function IssueConsumableDialog({
 
   if (!isOpen) return null;
 
+  const activeClassification =
+    selectedItem?.classification ?? lockedItem?.classification ?? defaultClassification;
+  const {
+    noun: activeNoun,
+    plural: activeNounPlural,
+    label: activeClassLabel,
+  } = consumableNoun(activeClassification);
+
   const freeQty = selectedItem
     ? (selectedItem.availableQty ?? availableQty(selectedItem))
     : 0;
@@ -237,7 +264,7 @@ export function IssueConsumableDialog({
     e.preventDefault();
     setError("");
     if (!selectedItem) {
-      setError("Select a supply item to issue.");
+      setError(`Select a ${activeNoun} to issue.`);
       return;
     }
     if (destinationKind === "department" && !departmentId) {
@@ -334,11 +361,13 @@ export function IssueConsumableDialog({
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-text">Issue supplies</h2>
+            <h2 className="text-sm font-bold text-text">
+              Issue {activeNounPlural}
+            </h2>
             <p className="text-xs text-text-secondary mt-0.5">
               {selectedItem
                 ? `${selectedItem.itemCode} · ${freeQty} ${selectedItem.unit} available`
-                : "Select a supply, then the lot to issue from"}
+                : `Select a ${activeNoun}, then the lot to issue from`}
               {selectedItem && (selectedItem.reservedQty ?? 0) > 0
                 ? ` (${selectedItem.reservedQty} reserved)`
                 : ""}
@@ -365,7 +394,7 @@ export function IssueConsumableDialog({
             <div className="space-y-2">
               <label className="block space-y-1">
                 <span className="text-[11px] font-bold uppercase text-text-secondary">
-                  Supply item <span className="text-accent">*</span>
+                  {activeClassLabel} item <span className="text-accent">*</span>
                 </span>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary" />
@@ -380,16 +409,16 @@ export function IssueConsumableDialog({
               </label>
               {stockedItems.length === 0 ? (
                 <p className="text-xs text-status-repair-text">
-                  No supplies with available stock. Restock first.
+                  No {activeNounPlural} with available stock. Restock first.
                 </p>
               ) : (
                 <SearchableSelect
                   value={selectedItemId}
                   onValueChange={setSelectedItemId}
                   options={supplyOptions}
-                  placeholder="Select a supply…"
-                  clearLabel="Select a supply…"
-                  emptyMessage="No supplies match your search"
+                  placeholder={`Select a ${activeNoun}…`}
+                  clearLabel={`Select a ${activeNoun}…`}
+                  emptyMessage={`No ${activeNounPlural} match your search`}
                   inputClassName="text-sm font-normal"
                   aria-required="true"
                 />
@@ -499,7 +528,7 @@ export function IssueConsumableDialog({
             </span>
             {!selectedItem ? (
               <p className="text-xs text-text-secondary py-2">
-                Select a supply first to see its lots.
+                Select a {activeNoun} first to see its lots.
               </p>
             ) : lotsLoading ? (
               <p className="text-xs text-text-secondary animate-pulse py-2">
@@ -604,7 +633,7 @@ export function IssueConsumableDialog({
               pending ||
               !selectedItem ||
               !lotId ||
-              freeQty < 1 ||
+              freeQty <= 0 ||
               availableLots.length === 0 ||
               (destinationKind === "department" &&
                 (!departmentId || departmentsLoading)) ||

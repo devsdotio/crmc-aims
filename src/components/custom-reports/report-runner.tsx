@@ -20,6 +20,7 @@ import {
 
 import { useToast } from "@/components/providers/toast-context";
 import { CustomReportFilterFields } from "@/components/custom-reports/filter-fields";
+import { ConsumableClassificationBadge } from "@/components/reports/consumable-classification-badge";
 import {
   downloadCustomReportCsv,
   logCustomReportPrintIntent,
@@ -90,7 +91,8 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
         pageSize: targetPageSize,
       });
       setResult(data);
-      setAppliedFilters(targetFilters);
+      setAppliedFilters(data.filters);
+      setFilters(data.filters);
       setCurrentPage(targetPage);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to run report.");
@@ -219,18 +221,26 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
       }
     }
 
-    // Status Badges
+    // Classification Badges (Supply vs Material vs Mixed)
     const lower = valStr.toLowerCase();
-    if (["active", "operational", "approved", "fulfilled"].includes(lower)) {
+    if (
+      col.key === "classification" &&
+      ["supply", "material", "mixed", "asset"].includes(lower)
+    ) {
+      return <ConsumableClassificationBadge classification={lower} compact />;
+    }
+
+    // Status Badges
+    if (["active", "operational", "approved", "fulfilled", "released", "delivered"].includes(lower)) {
       return (
         <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
           {valStr}
         </span>
       );
     }
-    if (["in_repair", "low_stock", "pending", "for_review"].includes(lower)) {
+    if (["in_repair", "low_stock", "pending", "pending_approval", "ordered", "for_review"].includes(lower)) {
       return (
-        <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+        <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
           {valStr}
         </span>
       );
@@ -245,6 +255,22 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
 
     return <span>{valStr}</span>;
   };
+
+  const classificationCounts = useMemo(() => {
+    const rows = result?.rows ?? [];
+    if (!result?.columns.some((c) => c.key === "classification")) return null;
+    let supply = 0;
+    let material = 0;
+    let mixed = 0;
+    for (const r of rows) {
+      const c = typeof r.classification === "string" ? r.classification.toLowerCase() : "";
+      if (c === "supply") supply += 1;
+      else if (c === "material") material += 1;
+      else if (c === "mixed") mixed += 1;
+    }
+    if (supply + material + mixed === 0) return null;
+    return { supply, material, mixed };
+  }, [result]);
 
   if (isLoading || !template) {
     return (
@@ -470,7 +496,26 @@ export function CustomReportRunner({ templateId }: ReportRunnerProps) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-xs text-text-secondary">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">
+            {classificationCounts && (
+              <div className="flex items-center gap-1.5">
+                {classificationCounts.supply > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    {classificationCounts.supply} Supply
+                  </span>
+                )}
+                {classificationCounts.material > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/12 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                    {classificationCounts.material} Material
+                  </span>
+                )}
+                {classificationCounts.mixed > 0 && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-indigo-500/25 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">
+                    {classificationCounts.mixed} Mixed
+                  </span>
+                )}
+              </div>
+            )}
             <span>
               Total records: <strong className="text-text">{totalRows.toLocaleString()}</strong>
             </span>

@@ -13,14 +13,18 @@ interface PurposeParticularsViewProps {
   items: ParticularLineItem[];
   /** Single-purpose text after any display cleanup (department tags, etc.). */
   displayPurpose?: string;
+  /** Hide itemized unit costs and totals when financial figures are redacted. */
+  hideCosts?: boolean;
 }
 
 function LineRow({
   item,
   index,
+  hideCosts = false,
 }: {
   item: ParticularLineItem;
   index: number;
+  hideCosts?: boolean;
 }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-bg p-2.5 text-xs text-text">
@@ -41,14 +45,14 @@ function LineRow({
           {item.unitOfMeasure?.trim()
             ? ` ${item.unitOfMeasure.trim()}`
             : ""}
-          {item.unitCost ? ` × ${formatPhp(item.unitCost)}` : ""}
+          {!hideCosts && item.unitCost ? ` × ${formatPhp(item.unitCost)}` : ""}
         </span>
-      ) : item.unitCost ? (
+      ) : !hideCosts && item.unitCost ? (
         <span className="shrink-0 font-mono text-[11px] text-text-secondary pt-0.5">
           {formatPhp(item.unitCost)}
         </span>
       ) : null}
-      {particularLineAmount(item) > 0 ? (
+      {!hideCosts && particularLineAmount(item) > 0 ? (
         <span className="shrink-0 font-mono font-bold text-emerald-600 dark:text-emerald-400 pt-0.5">
           {formatPhp(particularLineAmount(item))}
         </span>
@@ -61,6 +65,7 @@ export function PurposeParticularsView({
   purpose,
   items,
   displayPurpose,
+  hideCosts = false,
 }: PurposeParticularsViewProps) {
   const { sections, isMulti } = particularPurposeSections(items, purpose);
   const singlePurpose = (displayPurpose ?? purpose ?? "").trim();
@@ -94,14 +99,21 @@ export function PurposeParticularsView({
               Particulars
             </span>
             {items.map((item, idx) => (
-              <LineRow key={`${item.description}-${idx}`} item={item} index={idx} />
+              <LineRow
+                key={`${item.description}-${idx}`}
+                item={item}
+                index={idx}
+                hideCosts={hideCosts}
+              />
             ))}
-            <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
-              <span>Overall total</span>
-              <span className="font-mono font-bold text-text">
-                {formatPhp(sumParticularAmounts(items))}
-              </span>
-            </div>
+            {!hideCosts ? (
+              <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
+                <span>Overall total</span>
+                <span className="font-mono font-bold text-text">
+                  {formatPhp(sumParticularAmounts(items))}
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -133,17 +145,20 @@ export function PurposeParticularsView({
                 key={`${section.purpose}-${index}`}
                 item={item}
                 index={index}
+                hideCosts={hideCosts}
               />
             );
           })}
         </div>
       ))}
-      <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
-        <span>Overall total</span>
-        <span className="font-mono font-bold text-text">
-          {formatPhp(sumParticularAmounts(items))}
-        </span>
-      </div>
+      {!hideCosts ? (
+        <div className="flex items-center justify-between pt-1 px-1 text-[11px] text-text-secondary">
+          <span>Overall total</span>
+          <span className="font-mono font-bold text-text">
+            {formatPhp(sumParticularAmounts(items))}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -22,6 +22,8 @@ interface ReportTableProps<T> {
   onRowClick?: (row: T) => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  onEmptyAction?: () => void;
+  emptyActionLabel?: string;
   className?: string;
   renderExpandedRow?: (row: T) => React.ReactNode;
 }
@@ -38,6 +40,8 @@ export function ReportTable<T>({
   onRowClick,
   emptyTitle = "No records found",
   emptyDescription = "Try adjusting your filters or date range.",
+  onEmptyAction,
+  emptyActionLabel = "Reset Filters",
   className,
   renderExpandedRow,
 }: ReportTableProps<T>) {
@@ -128,6 +132,15 @@ export function ReportTable<T>({
                     </div>
                     <div className="text-base sm:text-lg font-bold text-text tracking-tight">{emptyTitle}</div>
                     <div className="text-xs text-text-secondary leading-relaxed max-w-xs">{emptyDescription}</div>
+                    {onEmptyAction && (
+                      <button
+                        type="button"
+                        onClick={onEmptyAction}
+                        className="mt-1 inline-flex items-center justify-center rounded-xl border border-border bg-bg-subtle px-4 min-h-11 sm:min-h-9 text-xs font-semibold text-text hover:bg-border/50 transition-colors cursor-pointer"
+                      >
+                        {emptyActionLabel}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -203,9 +216,10 @@ export function ReportTable<T>({
 
         <div className="flex items-center gap-1.5">
           <button
+            type="button"
             onClick={() => onPageChange?.(page - 1)}
             disabled={page <= 1 || isLoading}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+            className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
             aria-label="Previous page"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -214,9 +228,10 @@ export function ReportTable<T>({
             {page} / {totalPages}
           </span>
           <button
+            type="button"
             onClick={() => onPageChange?.(page + 1)}
             disabled={page >= totalPages || isLoading}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+            className="flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-lg border border-border bg-card text-text transition-colors hover:bg-bg-subtle disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
             aria-label="Next page"
           >
             <ChevronRight className="h-4 w-4" />

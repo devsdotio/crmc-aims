@@ -27,7 +27,7 @@ import { formatPhp } from "@/components/projects/format-money";
 export interface IssueDetailRecord {
   id: string;
   code: string;
-  kind: "asset" | "supply";
+  kind: "asset" | "supply" | "material";
   itemLabel: string;
   itemCode: string;
   destination: string;
@@ -103,6 +103,7 @@ export function IssueDetailSheet({
   };
 
   const isAsset = record.kind === "asset";
+  const isMaterial = record.kind === "material";
   const canUndoSupply =
     !isAsset &&
     canOperate &&
@@ -136,11 +137,21 @@ export function IssueDetailSheet({
                   "inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-bold uppercase tracking-wider",
                   isAsset
                     ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
-                    : "bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30"
+                    : isMaterial
+                      ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                      : "bg-status-active-bg/20 text-status-active-text border border-status-active-bg/30"
                 )}
               >
-                {isAsset ? <Box className="h-3.5 w-3.5" /> : <Package className="h-3.5 w-3.5" />}
-                {isAsset ? "Asset Custody Issue" : "Supply Issue"}
+                {isAsset ? (
+                  <Box className="h-3.5 w-3.5" />
+                ) : (
+                  <Package className="h-3.5 w-3.5" />
+                )}
+                {isAsset
+                  ? "Asset Custody Issue"
+                  : isMaterial
+                    ? "Material Issue"
+                    : "Supply Issue"}
               </span>
               {record.voided && (
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full border bg-status-repair-bg/15 text-status-repair-text border-status-repair-bg/30">
@@ -416,7 +427,7 @@ export function IssueDetailSheet({
             <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3 text-xs">
               <h4 className="font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
                 <Undo2 className="h-3.5 w-3.5" />
-                Undo Supply Issue
+                Undo {isMaterial ? "Material" : "Supply"} Issue
               </h4>
               <p className="text-text-secondary leading-relaxed">
                 This restocks the issued quantity back into inventory

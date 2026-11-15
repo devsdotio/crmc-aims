@@ -74,6 +74,9 @@ export function DisbursementPrintSlipDialog({
   useEffect(() => {
     if (!isOpen) return;
     function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      const frameWin = iframeRef.current?.contentWindow;
+      if (!frameWin || event.source !== frameWin) return;
       const data = event.data as { source?: string; field?: string; value?: string } | null;
       if (!data || data.source !== "crmc-disbursement-slip") return;
       const current = targetRef.current;

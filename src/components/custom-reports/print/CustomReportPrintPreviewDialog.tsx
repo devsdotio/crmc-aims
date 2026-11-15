@@ -10,6 +10,7 @@ import {
   Minimize2,
 } from "lucide-react";
 
+import { escapeHtml } from "@/lib/html";
 import {
   CustomPrintableReport,
   type PaperSize,
@@ -103,7 +104,6 @@ export function CustomReportPrintPreviewDialog({
         : `A4 ${orientation}`;
 
     const pageMarginRule = margin === "narrow" ? "8mm 10mm" : "14mm 16mm";
-    const printPaddingRule = margin === "narrow" ? "8mm 10mm" : "14mm 16mm";
 
     const reportHtml = content.innerHTML;
 
@@ -112,7 +112,7 @@ export function CustomReportPrintPreviewDialog({
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>${templateName || payload.templateName || "Custom Report"}</title>
+  <title>${escapeHtml(templateName || payload.templateName || "Custom Report")}</title>
   ${styleTags}
   <style>
     @page {
@@ -120,6 +120,10 @@ export function CustomReportPrintPreviewDialog({
       margin: ${pageMarginRule};
     }
     html, body {
+      height: auto !important;
+      min-height: 0 !important;
+      overflow: visible !important;
+      display: block !important;
       background: #ffffff !important;
       color: #000000 !important;
       margin: 0 !important;
@@ -133,8 +137,8 @@ export function CustomReportPrintPreviewDialog({
       display: none !important;
     }
     .custom-print-root {
-      padding: ${printPaddingRule} !important;
-      margin: 0 auto !important;
+      padding: 0 !important;
+      margin: 0 !important;
       width: 100% !important;
       max-width: none !important;
       min-height: auto !important;
@@ -210,7 +214,7 @@ export function CustomReportPrintPreviewDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-xs transition-opacity">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-xs transition-opacity print:hidden no-print">
       {/* Backdrop */}
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
@@ -239,8 +243,15 @@ export function CustomReportPrintPreviewDialog({
                 <span className="truncate max-w-45 sm:max-w-xs md:max-w-md">
                   {templateName || payload.templateName || "Custom Report"}
                 </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0 whitespace-nowrap">
-                  Long Bond Paper (8.5&quot; × 13&quot;)
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shrink-0 whitespace-nowrap">
+                  {paperSize === "long"
+                    ? 'Long Bond (8.5" × 13")'
+                    : paperSize === "legal"
+                    ? 'US Legal (8.5" × 14")'
+                    : paperSize === "letter"
+                    ? 'US Letter (8.5" × 11")'
+                    : "ISO A4"}{" "}
+                  · {isLandscape ? "Landscape" : "Portrait"}
                 </span>
               </h2>
               <p className="text-[10px] sm:text-[11px] text-text-secondary mt-0.5 truncate">

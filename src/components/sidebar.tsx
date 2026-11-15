@@ -81,6 +81,7 @@ interface SidebarProps {
   pendingAssignCount?: number;
   pendingBorrowCount?: number;
   pendingSupplyCount?: number;
+  pendingMaterialCount?: number;
   lowStockCount?: number;
   overdueCount?: number;
   userName?: string;
@@ -96,6 +97,7 @@ export default function Sidebar({
   pendingAssignCount = 0,
   pendingBorrowCount = 0,
   pendingSupplyCount = 0,
+  pendingMaterialCount = 0,
   lowStockCount = 0,
   overdueCount = 0,
   userName = "Unknown user",
@@ -237,7 +239,7 @@ export default function Sidebar({
       ],
     },
     {
-      label: "Request",
+      label: "Catalog",
       items: [
         {
           name: "Browse Catalog",
@@ -245,8 +247,13 @@ export default function Sidebar({
           icon: Search,
           roles: ["borrower"],
         },
+      ],
+    },
+    {
+      label: "Requests",
+      items: [
         {
-          name: "Assign Request",
+          name: "Assignment",
           href: "/borrower-db/requests/assignment",
           icon: ClipboardList,
           badge: pendingAssignCount,
@@ -254,7 +261,7 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Borrow Request",
+          name: "Borrow",
           href: "/borrower-db/requests/borrow",
           icon: Repeat,
           badge: pendingBorrowCount,
@@ -262,7 +269,7 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Supplies Request",
+          name: "Supplies",
           href: "/borrower-db/requests/supplies",
           icon: Boxes,
           badge: pendingSupplyCount,
@@ -270,24 +277,20 @@ export default function Sidebar({
           roles: ["borrower"],
         },
         {
-          name: "Materials Request",
+          name: "Materials",
           href: "/borrower-db/requests/materials",
-          icon: Boxes,
+          icon: Wrench,
+          badge: pendingMaterialCount,
+          badgeTone: "accent",
           roles: ["borrower"],
         },
       ],
     },
     {
-      label: "Operations",
+      label: "Inventory",
       items: [
         {
           name: "Assets",
-          href: "/assets",
-          icon: Package,
-          roles: ["admin", "staff"],
-        },
-        {
-          name: "Department Assets",
           href: "/borrower-db/inventory",
           icon: Package,
           roles: ["borrower"],
@@ -301,8 +304,19 @@ export default function Sidebar({
         {
           name: "Issued Materials",
           href: "/borrower-db/materials",
-          icon: Boxes,
+          icon: Wrench,
           roles: ["borrower"],
+        },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        {
+          name: "Assets",
+          href: "/assets",
+          icon: Package,
+          roles: ["admin", "staff"],
         },
         {
           name: "Inventory",
@@ -346,6 +360,12 @@ export default function Sidebar({
               name: "Supplies",
               href: "/borrow-requests/supplies",
               badge: pendingSupplyCount,
+              badgeTone: "accent",
+            },
+            {
+              name: "Materials",
+              href: "/borrow-requests/materials",
+              badge: pendingMaterialCount,
               badgeTone: "accent",
             },
           ],
@@ -1018,7 +1038,7 @@ export default function Sidebar({
         {sections.map((section, index) => (
           <div key={section.label}>
             {!isCollapsed ? (
-              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+              <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/65">
                 {section.label}
               </p>
             ) : (
@@ -1065,7 +1085,7 @@ export default function Sidebar({
                 <p className="text-sm font-semibold text-white truncate">
                   {userName}
                 </p>
-                <p className="text-xs text-white/40 truncate">{userEmail}</p>
+                <p className="text-xs text-white/70 truncate">{userEmail}</p>
               </div>
             )}
           </button>
@@ -1080,7 +1100,7 @@ export default function Sidebar({
               aria-label="Collapse sidebar"
               title="Collapse sidebar"
               className={cn(
-                "hidden md:flex items-center justify-center rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-colors",
+                "hidden md:flex items-center justify-center rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors",
                 "w-8 h-8 shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70",
               )}
             >
@@ -1098,7 +1118,7 @@ export default function Sidebar({
               exit={{ opacity: 0, scale: 0.95, y: isCollapsed ? 0 : 6 }}
               transition={{ duration: 0.14 }}
               className={cn(
-                "rounded-xl border border-white/15 bg-[#2a3260] p-2 z-50",
+                "rounded-xl border border-white/15 bg-primary p-2 z-50",
                 isCollapsed
                   ? "absolute left-full bottom-3 ml-3 w-64 shadow-none"
                   : "absolute bottom-full left-3 right-3 mb-3.5 shadow-[0_0_12px_rgba(0,0,0,0.25)]",
@@ -1108,7 +1128,7 @@ export default function Sidebar({
               <div className="flex items-center gap-3 p-2 rounded-lg bg-white/5 border border-white/5 mb-1.5">
                 <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-white/10 text-white shrink-0">
                   <User className="w-4.5 h-4.5" />
-                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-status-active-bg ring-2 ring-[#2a3260]" />
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-status-active-bg ring-2 ring-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white truncate">
@@ -1149,7 +1169,7 @@ export default function Sidebar({
                     <span className="font-medium">What&apos;s New</span>
                   </div>
                   {hasUnseenNew && unseenCount > 0 && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-accent text-white">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent text-white">
                       {unseenCount}
                     </span>
                   )}

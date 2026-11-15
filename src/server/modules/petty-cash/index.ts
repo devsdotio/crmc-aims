@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireActor, requireAssetOperator } from "@/server/shared/auth";
+import { requireAssetOperator, requireStaffShell } from "@/server/shared/auth";
 import { created, handleError, ok } from "@/server/shared/http";
 
 import { PettyCashService } from "./petty-cash.service";
@@ -12,7 +12,7 @@ export class PettyCashController {
 
   async list(request: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const url = new URL(request.url);
       const data = await this.service.list(
         {
@@ -25,7 +25,8 @@ export class PettyCashController {
           limit: url.searchParams.get("limit") ?? undefined,
           offset: url.searchParams.get("offset") ?? undefined,
         },
-        actor.tenantId
+        actor.tenantId,
+        actor
       );
       return ok(data);
     } catch (error) {
@@ -35,7 +36,7 @@ export class PettyCashController {
 
   async nextCode(request?: NextRequest | Request) {
     try {
-      const actor = await requireActor();
+      const { actor } = await requireStaffShell();
       const yearRaw =
         request && "url" in request
           ? new URL(request.url).searchParams.get("year")
@@ -57,8 +58,8 @@ export class PettyCashController {
 
   async get(id: string) {
     try {
-      const actor = await requireActor();
-      return ok(await this.service.getById(id, actor.tenantId));
+      const { actor } = await requireStaffShell();
+      return ok(await this.service.getById(id, actor.tenantId, actor));
     } catch (error) {
       return handleError(error);
     }

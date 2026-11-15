@@ -2,7 +2,7 @@ import { borrowRequestController } from "@/server/modules/borrow-requests";
 
 /**
  * @swagger
- * /api/borrow-requests:
+ * /api/requests:
  *   get:
  *     summary: List borrow requests (borrowers see own; operators see all)
  *     tags: [BorrowRequests]

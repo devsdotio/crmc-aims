@@ -4,6 +4,7 @@ export const CUSTOM_REPORT_DATASETS = [
   "stock-movements",
   "purchase-orders",
   "requests",
+  "consumable-requests",
   "maintenance",
   "projects",
 ] as const;
@@ -32,6 +33,7 @@ export interface CustomReportFilters {
   projectIds?: string[];
   categories?: string[];
   classifications?: string[];
+  categoryClasses?: string[];
   statuses?: string[];
   assignmentTypes?: string[];
   itemTypes?: string[];
@@ -75,6 +77,7 @@ export type CustomReportFilterFieldKey =
   | "projects"
   | "categories"
   | "classifications"
+  | "categoryClasses"
   | "statuses"
   | "assignmentTypes"
   | "itemTypes"
@@ -220,6 +223,7 @@ export function normalizeCustomReportFilters(
     projectIds: asStringArray(f.projectIds),
     categories,
     classifications,
+    categoryClasses: asStringArray(f.categoryClasses),
     statuses,
     assignmentTypes: asStringArray(f.assignmentTypes),
     itemTypes: asStringArray(f.itemTypes),
@@ -243,7 +247,18 @@ export function summarizeCustomReportFilters(filters: CustomReportFilters): stri
   push("departments", filters.departmentNames ?? filters.departmentIds);
   push("projects", filters.projectIds);
   push("categories", filters.categories);
-  push("classes", filters.classifications);
+  if (filters.classifications?.length) {
+    const formatted = filters.classifications.map((c) => {
+      const lower = c.trim().toLowerCase();
+      if (lower === "supply") return "Supplies";
+      if (lower === "material") return "Materials";
+      if (lower === "mixed") return "Mixed (Supplies + Materials)";
+      if (lower === "asset") return "Assets";
+      return c;
+    });
+    parts.push(`classifications: ${formatted.join(", ")}`);
+  }
+  push("category classes", filters.categoryClasses);
   push("statuses", filters.statuses);
   push("assignment types", filters.assignmentTypes);
   push("item types", filters.itemTypes);

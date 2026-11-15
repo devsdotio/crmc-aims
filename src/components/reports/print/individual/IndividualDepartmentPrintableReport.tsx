@@ -7,6 +7,7 @@ import {
   PrintStatusBadge,
   PrintSignatories,
 } from "../PrintCharts";
+import { normalizeConsumableClassification } from "@/lib/consumable-classification";
 
 export interface IndividualDepartmentAsset {
   id: string;
@@ -18,6 +19,9 @@ export interface IndividualDepartmentAsset {
   status?: string;
   cost?: number | null;
   value?: number | null;
+  custodyType?: "owned" | "borrowed";
+  homeDepartment?: string | null;
+  borrowingDepartment?: string | null;
   maintenanceLogs?: Array<{
     logCode: string;
     condition: string;
@@ -38,6 +42,9 @@ export interface IndividualDepartmentSupplyUsage {
   itemCode?: string;
   name: string;
   category?: string | null;
+  classification?: string | null;
+  source?: string | null;
+  referenceCode?: string | null;
   quantity: number;
   unit?: string;
   spendValue?: number | null;
@@ -117,6 +124,9 @@ export function IndividualDepartmentPrintableReport({
       condition: a.condition,
       status: a.status,
       cost: a.value ?? a.cost ?? null,
+      custodyType: a.custodyType,
+      homeDepartment: a.homeDepartment,
+      borrowingDepartment: a.borrowingDepartment,
       maintenanceLogs: a.maintenanceLogs?.map(log => ({
         logCode: log.logCode,
         condition: log.condition,
@@ -139,19 +149,33 @@ export function IndividualDepartmentPrintableReport({
       skuCode: s.itemCode || s.skuCode || s.id,
       name: s.name,
       category: s.category,
+      classification: s.classification ?? null,
+      source: s.source ?? null,
+      referenceCode: s.referenceCode ?? null,
       quantity: s.quantity,
       unit: s.unit,
       spendValue: s.totalCost ?? s.spendValue ?? null,
     })) ||
     [];
 
+  const supplyItems = effectiveSupplies.filter(
+    (s) => normalizeConsumableClassification(s.classification) !== "material"
+  );
+  const materialItems = effectiveSupplies.filter(
+    (s) => normalizeConsumableClassification(s.classification) === "material"
+  );
+  const suppliesUnits = supplyItems.reduce((sum, s) => sum + (s.quantity || 0), 0);
+  const materialsUnits = materialItems.reduce((sum, s) => sum + (s.quantity || 0), 0);
+  const suppliesSpend = supplyItems.reduce((sum, s) => sum + (s.spendValue ?? s.totalCost ?? 0), 0);
+  const materialsSpend = materialItems.reduce((sum, s) => sum + (s.spendValue ?? s.totalCost ?? 0), 0);
+
   const totalAssetsCount = department.assetsAssignedCount ?? effectiveAssets.length;
   const totalAssetsValuation =
     department.assetsValue ?? effectiveAssets.reduce((sum, a) => sum + (a.cost || a.value || 0), 0);
   const totalSuppliesCount =
-    department.consumablesConsumedCount ?? effectiveSupplies.reduce((sum, s) => sum + (s.quantity || 0), 0);
+    department.consumablesConsumedCount ?? (suppliesUnits + materialsUnits);
   const totalSuppliesValuation =
-    department.consumablesValue ?? effectiveSupplies.reduce((sum, s) => sum + (s.spendValue || s.totalCost || 0), 0);
+    department.consumablesValue ?? (suppliesSpend + materialsSpend);
 
   const activeProjects = propActiveProjectsCount ?? department.activeProjects ?? 0;
   const openMaintenance = propOpenMaintenanceCount ?? department.activeMaintenanceCount ?? 0;
@@ -167,7 +191,7 @@ export function IndividualDepartmentPrintableReport({
     );
 
   return (
-    <div className="print-page mx-auto w-full max-w-[7.6in] bg-white text-text text-[11px] leading-normal font-sans space-y-3">
+    <div className="print-page print-dossier-portrait mx-auto w-full max-w-[7.8in] print:max-w-none print:w-full bg-white text-black text-[11px] leading-normal font-sans space-y-3">
       {/* ─── Institutional Header ───────────────────────────────────────── */}
       <header className="avoid-break border-b-2 border-[#2A3260] pb-2.5">
         <div className="flex items-start justify-between">
@@ -242,7 +266,7 @@ export function IndividualDepartmentPrintableReport({
               value: `${totalSuppliesCount.toLocaleString()} units`,
               delta: canViewCosts && totalSuppliesValuation > 0 ? `₱${totalSuppliesValuation.toLocaleString()}` : "Dispatched",
               deltaType: "neutral",
-              subtext: "Total materials consumed",
+              subtext: `${suppliesUnits.toLocaleString()} Supplies · ${materialsUnits.toLocaleString()} Materials`,
             },
             {
               label: "Active Projects & Work Orders",
@@ -257,7 +281,7 @@ export function IndividualDepartmentPrintableReport({
 
       {/* ─── Section 1: Department Governance & Custody Profile ──────────── */}
       <section className="avoid-break">
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>1. Department Governance &amp; Custody Profile</span>
             <span className="text-[10px] text-neutral-500 font-mono">Code: {deptCode}</span>
@@ -295,11 +319,11 @@ export function IndividualDepartmentPrintableReport({
 
       {/* ─── Section 2: Assigned Capital Fleet Equipment Register ────────── */}
       <section>
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>2. Assigned Fleet Capital Assets Register</span>
             <span className="text-[10px] text-neutral-500 font-mono">
-              Showing {Math.min(effectiveAssets.length, 10)} of {totalAssetsCount} assigned assets
+              Showing {effectiveAssets.length} of {totalAssetsCount} assigned assets
             </span>
           </div>
           <table className="w-full border-collapse text-[11px] table-auto">
@@ -314,25 +338,30 @@ export function IndividualDepartmentPrintableReport({
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {effectiveAssets.slice(0, 10).map((asset) => (
+              {effectiveAssets.map((asset) => (
                 <React.Fragment key={asset.id}>
-                  <tr>
-                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap border-b-0">
+                  <tr className="align-top">
+                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap border-b-0 align-top">
                       {asset.assetCode || asset.id}
                     </td>
-                    <td className="py-1.5 px-3 font-medium border-b-0">
-                      {asset.name}
+                    <td className="py-1.5 px-3 font-medium border-b-0 align-top">
+                      <div>{asset.name}</div>
+                      {asset.custodyType === "borrowed" && (
+                        <div className="text-[9px] font-semibold text-amber-800 bg-amber-100/90 px-1.5 py-0.25 rounded w-fit mt-0.5">
+                          Borrowed from {asset.homeDepartment || "General Services"}
+                        </div>
+                      )}
                     </td>
-                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0 align-top">
                       {asset.category || "Equipment"}
                     </td>
-                    <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap border-b-0 align-top">
                       {asset.serialNumber || "—"}
                     </td>
-                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0 align-top">
                       {asset.condition || "Good"}
                     </td>
-                    <td className="py-1.5 px-3 whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 whitespace-nowrap border-b-0 align-top">
                       <PrintStatusBadge status={asset.status || "active"} />
                     </td>
                   </tr>
@@ -386,62 +415,105 @@ export function IndividualDepartmentPrintableReport({
         </div>
       </section>
 
-      {/* ─── Section 3: Consumables Supplies Usage Ledger ────────────────── */}
-      <section>
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
-          <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
-            <span>3. Consumable Supplies Requisitions &amp; Usage Ledger</span>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              {effectiveSupplies.length} Dispatched Supply Items
-            </span>
-          </div>
-          <table className="w-full border-collapse text-[11px] table-auto">
-            <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">SKU Code</th>
-                <th className="py-1.5 px-3 text-left">Item Description</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap">Category</th>
-                <th className="py-1.5 px-3 text-right whitespace-nowrap">Units Dispatched</th>
-                {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Spend Valuation</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
-              {effectiveSupplies.slice(0, 10).map((supply) => (
-                <tr key={supply.id}>
-                  <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">
-                    {supply.skuCode}
-                  </td>
-                  <td className="py-1.5 px-3 font-medium">
-                    {supply.name}
-                  </td>
-                  <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap">
-                    {supply.category || "Supply"}
-                  </td>
-                  <td className="py-1.5 px-3 text-right font-mono text-neutral-800 whitespace-nowrap">
-                    {supply.quantity.toLocaleString()} <span className="text-[9.5px] text-neutral-500">{supply.unit || "units"}</span>
-                  </td>
-                  {canViewCosts && (
-                    <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
-                      {supply.spendValue != null ? `₱${supply.spendValue.toLocaleString()}` : "—"}
+      {/* ─── Section 3: Consumables Supplies & Materials Ledgers (Separated) ── */}
+      {[
+        {
+          key: "3a-supplies",
+          title: "3A. Consumable Supplies Dispatched",
+          items: supplyItems,
+          unitsTotal: suppliesUnits,
+          spendTotal: suppliesSpend,
+          emptyText: "No consumable supply requisitions or dispatches recorded for this department.",
+        },
+        {
+          key: "3b-materials",
+          title: "3B. Operational & Project Materials Dispatched",
+          items: materialItems,
+          unitsTotal: materialsUnits,
+          spendTotal: materialsSpend,
+          emptyText: "No operational or project material dispatches recorded for this department.",
+        },
+      ].map((part) => (
+        <section key={part.key}>
+          <div className="rounded-xs border border-black/30 bg-white overflow-hidden print:overflow-visible w-full">
+            <div className="border-b border-black/30 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-black flex items-center justify-between">
+              <span>{part.title}</span>
+              <span className="text-[10px] text-neutral-600 font-mono">
+                {part.items.length} Line(s) · {part.unitsTotal.toLocaleString()} Units
+                {canViewCosts ? ` · ₱${part.spendTotal.toLocaleString()}` : ""}
+              </span>
+            </div>
+            <table className="w-full border-collapse text-[11px] table-auto">
+              <thead>
+                <tr className="border-b border-black/30 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-700">
+                  <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">SKU Code</th>
+                  <th className="py-1.5 px-3 text-left">Item Description</th>
+                  <th className="py-1.5 px-3 text-left whitespace-nowrap">Category</th>
+                  <th className="py-1.5 px-3 text-right whitespace-nowrap">Units Dispatched</th>
+                  {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Spend Valuation</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 text-[11px] text-neutral-900">
+                {part.items.map((item) => (
+                  <tr key={item.id}>
+                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap">
+                      {item.skuCode}
                     </td>
-                  )}
-                </tr>
-              ))}
-              {effectiveSupplies.length === 0 && (
-                <tr>
-                  <td colSpan={canViewCosts ? 5 : 4} className="py-2.5 text-center text-neutral-400 italic text-[11px]">
-                    No consumable supply requisitions recorded for this department yet.
-                  </td>
-                </tr>
+                    <td className="py-1.5 px-3 font-medium">
+                      <div>{item.name}</div>
+                      {item.referenceCode && (
+                        <div className="text-[9.5px] font-mono text-neutral-500">
+                          Ref: {item.referenceCode}
+                        </div>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-3 text-neutral-700 capitalize whitespace-nowrap">
+                      {item.category || "Uncategorized"}
+                    </td>
+                    <td className="py-1.5 px-3 text-right font-mono text-neutral-900 whitespace-nowrap">
+                      {item.quantity.toLocaleString()}{" "}
+                      <span className="text-[9.5px] text-neutral-500">{item.unit || "units"}</span>
+                    </td>
+                    {canViewCosts && (
+                      <td className="py-1.5 px-3 text-right font-mono font-semibold text-neutral-900 whitespace-nowrap">
+                        {item.spendValue != null ? `₱${item.spendValue.toLocaleString()}` : "—"}
+                      </td>
+                    )}
+                  </tr>
+                ))}
+                {part.items.length === 0 && (
+                  <tr>
+                    <td colSpan={canViewCosts ? 5 : 4} className="py-2.5 text-center text-neutral-500 italic text-[11px]">
+                      {part.emptyText}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {part.items.length > 0 && (
+                <tfoot>
+                  <tr className="border-t border-black/40 bg-neutral-50 font-bold text-[10.5px]">
+                    <td colSpan={3} className="py-1.5 px-3 text-right uppercase tracking-wider">
+                      Subtotal ({part.items.length} items):
+                    </td>
+                    <td className="py-1.5 px-3 text-right font-mono whitespace-nowrap">
+                      {part.unitsTotal.toLocaleString()} units
+                    </td>
+                    {canViewCosts && (
+                      <td className="py-1.5 px-3 text-right font-mono whitespace-nowrap">
+                        ₱{part.spendTotal.toLocaleString()}
+                      </td>
+                    )}
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+            </table>
+          </div>
+        </section>
+      ))}
 
       {/* ─── Section 4: Department Equipment Maintenance & Work Orders Register ────── */}
       <section>
-        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden w-full">
+        <div className="rounded-xs border border-neutral-200 bg-white overflow-hidden print:overflow-visible w-full">
           <div className="border-b border-neutral-200 bg-neutral-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-teal-800 flex items-center justify-between">
             <span>4. Department Equipment Maintenance &amp; Work Orders Register</span>
             <div className="flex items-center gap-2 text-[10px] text-neutral-600 font-mono">
@@ -454,15 +526,15 @@ export function IndividualDepartmentPrintableReport({
           </div>
           <table className="w-full border-collapse text-[11px] table-auto">
             <thead>
-              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10.5px] font-bold uppercase tracking-wider text-neutral-600">
-                <th className="py-1.5 px-3 text-left whitespace-nowrap w-24">Log Code</th>
-                <th className="py-1.5 px-3 text-left">Equipment Asset</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap">Condition</th>
-                <th className="py-1.5 px-3 text-center whitespace-nowrap w-20">Status</th>
-                <th className="py-1.5 px-3 text-left whitespace-nowrap">Date Logged</th>
-                <th className="py-1.5 px-3 text-left min-w-32">Parts Replaced</th>
-                {canViewCosts && <th className="py-1.5 px-3 text-right whitespace-nowrap">Repair Cost</th>}
-                <th className="py-1.5 px-3 text-left min-w-36">Work Remarks / Resolution</th>
+              <tr className="border-b border-neutral-200 bg-neutral-50 text-[10px] font-bold uppercase tracking-wider text-neutral-600">
+                <th className="py-1.5 px-2 text-left whitespace-nowrap">Log Code</th>
+                <th className="py-1.5 px-2 text-left">Equipment Asset</th>
+                <th className="py-1.5 px-2 text-left">Condition</th>
+                <th className="py-1.5 px-2 text-center whitespace-nowrap">Status</th>
+                <th className="py-1.5 px-2 text-left whitespace-nowrap">Date Logged</th>
+                <th className="py-1.5 px-2 text-left">Parts Replaced</th>
+                {canViewCosts && <th className="py-1.5 px-2 text-right whitespace-nowrap">Repair Cost</th>}
+                <th className="py-1.5 px-2 text-left">Work Remarks / Resolution</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">

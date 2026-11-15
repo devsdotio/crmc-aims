@@ -151,7 +151,9 @@ export function DashboardInventoryTableCard({
               rows.map((row) => {
                 const categoryStyle = resolveCategoryStyle(row.category);
                 const formattedValuation =
-                  row.valuation > 0 ? `₱${row.valuation.toLocaleString()}` : "—";
+                  row.valuation != null && row.valuation > 0
+                    ? `₱${row.valuation.toLocaleString()}`
+                    : "—";
 
                 return (
                   <tr

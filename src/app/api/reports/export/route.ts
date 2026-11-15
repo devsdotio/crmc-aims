@@ -12,12 +12,12 @@ import { reportController } from "@/server/modules/reports";
  *         required: true
  *         schema:
  *           type: string
- *           enum: [assets, consumables, purchase-orders, requests, maintenance]
+ *           enum: [executive, assets, consumables, purchase-orders, requests, maintenance, projects, departments]
  *       - in: query
  *         name: format
  *         schema:
  *           type: string
- *           enum: [csv, pdf]
+ *           enum: [csv]
  *           default: csv
  *     responses:
  *       200:

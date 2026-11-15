@@ -28,6 +28,7 @@ export interface ActionHistoryLog {
 export interface BorrowRequest {
   id: string;
   requestCode: string;
+  requesterUserId?: string | null;
   requesterName: string;
   requesterEmail: string;
   requesterPhone: string;
@@ -41,7 +42,7 @@ export interface BorrowRequest {
   relatedRequests?: Array<{
     id: string;
     requestCode: string;
-    kind: "borrow" | "assign" | "supply";
+    kind: "borrow" | "assign" | "supply" | "material" | "mixed";
     status: string;
   }>;
   items: {
@@ -50,6 +51,7 @@ export interface BorrowRequest {
     assetCode?: string;
     consumableId?: string;
     category: AssetCategory;
+    classification?: "supply" | "material";
     quantity: number;
     itemType: "asset" | "consumable";
     unit?: string;

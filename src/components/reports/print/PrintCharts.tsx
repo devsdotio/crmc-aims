@@ -54,26 +54,25 @@ export function PrintMetricBar({
 }) {
   return (
     <div
-      className={`avoid-break grid divide-x divide-black rounded-xs border border-black bg-white p-2.5 text-black ${className}`}
-      style={{ gridTemplateColumns: `repeat(${metrics.length}, minmax(0, 1fr))` }}
+      className={`avoid-break grid grid-cols-2 sm:grid-cols-4 print:grid-cols-[repeat(auto-fit,minmax(1.45in,1fr))] divide-x divide-black rounded-xs border border-black bg-white p-2 text-black ${className}`}
     >
       {metrics.map((m, idx) => (
-        <div key={idx} className="px-2.5 first:pl-1 last:pr-1">
-          <div className="text-[9.5px] font-bold uppercase tracking-wider text-black truncate">
+        <div key={idx} className="px-2.5 first:pl-1 last:pr-1 min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-wide text-black leading-tight wrap-break-word">
             {m.label}
           </div>
           <div className="mt-0.5 flex items-baseline gap-1.5 flex-wrap">
-            <span className="text-[14px] font-extrabold text-black font-mono tracking-tight">
+            <span className="text-[13.5px] font-extrabold text-black font-mono tracking-tight">
               {m.value}
             </span>
             {m.delta && (
-              <span className="text-[8.5px] font-bold px-1 py-0.5 rounded-xs border border-black text-black">
+              <span className="text-[8px] font-bold px-1 py-0.5 rounded-xs border border-black text-black">
                 {m.delta}
               </span>
             )}
           </div>
           {m.subtext && (
-            <div className="mt-0.5 text-[8.5px] text-black truncate">
+            <div className="mt-0.5 text-[8.5px] text-black leading-tight wrap-break-word">
               {m.subtext}
             </div>
           )}
@@ -142,12 +141,12 @@ export function PrintHorizontalDistribution({
 
           return (
             <div key={idx} className="flex items-center gap-3 text-[11px]">
-              <div className="w-36 shrink-0 font-semibold text-neutral-800 truncate">
+              <div className="w-28 sm:w-36 shrink-0 font-semibold text-neutral-800 wrap-break-word leading-tight">
                 {item.label}
               </div>
-              <div className="flex-1 bg-neutral-100 h-3 rounded-xs overflow-hidden flex items-center">
+              <div className="flex-1 bg-neutral-100 h-3 rounded-xs overflow-hidden flex items-center border border-black/40 print:border-black">
                 <div
-                  className="h-full rounded-xs transition-all duration-300"
+                  className="h-full rounded-xs transition-all duration-300 print:bg-black"
                   style={{ width: `${pct}%`, backgroundColor: barColor }}
                 />
               </div>
@@ -237,7 +236,7 @@ export function PrintObservationsBox({
   if (!observations || observations.length === 0) return null;
 
   return (
-    <div className={`avoid-break rounded-r-md border-l-4 border-teal-600 bg-teal-50/50 p-3 ${className}`}>
+    <div className={`avoid-break rounded-r-md border border-black/30 border-l-4 border-l-teal-600 print:border-black bg-teal-50/50 p-3 ${className}`}>
       <div className="text-[11px] font-bold uppercase tracking-wider text-teal-800 mb-1.5 flex items-center gap-1.5">
         <span className="inline-block h-2 w-2 rounded-full bg-teal-600" />
         {title}
@@ -303,7 +302,7 @@ export function PrintDonutChart({
   const innerRadius = Math.round(pieSize * 0.28);
 
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden flex flex-col justify-between ${className}`}>
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden print:overflow-visible flex flex-col justify-between ${className}`}>
       <h4 className="mb-2 text-[11.5px] font-bold uppercase tracking-wider text-teal-800">
         {title}
       </h4>
@@ -391,7 +390,7 @@ export function PrintBarChart({
   className?: string;
 }) {
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden flex flex-col justify-between ${className}`}>
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden print:overflow-visible flex flex-col justify-between ${className}`}>
       <div className="flex items-center justify-between mb-2">
         <h4 className="text-[11.5px] font-bold uppercase tracking-wider text-teal-800">
           {title}
@@ -409,7 +408,7 @@ export function PrintBarChart({
         </div>
       </div>
 
-      <div className="w-full overflow-hidden flex items-center justify-center">
+      <div className="w-full overflow-hidden print:overflow-visible flex items-center justify-center [&_svg]:max-w-full [&_svg]:h-auto">
         <BarChart
           width={width}
           height={height}
@@ -468,7 +467,7 @@ export function PrintGaugeChart({
   const data = [{ name: "value", value, fill: "#0D9488" }];
 
   return (
-    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden flex flex-col items-center justify-between text-center ${className}`}>
+    <div className={`avoid-break rounded-xs border border-neutral-200 bg-white p-3 overflow-hidden print:overflow-visible flex flex-col items-center justify-between text-center ${className}`}>
       <h4 className="w-full text-left text-[11.5px] font-bold uppercase tracking-wider text-teal-800 mb-0.5">
         {title}
       </h4>

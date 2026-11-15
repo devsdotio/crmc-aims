@@ -740,11 +740,11 @@ export function PurchaseOrdersView({
           <StatCard
             title="Total Value"
             sublabel="FINANCIAL // OUTLAY"
-            value={formatPhp(stats.totalValue)}
+            value={canOperate ? formatPhp(stats.totalValue) : "Restricted"}
             valueClassName="text-xl sm:text-2xl"
             icon={Banknote}
             tone="indigo"
-            badge="PHP (₱)"
+            badge={canOperate ? "PHP (₱)" : "Admin Only"}
             infoTooltipAlign="right"
             infoTooltipPlacement="bottom"
             infoTooltip={
@@ -755,65 +755,75 @@ export function PurchaseOrdersView({
                     Total PO Valuation
                   </span>
                   <span className="font-mono font-bold text-indigo-300">
-                    {formatPhp(stats.totalValue)}
+                    {canOperate ? formatPhp(stats.totalValue) : "Restricted"}
                   </span>
                 </div>
 
                 <p className="text-[11px] text-neutral-300 leading-relaxed">
-                  Coincides with the cumulative contracted outlay across all line items (Quantity × Unit Cost) for <strong className="text-white">{categoryScopeLabel}</strong>.
+                  {canOperate
+                    ? <>Coincides with the cumulative contracted outlay across all line items (Quantity × Unit Cost) for <strong className="text-white">{categoryScopeLabel}</strong>.</>
+                    : <>Financial outlay details for <strong className="text-white">{categoryScopeLabel}</strong> are restricted to administrators.</>}
                 </p>
 
-                <div className="space-y-1.5 text-[11px] pt-0.5">
-                  <div className="flex items-center justify-between text-neutral-300">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                      Delivered & Stocked
-                    </span>
-                    <span className="font-mono text-emerald-400 font-medium">
-                      {formatPhp(stats.deliveredValue)} ({deliveredPct}%)
-                    </span>
-                  </div>
+                {canOperate && (
+                  <>
+                    <div className="space-y-1.5 text-[11px] pt-0.5">
+                      <div className="flex items-center justify-between text-neutral-300">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                          Delivered & Stocked
+                        </span>
+                        <span className="font-mono text-emerald-400 font-medium">
+                          {formatPhp(stats.deliveredValue)} ({deliveredPct}%)
+                        </span>
+                      </div>
 
-                  <div className="flex items-center justify-between text-neutral-300">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
-                      Pending Approval
-                    </span>
-                    <span className="font-mono text-purple-300 font-medium">
-                      {formatPhp(stats.pendingValue)} ({pendingPct}%)
-                    </span>
-                  </div>
+                      <div className="flex items-center justify-between text-neutral-300">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0" />
+                          Pending Approval
+                        </span>
+                        <span className="font-mono text-purple-300 font-medium">
+                          {formatPhp(stats.pendingValue)} ({pendingPct}%)
+                        </span>
+                      </div>
 
-                  <div className="flex items-center justify-between text-neutral-300">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
-                      In Pipeline (Approved/Ordered)
-                    </span>
-                    <span className="font-mono text-indigo-300 font-medium">
-                      {formatPhp(activePipelineValue)} ({pipelinePct}%)
-                    </span>
-                  </div>
-                </div>
+                      <div className="flex items-center justify-between text-neutral-300">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                          In Pipeline (Approved/Ordered)
+                        </span>
+                        <span className="font-mono text-indigo-300 font-medium">
+                          {formatPhp(activePipelineValue)} ({pipelinePct}%)
+                        </span>
+                      </div>
+                    </div>
 
-                <div className="pt-1.5 border-t border-white/10 flex items-center justify-between text-[10px] text-neutral-400">
-                  <span>Average per Order</span>
-                  <span className="font-mono text-neutral-200">
-                    {formatPhp(stats.avgOrderValue)} • {stats.totalOrders} PO{stats.totalOrders === 1 ? "" : "s"}
-                  </span>
-                </div>
+                    <div className="pt-1.5 border-t border-white/10 flex items-center justify-between text-[10px] text-neutral-400">
+                      <span>Average per Order</span>
+                      <span className="font-mono text-neutral-200">
+                        {formatPhp(stats.avgOrderValue)} • {stats.totalOrders} PO{stats.totalOrders === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             }
             subtitle={
-              <div className="flex items-center justify-between">
-                <span className="truncate">
-                  Avg <strong className="text-text font-mono">{formatPhp(stats.avgOrderValue)}</strong> / PO
-                </span>
-                {stats.deliveredValue > 0 && (
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium truncate ml-1">
-                    {formatPhp(stats.deliveredValue)} stocked
+              canOperate ? (
+                <div className="flex items-center justify-between">
+                  <span className="truncate">
+                    Avg <strong className="text-text font-mono">{formatPhp(stats.avgOrderValue)}</strong> / PO
                   </span>
-                )}
-              </div>
+                  {stats.deliveredValue > 0 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium truncate ml-1">
+                      {formatPhp(stats.deliveredValue)} stocked
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span>Admin view only</span>
+              )
             }
             progress={{
               value:

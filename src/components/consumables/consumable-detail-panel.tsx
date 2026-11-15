@@ -43,6 +43,7 @@ import type { StockMovement } from "@/features/stock-movements/client";
 import { formatPhp } from "@/components/projects/format-money";
 import { filterUnsignedDecimalInput } from "@/lib/numeric-input";
 import { StockLevelBar } from "./stock-level-bar";
+import { availableQty } from "./utils";
 import { LotQrCodeDisplay } from "./lot-qr-code-display";
 import { AuditNoteDisplay } from "@/components/audit-logs/audit-log-utils";
 import { useCategoryStyleMap } from "@/features/categories/client/use-categories";
@@ -115,11 +116,11 @@ function getMovementStyle(
   }
   if (reason === "issue") {
     return {
-      bg: "bg-primary/15 border-primary/30",
-      text: "text-primary dark:text-primary-foreground",
+      bg: "bg-primary/15 border-primary/30 dark:bg-blue-500/15 dark:border-blue-500/30",
+      text: "text-primary dark:text-blue-300",
       badge:
-        "bg-primary/10 text-primary dark:text-primary-foreground border-primary/25",
-      iconText: "text-primary dark:text-primary-foreground",
+        "bg-primary/10 text-primary border-primary/25 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
+      iconText: "text-primary dark:text-blue-300",
     };
   }
   return {
@@ -323,6 +324,7 @@ export function ConsumableDetailPanel({
             </span>
             <StockLevelBar
               currentQty={displayItem.currentQty}
+              availableQty={displayItem.availableQty ?? availableQty(displayItem)}
               minThreshold={displayItem.minThreshold}
               unit={displayItem.unit}
             />
@@ -732,7 +734,10 @@ export function ConsumableDetailPanel({
                           m.direction === "out" ? -m.qty : m.qty;
                         const style = getMovementStyle(m.reason, m.direction);
                         return (
-                          <li key={m.id} className="relative pl-6">
+                          <li
+                            key={m.id}
+                            className={cn("relative pl-6", m.voided && "opacity-75")}
+                          >
                             <span
                               className={cn(
                                 "absolute -left-3.25 top-1.5 h-6 w-6 rounded-full border-2 flex items-center justify-center bg-bg shadow-sm z-10",
@@ -755,7 +760,8 @@ export function ConsumableDetailPanel({
                                 <span
                                   className={cn(
                                     "px-1.5 py-0.5 rounded text-[10px] font-bold font-mono border",
-                                    style.badge
+                                    style.badge,
+                                    m.voided && "line-through"
                                   )}
                                 >
                                   {signedQty > 0 ? "+" : ""}
@@ -764,6 +770,11 @@ export function ConsumableDetailPanel({
                                 <span className="font-mono text-[10px] font-semibold text-text-secondary">
                                   {m.movementCode}
                                 </span>
+                                {m.voided && (
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border bg-status-repair-bg/15 text-status-repair-text border-status-repair-bg/30">
+                                    Voided
+                                  </span>
+                                )}
                               </div>
                               <time className="text-[11px] text-text-secondary shrink-0 font-medium">
                                 {formatDisplayDate(m.createdAt)}
@@ -817,6 +828,14 @@ export function ConsumableDetailPanel({
                                 )}
                               </div>
                             )}
+                            {m.voided && m.reversalMovementCode && (
+                              <p className="text-[11px] font-medium text-status-repair-text mt-1">
+                                Reversed by{" "}
+                                <span className="font-mono font-semibold">
+                                  {m.reversalMovementCode}
+                                </span>
+                              </p>
+                            )}
                             {m.notes && (
                               <AuditNoteDisplay action={m.reason} note={m.notes} />
                             )}
@@ -864,7 +883,7 @@ export function ConsumableDetailPanel({
     </div>
 
     {!isBorrower && (
-      <div className="hidden print:block">
+      <div className="hidden print:block print:w-full">
         <IndividualConsumablePrintableReport item={displayItem} lots={lots} movements={movements} />
       </div>
     )}

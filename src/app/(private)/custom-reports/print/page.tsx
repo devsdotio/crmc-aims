@@ -123,7 +123,7 @@ function CustomReportPrintPageInner() {
   }
 
   return (
-    <div className="min-h-full bg-bg-subtle print:bg-white">
+    <div className="min-h-full bg-bg-subtle print:min-h-0 print:bg-white">
       {/* Top Interactive Toolbar (Hidden during browser print) */}
       <div className="no-print print:hidden sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-border bg-bg/95 backdrop-blur-xs shadow-xs min-w-0">
         <div className="min-w-0 flex-1">
@@ -212,8 +212,8 @@ function CustomReportPrintPageInner() {
       </div>
 
       {/* Render Document */}
-      <div ref={rootRef} className="py-6 px-4 print:p-0 overflow-x-auto">
-        <div className="min-w-fit w-max mx-auto">
+      <div ref={rootRef} className="py-6 px-4 print:p-0 overflow-x-auto print:overflow-visible">
+        <div className="min-w-fit w-max mx-auto print:min-w-0 print:w-full print:m-0">
           <CustomPrintableReport
             data={data}
             orientation={orientation}

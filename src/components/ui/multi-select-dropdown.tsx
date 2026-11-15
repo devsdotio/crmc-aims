@@ -84,7 +84,7 @@ export function MultiSelectDropdown({
       <button
         type="button"
         disabled={disabled}
-        aria-required={ariaRequired}
+        aria-haspopup="listbox"
         aria-expanded={isOpen}
         onClick={() => {
           if (disabled) return;
@@ -154,7 +154,12 @@ export function MultiSelectDropdown({
               </div>
             </div>
           )}
-          <div className="max-h-60 overflow-y-auto p-1.5 space-y-0.5">
+          <div
+            role="listbox"
+            aria-multiselectable="true"
+            aria-required={ariaRequired}
+            className="max-h-60 overflow-y-auto p-1.5 space-y-0.5"
+          >
             {filtered.length === 0 ? (
               <p className="p-2 text-xs text-text-secondary text-center">
                 {emptyMessage}

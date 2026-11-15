@@ -360,7 +360,7 @@ export function POPrintSlipDialog({
                     const allLines = groups.flatMap((g) => g.lines);
                     const qtyTotal = allLines.reduce((s, i) => s + i.quantity, 0);
                     const costTotal = allLines.reduce(
-                      (s, i) => s + (parseFloat(i.totalCost) || 0),
+                      (s, i) => s + (parseFloat(i.totalCost ?? "0") || 0),
                       0
                     );
 
@@ -368,8 +368,8 @@ export function POPrintSlipDialog({
                       <>
                         {groups.map((group) =>
                           group.lines.map((item, index) => {
-                            const iUnit = parseFloat(item.unitCost) || 0;
-                            const iTotal = parseFloat(item.totalCost) || 0;
+                            const iUnit = parseFloat(item.unitCost ?? "0") || 0;
+                            const iTotal = parseFloat(item.totalCost ?? "0") || 0;
                             const uom = resolvePoSlipUnit(item.itemType, item.unit);
                             return (
                               <tr key={item.id}>

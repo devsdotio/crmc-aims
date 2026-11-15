@@ -1,5 +1,7 @@
 import type { PettyCashRow } from "@/server/db/schema";
 import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
+import { redactParticularsCosts } from "@/lib/voucher-particulars";
 import type { PettyCashStatus } from "@/types/petty-cash";
 import { ConflictError, NotFoundError } from "@/server/shared/errors";
 import { serverCache } from "@/server/shared/cache";
@@ -118,7 +120,11 @@ export class PettyCashService {
     return `${prefix}${String(parsed + 1).padStart(6, "0")}`;
   }
 
-  async list(rawFilters: unknown, actorTenantId?: string): Promise<{ vouchers: PettyCashDTO[]; total: number }> {
+  async list(
+    rawFilters: unknown,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<{ vouchers: PettyCashDTO[]; total: number }> {
     const filters = listPettyCashQuerySchema.parse(rawFilters);
     const tenantId =
       actorTenantId ??
@@ -126,7 +132,7 @@ export class PettyCashService {
       "global";
     const cacheKey = `tenant:${tenantId}:petty-cash:list:${JSON.stringify(filters)}`;
 
-    return serverCache.wrap(
+    const result = await serverCache.wrap(
       cacheKey,
       30 * 1000,
       async () => {
@@ -141,15 +147,37 @@ export class PettyCashService {
       },
       ["petty-cash", `tenant:${tenantId}:petty-cash`]
     );
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      return {
+        ...result,
+        vouchers: result.vouchers.map((v) => ({
+          ...v,
+          amount: null,
+          particulars: redactParticularsCosts(v.particulars),
+        })),
+      };
+    }
+    return result;
   }
 
-  async getById(rawId: unknown, actorTenantId?: string): Promise<PettyCashDTO> {
+  async getById(
+    rawId: unknown,
+    actorTenantId?: string,
+    actor?: ActorContext
+  ): Promise<PettyCashDTO> {
     const id = pettyCashIdSchema.parse(rawId);
     const voucher = await this.repo.findById(id, undefined, actorTenantId);
     if (!voucher) {
       throw new NotFoundError("Petty cash voucher not found");
     }
     const [dto] = await attachPettyCashDepartments([toDTO(voucher)], actorTenantId);
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      return {
+        ...dto!,
+        amount: null,
+        particulars: redactParticularsCosts(dto!.particulars),
+      };
+    }
     return dto!;
   }
 

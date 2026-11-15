@@ -1329,7 +1329,7 @@ export function AssetDetailPanel({
 
   if (isLoading || !asset) {
     return (
-      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200">
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity duration-200 print:hidden">
         <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
         <aside
           role="dialog"
@@ -1897,7 +1897,7 @@ export function AssetDetailPanel({
     </div>
 
     {!isBorrower && (
-      <div className="hidden print:block">
+      <div className="hidden print:block print:w-full">
         <IndividualAssetPrintableReport
           asset={{
             ...asset,

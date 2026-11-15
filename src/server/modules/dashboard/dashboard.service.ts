@@ -17,11 +17,18 @@ import {
   purchaseLots,
   type ConsumableRow,
 } from "@/server/db/schema";
-import { and, asc, count, desc, eq, gte, ilike, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getTenantContext } from "@/server/shared/tenant-context";
+import type { ActorContext } from "@/server/shared/auth";
+import { isAssetOperatorRole } from "@/server/shared/roles";
 import { toBorrowLogDTO } from "@/server/modules/borrow-log/borrow-log.service";
 import { serverCache } from "@/server/shared/cache";
 import { formatPhp } from "@/components/projects/format-money";
+import {
+  deriveConsumableRequestKind,
+  normalizeConsumableClassification,
+  type ConsumableRequestKind,
+} from "@/lib/consumable-classification";
 import { toQty } from "@/lib/qty";
 
 export function invalidateDashboardCache(tenantId?: string): void {
@@ -46,6 +53,8 @@ export type DashboardSummaryDTO = {
   pendingAssignRequests?: number;
   pendingBorrowRequests?: number;
   pendingSupplyRequests?: number;
+  pendingMaterialRequests?: number;
+  pendingMixedRequests?: number;
   lowStockItems: number;
   overdueAssets: number;
   totalRequests?: number;
@@ -67,7 +76,7 @@ export type DashboardPendingRequest = {
   itemDescription: string;
   requestedAt: string;
   relativeTime: string;
-  kind: "borrow" | "assign" | "supply";
+  kind: "borrow" | "assign" | ConsumableRequestKind;
 };
 
 export type DashboardOverdueAsset = {
@@ -111,8 +120,8 @@ export type DashboardAssetRowDTO = {
   };
   totalQty: number;
   stockIn: number;
-  valuation: number;
-  price: string;
+  valuation: number | null;
+  price: string | null;
   status: string;
   condition: string;
   statusType: "good" | "warning" | "danger" | "info";
@@ -208,6 +217,57 @@ export class DashboardService {
     return { departmentId: profile?.departmentId ?? null };
   }
 
+  private async loadPendingConsumableMeta(
+    requestIds: string[],
+    tenantId?: string
+  ): Promise<{
+    linesByRequestId: Map<string, Array<{ itemName: string }>>;
+    kindByRequestId: Map<string, ConsumableRequestKind>;
+  }> {
+    const linesByRequestId = new Map<string, Array<{ itemName: string }>>();
+    const classesByRequestId = new Map<string, string[]>();
+    if (requestIds.length === 0) {
+      return { linesByRequestId, kindByRequestId: new Map() };
+    }
+    const db = getDb();
+    const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
+    const joinCond = resolvedTenantId
+      ? and(
+          eq(consumableRequestLines.consumableId, consumables.id),
+          eq(consumables.tenantId, resolvedTenantId)
+        )
+      : eq(consumableRequestLines.consumableId, consumables.id);
+    const rows = await db
+      .select({
+        requestId: consumableRequestLines.requestId,
+        itemName: consumableRequestLines.itemName,
+        classification: consumables.classification,
+      })
+      .from(consumableRequestLines)
+      .leftJoin(consumables, joinCond)
+      .where(inArray(consumableRequestLines.requestId, requestIds))
+      .orderBy(asc(consumableRequestLines.lineNo))
+      .catch(() => []);
+
+    for (const line of rows) {
+      const names = linesByRequestId.get(line.requestId) ?? [];
+      names.push({ itemName: line.itemName });
+      linesByRequestId.set(line.requestId, names);
+      const classes = classesByRequestId.get(line.requestId) ?? [];
+      classes.push(normalizeConsumableClassification(line.classification));
+      classesByRequestId.set(line.requestId, classes);
+    }
+
+    const kindByRequestId = new Map<string, ConsumableRequestKind>();
+    for (const id of requestIds) {
+      kindByRequestId.set(
+        id,
+        deriveConsumableRequestKind(classesByRequestId.get(id) ?? [])
+      );
+    }
+    return { linesByRequestId, kindByRequestId };
+  }
+
   private mergePendingRequests(
     borrowRows: Array<{
       id: string;
@@ -227,7 +287,8 @@ export class DashboardService {
       requestedAt: Date | string;
     }>,
     limit: number,
-    supplyLinesByRequestId?: Map<string, Array<{ itemName: string }>>
+    supplyLinesByRequestId?: Map<string, Array<{ itemName: string }>>,
+    consumableKindsByRequestId?: Map<string, ConsumableRequestKind>
   ): DashboardPendingRequest[] {
     const describeItems = (names: string[], fallback: string) => {
       const first = names[0];
@@ -264,7 +325,7 @@ export class DashboardService {
           ? r.requestedAt.toISOString()
           : String(r.requestedAt),
       relativeTime: formatRelativeTime(r.requestedAt),
-      kind: "supply",
+      kind: consumableKindsByRequestId?.get(r.id) ?? "supply",
     }));
     return [...fromBorrow, ...fromSupply]
       .sort((a, b) => Date.parse(b.requestedAt) - Date.parse(a.requestedAt))
@@ -299,7 +360,7 @@ export class DashboardService {
             activeBorrows,
             pendingAssignRequests,
             pendingBorrowRequests,
-            pendingSupplyRequests,
+            pendingConsumableCounts,
             overdueAssets,
           ] = await Promise.all([
             departmentId
@@ -332,13 +393,13 @@ export class DashboardService {
                 return 0;
               }),
             this.consumableRequests
-              .countPending(undefined, userId, tenantId)
+              .countPendingByClassification(undefined, userId, tenantId)
               .catch((err) => {
                 console.error(
-                  "[dashboard] failed to count pending supply requests for borrower:",
+                  "[dashboard] failed to count pending supply/material requests for borrower:",
                   err
                 );
-                return 0;
+                return { supply: 0, material: 0, mixed: 0 };
               }),
             departmentId
               ? this.borrowLog
@@ -355,10 +416,15 @@ export class DashboardService {
                   })
               : Promise.resolve(0),
           ]);
+          const pendingSupplyRequests = pendingConsumableCounts.supply;
+          const pendingMaterialRequests = pendingConsumableCounts.material;
+          const pendingMixedRequests = pendingConsumableCounts.mixed;
           const pendingApprovals =
             pendingAssignRequests +
             pendingBorrowRequests +
-            pendingSupplyRequests;
+            pendingSupplyRequests +
+            pendingMaterialRequests +
+            pendingMixedRequests;
           return {
             activeBorrows,
             activeAssignments: 0,
@@ -366,6 +432,8 @@ export class DashboardService {
             pendingAssignRequests,
             pendingBorrowRequests,
             pendingSupplyRequests,
+            pendingMaterialRequests,
+            pendingMixedRequests,
             lowStockItems: 0,
             overdueAssets,
           };
@@ -376,7 +444,7 @@ export class DashboardService {
           activeAssignments,
           pendingAssignRequests,
           pendingBorrowRequests,
-          pendingSupplyRequests,
+          pendingConsumableCounts,
           lowStockItems,
           overdueAssets,
         ] = await Promise.all([
@@ -400,9 +468,9 @@ export class DashboardService {
               console.error("[dashboard] failed to count pending borrow requests:", err);
               return 0;
             }),
-          this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err) => {
-            console.error("[dashboard] failed to count pending supply requests:", err);
-            return 0;
+          this.consumableRequests.countPendingByClassification(undefined, undefined, tenantId).catch((err) => {
+            console.error("[dashboard] failed to count pending supply/material requests:", err);
+            return { supply: 0, material: 0, mixed: 0 };
           }),
           this.consumables.countLowStock(undefined, tenantId).catch((err) => {
             console.error("[dashboard] failed to count low stock consumables:", err);
@@ -414,8 +482,15 @@ export class DashboardService {
           }),
         ]);
 
+        const pendingSupplyRequests = pendingConsumableCounts.supply;
+        const pendingMaterialRequests = pendingConsumableCounts.material;
+        const pendingMixedRequests = pendingConsumableCounts.mixed;
         const pendingApprovals =
-          pendingAssignRequests + pendingBorrowRequests + pendingSupplyRequests;
+          pendingAssignRequests +
+          pendingBorrowRequests +
+          pendingSupplyRequests +
+          pendingMaterialRequests +
+          pendingMixedRequests;
 
         return {
           activeBorrows,
@@ -424,6 +499,8 @@ export class DashboardService {
           pendingAssignRequests,
           pendingBorrowRequests,
           pendingSupplyRequests,
+          pendingMaterialRequests,
+          pendingMixedRequests,
           lowStockItems,
           overdueAssets,
         };
@@ -544,17 +621,13 @@ export class DashboardService {
             : Promise.resolve([]),
         ]);
 
-        const supplyLines = pendingSupplyRows.length
-          ? await this.consumableRequests
-              .listLinesByRequestIds(pendingSupplyRows.map((row) => row.id))
-              .catch(() => [])
-          : [];
-        const supplyLinesByRequestId = new Map<string, Array<{ itemName: string }>>();
-        for (const line of supplyLines) {
-          const list = supplyLinesByRequestId.get(line.requestId) ?? [];
-          list.push(line);
-          supplyLinesByRequestId.set(line.requestId, list);
-        }
+        const {
+          linesByRequestId: supplyLinesByRequestId,
+          kindByRequestId: consumableKindsByRequestId,
+        } = await this.loadPendingConsumableMeta(
+          pendingSupplyRows.map((row) => row.id),
+          tenantId
+        );
 
         return {
           summary: {
@@ -569,7 +642,8 @@ export class DashboardService {
             pendingRows,
             pendingSupplyRows,
             limit,
-            supplyLinesByRequestId
+            supplyLinesByRequestId,
+            consumableKindsByRequestId
           ),
           overdueAssets: overdueRows.slice(0, limit).map((row) => {
             const dto = toBorrowLogDTO(row);
@@ -630,15 +704,18 @@ export class DashboardService {
               console.error("[dashboard] failed to count pending borrow requests:", err);
               return 0;
             }),
-            this.consumableRequests.countPending(undefined, undefined, tenantId).catch((err: unknown) => {
-              console.error("[dashboard] failed to count pending supply requests:", err);
-              return 0;
+            this.consumableRequests.countPendingByClassification(undefined, undefined, tenantId).catch((err: unknown) => {
+              console.error("[dashboard] failed to count pending supply/material requests:", err);
+              return { supply: 0, material: 0, mixed: 0 };
             }),
-          ]).then(([assign, borrow, supply]) => ({
+          ]).then(([assign, borrow, consumable]) => ({
             pendingAssignRequests: assign,
             pendingBorrowRequests: borrow,
-            pendingSupplyRequests: supply,
-            pendingApprovals: assign + borrow + supply,
+            pendingSupplyRequests: consumable.supply,
+            pendingMaterialRequests: consumable.material,
+            pendingMixedRequests: consumable.mixed,
+            pendingApprovals:
+              assign + borrow + consumable.supply + consumable.material + consumable.mixed,
           })),
           this.consumables.countLowStock(undefined, tenantId).catch((err: unknown) => {
             console.error("[dashboard] failed to count low stock items:", err);
@@ -686,8 +763,18 @@ export class DashboardService {
           pendingAssignRequests,
           pendingBorrowRequests,
           pendingSupplyRequests,
+          pendingMaterialRequests,
+          pendingMixedRequests,
           pendingApprovals,
         } = pendingCounts;
+
+        const {
+          linesByRequestId: snapshotSupplyLines,
+          kindByRequestId: snapshotConsumableKinds,
+        } = await this.loadPendingConsumableMeta(
+          pendingSupplyRows.map((row) => row.id),
+          tenantId
+        );
 
         const lowStock: DashboardLowStockItem[] = lowStockConsumables.map((c) => ({
           id: c.id,
@@ -712,6 +799,8 @@ export class DashboardService {
             pendingAssignRequests,
             pendingBorrowRequests,
             pendingSupplyRequests,
+            pendingMaterialRequests,
+            pendingMixedRequests,
             lowStockItems,
             overdueAssets,
             totalAssignable,
@@ -721,7 +810,9 @@ export class DashboardService {
           pendingRequests: this.mergePendingRequests(
             pendingRows,
             pendingSupplyRows,
-            limit
+            limit,
+            snapshotSupplyLines,
+            snapshotConsumableKinds
           ),
           overdueAssets: overdueRows.slice(0, limit).map((row) => {
             const dto = toBorrowLogDTO(row);
@@ -885,23 +976,20 @@ export class DashboardService {
                 ),
           ]);
 
-        const supplyLines = pendingSupplyRows.length
-          ? await this.consumableRequests
-              .listLinesByRequestIds(pendingSupplyRows.map((row) => row.id))
-              .catch(() => [])
-          : [];
-        const supplyLinesByRequestId = new Map<string, Array<{ itemName: string }>>();
-        for (const line of supplyLines) {
-          const list = supplyLinesByRequestId.get(line.requestId) ?? [];
-          list.push(line);
-          supplyLinesByRequestId.set(line.requestId, list);
-        }
+        const {
+          linesByRequestId: supplyLinesByRequestId,
+          kindByRequestId: consumableKindsByRequestId,
+        } = await this.loadPendingConsumableMeta(
+          pendingSupplyRows.map((row) => row.id),
+          tenantId
+        );
 
         const pendingRequests = this.mergePendingRequests(
           pendingRows,
           pendingSupplyRows,
           limit,
-          supplyLinesByRequestId
+          supplyLinesByRequestId,
+          consumableKindsByRequestId
         );
         const overdueAssets = overdueRows.slice(0, limit).map((row) => {
           const dto = toBorrowLogDTO(row);
@@ -943,19 +1031,35 @@ export class DashboardService {
 
         for (const row of pendingRequests) {
           const kindLabel =
-            row.kind === "supply"
-              ? "Supply request"
-              : row.kind === "assign"
-                ? "Assignment request"
-                : "Borrow request";
+            row.kind === "material"
+              ? "Material request"
+              : row.kind === "mixed"
+                ? "Mixed requisition"
+                : row.kind === "supply"
+                  ? "Supply request"
+                  : row.kind === "assign"
+                    ? "Assignment request"
+                    : "Borrow request";
+          const borrowerHref =
+            row.kind === "material"
+              ? "/borrower-db/requests/materials"
+              : row.kind === "supply"
+                ? "/borrower-db/requests/supplies"
+                : row.kind === "mixed"
+                  ? "/borrower-db/requests?type=mixed"
+                  : row.kind === "assign"
+                    ? "/borrower-db/requests/assignment"
+                    : "/borrower-db/requests/borrow";
           items.push({
             id: `pending-${row.kind}-${row.id}`,
             title: kindLabel,
             message: `${row.requesterName} (${row.department}) — ${row.itemDescription}`,
             href: userId
-              ? "/borrower-db/requests"
+              ? borrowerHref
               : `/borrow-requests/${
-                  row.kind === "supply"
+                  row.kind === "supply" ||
+                  row.kind === "material" ||
+                  row.kind === "mixed"
                     ? "supplies"
                     : row.kind === "assign"
                       ? "assign"
@@ -1015,6 +1119,7 @@ export class DashboardService {
           .values(row)
           .onConflictDoUpdate({
             target: [
+              dashboardMetricSnapshots.tenantId,
               dashboardMetricSnapshots.metricKey,
               dashboardMetricSnapshots.snapshotDate,
             ],
@@ -1212,14 +1317,14 @@ export class DashboardService {
     search?: string;
     tag?: string;
     tenantId?: string;
-  }, actorTenantId?: string): Promise<DashboardAssetRowDTO[]> {
+  }, actorTenantId?: string, actor?: ActorContext): Promise<DashboardAssetRowDTO[]> {
     const limit = params?.limit ?? 5;
     const search = params?.search?.trim() ?? "";
     const tag = params?.tag ?? "all";
     const tenantId = params?.tenantId ?? actorTenantId ?? getTenantContext()?.tenantId ?? "global";
     const cacheKey = `tenant:${tenantId}:dashboard:assets:${limit}:${tag}:${search}`;
 
-    return serverCache.wrap(
+    const rows = await serverCache.wrap<DashboardAssetRowDTO[]>(
       cacheKey,
       30_000,
       async () => {
@@ -1377,6 +1482,16 @@ export class DashboardService {
       },
       ["dashboard", "dashboard:assets", `tenant:${tenantId}:dashboard`]
     );
+
+    if (actor && !isAssetOperatorRole(actor.role)) {
+      return rows.map((row) => ({
+        ...row,
+        valuation: null,
+        price: null,
+      }));
+    }
+
+    return rows;
   }
 
   /**

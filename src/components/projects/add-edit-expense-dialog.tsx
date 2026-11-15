@@ -79,6 +79,19 @@ export function AddEditExpenseDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, isSubmitting, onClose]);
 
+  const categoryOptions = useMemo(
+    () =>
+      (
+        Object.keys(PROJECT_EXPENSE_CATEGORY_LABELS) as ProjectExpenseCategory[]
+      )
+        .filter((c) => c !== "adjustment")
+        .map((c) => ({
+          value: c,
+          label: PROJECT_EXPENSE_CATEGORY_LABELS[c],
+        })),
+    []
+  );
+
   if (!isOpen) return null;
 
   const fieldClass = cn(
@@ -128,19 +141,6 @@ export function AddEditExpenseDialog({
       setIsSubmitting(false);
     }
   };
-
-  const categoryOptions = useMemo(
-    () =>
-      (
-        Object.keys(PROJECT_EXPENSE_CATEGORY_LABELS) as ProjectExpenseCategory[]
-      )
-        .filter((c) => c !== "adjustment")
-        .map((c) => ({
-          value: c,
-          label: PROJECT_EXPENSE_CATEGORY_LABELS[c],
-        })),
-    []
-  );
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">

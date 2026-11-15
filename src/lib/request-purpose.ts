@@ -1,3 +1,5 @@
+import { roundQty } from "@/lib/qty";
+
 /**
  * Join unique non-empty purpose strings for request header summary / list search.
  */
@@ -65,4 +67,47 @@ export function purposePreviewLabel(
   if (unique.length > 1) return `${unique.length} purposes`;
   if (unique.length === 1) return unique[0];
   return (headerPurpose ?? "").trim();
+}
+
+/**
+ * Merge duplicate consumable lines ONLY when both `consumableId` and trimmed
+ * case-insensitive `purpose` match, preserving separate lines for different purposes.
+ */
+export function mergeConsumableLinesByPurpose(
+  rawLines: Array<{
+    consumableId?: string | null;
+    quantity: number;
+    purpose?: string | null;
+    notes?: string | null;
+  }>,
+  fallbackPurpose = "General"
+): Array<{
+  consumableId: string;
+  quantity: number;
+  purpose: string;
+  notes?: string;
+}> {
+  const merged = new Map<
+    string,
+    { consumableId: string; quantity: number; purpose: string; notes?: string }
+  >();
+  for (const line of rawLines) {
+    if (!line.consumableId) continue;
+    const resolvedPurpose = (line.purpose || fallbackPurpose).trim() || "General";
+    const key = `${line.consumableId}::${resolvedPurpose.toLowerCase()}`;
+    const note = line.notes?.trim() || undefined;
+    const prev = merged.get(key);
+    if (prev) {
+      prev.quantity = roundQty(prev.quantity + Number(line.quantity));
+      if (!prev.notes && note) prev.notes = note;
+    } else {
+      merged.set(key, {
+        consumableId: line.consumableId,
+        quantity: roundQty(Number(line.quantity)),
+        purpose: resolvedPurpose,
+        ...(note ? { notes: note } : {}),
+      });
+    }
+  }
+  return Array.from(merged.values());
 }

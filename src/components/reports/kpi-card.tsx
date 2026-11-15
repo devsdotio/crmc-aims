@@ -54,26 +54,26 @@ const TONE_CONFIG: Record<
     deltaBgNegative: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
   },
   amber: {
-    iconBox: "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    valueColor: "text-amber-600 dark:text-amber-400",
+    iconBox: "border-amber-500/25 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+    valueColor: "text-amber-800 dark:text-amber-300",
     deltaBgPositive: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     deltaBgNegative: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
   },
   rose: {
-    iconBox: "border-rose-500/25 bg-rose-500/10 text-rose-600 dark:text-rose-400",
-    valueColor: "text-rose-600 dark:text-rose-400",
+    iconBox: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-400",
+    valueColor: "text-rose-700 dark:text-rose-400",
     deltaBgPositive: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     deltaBgNegative: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
   },
   indigo: {
-    iconBox: "border-indigo-500/25 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
-    valueColor: "text-indigo-600 dark:text-indigo-400",
+    iconBox: "border-indigo-500/25 bg-indigo-500/10 text-indigo-700 dark:text-indigo-400",
+    valueColor: "text-indigo-700 dark:text-indigo-400",
     deltaBgPositive: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     deltaBgNegative: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
   },
   accent: {
-    iconBox: "border-accent/25 bg-accent/10 text-accent",
-    valueColor: "text-accent",
+    iconBox: "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-400",
+    valueColor: "text-red-700 dark:text-red-400",
     deltaBgPositive: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
     deltaBgNegative: "bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/20",
   },
@@ -123,6 +123,7 @@ export function KpiCard({
   }, [delta]);
 
   const tooltipContent = tooltip || infoTooltip;
+  const [tooltipOpen, setTooltipOpen] = React.useState(false);
 
   const cardInner = (
     <div
@@ -156,17 +157,31 @@ export function KpiCard({
                 {title}
               </h2>
               {tooltipContent && (
-                <div className="relative group/tip inline-flex items-center shrink-0">
-                  <span
+                <div
+                  className="relative group/tip inline-flex items-center shrink-0"
+                  onMouseLeave={() => setTooltipOpen(false)}
+                >
+                  <button
+                    type="button"
                     aria-label={typeof tooltip === "string" ? tooltip : `Explanation for ${title}`}
-                    tabIndex={0}
-                    className="flex items-center justify-center text-text-secondary/50 hover:text-text focus-visible:text-primary transition-colors cursor-help rounded-full p-0.5 outline-none"
+                    aria-expanded={tooltipOpen}
+                    className="flex items-center justify-center text-text-secondary hover:text-text focus-visible:text-primary transition-colors cursor-help rounded-full min-h-7 min-w-7 p-1 outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     onClick={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
+                      setTooltipOpen((prev) => !prev);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.stopPropagation();
+                        setTooltipOpen(false);
+                        e.currentTarget.blur();
+                      }
+                    }}
+                    onBlur={() => setTooltipOpen(false)}
                   >
-                    <Info className="h-3.5 w-3.5" />
-                  </span>
+                    <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
                   {/* Tooltip Popup */}
                   <div
                     role="tooltip"
@@ -179,9 +194,11 @@ export function KpiCard({
                       tooltipAlign === "right" && "right-0 left-auto translate-x-0",
                       tooltipAlign === "center" && "left-1/2 -translate-x-1/2",
                       "w-68 sm:w-76 max-w-[calc(100vw-2.5rem)] p-3 sm:p-3.5 rounded-xl",
-                      "bg-text text-white",
+                      "bg-slate-900 text-white dark:bg-slate-950",
                       "border border-white/15 shadow-2xl",
-                      "opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible group-focus-within/tip:opacity-100 group-focus-within/tip:visible",
+                      tooltipOpen
+                        ? "opacity-100 visible translate-y-0"
+                        : "opacity-0 invisible group-hover/tip:opacity-100 group-hover/tip:visible group-focus-within/tip:opacity-100 group-focus-within/tip:visible",
                       "transition-all duration-150 transform-gpu group-hover/tip:translate-y-0 group-focus-within/tip:translate-y-0"
                     )}
                   >
@@ -197,8 +214,8 @@ export function KpiCard({
                       className={cn(
                         "absolute border-4 border-transparent",
                         tooltipPlacement === "top"
-                          ? "top-full border-t-text"
-                          : "bottom-full border-b-text",
+                          ? "top-full border-t-slate-900 dark:border-t-slate-950"
+                          : "bottom-full border-b-slate-900 dark:border-b-slate-950",
                         tooltipAlign === "left" && "left-2.5",
                         tooltipAlign === "right" && "right-2.5",
                         tooltipAlign === "center" && "left-1/2 -translate-x-1/2"

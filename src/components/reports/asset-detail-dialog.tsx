@@ -111,7 +111,7 @@ export function AssetDetailDialog({
   const custodyHistory = data?.custodyHistory || [];
   const consumablesConsumed = data?.consumablesConsumed || [];
   const tco = data?.tco;
-  const canViewCosts = data?.canViewCosts ?? true;
+  const canViewCosts = data?.canViewCosts ?? false;
   const categoryMeta = asset ? getCategoryStyle(asset.category) : null;
   const repairVsAcquisitionPct =
     tco && tco.purchaseCost > 0
@@ -158,7 +158,7 @@ export function AssetDetailDialog({
     ? [
         { name: "Acquisition Cost", value: tco.purchaseCost || 0 },
         { name: "Maintenance & Repairs", value: tco.maintenanceCost || 0 },
-        { name: "Consumable Supplies", value: tco.consumablesCost || 0 },
+        { name: "Consumable Supplies & Materials", value: tco.consumablesCost || 0 },
       ].filter((item) => item.value > 0)
     : [];
 
@@ -374,7 +374,7 @@ export function AssetDetailDialog({
                     />
                     <StatCard
                       size="sm"
-                      title="Supplies Used"
+                      title="Consumables Used"
                       sublabel="CONSUMABLES // DISPATCH"
                       value={
                         canViewCosts && tco

@@ -4,7 +4,7 @@ type Params = { params: Promise<{ id: string }> };
 
 /**
  * @swagger
- * /api/borrow-requests/{id}/unrelease:
+ * /api/requests/{id}/unrelease:
  *   post:
  *     summary: Mark an approved request as unreleased (pickup did not happen)
  *     tags: [BorrowRequests]

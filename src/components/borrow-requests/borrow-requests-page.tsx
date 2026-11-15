@@ -42,10 +42,11 @@ import { useAssetOperator } from "@/hooks/use-asset-operator";
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
 import { RotateCcw, X, Loader2 } from "lucide-react";
 
-type RequestKind = "borrow" | "assign" | "supply";
+type RequestKind = "borrow" | "assign" | "supply" | "material";
 
 function kindToPath(kind: RequestKind): string {
   if (kind === "supply") return "/borrow-requests/supplies";
+  if (kind === "material") return "/borrow-requests/materials";
   if (kind === "assign") return "/borrow-requests/assign";
   return "/borrow-requests/borrow";
 }
@@ -115,7 +116,7 @@ function BorrowRequestsContent({ kind }: { kind: RequestKind }) {
     page: filters.page,
     limit: 10,
     requestType: kind === "assign" ? "assignable" : "borrowable",
-    enabled: kind !== "supply",
+    enabled: kind !== "supply" && kind !== "material",
   });
 
   const [supplyStatus, setSupplyStatus] = useState<
@@ -385,21 +386,25 @@ function BorrowRequestsContent({ kind }: { kind: RequestKind }) {
             ? "Assign Requests"
             : kind === "supply"
               ? "Supply Requests"
-              : "Borrow Requests"}
+              : kind === "material"
+                ? "Material Requests"
+                : "Borrow Requests"}
         </h1>
         <p className="text-xs text-text-secondary mt-0.5">
           {kind === "assign"
             ? "Long-term department assignment requests."
             : kind === "supply"
-              ? "Consumable requisitions awaiting approval and issue."
-              : "Temporary equipment loans awaiting review and release."}
+              ? "Office and recurring supply requisitions awaiting approval and issue."
+              : kind === "material"
+                ? "Construction and project material requisitions awaiting approval and issue."
+                : "Temporary equipment loans awaiting review and release."}
         </p>
         <OperatorReadOnlyBanner />
       </div>
 
       {/* ── Status Tabs + Filters ─────────────────────────────────────── */}
       <div className="px-4 md:px-6 py-2.5 bg-bg border-b border-border flex flex-wrap items-center justify-between gap-3 shrink-0">
-        {kind === "supply" ? (
+        {kind === "supply" || kind === "material" ? (
           <SupplyRequestStatusTabs
             status={supplyStatus}
             counts={supplyCounts}
@@ -432,9 +437,10 @@ function BorrowRequestsContent({ kind }: { kind: RequestKind }) {
         </div>
       </div>
 
-      {kind === "supply" ? (
+      {kind === "supply" || kind === "material" ? (
         <SupplyRequestsQueue
           status={supplyStatus}
+          lockedClassification={kind}
           searchQuery={filters.searchQuery}
           department={filters.department}
           onCountsChange={handleSupplyCountsChange}

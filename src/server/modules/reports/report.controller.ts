@@ -2,8 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { requireStaffShell } from "@/server/shared/auth";
 import { handleError, ok } from "@/server/shared/http";
-import { AuditLogService } from "@/server/modules/audit-logs/audit-logs.service";
-import { AUDIT_ACTION, AUDIT_ENTITY } from "@/server/modules/audit-logs/audit-events";
 import { ReportService } from "./report.service";
 import {
   baseReportQuerySchema,
@@ -12,8 +10,6 @@ import {
 } from "./report.validation";
 
 export class ReportController {
-  private readonly auditLogs = new AuditLogService();
-
   constructor(private readonly service = new ReportService()) {}
 
   private extractParams(request: Request) {
@@ -25,12 +21,14 @@ export class ReportController {
     return raw;
   }
 
-  async getSummary(_request: NextRequest | Request) {
+  async getSummary(request: NextRequest | Request) {
     try {
       const session = await requireStaffShell();
+      const params = baseReportQuerySchema.parse(this.extractParams(request));
       const data = await this.service.getExecutiveSummary(
         session.profile.role,
-        session.actor.tenantId
+        session.actor.tenantId,
+        params.includeSandbox
       );
       return ok(data);
     } catch (error) {
@@ -167,23 +165,9 @@ export class ReportController {
       const result = await this.service.exportReportCsv(
         params,
         session.profile.role,
-        session.actor.tenantId
+        session.actor.tenantId,
+        session.actor
       );
-
-      await this.auditLogs.log({
-        entityType: AUDIT_ENTITY.report,
-        entityId: params.reportType,
-        action: AUDIT_ACTION.reportExported,
-        actorName: session.actor.displayName,
-        actorUserId: session.actor.userId,
-        notes: `Exported ${params.reportType} report as ${params.format.toUpperCase()}.`,
-        metadata: {
-          reportType: params.reportType,
-          format: params.format,
-          filters: params,
-          tenantId: session.actor.tenantId ?? null,
-        },
-      });
 
       return new NextResponse(result.csv, {
         status: 200,
@@ -204,19 +188,7 @@ export class ReportController {
       const body = await request.json().catch(() => ({}));
       const input = reportPrintIntentSchema.parse(body);
 
-      await this.auditLogs.log({
-        entityType: AUDIT_ENTITY.report,
-        entityId: input.reportType,
-        action: AUDIT_ACTION.reportPrintRequested,
-        actorName: session.actor.displayName,
-        actorUserId: session.actor.userId,
-        notes: `Requested print/PDF for ${input.reportType} report.`,
-        metadata: {
-          reportType: input.reportType,
-          filters: input.filters ?? null,
-          tenantId: session.actor.tenantId ?? null,
-        },
-      });
+      await this.service.recordPrintIntent(input, session.actor);
 
       return ok({ logged: true });
     } catch (error) {

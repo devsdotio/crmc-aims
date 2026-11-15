@@ -4,7 +4,7 @@ type Params = { params: Promise<{ id: string }> };
 
 /**
  * @swagger
- * /api/borrow-requests/{id}:
+ * /api/requests/{id}:
  *   get:
  *     summary: Get borrow request by id (with history)
  *     tags: [BorrowRequests]

@@ -12,6 +12,7 @@ import { ProjectExpenseService } from "@/server/modules/projects/project-expense
 import { PurchaseLotService } from "@/server/modules/purchase-lots/purchase-lot.service";
 import { StockMovementService } from "@/server/modules/stock-movements/stock-movement.service";
 import { isVoidedNotes } from "@/server/modules/stock-movements/stock-movement.repository";
+import { ReportRepository } from "@/server/modules/reports/report.repository";
 import { hasTestDatabase, resetTestDatabase } from "../../setup/db";
 import {
   seedCoreFixtures,
@@ -27,6 +28,7 @@ describeIntegration("PO lot release → department / project (integration)", () 
   const movements = new StockMovementService();
   const projects = new ProjectService();
   const expenses = new ProjectExpenseService();
+  const reports = new ReportRepository();
   let fx: TestFixtures;
 
   beforeEach(async () => {
@@ -364,5 +366,87 @@ describeIntegration("PO lot release → department / project (integration)", () 
     expect(charged).toBeTruthy();
     expect(Number(charged!.unitCost)).toBe(45.5);
     expect(Number(charged!.amount)).toBeCloseTo(1.5 * 45.5, 2);
+  });
+
+  it("preserves full issue notes and includes non-voided direct material issues in departments report", async () => {
+    const purpose = testPoPurpose(fx.departmentName);
+    const [draft] = await lots.createPurchaseOrder(
+      {
+        poDate: "2026-10-08",
+        requestedBy: fx.actor.displayName,
+        departmentId: fx.departmentId,
+        supplierId: fx.supplierId,
+        purpose,
+        items: [
+          {
+            itemType: "consumable",
+            isNewItem: true,
+            name: "Heavy Duty Rebar",
+            category: fx.consumableCategory,
+            classification: "material",
+            unit: "pcs",
+            location: "Yard A",
+            quantity: 10,
+            unitCost: 120,
+            purpose,
+          },
+        ],
+      },
+      fx.actor
+    );
+    const delivered = await lots.updatePOStatus(
+      draft.id,
+      { status: "delivered" },
+      fx.actor
+    );
+
+    await consumables.issue(
+      delivered.consumableId!,
+      {
+        quantity: 3,
+        departmentId: fx.departmentId,
+        lotId: delivered.id,
+        requestedByName: "Engr. Reyes",
+        receivedBy: "Lead Mason",
+        reason: "Building B Partition",
+        notes: "Delivered before noon",
+      },
+      fx.actor
+    );
+
+    const movementList = await movements.list(
+      { reason: "issue", classification: "material" },
+      fx.actor
+    );
+    const move = movementList.find(
+      (m) => m.consumableId === delivered.consumableId && m.purchaseLotId === delivered.id
+    );
+    expect(move).toBeTruthy();
+    expect(move!.classification).toBe("material");
+    expect(move!.requestCode).toBeNull();
+    expect(move!.notes ?? "").toContain("Requested by: Engr. Reyes");
+    expect(move!.notes ?? "").toContain("Received by: Lead Mason");
+    expect(move!.notes ?? "").toContain("Delivered before noon");
+
+    const beforeVoidReport = await reports.getDepartmentsReport(
+      { page: 1, pageSize: 25, sortOrder: "desc", includeSandbox: false },
+      fx.actor.tenantId
+    );
+    const deptBefore = beforeVoidReport.data.find((d) => d.id === fx.departmentId);
+    expect(deptBefore).toBeTruthy();
+    expect(deptBefore!.consumablesConsumedCount).toBeGreaterThanOrEqual(3);
+    expect(deptBefore!.consumablesValue).toBeGreaterThanOrEqual(360);
+    expect(
+      deptBefore!.consumedSupplies?.some((s) => s.id === move!.id && s.quantity === 3)
+    ).toBe(true);
+
+    await movements.voidIssue(move!.id, { reason: "Entry error" }, fx.actor);
+
+    const afterVoidReport = await reports.getDepartmentsReport(
+      { page: 1, pageSize: 25, sortOrder: "desc", includeSandbox: false },
+      fx.actor.tenantId
+    );
+    const deptAfter = afterVoidReport.data.find((d) => d.id === fx.departmentId);
+    expect(deptAfter?.consumedSupplies?.some((s) => s.id === move!.id)).toBe(false);
   });
 });

@@ -15,9 +15,12 @@ import {
   RotateCcw,
   Check,
   ArrowRight,
+  Package,
+  HardHat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roundQty } from "@/lib/qty";
+import { splitByConsumableClassification } from "@/lib/consumable-classification";
 import { useCategoryStyleResolver } from "@/features/categories/client/use-category-style";
 import { formatItemDescription } from "@/lib/sanitize-display";
 import type { ConsumableRequest } from "@/features/consumable-requests/client";
@@ -47,6 +50,7 @@ interface EditableSupplyLine {
   consumableId: string;
   itemName: string;
   category: string;
+  classification?: string;
   unit: string;
   quantity: number;
   originalQuantity: number;
@@ -67,6 +71,7 @@ function ApproveRejectConsumableDialogForm({
       consumableId: line.consumableId,
       itemName: line.itemName,
       category: line.category,
+      classification: line.classification,
       unit: line.unit || "units",
       quantity: line.quantityRequested,
       originalQuantity: line.quantityRequested,
@@ -102,6 +107,7 @@ function ApproveRejectConsumableDialogForm({
         consumableId: line.consumableId,
         itemName: line.itemName,
         category: line.category,
+        classification: line.classification,
         unit: line.unit || "units",
         quantity: line.quantityRequested,
         originalQuantity: line.quantityRequested,
@@ -255,7 +261,7 @@ function ApproveRejectConsumableDialogForm({
               {/* Items Section Header with Adjust Quantities Toggle */}
               <div className="flex items-center justify-between px-3.5 py-2 border-b border-border bg-bg-subtle/30">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-text-secondary">
-                  Requested Supplies ({lines.length})
+                  Requested Items ({lines.length})
                 </span>
                 {isApprove && (
                   <div className="flex items-center gap-2">
@@ -297,22 +303,34 @@ function ApproveRejectConsumableDialogForm({
                 )}
               </div>
 
-              <div className="divide-y divide-border">
-                {lines.map((line, idx) => {
+              {(() => {
+                const indexed = lines.map((line, idx) => ({ ...line, idx }));
+                const split = splitByConsumableClassification(indexed);
+
+                const renderLineRow = (
+                  line: EditableSupplyLine & { idx: number },
+                  rowIdx: number
+                ) => {
+                  const idx = line.idx;
                   const catStyle = resolveCategoryStyle(line.category);
                   const desc = formatItemDescription(
                     line.itemName,
                     catStyle.label,
                     "consumable"
                   );
-                  const isLineModified = isApprove && line.quantity !== line.originalQuantity;
+                  const isLineModified =
+                    isApprove && line.quantity !== line.originalQuantity;
 
                   return (
                     <div
                       key={line.id || idx}
                       className={cn(
                         "flex items-center gap-2.5 px-3.5 py-2.5 transition-colors",
-                        isLineModified ? "bg-amber-500/5" : idx % 2 === 1 ? "bg-bg-subtle/60" : "bg-card"
+                        isLineModified
+                          ? "bg-amber-500/5"
+                          : rowIdx % 2 === 1
+                            ? "bg-bg-subtle/60"
+                            : "bg-card"
                       )}
                     >
                       {isApprove && isEditingQty ? (
@@ -392,8 +410,43 @@ function ApproveRejectConsumableDialogForm({
                       </span>
                     </div>
                   );
-                })}
-              </div>
+                };
+
+                if (split.isCombined) {
+                  return (
+                    <div className="divide-y divide-border">
+                      <div>
+                        <div className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-500/5 border-b border-border">
+                          <Package className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                            Supplies ({split.supplies.length})
+                          </span>
+                        </div>
+                        <div className="divide-y divide-border">
+                          {split.supplies.map((line, i) => renderLineRow(line, i))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5 px-3.5 py-1.5 bg-teal-500/5 border-b border-border">
+                          <HardHat className="h-3.5 w-3.5 text-teal-600 dark:text-teal-400" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300">
+                            Materials ({split.materials.length})
+                          </span>
+                        </div>
+                        <div className="divide-y divide-border">
+                          {split.materials.map((line, i) => renderLineRow(line, i))}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="divide-y divide-border">
+                    {indexed.map((line, i) => renderLineRow(line, i))}
+                  </div>
+                );
+              })()}
 
               {request.purpose && (
                 <div className="px-3.5 py-2.5 border-t border-border bg-primary/5 space-y-1.5">

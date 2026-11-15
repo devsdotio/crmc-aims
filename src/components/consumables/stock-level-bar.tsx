@@ -6,6 +6,7 @@ import { getStockSeverity } from "./utils";
 
 export interface StockLevelBarProps {
   currentQty: number;
+  availableQty?: number;
   minThreshold: number;
   unit: string;
   className?: string;
@@ -14,16 +15,18 @@ export interface StockLevelBarProps {
 
 export function StockLevelBar({
   currentQty,
+  availableQty,
   minThreshold,
   unit,
   className,
   showTextReadout = true,
 }: StockLevelBarProps) {
-  const severity = getStockSeverity(currentQty, minThreshold);
+  const effectiveQty = availableQty ?? currentQty;
+  const severity = getStockSeverity(effectiveQty, minThreshold);
 
   // Fill percentage relative to 2x threshold for bar scaling
   const maxScale = Math.max(minThreshold * 2, currentQty, 1);
-  const percentage = Math.min(Math.round((currentQty / maxScale) * 100), 100);
+  const percentage = Math.min(Math.round((effectiveQty / maxScale) * 100), 100);
 
   const meta = {
     healthy: {
@@ -44,7 +47,7 @@ export function StockLevelBar({
       barFill: "bg-status-outofservice-bg",
       badgeBg: "bg-status-outofservice-bg/20",
       badgeText: "text-status-outofservice-text font-bold",
-      label: currentQty === 0 ? "Out of Stock" : "Critical Stock",
+      label: effectiveQty === 0 ? "Out of Stock" : "Critical Stock",
       Icon: AlertOctagon,
     },
   }[severity];

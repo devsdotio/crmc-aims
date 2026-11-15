@@ -15,7 +15,7 @@ export interface Voucher {
   status: VoucherStatus;
   voucherDate: string;
   payeeName: string;
-  amount: string;
+  amount: string | null;
   supplierId: string | null;
   supplierName: string | null;
   purchaseOrderNumber: string | null;

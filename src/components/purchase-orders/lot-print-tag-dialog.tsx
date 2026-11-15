@@ -13,6 +13,7 @@ import {
   Package,
   Calendar,
 } from "lucide-react";
+import { escapeHtml } from "@/lib/html";
 import type { PurchaseLot } from "@/types/purchase-lots";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +67,7 @@ export function LotPrintTagDialog({
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Print Lot Tag - ${activeLotCode}</title>
+          <title>Print Lot Tag - ${escapeHtml(activeLotCode)}</title>
           <style>
             @page {
               size: 4in 3in;
@@ -155,24 +156,24 @@ export function LotPrintTagDialog({
           <div class="tag-card">
             <div class="header">
               <span class="brand">CRMC-AIMS PHYSICAL BATCH TAG</span>
-              <span class="type-badge">${activeItemType}</span>
+              <span class="type-badge">${escapeHtml(activeItemType)}</span>
             </div>
             <div class="content">
               <div class="qr-box">
                 ${content.querySelector("svg")?.outerHTML || ""}
               </div>
               <div class="details">
-                <div class="lot-code">${activeLotCode}</div>
-                <div class="item-name">${activeItemName}</div>
-                <div class="row">Code: <strong>${activeItemCode}</strong></div>
-                <div class="row">Batch Qty: <strong>${activeQuantity} units</strong></div>
-                <div class="row">Unit Cost: <strong>₱${Number(activeUnitCost).toLocaleString("en-US", { minimumFractionDigits: 2 })}</strong></div>
-                <div class="row">Vendor: <strong>${activeSupplier || "Internal"}</strong></div>
+                <div class="lot-code">${escapeHtml(activeLotCode)}</div>
+                <div class="item-name">${escapeHtml(activeItemName)}</div>
+                <div class="row">Code: <strong>${escapeHtml(activeItemCode)}</strong></div>
+                <div class="row">Batch Qty: <strong>${escapeHtml(activeQuantity)} units</strong></div>
+                <div class="row">Unit Cost: <strong>${activeUnitCost != null ? `₱${escapeHtml(Number(activeUnitCost).toLocaleString("en-US", { minimumFractionDigits: 2 }))}` : "Restricted"}</strong></div>
+                <div class="row">Vendor: <strong>${escapeHtml(activeSupplier || "Internal")}</strong></div>
               </div>
             </div>
             <div class="footer">
-              <span>Rec: ${lot.purchasedOn || lot.createdAt.split("T")[0]}</span>
-              <span>By: ${lot.recordedByName}</span>
+              <span>Rec: ${escapeHtml(lot.purchasedOn || lot.createdAt.split("T")[0])}</span>
+              <span>By: ${escapeHtml(lot.recordedByName)}</span>
             </div>
           </div>
           <script>
