@@ -169,6 +169,8 @@ export function TrendBarChart({
                   type={layout === "vertical" ? "number" : "category"}
                   tickLine={false}
                   axisLine={false}
+                  height={layout === "horizontal" ? 22 : undefined}
+                  tickMargin={3}
                   tick={{ fontSize: 10, fill: "var(--text-secondary, #5A5F73)", fontWeight: layout === "horizontal" ? 600 : 400 }}
                   tickFormatter={
                     layout === "vertical"

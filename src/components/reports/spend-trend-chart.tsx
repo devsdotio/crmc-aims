@@ -127,8 +127,8 @@ export function SpendTrendChart({
         </div>
       ) : viewMode === "chart" ? (
         /* ── CHART VIEW (Comparative Bar Chart + Summary Strip) ── */
-        <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between">
-          <div className="h-48 w-full">
+        <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between gap-1">
+          <div className="flex-1 w-full min-h-[190px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={trend}
@@ -145,6 +145,8 @@ export function SpendTrendChart({
                   dataKey="month"
                   tickLine={false}
                   axisLine={false}
+                  height={22}
+                  tickMargin={3}
                   tick={{
                     fontSize: 11,
                     fill: "var(--color-text-secondary, #64748B)",
@@ -224,7 +226,7 @@ export function SpendTrendChart({
           </div>
 
           {/* ── Summary & Legend Strip ── */}
-          <div className="mt-3 pt-3 border-t border-border/60 grid grid-cols-2 gap-2 text-xs">
+          <div className="pt-2 border-t border-border/60 grid grid-cols-2 gap-2 text-xs shrink-0">
             {/* Procurement Summary */}
             <div className="flex items-center justify-between p-2 rounded-lg bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/50 dark:border-indigo-800/50">
               <div className="flex items-center gap-1.5 min-w-0">

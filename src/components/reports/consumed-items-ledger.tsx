@@ -182,7 +182,7 @@ export function ConsumedItemsLedger({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={topChartData}
-                  margin={{ top: 10, right: 15, left: -15, bottom: 5 }}
+                  margin={{ top: 10, right: 15, left: -15, bottom: 0 }}
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
@@ -193,6 +193,8 @@ export function ConsumedItemsLedger({
                     dataKey="name"
                     tickLine={false}
                     axisLine={false}
+                    height={22}
+                    tickMargin={3}
                     tick={{
                       fontSize: 10,
                       fill: "var(--text-secondary, #5A5F73)",
