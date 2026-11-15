@@ -249,11 +249,11 @@ export function AssetRegisterPrintableReport({
                           : "In regular operational service";
 
                       return (
-                        <tr key={row.id}>
-                          <td className="py-1 px-1 text-center font-mono font-bold border-r border-black">
+                        <tr key={row.id} className="align-top">
+                          <td className="py-1 px-1 text-center font-mono font-bold border-r border-black align-top">
                             {itemNo}
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-semibold text-black">
+                          <td className="py-1 px-2 border-r border-black font-semibold text-black align-top">
                             <div>{row.name}</div>
                             {row.serialNumber && (
                               <div className="text-[8px] font-mono font-normal">
@@ -261,39 +261,44 @@ export function AssetRegisterPrintableReport({
                               </div>
                             )}
                           </td>
-                          <td className="py-1 px-2 border-r border-black text-center font-bold text-[8px] uppercase">
+                          <td className="py-1 px-2 border-r border-black text-center font-bold text-[8px] uppercase align-top">
                             {row.classification || "—"}
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-mono font-bold whitespace-nowrap">
+                          <td className="py-1 px-2 border-r border-black font-mono font-bold whitespace-nowrap align-top">
                             {row.assetCode || "[TO BE FILLED]"}
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-mono whitespace-nowrap">
+                          <td className="py-1 px-2 border-r border-black font-mono whitespace-nowrap align-top">
                             {row.purchaseDate ? formatChedDate(row.purchaseDate) : "[TO BE FILLED]"}
                           </td>
-                          <td className="py-1 px-1 text-center border-r border-black uppercase text-[8px]">
+                          <td className="py-1 px-1 text-center border-r border-black uppercase text-[8px] align-top">
                             Unit
                           </td>
-                          <td className="py-1 px-1 text-right font-mono font-bold border-r border-black">
+                          <td className="py-1 px-1 text-right font-mono font-bold border-r border-black align-top">
                             1
                           </td>
-                          <td className="py-1 px-2 text-right font-mono border-r border-black whitespace-nowrap">
+                          <td className="py-1 px-2 text-right font-mono border-r border-black whitespace-nowrap align-top">
                             {canViewCosts ? unitCost : "—"}
                           </td>
-                          <td className="py-1 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap">
+                          <td className="py-1 px-2 text-right font-mono font-semibold border-r border-black whitespace-nowrap align-top">
                             {canViewCosts ? totalCost : "—"}
                           </td>
-                          <td className="py-1 px-2 border-r border-black">
+                          <td className="py-1 px-2 border-r border-black align-top">
                             {assignedLocation}
                           </td>
-                          <td className="py-1 px-2 border-r border-black text-center whitespace-nowrap">
+                          <td className="py-1 px-2 border-r border-black text-center whitespace-nowrap align-top">
                             <span className="font-semibold text-[8px] uppercase">
                               {conditionLabel}
                             </span>
                           </td>
-                          <td className="py-1 px-2 border-r border-black font-medium">
-                            {accountableOfficer}
+                          <td className="py-1 px-2 border-r border-black font-medium align-top">
+                            <div>{accountableOfficer}</div>
+                            {row.borrowingDepartment && (
+                              <div className="text-[7.5px] font-bold uppercase text-black mt-0.5">
+                                [Loan: {row.borrowingDepartment}]
+                              </div>
+                            )}
                           </td>
-                          <td className="py-1 px-2 text-[8px]">
+                          <td className="py-1 px-2 text-[8px] align-top">
                             {remarks}
                           </td>
                         </tr>

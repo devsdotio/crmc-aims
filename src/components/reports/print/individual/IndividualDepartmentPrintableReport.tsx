@@ -19,6 +19,9 @@ export interface IndividualDepartmentAsset {
   status?: string;
   cost?: number | null;
   value?: number | null;
+  custodyType?: "owned" | "borrowed";
+  homeDepartment?: string | null;
+  borrowingDepartment?: string | null;
   maintenanceLogs?: Array<{
     logCode: string;
     condition: string;
@@ -121,6 +124,9 @@ export function IndividualDepartmentPrintableReport({
       condition: a.condition,
       status: a.status,
       cost: a.value ?? a.cost ?? null,
+      custodyType: a.custodyType,
+      homeDepartment: a.homeDepartment,
+      borrowingDepartment: a.borrowingDepartment,
       maintenanceLogs: a.maintenanceLogs?.map(log => ({
         logCode: log.logCode,
         condition: log.condition,
@@ -334,23 +340,28 @@ export function IndividualDepartmentPrintableReport({
             <tbody className="divide-y divide-neutral-100 text-[11px] text-neutral-800">
               {effectiveAssets.map((asset) => (
                 <React.Fragment key={asset.id}>
-                  <tr>
-                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap border-b-0">
+                  <tr className="align-top">
+                    <td className="py-1.5 px-3 font-mono font-bold text-[#2A3260] whitespace-nowrap border-b-0 align-top">
                       {asset.assetCode || asset.id}
                     </td>
-                    <td className="py-1.5 px-3 font-medium border-b-0">
-                      {asset.name}
+                    <td className="py-1.5 px-3 font-medium border-b-0 align-top">
+                      <div>{asset.name}</div>
+                      {asset.custodyType === "borrowed" && (
+                        <div className="text-[9px] font-semibold text-amber-800 bg-amber-100/90 px-1.5 py-0.25 rounded w-fit mt-0.5">
+                          Borrowed from {asset.homeDepartment || "General Services"}
+                        </div>
+                      )}
                     </td>
-                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0 align-top">
                       {asset.category || "Equipment"}
                     </td>
-                    <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 font-mono text-neutral-600 whitespace-nowrap border-b-0 align-top">
                       {asset.serialNumber || "—"}
                     </td>
-                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 text-neutral-600 capitalize whitespace-nowrap border-b-0 align-top">
                       {asset.condition || "Good"}
                     </td>
-                    <td className="py-1.5 px-3 whitespace-nowrap border-b-0">
+                    <td className="py-1.5 px-3 whitespace-nowrap border-b-0 align-top">
                       <PrintStatusBadge status={asset.status || "active"} />
                     </td>
                   </tr>

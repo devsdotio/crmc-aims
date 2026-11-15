@@ -175,10 +175,10 @@ export function ExecutivePrintableReport({
               </tr>
             </thead>
             <tbody className="divide-y divide-black/30">
-              {(charts?.categoryDistribution || []).slice(0, 7).map((cat) => {
+              {(charts?.categoryDistribution || []).map((cat) => {
                 const pct = assets?.totalValue ? Math.round((cat.value / assets.totalValue) * 100) : 0;
                 return (
-                  <tr key={cat.name}>
+                  <tr key={cat.name} className="align-top">
                     <td className="py-1 px-2 font-medium">{cat.name}</td>
                     <td className="py-1 px-2 text-right font-mono">{cat.count}</td>
                     <td className="py-1 px-2 text-right font-mono font-semibold">
