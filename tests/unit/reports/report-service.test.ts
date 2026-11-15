@@ -311,6 +311,8 @@ function buildAssetsFixture(): Awaited<ReturnType<ReportRepository["getAssetRegi
         supplierName: null,
         serialNumber: "SN-1",
         hasActiveMaintenance: false,
+        borrowingDepartment: null,
+        custodyStatus: "available",
         lastUpdated: "2026-10-01",
       },
     ],

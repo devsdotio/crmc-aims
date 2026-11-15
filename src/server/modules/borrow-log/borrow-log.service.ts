@@ -599,11 +599,19 @@ export class BorrowLogService {
       tx
     );
 
+    // For assignments (permanent/long-term), transfer department custody.
+    // For loans (custodyKind === "borrow"), preserve original home department (e.g. General Services)
+    // while tracking currentHolder and active borrowTransaction.
+    const nextDepartment =
+      destination.custodyKind === "assignment"
+        ? destination.departmentLabel
+        : asset.department;
+
     await this.assets.update(
       asset.id,
       {
         currentHolder: destination.holderLabel,
-        department: destination.departmentLabel,
+        department: nextDepartment,
         reservedForRequestId: null,
         lastUpdated: new Date(),
       },

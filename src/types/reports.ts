@@ -112,6 +112,8 @@ export interface AssetRegisterRow {
   supplierName: string | null;
   serialNumber: string | null;
   hasActiveMaintenance: boolean;
+  borrowingDepartment?: string | null;
+  custodyStatus?: "available" | "assigned" | "on_loan";
   lastUpdated: string;
 }
 
@@ -390,6 +392,9 @@ export interface AssignedAssetItem {
   location?: string | null;
   assignedAt?: string | null;
   assignedByName?: string | null;
+  custodyType?: "owned" | "borrowed";
+  homeDepartment?: string | null;
+  borrowingDepartment?: string | null;
   /** Maintenance logs for this specific asset (populated in department drilldown) */
   maintenanceLogs?: MaintenanceLogItem[];
 }
