@@ -18,6 +18,8 @@ import {
 } from "@/features/reports/client/use-reports";
 import { OperationalDomainHub } from "@/components/reports/operational-domain-hub";
 import { InstitutionalOperationsRibbon } from "@/components/reports/institutional-operations-ribbon";
+import { CategoryValuationChart } from "@/components/reports/category-valuation-chart";
+import { SpendTrendChart } from "@/components/reports/spend-trend-chart";
 import { ReportExportButton } from "@/components/reports/report-export-button";
 import { ExecutivePrintableReport } from "@/components/reports/print/ExecutivePrintableReport";
 
@@ -85,195 +87,22 @@ export default function ExecutiveReportsPage() {
             departments={departments}
           />
 
-          {/* ── Side-by-Side Tables: Category Valuation & 6-Month Spend Ledgers ── */}
+          {/* ── Side-by-Side Visual Charts: Category Valuation & 6-Month Spend ── */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
-            {/* Table 2: Category Valuation & Inventory Breakdown (col-span-6) */}
-            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col">
-              <div className="border-b border-border px-4 sm:px-5 py-3 bg-bg-subtle/40 flex items-center justify-between shrink-0">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                    Category Valuation &amp; Distribution Ledger
-                  </h3>
-                  <p className="text-[10px] text-text-secondary mt-0.5">
-                    Itemized valuation, asset volume, and percentage share across categories.
-                  </p>
-                </div>
-                <span className="text-[10px] font-mono text-text-secondary">
-                  {categoryDistribution?.length || 0} Categories
-                </span>
-              </div>
+            {/* Chart 1: Category Valuation & Distribution Donut (col-span-6) */}
+            <CategoryValuationChart
+              categories={categoryDistribution}
+              isLoading={isLoading}
+              canViewCosts={canViewCosts}
+              topCount={5}
+            />
 
-              <div className="overflow-x-auto overflow-y-auto flex-1">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10">
-                    <tr className="border-b border-border bg-bg-subtle/90 backdrop-blur-xs text-[10px] font-bold uppercase tracking-wider text-text-secondary">
-                      <th className="py-2 px-4 sm:px-5">Category Name</th>
-                      <th className="py-2 px-3 text-right">Units</th>
-                      <th className="py-2 px-3 text-right">Valuation (₱)</th>
-                      <th className="py-2 px-4 text-right">Inventory Share</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60 text-text">
-                    {isLoading ? (
-                      <tr>
-                        <td colSpan={4} className="py-8 text-center text-text-secondary text-xs">
-                          Loading category data…
-                        </td>
-                      </tr>
-                    ) : !categoryDistribution || categoryDistribution.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-8 text-center text-text-secondary text-xs">
-                          No category distribution recorded.
-                        </td>
-                      </tr>
-                    ) : (
-                      (() => {
-                        const totalVal = categoryDistribution.reduce(
-                          (sum, c) => sum + (canViewCosts && c.value > 0 ? c.value : c.count),
-                          0
-                        );
-                        const totalCount = categoryDistribution.reduce((sum, c) => sum + c.count, 0);
-                        return (
-                          <>
-                            {categoryDistribution.map((cat, idx) => {
-                              const itemMetric = canViewCosts && cat.value > 0 ? cat.value : cat.count;
-                              const sharePct = totalVal > 0 ? Math.round((itemMetric / totalVal) * 100) : 0;
-                              return (
-                                <tr key={idx} className="hover:bg-bg-subtle/30 transition-colors">
-                                  <td className="py-2.5 px-4 sm:px-5 font-semibold text-text">
-                                    {cat.name}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-right font-mono text-text-secondary">
-                                    {cat.count.toLocaleString()}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-text">
-                                    {canViewCosts ? `₱${cat.value.toLocaleString()}` : "—"}
-                                  </td>
-                                  <td className="py-2.5 px-4 text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <div className="w-16 h-1.5 rounded-full bg-border overflow-hidden">
-                                        <div
-                                          className="h-full bg-accent rounded-full"
-                                          style={{ width: `${Math.min(sharePct, 100)}%` }}
-                                        />
-                                      </div>
-                                      <span className="font-mono text-[11px] font-bold text-text-secondary w-8 text-right">
-                                        {sharePct}%
-                                      </span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {/* Rollup Totals Row */}
-                            <tr className="border-t-2 border-border bg-bg-subtle/60 font-bold text-text">
-                              <td className="py-2.5 px-4 sm:px-5">Total Rollup</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-text">
-                                {totalCount.toLocaleString()}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-text">
-                                {canViewCosts ? `₱${categoryDistribution.reduce((s, c) => s + c.value, 0).toLocaleString()}` : "—"}
-                              </td>
-                              <td className="py-2.5 px-4 text-right font-mono text-text">
-                                100%
-                              </td>
-                            </tr>
-                          </>
-                        );
-                      })()
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Table 3: 6-Month Institutional Spend Ledger (col-span-6) */}
-            <div className="lg:col-span-6 rounded-xl border border-border/80 bg-card shadow-xs overflow-hidden flex flex-col">
-              <div className="border-b border-border px-4 sm:px-5 py-3 bg-bg-subtle/40 flex items-center justify-between shrink-0">
-                <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-text">
-                    6-Month Spend &amp; Financial Ledger
-                  </h3>
-                  <p className="text-[10px] text-text-secondary mt-0.5">
-                    Monthly historical disbursement comparison: Procurement vs Maintenance spend.
-                  </p>
-                </div>
-                <span className="text-[10px] font-mono text-text-secondary">
-                  Semi-Annual Window
-                </span>
-              </div>
-
-              <div className="overflow-x-auto overflow-y-auto flex-1">
-                <table className="w-full border-collapse text-left text-xs">
-                  <thead className="sticky top-0 z-10">
-                    <tr className="border-b border-border bg-bg-subtle/90 backdrop-blur-xs text-[10px] font-bold uppercase tracking-wider text-text-secondary">
-                      <th className="py-2 px-4 sm:px-5">Month Period</th>
-                      <th className="py-2 px-3 text-right">Procurement Spend</th>
-                      <th className="py-2 px-3 text-right">Maintenance Spend</th>
-                      <th className="py-2 px-4 text-right">Combined Spend</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60 text-text">
-                    {isLoading ? (
-                      <tr>
-                        <td colSpan={4} className="py-8 text-center text-text-secondary text-xs">
-                          Loading spend ledger…
-                        </td>
-                      </tr>
-                    ) : !data?.charts?.monthlySpendTrend || data.charts.monthlySpendTrend.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-8 text-center text-text-secondary text-xs">
-                          No historical spend data recorded.
-                        </td>
-                      </tr>
-                    ) : (
-                      (() => {
-                        const trend = data.charts.monthlySpendTrend;
-                        const totalProc = trend.reduce((s, m) => s + m.procurement, 0);
-                        const totalMaint = trend.reduce((s, m) => s + m.maintenance, 0);
-                        const totalCombined = totalProc + totalMaint;
-                        return (
-                          <>
-                            {trend.map((row, idx) => {
-                              const monthTotal = row.procurement + row.maintenance;
-                              return (
-                                <tr key={idx} className="hover:bg-bg-subtle/30 transition-colors">
-                                  <td className="py-2.5 px-4 sm:px-5 font-semibold text-text">
-                                    {row.month}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-right font-mono text-text">
-                                    {canViewCosts ? `₱${row.procurement.toLocaleString()}` : "—"}
-                                  </td>
-                                  <td className="py-2.5 px-3 text-right font-mono text-rose-600 dark:text-rose-400">
-                                    {canViewCosts ? `₱${row.maintenance.toLocaleString()}` : "—"}
-                                  </td>
-                                  <td className="py-2.5 px-4 text-right font-mono font-bold text-primary dark:text-blue-300">
-                                    {canViewCosts ? `₱${monthTotal.toLocaleString()}` : "—"}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {/* Rollup Totals Row */}
-                            <tr className="border-t-2 border-border bg-bg-subtle/60 font-bold text-text">
-                              <td className="py-2.5 px-4 sm:px-5">6-Month Total</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-text">
-                                {canViewCosts ? `₱${totalProc.toLocaleString()}` : "—"}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-rose-700 dark:text-rose-400">
-                                {canViewCosts ? `₱${totalMaint.toLocaleString()}` : "—"}
-                              </td>
-                              <td className="py-2.5 px-4 text-right font-mono text-primary dark:text-blue-300 font-extrabold">
-                                {canViewCosts ? `₱${totalCombined.toLocaleString()}` : "—"}
-                              </td>
-                            </tr>
-                          </>
-                        );
-                      })()
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            {/* Chart 2: 6-Month Institutional Spend Trend (col-span-6) */}
+            <SpendTrendChart
+              trend={data?.charts?.monthlySpendTrend}
+              isLoading={isLoading}
+              canViewCosts={canViewCosts}
+            />
           </div>
         </div>
 

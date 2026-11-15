@@ -11,7 +11,7 @@ import {
   AlertTriangle,
   Clock,
   Truck,
-  TrendingUp,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -80,8 +80,8 @@ export function OperationalDomainHub({
   // 4. Maintenance calculations
   const activeRepairs = maintenance?.activeIssuesCount || 0;
   const resolvedRepairs = maintenance?.resolvedThisMonth || 0;
-  const totalRepairCycles = activeRepairs + resolvedRepairs;
-  const repairTurnaroundPct = totalRepairCycles > 0 ? Math.round((resolvedRepairs / totalRepairCycles) * 100) : 100;
+  const totalRepairs = activeRepairs + resolvedRepairs;
+  const repairTurnaroundPct = totalRepairs > 0 ? Math.round((resolvedRepairs / totalRepairs) * 100) : 100;
 
   // 5. Procurement calculations
   const openPOs = procurement?.openOrdersCount || 0;
@@ -112,9 +112,8 @@ export function OperationalDomainHub({
         {/* Card 1: Capital Asset Fleet */}
         <Link
           href="/reports/assets"
-          className="group relative flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-4 hover:border-blue-500/50 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+          className="group relative flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 hover:border-blue-500/50 hover:shadow-md transition-all duration-200 cursor-pointer overflow-visible hover:z-30 focus-within:z-30"
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-blue-500" />
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
@@ -135,8 +134,9 @@ export function OperationalDomainHub({
               </span>
             </div>
 
-            <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">
-              Capital Asset Registry
+            <div className="flex items-center justify-between text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+              <span>Capital Asset Registry</span>
+              <Info className="h-3 w-3 text-text-secondary/50 group-hover:text-blue-500 transition-colors" />
             </div>
             <div className="mt-1 font-mono text-xl font-black text-text">
               {isLoading
@@ -179,14 +179,28 @@ export function OperationalDomainHub({
               Assets <ArrowRight className="h-3 w-3" />
             </span>
           </div>
+
+          {/* ── Hover Tooltip Explanation ── */}
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute z-50 top-full mt-2 left-0 w-68 sm:w-72 p-3 rounded-xl bg-slate-900/95 text-white dark:bg-slate-950/95 backdrop-blur-md border border-white/15 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <div className="absolute -top-1 left-6 w-2 h-2 bg-slate-900 dark:bg-slate-950 border-t border-l border-white/15 rotate-45" />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-400 mb-1">
+              <Info className="h-3 w-3" />
+              <span>Capital Asset Registry</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-200">
+              Monitors capitalized equipment, IT hardware, and vehicles, tracking active deployment, repair logs, and overall operational readiness.
+            </p>
+          </div>
         </Link>
 
         {/* Card 2: Consumable Supplies */}
         <Link
           href="/reports/consumables?classification=supply"
-          className="group relative flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-4 hover:border-emerald-500/50 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+          className="group relative flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 hover:border-emerald-500/50 hover:shadow-md transition-all duration-200 cursor-pointer overflow-visible hover:z-30 focus-within:z-30"
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500" />
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
@@ -214,8 +228,9 @@ export function OperationalDomainHub({
               </span>
             </div>
 
-            <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">
-              Consumable Supplies
+            <div className="flex items-center justify-between text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+              <span>Consumable Supplies</span>
+              <Info className="h-3 w-3 text-text-secondary/50 group-hover:text-emerald-500 transition-colors" />
             </div>
             <div className="mt-1 font-mono text-xl font-black text-text">
               {isLoading
@@ -251,14 +266,28 @@ export function OperationalDomainHub({
               Supplies <ArrowRight className="h-3 w-3" />
             </span>
           </div>
+
+          {/* ── Hover Tooltip Explanation ── */}
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 w-68 sm:w-72 p-3 rounded-xl bg-slate-900/95 text-white dark:bg-slate-950/95 backdrop-blur-md border border-white/15 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-950 border-t border-l border-white/15 rotate-45" />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 mb-1">
+              <Info className="h-3 w-3" />
+              <span>Consumable Supplies</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-200">
+              Tracks storeroom inventory (paper, stationery, ink, toiletries &amp; medical items) against safety stock thresholds and 30-day burn rate.
+            </p>
+          </div>
         </Link>
 
         {/* Card 3: Consumable Materials */}
         <Link
           href="/reports/consumables?classification=material"
-          className="group relative flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-4 hover:border-amber-500/50 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+          className="group relative flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 hover:border-amber-500/50 hover:shadow-md transition-all duration-200 cursor-pointer overflow-visible hover:z-30 focus-within:z-30"
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-amber-500" />
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
@@ -286,8 +315,9 @@ export function OperationalDomainHub({
               </span>
             </div>
 
-            <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">
-              Consumable Materials
+            <div className="flex items-center justify-between text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+              <span>Consumable Materials</span>
+              <Info className="h-3 w-3 text-text-secondary/50 group-hover:text-amber-500 transition-colors" />
             </div>
             <div className="mt-1 font-mono text-xl font-black text-text">
               {isLoading
@@ -323,14 +353,28 @@ export function OperationalDomainHub({
               Materials <ArrowRight className="h-3 w-3" />
             </span>
           </div>
+
+          {/* ── Hover Tooltip Explanation ── */}
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 w-68 sm:w-72 p-3 rounded-xl bg-slate-900/95 text-white dark:bg-slate-950/95 backdrop-blur-md border border-white/15 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-950 border-t border-l border-white/15 rotate-45" />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-400 mb-1">
+              <Info className="h-3 w-3" />
+              <span>Consumable Materials</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-200">
+              Manages construction, electrical, plumbing, and project hardware stocks maintained separately from administrative office supplies.
+            </p>
+          </div>
         </Link>
 
         {/* Card 4: Maintenance & Repairs */}
         <Link
           href="/reports/maintenance"
-          className="group relative flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-4 hover:border-rose-500/50 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+          className="group relative flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 hover:border-rose-500/50 hover:shadow-md transition-all duration-200 cursor-pointer overflow-visible hover:z-30 focus-within:z-30"
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-rose-500" />
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
@@ -358,8 +402,9 @@ export function OperationalDomainHub({
               </span>
             </div>
 
-            <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">
-              Facility Maintenance
+            <div className="flex items-center justify-between text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+              <span>Facility Maintenance</span>
+              <Info className="h-3 w-3 text-text-secondary/50 group-hover:text-rose-500 transition-colors" />
             </div>
             <div className="mt-1 font-mono text-xl font-black text-text">
               {isLoading
@@ -395,14 +440,28 @@ export function OperationalDomainHub({
               Logs <ArrowRight className="h-3 w-3" />
             </span>
           </div>
+
+          {/* ── Hover Tooltip Explanation ── */}
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 w-68 sm:w-72 p-3 rounded-xl bg-slate-900/95 text-white dark:bg-slate-950/95 backdrop-blur-md border border-white/15 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 dark:bg-slate-950 border-t border-l border-white/15 rotate-45" />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-rose-400 mb-1">
+              <Info className="h-3 w-3" />
+              <span>Facility Maintenance</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-200">
+              Audits corrective work orders, scheduled preventive maintenance, mean time to repair (MTTR), and repair cost expenditure.
+            </p>
+          </div>
         </Link>
 
         {/* Card 5: Procurement & Purchase Orders */}
         <Link
           href="/reports/purchase-orders"
-          className="group relative flex flex-col justify-between rounded-2xl border border-border/80 bg-card p-4 hover:border-indigo-500/50 hover:shadow-md transition-all cursor-pointer overflow-hidden"
+          className="group relative flex flex-col justify-between rounded-xl border border-border/80 bg-card p-4 hover:border-indigo-500/50 hover:shadow-md transition-all duration-200 cursor-pointer overflow-visible hover:z-30 focus-within:z-30"
         >
-          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500" />
           <div>
             <div className="flex items-center justify-between mb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
@@ -430,8 +489,9 @@ export function OperationalDomainHub({
               </span>
             </div>
 
-            <div className="text-[11px] font-bold text-text-secondary uppercase tracking-wider">
-              Procurement &amp; Orders
+            <div className="flex items-center justify-between text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+              <span>Procurement &amp; Orders</span>
+              <Info className="h-3 w-3 text-text-secondary/50 group-hover:text-indigo-500 transition-colors" />
             </div>
             <div className="mt-1 font-mono text-xl font-black text-text">
               {isLoading
@@ -467,9 +527,23 @@ export function OperationalDomainHub({
               Orders <ArrowRight className="h-3 w-3" />
             </span>
           </div>
+
+          {/* ── Hover Tooltip Explanation ── */}
+          <div
+            role="tooltip"
+            className="pointer-events-none absolute z-50 top-full mt-2 right-0 w-68 sm:w-72 p-3 rounded-xl bg-slate-900/95 text-white dark:bg-slate-950/95 backdrop-blur-md border border-white/15 shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200"
+          >
+            <div className="absolute -top-1 right-6 w-2 h-2 bg-slate-900 dark:bg-slate-950 border-t border-l border-white/15 rotate-45" />
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-indigo-400 mb-1">
+              <Info className="h-3 w-3" />
+              <span>Procurement &amp; Orders</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-200">
+              Tracks active vendor purchase orders, fulfillment cycles, and pending delivery shipments across capital assets, supplies, and materials.
+            </p>
+          </div>
         </Link>
       </div>
     </div>
   );
 }
-
