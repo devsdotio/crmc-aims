@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Banknote,
   Tag,
+  Calendar,
+  RotateCcw,
 } from "lucide-react";
 import {
   usePettyCashListQuery,
@@ -33,6 +35,11 @@ export function PettyCashView() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<PettyCashStatus | "all">("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<PettyCashVoucher | null>(null);
@@ -40,7 +47,10 @@ export function PettyCashView() {
   const [printVoucher, setPrintVoucher] = useState<PettyCashVoucher | null>(null);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 275);
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 275);
     return () => clearTimeout(timer);
   }, [search]);
 
@@ -53,13 +63,33 @@ export function PettyCashView() {
     search: debouncedSearch || undefined,
     status: selectedStatus === "all" ? undefined : selectedStatus,
     category: selectedCategory === "all" ? undefined : selectedCategory,
-    limit: 100,
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    page,
+    pageSize,
   });
 
   const vouchers = useMemo(() => data?.vouchers ?? [], [data?.vouchers]);
+  const totalCount = data?.meta?.total ?? data?.total ?? vouchers.length;
+  const totalPages = data?.meta?.totalPages ?? Math.max(1, Math.ceil(totalCount / pageSize));
 
-  // Summary statistics calculated across current results
+  // Summary statistics calculated globally via server aggregates when available
   const stats = useMemo(() => {
+    if (data?.meta?.stats) {
+      const s = data.meta.stats;
+      const hasRestrictedAmounts =
+        vouchers.length > 0 && vouchers.every((v) => v.amount == null);
+      return {
+        total: s.total,
+        pendingCount: s.pendingCount,
+        approvedCount: s.approvedCount,
+        awaitingReceiptCount: s.awaitingReceiptCount,
+        completedCount: s.completedCount,
+        totalDisbursed: s.totalDisbursed,
+        hasRestrictedAmounts,
+      };
+    }
+
     let pendingCount = 0;
     let approvedCount = 0;
     let awaitingReceiptCount = 0;
@@ -80,7 +110,7 @@ export function PettyCashView() {
       vouchers.length > 0 && vouchers.every((v) => v.amount == null);
 
     return {
-      total: vouchers.length,
+      total: totalCount,
       pendingCount,
       approvedCount,
       awaitingReceiptCount,
@@ -88,12 +118,30 @@ export function PettyCashView() {
       totalDisbursed,
       hasRestrictedAmounts,
     };
-  }, [vouchers]);
+  }, [data?.meta?.stats, vouchers, totalCount]);
 
   const handleSelectVoucher = (voucher: PettyCashVoucher) => {
     setSelectedVoucher(voucher);
     setIsDetailOpen(true);
   };
+
+  const handleResetFilters = () => {
+    setSearch("");
+    setDebouncedSearch("");
+    setSelectedStatus("all");
+    setSelectedCategory("all");
+    setStartDate("");
+    setEndDate("");
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(
+    debouncedSearch ||
+      selectedStatus !== "all" ||
+      selectedCategory !== "all" ||
+      startDate ||
+      endDate
+  );
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden bg-bg rounded-lg border border-border shadow-2xs">
@@ -105,7 +153,7 @@ export function PettyCashView() {
               Petty Cash Vouchers
             </h1>
             <span className="px-2 py-0.5 text-xs font-bold bg-bg-subtle text-text-secondary rounded-full border border-border">
-              {isLoading ? "Loading records…" : `${vouchers.length} record${vouchers.length === 1 ? "" : "s"}`}
+              {isLoading ? "Loading records…" : `${totalCount} record${totalCount === 1 ? "" : "s"}`}
             </span>
           </div>
           <p className="text-xs text-text-secondary mt-0.5">
@@ -125,7 +173,7 @@ export function PettyCashView() {
         </div>
       </div>
 
-      {/* Search & Filter Toolbar (flush below header with border-b, matching vouchers/assets) */}
+      {/* Search & Filter Toolbar */}
       <div className="px-4 md:px-6 py-2.5 bg-bg border-b border-border shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         {/* Search */}
         <div className="relative flex-1 max-w-md">
@@ -140,8 +188,13 @@ export function PettyCashView() {
           {search && (
             <button
               type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer"
+              onClick={() => {
+                setSearch("");
+                setDebouncedSearch("");
+                setPage(1);
+              }}
+              aria-label="Clear search"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-secondary hover:text-text cursor-pointer p-0.5"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -150,16 +203,14 @@ export function PettyCashView() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Classification Indicator */}
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-            <Wallet className="h-3.5 w-3.5" />
-            <span>Petty Cash Voucher (PCV)</span>
-          </div>
-
           {/* Category Filter */}
           <select
             value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
+            onChange={(e) => {
+              setSelectedCategory(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Filter by expense category"
             className="h-8.5 rounded-lg border border-border bg-bg px-2.5 text-xs text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
           >
             <option value="all">All Categories</option>
@@ -173,7 +224,11 @@ export function PettyCashView() {
           {/* Status Filter */}
           <select
             value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value as PettyCashStatus | "all")}
+            onChange={(e) => {
+              setSelectedStatus(e.target.value as PettyCashStatus | "all");
+              setPage(1);
+            }}
+            aria-label="Filter by petty cash status"
             className="h-8.5 rounded-lg border border-border bg-bg px-2.5 text-xs text-text focus:outline-hidden focus:ring-2 focus:ring-primary/20 focus:border-primary cursor-pointer"
           >
             <option value="all">All Statuses</option>
@@ -184,11 +239,49 @@ export function PettyCashView() {
             <option value="completed">Closed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+
+          {/* Date range filter */}
+          <div className="flex items-center gap-1.5 bg-bg-subtle/50 px-2 py-1 rounded-lg border border-border">
+            <Calendar className="h-3.5 w-3.5 text-text-secondary" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setPage(1);
+              }}
+              title="From date"
+              className="bg-transparent text-xs text-text focus:outline-hidden cursor-pointer"
+            />
+            <span className="text-[10px] text-text-secondary font-medium">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setPage(1);
+              }}
+              title="To date"
+              className="bg-transparent text-xs text-text focus:outline-hidden cursor-pointer"
+            />
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              title="Reset all filters"
+              className="inline-flex items-center gap-1 h-8.5 px-2.5 rounded-lg border border-border bg-bg text-xs font-semibold text-text-secondary hover:text-text hover:bg-bg-subtle transition-colors cursor-pointer"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
       </div>
 
       {/* Main Content Region with Stat Cards and Table */}
-      <main className="flex-1 overflow-y-auto min-h-0 p-3.5 md:p-4 bg-bg flex flex-col gap-3">
+      <main className="flex-1 overflow-hidden min-h-0 p-3.5 md:p-4 bg-bg flex flex-col gap-3">
         {/* Summary Stat Cards */}
         <StatCardGrid columns={4} className="gap-3 shrink-0">
           <StatCard
@@ -230,8 +323,20 @@ export function PettyCashView() {
           <PettyCashTable
             vouchers={vouchers}
             loading={isLoading}
+            total={totalCount}
+            page={page}
+            pageSize={pageSize}
+            totalPages={totalPages}
+            onPageChange={(p) => setPage(p)}
+            onPageSizeChange={(sz) => {
+              setPageSize(sz);
+              setPage(1);
+            }}
             onSelectVoucher={handleSelectVoucher}
             onPrintSlip={setPrintVoucher}
+            onResetFilters={handleResetFilters}
+            onCreateVoucher={() => setIsCreateOpen(true)}
+            hasActiveFilters={hasActiveFilters}
           />
         </div>
       </main>

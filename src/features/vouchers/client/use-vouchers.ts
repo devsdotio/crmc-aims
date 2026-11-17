@@ -80,6 +80,8 @@ export function useVouchersQuery(filters?: {
   status?: VoucherStatus;
   startDate?: string;
   endDate?: string;
+  page?: number;
+  pageSize?: number;
   limit?: number;
   offset?: number;
 }): UseQueryResult<VoucherListResponse, Error> {

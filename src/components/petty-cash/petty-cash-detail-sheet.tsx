@@ -309,7 +309,7 @@ export function PettyCashDetailSheet({
     }
   };
 
-  const handleStatusTransition = async (nextStatus: PettyCashStatus) => {
+  const executeStatusTransition = async (nextStatus: PettyCashStatus) => {
     try {
       const updated = await statusMutation.mutateAsync({
         id: voucher.id,
@@ -322,6 +322,37 @@ export function PettyCashDetailSheet({
       const msg = err instanceof Error ? err.message : "Failed to update status.";
       toast.error(msg);
     }
+  };
+
+  const handleStatusTransition = async (nextStatus: PettyCashStatus) => {
+    if (nextStatus === "cancelled") {
+      await confirm({
+        title: "Cancel / reject this petty cash voucher?",
+        description: `Are you sure you want to cancel ${voucher.pcvNumber}? This micro-disbursement record will be voided.`,
+        confirmLabel: "Cancel voucher",
+        cancelLabel: "Keep active",
+        variant: "destructive",
+        action: async () => {
+          await executeStatusTransition(nextStatus);
+        },
+      });
+      return;
+    }
+
+    if (nextStatus === "disbursed") {
+      await confirm({
+        title: "Confirm cash disbursement?",
+        description: `Confirm releasing ${formatPhp(voucher.amount)} to ${voucher.payeeName} for petty cash voucher ${voucher.pcvNumber}.`,
+        confirmLabel: "Confirm payment",
+        cancelLabel: "Go back",
+        action: async () => {
+          await executeStatusTransition(nextStatus);
+        },
+      });
+      return;
+    }
+
+    await executeStatusTransition(nextStatus);
   };
 
   const handleDelete = async () => {

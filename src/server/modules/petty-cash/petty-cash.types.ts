@@ -31,6 +31,15 @@ export type PettyCashDTO = {
   updatedAt: string;
 };
 
+export type PettyCashStats = {
+  total: number;
+  pendingCount: number;
+  approvedCount: number;
+  awaitingReceiptCount: number;
+  completedCount: number;
+  totalDisbursed: number;
+};
+
 export type ListPettyCashFilters = {
   search?: string;
   status?: PettyCashStatus;
@@ -38,6 +47,8 @@ export type ListPettyCashFilters = {
   departmentId?: string;
   startDate?: string;
   endDate?: string;
+  page?: number;
+  pageSize?: number;
   limit?: number;
   offset?: number;
 };
@@ -57,7 +68,14 @@ export interface IPettyCashRepository {
     filters?: ListPettyCashFilters,
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
-  ): Promise<{ vouchers: PettyCashRow[]; total: number }>;
+  ): Promise<{
+    vouchers: PettyCashRow[];
+    total: number;
+    stats: PettyCashStats;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   create(
     data: Omit<NewPettyCashRow, "id" | "createdAt" | "updatedAt">,
     session?: import("@/server/db/transaction").DbSession

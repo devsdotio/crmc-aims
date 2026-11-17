@@ -28,9 +28,26 @@ export type UpdatePettyCashStatusPayload = {
   status: PettyCashStatus;
 };
 
+export interface PettyCashStats {
+  total: number;
+  pendingCount: number;
+  approvedCount: number;
+  awaitingReceiptCount: number;
+  completedCount: number;
+  totalDisbursed: number;
+}
+
 export interface PettyCashListResponse {
   vouchers: PettyCashVoucher[];
   total: number;
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    stats: PettyCashStats;
+  };
+  stats?: PettyCashStats;
 }
 
 export const pettyCashApi = {
@@ -51,6 +68,8 @@ export const pettyCashApi = {
     departmentId?: string;
     startDate?: string;
     endDate?: string;
+    page?: number;
+    pageSize?: number;
     limit?: number;
     offset?: number;
   }): Promise<PettyCashListResponse> {
@@ -61,6 +80,8 @@ export const pettyCashApi = {
     if (params?.departmentId) sp.set("departmentId", params.departmentId);
     if (params?.startDate) sp.set("startDate", params.startDate);
     if (params?.endDate) sp.set("endDate", params.endDate);
+    if (params?.page) sp.set("page", String(params.page));
+    if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
     if (params?.limit) sp.set("limit", String(params.limit));
     if (params?.offset) sp.set("offset", String(params.offset));
     const qs = sp.toString();

@@ -303,7 +303,7 @@ export function VoucherDetailSheet({
     setTimeout(() => setCopiedCode(false), 1500);
   };
 
-  const handleStatusChange = async (newStatus: VoucherStatus) => {
+  const executeStatusChange = async (newStatus: VoucherStatus) => {
     setActionLoading(true);
     try {
       const updated = await updateStatusMutation.mutateAsync({
@@ -320,6 +320,37 @@ export function VoucherDetailSheet({
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleStatusChange = async (newStatus: VoucherStatus) => {
+    if (newStatus === "cancelled") {
+      await confirm({
+        title: "Cancel / reject this voucher?",
+        description: `Are you sure you want to cancel voucher ${voucher.voucherCode}? This record will be voided.`,
+        confirmLabel: "Cancel voucher",
+        cancelLabel: "Keep active",
+        variant: "destructive",
+        action: async () => {
+          await executeStatusChange(newStatus);
+        },
+      });
+      return;
+    }
+
+    if (newStatus === "disbursed") {
+      await confirm({
+        title: "Confirm cash disbursement?",
+        description: `Confirm releasing ${formatPhp(voucher.amount)} to ${voucher.payeeName} for voucher ${voucher.voucherCode}.`,
+        confirmLabel: "Confirm payment",
+        cancelLabel: "Go back",
+        action: async () => {
+          await executeStatusChange(newStatus);
+        },
+      });
+      return;
+    }
+
+    await executeStatusChange(newStatus);
   };
 
   const handleDelete = async () => {
@@ -1341,6 +1372,20 @@ export function VoucherDetailSheet({
                   <span>Disburse / Pay</span>
                 </button>
               </>
+            )}
+
+            {voucher.status === "disbursed" && (
+              <div className="flex items-center gap-1.5 text-xs text-orange-700 dark:text-orange-300 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20 font-medium">
+                <Receipt className="h-3.5 w-3.5 shrink-0" />
+                <span>Cash disbursed. Claim finalizes upon filing receipt.</span>
+              </div>
+            )}
+
+            {voucher.status === "completed" && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                <span>Claim finalized & closed.</span>
+              </div>
             )}
           </div>
         </div>

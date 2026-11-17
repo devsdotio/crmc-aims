@@ -8,6 +8,10 @@ export const pettyCashQueryKeys = {
     departmentId?: string;
     startDate?: string;
     endDate?: string;
+    page?: number;
+    pageSize?: number;
+    limit?: number;
+    offset?: number;
   }) => [...pettyCashQueryKeys.lists(), filters ?? {}] as const,
   detail: (id: string) => [...pettyCashQueryKeys.all, "detail", id] as const,
 };
