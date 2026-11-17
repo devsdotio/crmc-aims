@@ -9,7 +9,11 @@ import {
   type PettyCashRow,
 } from "@/server/db/schema";
 
-import type { IPettyCashRepository, ListPettyCashFilters } from "./petty-cash.types";
+import type {
+  IPettyCashRepository,
+  ListPettyCashFilters,
+  PettyCashStats,
+} from "./petty-cash.types";
 
 export class PettyCashRepository implements IPettyCashRepository {
   private db(session?: DbSession) {
@@ -56,7 +60,14 @@ export class PettyCashRepository implements IPettyCashRepository {
     filters: ListPettyCashFilters = {},
     session?: DbSession,
     tenantId?: string
-  ): Promise<{ vouchers: PettyCashRow[]; total: number }> {
+  ): Promise<{
+    vouchers: PettyCashRow[];
+    total: number;
+    stats: PettyCashStats;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
@@ -104,24 +115,49 @@ export class PettyCashRepository implements IPettyCashRepository {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [totalCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
+    const limit = filters.pageSize ?? filters.limit ?? 50;
+    const offset = filters.page ? (filters.page - 1) * limit : (filters.offset ?? 0);
+    const page = filters.page ?? (filters.limit ? Math.floor((filters.offset ?? 0) / limit) + 1 : 1);
+
+    const [aggregates] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        pendingCount: sql<number>`count(*) filter (where ${pettyCashVouchers.status} = 'pending_approval')::int`,
+        approvedCount: sql<number>`count(*) filter (where ${pettyCashVouchers.status} = 'approved')::int`,
+        awaitingReceiptCount: sql<number>`count(*) filter (where ${pettyCashVouchers.status} = 'disbursed')::int`,
+        completedCount: sql<number>`count(*) filter (where ${pettyCashVouchers.status} = 'completed')::int`,
+        totalDisbursed: sql<string>`coalesce(sum(case when ${pettyCashVouchers.status} in ('disbursed', 'completed') then ${pettyCashVouchers.amount}::numeric else 0 end), 0)::text`,
+      })
       .from(pettyCashVouchers)
       .where(whereClause);
+
+    const total = aggregates?.total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     const query = db
       .select()
       .from(pettyCashVouchers)
       .where(whereClause)
       .orderBy(desc(pettyCashVouchers.createdAt))
-      .limit(filters.limit ?? 50)
-      .offset(filters.offset ?? 0);
+      .limit(limit)
+      .offset(offset);
 
     const rows = await query;
 
     return {
       vouchers: rows,
-      total: totalCount?.count ?? 0,
+      total,
+      stats: {
+        total,
+        pendingCount: aggregates?.pendingCount ?? 0,
+        approvedCount: aggregates?.approvedCount ?? 0,
+        awaitingReceiptCount: aggregates?.awaitingReceiptCount ?? 0,
+        completedCount: aggregates?.completedCount ?? 0,
+        totalDisbursed: parseFloat(aggregates?.totalDisbursed ?? "0") || 0,
+      },
+      page,
+      limit,
+      totalPages,
     };
   }
 

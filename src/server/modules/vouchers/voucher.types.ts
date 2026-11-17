@@ -43,12 +43,23 @@ export type VoucherDTO = {
   updatedAt: string;
 };
 
+export type VoucherStats = {
+  total: number;
+  pendingCount: number;
+  approvedCount: number;
+  awaitingReceiptCount: number;
+  completedCount: number;
+  totalDisbursed: number;
+};
+
 export type ListVoucherFilters = {
   search?: string;
   type?: VoucherType;
   status?: VoucherStatus;
   startDate?: string;
   endDate?: string;
+  page?: number;
+  pageSize?: number;
   limit?: number;
   offset?: number;
 };
@@ -68,7 +79,14 @@ export interface IVoucherRepository {
     filters?: ListVoucherFilters,
     session?: import("@/server/db/transaction").DbSession,
     tenantId?: string
-  ): Promise<{ vouchers: VoucherRow[]; total: number }>;
+  ): Promise<{
+    vouchers: VoucherRow[];
+    total: number;
+    stats: VoucherStats;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   create(
     data: Omit<NewVoucherRow, "id" | "createdAt" | "updatedAt">,
     session?: import("@/server/db/transaction").DbSession

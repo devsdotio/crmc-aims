@@ -21,6 +21,8 @@ export const listVouchersQuerySchema = z.object({
   status: z.enum(VOUCHER_STATUSES).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional(),
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
 });

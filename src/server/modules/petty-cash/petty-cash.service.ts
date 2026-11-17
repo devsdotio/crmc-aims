@@ -124,7 +124,18 @@ export class PettyCashService {
     rawFilters: unknown,
     actorTenantId?: string,
     actor?: ActorContext
-  ): Promise<{ vouchers: PettyCashDTO[]; total: number }> {
+  ): Promise<{
+    vouchers: PettyCashDTO[];
+    total: number;
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      stats: import("./petty-cash.types").PettyCashStats;
+    };
+    stats: import("./petty-cash.types").PettyCashStats;
+  }> {
     const filters = listPettyCashQuerySchema.parse(rawFilters);
     const tenantId =
       actorTenantId ??
@@ -136,13 +147,21 @@ export class PettyCashService {
       cacheKey,
       30 * 1000,
       async () => {
-        const { vouchers, total } = await this.repo.list(filters as ListPettyCashFilters, undefined, tenantId);
+        const repoRes = await this.repo.list(filters as ListPettyCashFilters, undefined, tenantId);
         return {
           vouchers: await attachPettyCashDepartments(
-            vouchers.map(toDTO),
+            repoRes.vouchers.map(toDTO),
             tenantId
           ),
-          total,
+          total: repoRes.total,
+          meta: {
+            page: repoRes.page,
+            limit: repoRes.limit,
+            total: repoRes.total,
+            totalPages: repoRes.totalPages,
+            stats: repoRes.stats,
+          },
+          stats: repoRes.stats,
         };
       },
       ["petty-cash", `tenant:${tenantId}:petty-cash`]
@@ -155,6 +174,17 @@ export class PettyCashService {
           amount: null,
           particulars: redactParticularsCosts(v.particulars),
         })),
+        meta: {
+          ...result.meta,
+          stats: {
+            ...result.meta.stats,
+            totalDisbursed: 0,
+          },
+        },
+        stats: {
+          ...result.stats,
+          totalDisbursed: 0,
+        },
       };
     }
     return result;

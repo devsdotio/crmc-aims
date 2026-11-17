@@ -32,9 +32,26 @@ export type UpdateVoucherStatusPayload = {
   notes?: string;
 };
 
+export interface VoucherStats {
+  total: number;
+  pendingCount: number;
+  approvedCount: number;
+  awaitingReceiptCount: number;
+  completedCount: number;
+  totalDisbursed: number;
+}
+
 export interface VoucherListResponse {
   vouchers: Voucher[];
   total: number;
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    stats: VoucherStats;
+  };
+  stats?: VoucherStats;
 }
 
 export const vouchersApi = {
@@ -56,6 +73,8 @@ export const vouchersApi = {
     status?: VoucherStatus;
     startDate?: string;
     endDate?: string;
+    page?: number;
+    pageSize?: number;
     limit?: number;
     offset?: number;
   }): Promise<VoucherListResponse> {
@@ -65,6 +84,8 @@ export const vouchersApi = {
     if (params?.status) sp.set("status", params.status);
     if (params?.startDate) sp.set("startDate", params.startDate);
     if (params?.endDate) sp.set("endDate", params.endDate);
+    if (params?.page) sp.set("page", String(params.page));
+    if (params?.pageSize) sp.set("pageSize", String(params.pageSize));
     if (params?.limit) sp.set("limit", String(params.limit));
     if (params?.offset) sp.set("offset", String(params.offset));
     const qs = sp.toString();

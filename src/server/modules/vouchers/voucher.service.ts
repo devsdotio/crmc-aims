@@ -136,7 +136,18 @@ export class VoucherService {
     rawFilters: unknown,
     actorTenantId?: string,
     actor?: ActorContext
-  ): Promise<{ vouchers: VoucherDTO[]; total: number }> {
+  ): Promise<{
+    vouchers: VoucherDTO[];
+    total: number;
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      stats: import("./voucher.types").VoucherStats;
+    };
+    stats: import("./voucher.types").VoucherStats;
+  }> {
     const filters = listVouchersQuerySchema.parse(rawFilters);
     const tenantId =
       actorTenantId ??
@@ -148,13 +159,21 @@ export class VoucherService {
       cacheKey,
       30 * 1000,
       async () => {
-        const { vouchers, total } = await this.repo.list(filters as ListVoucherFilters, undefined, tenantId);
+        const repoRes = await this.repo.list(filters as ListVoucherFilters, undefined, tenantId);
         return {
           vouchers: await attachVoucherDepartments(
-            vouchers.map(toDTO),
+            repoRes.vouchers.map(toDTO),
             tenantId
           ),
-          total,
+          total: repoRes.total,
+          meta: {
+            page: repoRes.page,
+            limit: repoRes.limit,
+            total: repoRes.total,
+            totalPages: repoRes.totalPages,
+            stats: repoRes.stats,
+          },
+          stats: repoRes.stats,
         };
       },
       ["vouchers", `tenant:${tenantId}:vouchers`]
@@ -167,6 +186,17 @@ export class VoucherService {
           amount: null,
           particulars: redactParticularsCosts(v.particulars),
         })),
+        meta: {
+          ...result.meta,
+          stats: {
+            ...result.meta.stats,
+            totalDisbursed: 0,
+          },
+        },
+        stats: {
+          ...result.stats,
+          totalDisbursed: 0,
+        },
       };
     }
     return result;

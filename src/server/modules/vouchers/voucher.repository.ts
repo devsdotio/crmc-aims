@@ -9,7 +9,11 @@ import {
   type VoucherRow,
 } from "@/server/db/schema";
 
-import type { IVoucherRepository, ListVoucherFilters } from "./voucher.types";
+import type {
+  IVoucherRepository,
+  ListVoucherFilters,
+  VoucherStats,
+} from "./voucher.types";
 
 export class VoucherRepository implements IVoucherRepository {
   private db(session?: DbSession) {
@@ -56,7 +60,14 @@ export class VoucherRepository implements IVoucherRepository {
     filters: ListVoucherFilters = {},
     session?: DbSession,
     tenantId?: string
-  ): Promise<{ vouchers: VoucherRow[]; total: number }> {
+  ): Promise<{
+    vouchers: VoucherRow[];
+    total: number;
+    stats: VoucherStats;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const db = this.db(session);
     const resolvedTenantId = tenantId ?? getTenantContext()?.tenantId;
     const conditions = [];
@@ -101,24 +112,49 @@ export class VoucherRepository implements IVoucherRepository {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const [totalCount] = await db
-      .select({ count: sql<number>`count(*)::int` })
+    const limit = filters.pageSize ?? filters.limit ?? 50;
+    const offset = filters.page ? (filters.page - 1) * limit : (filters.offset ?? 0);
+    const page = filters.page ?? (filters.limit ? Math.floor((filters.offset ?? 0) / limit) + 1 : 1);
+
+    const [aggregates] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        pendingCount: sql<number>`count(*) filter (where ${vouchers.status} = 'pending_approval')::int`,
+        approvedCount: sql<number>`count(*) filter (where ${vouchers.status} = 'approved')::int`,
+        awaitingReceiptCount: sql<number>`count(*) filter (where ${vouchers.status} = 'disbursed')::int`,
+        completedCount: sql<number>`count(*) filter (where ${vouchers.status} = 'completed')::int`,
+        totalDisbursed: sql<string>`coalesce(sum(case when ${vouchers.status} in ('disbursed', 'completed') then ${vouchers.amount}::numeric else 0 end), 0)::text`,
+      })
       .from(vouchers)
       .where(whereClause);
+
+    const total = aggregates?.total ?? 0;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
 
     const query = db
       .select()
       .from(vouchers)
       .where(whereClause)
       .orderBy(desc(vouchers.createdAt))
-      .limit(filters.limit ?? 50)
-      .offset(filters.offset ?? 0);
+      .limit(limit)
+      .offset(offset);
 
     const rows = await query;
 
     return {
       vouchers: rows,
-      total: totalCount?.count ?? 0,
+      total,
+      stats: {
+        total,
+        pendingCount: aggregates?.pendingCount ?? 0,
+        approvedCount: aggregates?.approvedCount ?? 0,
+        awaitingReceiptCount: aggregates?.awaitingReceiptCount ?? 0,
+        completedCount: aggregates?.completedCount ?? 0,
+        totalDisbursed: parseFloat(aggregates?.totalDisbursed ?? "0") || 0,
+      },
+      page,
+      limit,
+      totalPages,
     };
   }
 

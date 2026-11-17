@@ -79,6 +79,8 @@ export function usePettyCashListQuery(filters?: {
   departmentId?: string;
   startDate?: string;
   endDate?: string;
+  page?: number;
+  pageSize?: number;
   limit?: number;
   offset?: number;
 }): UseQueryResult<PettyCashListResponse, Error> {

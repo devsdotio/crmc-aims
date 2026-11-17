@@ -21,6 +21,8 @@ export class VoucherController {
           status: url.searchParams.get("status") ?? undefined,
           startDate: url.searchParams.get("startDate") ?? undefined,
           endDate: url.searchParams.get("endDate") ?? undefined,
+          page: url.searchParams.get("page") ?? undefined,
+          pageSize: url.searchParams.get("pageSize") ?? undefined,
           limit: url.searchParams.get("limit") ?? undefined,
           offset: url.searchParams.get("offset") ?? undefined,
         },

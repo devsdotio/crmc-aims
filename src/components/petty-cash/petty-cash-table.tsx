@@ -17,6 +17,10 @@ import {
   Tag,
   Boxes,
   Printer,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+  FilePlus2,
 } from "lucide-react";
 import type { PettyCashVoucher, PettyCashStatus } from "@/types/petty-cash";
 import { formatPhp } from "@/components/projects/format-money";
@@ -29,8 +33,17 @@ type SortOrder = "asc" | "desc";
 interface PettyCashTableProps {
   vouchers: PettyCashVoucher[];
   loading?: boolean;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (pageSize: number) => void;
   onSelectVoucher: (voucher: PettyCashVoucher) => void;
   onPrintSlip: (voucher: PettyCashVoucher) => void;
+  onResetFilters?: () => void;
+  onCreateVoucher?: () => void;
+  hasActiveFilters?: boolean;
 }
 
 function getStatusBadge(status: PettyCashStatus) {
@@ -120,8 +133,17 @@ function getCategoryBadge(category: string | null | undefined) {
 export function PettyCashTable({
   vouchers,
   loading = false,
+  total,
+  page = 1,
+  pageSize = 25,
+  totalPages = 1,
+  onPageChange,
+  onPageSizeChange,
   onSelectVoucher,
   onPrintSlip,
+  onResetFilters,
+  onCreateVoucher,
+  hasActiveFilters = false,
 }: PettyCashTableProps) {
   const [sortField, setSortField] = useState<SortField>("voucherDate");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
@@ -179,13 +201,60 @@ export function PettyCashTable({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-border bg-bg p-4 flex-1 flex flex-col gap-3 min-h-0">
-        {Array.from({ length: 7 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-12 w-full bg-bg-subtle/60 rounded-lg animate-pulse border border-border/40"
-          />
-        ))}
+      <div className="rounded-lg border border-border bg-bg overflow-hidden flex flex-col flex-1 min-h-0 shadow-2xs">
+        <div className="flex-1 overflow-auto min-h-0">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="sticky top-0 z-10 bg-bg-subtle/80 backdrop-blur-xs border-b border-border text-text-secondary text-[11px] font-bold uppercase tracking-wider">
+              <tr>
+                <th scope="col" className="py-3 px-4">PCV Code</th>
+                <th scope="col" className="py-3 px-4">Date</th>
+                <th scope="col" className="py-3 px-4">Payee / Claimant</th>
+                <th scope="col" className="py-3 px-4">Category</th>
+                <th scope="col" className="py-3 px-4">Ref / Receipt #</th>
+                <th scope="col" className="py-3 px-4">PO Ref</th>
+                <th scope="col" className="py-3 px-4 text-right">Amount</th>
+                <th scope="col" className="py-3 px-4">Status</th>
+                <th scope="col" className="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="py-4 pl-5 pr-4">
+                    <div className="h-4 w-28 bg-bg-subtle rounded" />
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="h-4 w-20 bg-bg-subtle rounded" />
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="space-y-1.5">
+                      <div className="h-4 w-36 bg-bg-subtle rounded" />
+                      <div className="h-3 w-24 bg-bg-subtle rounded" />
+                    </div>
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="h-5 w-20 bg-bg-subtle rounded" />
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="h-4 w-16 bg-bg-subtle rounded" />
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="h-4 w-20 bg-bg-subtle rounded" />
+                  </td>
+                  <td className="py-4 px-4 text-right">
+                    <div className="h-4 w-20 bg-bg-subtle rounded ml-auto" />
+                  </td>
+                  <td className="py-4 px-4">
+                    <div className="h-5 w-24 bg-bg-subtle rounded-full" />
+                  </td>
+                  <td className="py-4 px-4 text-right">
+                    <div className="h-7 w-28 bg-bg-subtle rounded-lg ml-auto" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
@@ -196,13 +265,43 @@ export function PettyCashTable({
         <div className="rounded-full bg-bg-subtle p-4 border border-border">
           <Wallet className="h-8 w-8 text-text-secondary" />
         </div>
-        <h3 className="mt-3 text-sm font-bold text-text">No petty cash records found</h3>
+        <h3 className="mt-3 text-sm font-bold text-text">
+          {hasActiveFilters ? "No petty cash records match filters" : "No petty cash records found"}
+        </h3>
         <p className="mt-1 text-xs text-text-secondary max-w-sm">
-          No disbursements match your current filters. Adjust your search or record a new petty cash disbursement to get started.
+          {hasActiveFilters
+            ? "No petty cash records match your active search, category, or status filters. Adjust or clear filters to view more records."
+            : "No petty cash micro-disbursements recorded yet. Record a petty cash voucher to track immediate expenses."}
         </p>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          {hasActiveFilters && onResetFilters && (
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-bg text-text hover:bg-bg-subtle transition-colors cursor-pointer shadow-2xs"
+            >
+              <RotateCcw className="h-3.5 w-3.5 text-text-secondary" />
+              <span>Clear filters</span>
+            </button>
+          )}
+          {onCreateVoucher && (
+            <button
+              type="button"
+              onClick={onCreateVoucher}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+            >
+              <FilePlus2 className="h-3.5 w-3.5" />
+              <span>New Petty Cash</span>
+            </button>
+          )}
+        </div>
       </div>
     );
   }
+
+  const effectiveTotal = total ?? sortedVouchers.length;
+  const fromIndex = effectiveTotal === 0 ? 0 : (page - 1) * pageSize + 1;
+  const toIndex = Math.min(page * pageSize, effectiveTotal);
 
   return (
     <div className="rounded-lg border border-border bg-bg overflow-hidden flex flex-col flex-1 min-h-0 shadow-2xs">
@@ -212,7 +311,14 @@ export function PettyCashTable({
             <tr>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("pcvNumber");
+                  }
+                }}
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => handleSort("pcvNumber")}
               >
                 <div className="flex items-center gap-1.5">
@@ -222,7 +328,14 @@ export function PettyCashTable({
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("voucherDate");
+                  }
+                }}
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => handleSort("voucherDate")}
               >
                 <div className="flex items-center gap-1.5">
@@ -232,7 +345,14 @@ export function PettyCashTable({
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("payeeName");
+                  }
+                }}
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => handleSort("payeeName")}
               >
                 <div className="flex items-center gap-1.5">
@@ -242,7 +362,14 @@ export function PettyCashTable({
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("category");
+                  }
+                }}
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors select-none focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => handleSort("category")}
               >
                 <div className="flex items-center gap-1.5">
@@ -251,17 +378,21 @@ export function PettyCashTable({
                 </div>
               </th>
               <th scope="col" className="py-3 px-4">
-                Purpose
-              </th>
-              <th scope="col" className="py-3 px-4">
-                PO / Asset Ref
-              </th>
-              <th scope="col" className="py-3 px-4">
                 Ref / Receipt #
+              </th>
+              <th scope="col" className="py-3 px-4">
+                PO Ref
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors text-right select-none"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("amount");
+                  }
+                }}
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors text-right focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => handleSort("amount")}
               >
                 <div className="flex items-center justify-end gap-1.5">
@@ -271,10 +402,17 @@ export function PettyCashTable({
               </th>
               <th
                 scope="col"
-                className="py-3 px-4 cursor-pointer hover:text-text transition-colors text-center select-none"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleSort("status");
+                  }
+                }}
+                className="py-3 px-4 cursor-pointer hover:text-text transition-colors focus-visible:outline-2 focus-visible:outline-primary"
                 onClick={() => handleSort("status")}
               >
-                <div className="flex items-center justify-center gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <span>Status</span>
                   {renderSortIcon("status")}
                 </div>
@@ -286,9 +424,9 @@ export function PettyCashTable({
           </thead>
           <tbody className="divide-y divide-border">
             {sortedVouchers.map((voucher) => {
-              const statusConfig = getStatusBadge(voucher.status);
-              const StatusIcon = statusConfig.icon;
-              const categoryConfig = getCategoryBadge(voucher.category);
+              const statusInfo = getStatusBadge(voucher.status);
+              const StatusIcon = statusInfo.icon;
+              const categoryInfo = getCategoryBadge(voucher.category);
 
               return (
                 <tr
@@ -301,9 +439,9 @@ export function PettyCashTable({
                     <span
                       className={cn(
                         "absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full",
-                        statusConfig.rail
+                        statusInfo.rail
                       )}
-                      title={statusConfig.label}
+                      title={statusInfo.label}
                       aria-hidden
                     />
                     <div className="flex items-center gap-2">
@@ -324,64 +462,50 @@ export function PettyCashTable({
                   </td>
 
                   {/* Payee / Claimant */}
-                  <td className="py-3.5 px-4 font-medium text-text">
-                    <div className="font-semibold text-text max-w-42.5 truncate" title={voucher.payeeName}>
+                  <td className="py-3.5 px-4">
+                    <div
+                      className="font-semibold text-text max-w-50 truncate"
+                      title={voucher.payeeName}
+                    >
                       {voucher.payeeName}
                     </div>
-                    {voucher.supplierName && voucher.supplierName !== voucher.payeeName && (
-                      <div className="text-[11px] text-text-secondary max-w-42.5 truncate">
-                        via {voucher.supplierName}
-                      </div>
-                    )}
                     {voucher.departmentName && (
-                      <div className="text-[11px] text-text-secondary max-w-42.5 truncate flex items-center gap-1 mt-0.5">
-                        <Building2 className="w-2.5 h-2.5" />
-                        <span>{voucher.departmentName}</span>
+                      <div
+                        className="text-[11px] text-text-secondary flex items-center gap-1 mt-0.5 max-w-50 truncate"
+                        title={`Department: ${voucher.departmentName}`}
+                      >
+                        <Building2 className="w-3 h-3 opacity-60 shrink-0" />
+                        <span className="truncate">{voucher.departmentName}</span>
                       </div>
                     )}
+                    {(() => {
+                      const preview = disbursementPurposeLabel(
+                        voucher.purpose,
+                        voucher.particulars
+                      );
+                      if (!preview.label) return null;
+                      return (
+                        <span
+                          title={preview.title}
+                          className="mt-1 inline-flex max-w-50 truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/25"
+                        >
+                          {preview.label}
+                        </span>
+                      );
+                    })()}
                   </td>
 
                   {/* Category */}
                   <td className="py-3.5 px-4 whitespace-nowrap">
                     <span
                       className={cn(
-                        "inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-semibold rounded-full border",
-                        categoryConfig.className
+                        "inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border",
+                        categoryInfo.className
                       )}
                     >
-                      <Tag className="w-2.5 h-2.5" />
-                      {categoryConfig.label}
+                      <Tag className="w-3 h-3 opacity-70" />
+                      {categoryInfo.label}
                     </span>
-                  </td>
-
-                  {/* Purpose Preview */}
-                  <td className="py-3.5 px-4 text-text-secondary max-w-55">
-                    {(() => {
-                      const preview = disbursementPurposeLabel(
-                        voucher.purpose,
-                        voucher.particulars
-                      );
-                      return (
-                        <p
-                          className="truncate text-[11px] leading-relaxed"
-                          title={preview.title || undefined}
-                        >
-                          {preview.label || "—"}
-                        </p>
-                      );
-                    })()}
-                  </td>
-
-                  {/* PO / Asset Ref */}
-                  <td className="py-3.5 px-4 text-text-secondary">
-                    {voucher.purchaseOrderNumber ? (
-                      <div className="flex items-center gap-1 font-mono text-[11px] text-text font-medium">
-                        <Boxes className="h-3 w-3 text-primary" />
-                        <span>#{voucher.purchaseOrderNumber}</span>
-                      </div>
-                    ) : (
-                      <span className="text-text-secondary/60">—</span>
-                    )}
                   </td>
 
                   {/* Ref / Receipt # */}
@@ -396,26 +520,38 @@ export function PettyCashTable({
                     )}
                   </td>
 
+                  {/* PO Ref */}
+                  <td className="py-3.5 px-4 text-text-secondary whitespace-nowrap">
+                    {voucher.purchaseOrderNumber ? (
+                      <div className="flex items-center gap-1 font-mono text-[11px] text-text font-medium">
+                        <Boxes className="h-3 w-3 text-primary" />
+                        <span>#{voucher.purchaseOrderNumber}</span>
+                      </div>
+                    ) : (
+                      <span className="text-text-secondary/60 text-[11px]">—</span>
+                    )}
+                  </td>
+
                   {/* Amount */}
                   <td className="py-3.5 px-4 text-right font-mono font-bold text-text whitespace-nowrap">
                     {voucher.amount != null ? formatPhp(voucher.amount) : "Restricted"}
                   </td>
 
                   {/* Status */}
-                  <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                  <td className="py-3.5 px-4">
                     <span
                       className={cn(
                         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-                        statusConfig.className
+                        statusInfo.className
                       )}
                     >
                       <StatusIcon className="h-3 w-3" />
-                      {statusConfig.label}
+                      {statusInfo.label}
                     </span>
                   </td>
 
-                  {/* Actions */}
-                  <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                  {/* Action */}
+                  <td className="py-3.5 px-4 text-right">
                     <div className="inline-flex items-center justify-end gap-1.5">
                       <button
                         type="button"
@@ -423,11 +559,11 @@ export function PettyCashTable({
                           e.stopPropagation();
                           onPrintSlip(voucher);
                         }}
-                        title="Print or save slip"
-                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle transition-colors"
+                        title="Print or save petty cash slip"
+                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors"
                       >
                         <Printer className="h-3.5 w-3.5 text-text-secondary" />
-                        <span>Slip</span>
+                        <span>Print Slip</span>
                       </button>
                       <button
                         type="button"
@@ -435,7 +571,8 @@ export function PettyCashTable({
                           e.stopPropagation();
                           onSelectVoucher(voucher);
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle transition-colors"
+                        title="View details"
+                        className="inline-flex items-center gap-1 rounded-lg border border-border bg-bg px-2.5 py-1.5 text-xs font-semibold text-text shadow-2xs hover:bg-bg-subtle focus-visible:ring-2 focus-visible:ring-primary/20 transition-colors"
                       >
                         <Eye className="h-3.5 w-3.5 text-text-secondary" />
                         <span>View</span>
@@ -448,6 +585,65 @@ export function PettyCashTable({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination Footer */}
+      {onPageChange && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-border bg-bg-subtle/50 text-xs text-text-secondary shrink-0">
+          <div className="flex items-center gap-2">
+            <span>
+              Showing <strong className="text-text font-semibold">{fromIndex}</strong> to{" "}
+              <strong className="text-text font-semibold">{toIndex}</strong> of{" "}
+              <strong className="text-text font-semibold">{effectiveTotal}</strong> record
+              {effectiveTotal === 1 ? "" : "s"}
+            </span>
+
+            {onPageSizeChange && (
+              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-border">
+                <span className="text-text-secondary/80">Per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => onPageSizeChange(Number(e.target.value))}
+                  aria-label="Records per page"
+                  className="h-7 rounded-md border border-border bg-bg px-2 text-xs text-text focus:outline-hidden focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page <= 1}
+              aria-label="Previous page"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-bg text-text text-xs font-semibold hover:bg-bg-subtle disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              <span>Previous</span>
+            </button>
+
+            <span className="px-2 text-xs font-mono font-medium text-text">
+              Page {page} of {Math.max(1, totalPages)}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              disabled={page >= totalPages}
+              aria-label="Next page"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-bg text-text text-xs font-semibold hover:bg-bg-subtle disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors shadow-2xs"
+            >
+              <span>Next</span>
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
