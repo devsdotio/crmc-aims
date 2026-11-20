@@ -35,7 +35,7 @@ import { useMeQuery } from "@/features/users/client/use-users";
 import { useSuppliersQuery } from "@/features/suppliers/client";
 import { useDepartmentsQuery } from "@/features/departments/client";
 import { useCategoriesQuery } from "@/features/categories/client/use-categories";
-import { useConsumablesQuery } from "@/features/consumables/client";
+import { useConsumableCatalogQuery } from "@/features/consumables/client";
 import { useAssetsQuery } from "@/features/assets/client";
 import { useProjectsQuery } from "@/features/projects/client";
 import { useCreatePurchaseOrderMutation } from "@/features/purchase-lots/client";
@@ -245,14 +245,13 @@ export function FileNewPODialog({
     enabled: isOpen,
   });
   const { data: allCategories = [] } = useCategoriesQuery({ enabled: isOpen });
-  const { data: consumablePage } = useConsumablesQuery({
-    limit: 200,
+  const { data: consumableCatalogPage } = useConsumableCatalogQuery({
     catalog: true,
     enabled: isOpen,
   });
   const consumables = useMemo(
-    () => consumablePage?.data ?? [],
-    [consumablePage?.data]
+    () => consumableCatalogPage?.data ?? [],
+    [consumableCatalogPage?.data]
   );
   const { data: assetsList = [] } = useAssetsQuery(undefined, {
     enabled: isOpen,

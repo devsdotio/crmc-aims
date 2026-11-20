@@ -32,7 +32,10 @@ import { useAssetOperator } from "@/hooks/use-asset-operator";
 import type { ConsumableItem } from "@/types/inventory";
 import { consumableClassificationLabel } from "@/lib/consumable-classification";
 import type { PurchaseLot } from "@/types/purchase-lots";
-import { isInitialStockLot } from "@/types/grouped-purchase-order";
+import {
+  isInitialStockLot,
+  isStockAdjustmentLot,
+} from "@/types/grouped-purchase-order";
 import { useConsumableQuery } from "@/features/consumables/client/use-consumables";
 import {
   usePurchaseLotsQuery,
@@ -57,6 +60,10 @@ function lotSecondaryLabel(
   if (isInitialStockLot(lot)) {
     if (isBorrower) return "Opening balance";
     return `Opening balance · ${formatPhp(Number(lot.unitCost))}/${unit}`;
+  }
+  if (isStockAdjustmentLot(lot)) {
+    if (isBorrower) return "Stock adjustment";
+    return `Stock adjustment · ${formatPhp(Number(lot.unitCost))}/${unit}`;
   }
   if (isBorrower) return lot.supplierName || "Supplier lot";
   return `${lot.supplierName || "No supplier"} · ${formatPhp(Number(lot.unitCost))}/${unit}`;

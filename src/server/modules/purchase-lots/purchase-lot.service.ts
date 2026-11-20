@@ -117,6 +117,9 @@ export function derivePONumber(lotCode: string, reference?: string | null): stri
     ) {
       return "Opening balance";
     }
+    if (lower === "stock adjustment" || lower.startsWith("stock adjustment")) {
+      return "Stock adjustment";
+    }
     return trimmed;
   }
   return lotCode.startsWith("LOT-")

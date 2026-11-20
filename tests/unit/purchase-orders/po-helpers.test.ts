@@ -19,6 +19,7 @@ describe("purchase order code helpers", () => {
     expect(derivePONumber("LOT-1", "Opening balance — create")).toBe(
       "Opening balance"
     );
+    expect(derivePONumber("LOT-1", "Stock adjustment")).toBe("Stock adjustment");
   });
 
   it("derives lot codes from PO numbers", () => {

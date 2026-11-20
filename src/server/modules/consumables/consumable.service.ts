@@ -248,6 +248,7 @@ export class ConsumableService {
       page: filters.page,
       limit: filters.limit,
       includeSandbox: filters.includeSandbox === true,
+      catalogBrowse: filters.catalog === true,
     }, undefined, tenantId);
 
     let dtos = result.data.map(toDTO);
@@ -909,7 +910,14 @@ export class ConsumableService {
         );
         lotAllocations.push(result.allocation);
       } else {
-        // Correction lot (found stock / uncosted correction)
+        // Correction lot (found stock / uncosted correction) — not a filed PO.
+        const correctionNotes = [
+          "Stock correction lot",
+          input.reason.trim(),
+          input.notes?.trim(),
+        ]
+          .filter(Boolean)
+          .join(" — ");
         const lot = await this.purchaseLots.recordLot(
           {
             tenantId: actor.tenantId,
@@ -921,8 +929,8 @@ export class ConsumableService {
             quantity: input.quantityChange,
             unitCost: input.unitCost ?? "0.00",
             purchasedOn: todayDateString(),
-            reference: input.reason,
-            notes: input.notes ?? "Stock correction lot",
+            reference: "Stock adjustment",
+            notes: correctionNotes,
             recordedByUserId: actor.userId,
             recordedByName: actor.displayName,
           },
