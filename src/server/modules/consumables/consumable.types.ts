@@ -35,6 +35,8 @@ export type ListConsumableFilters = PaginationParams & {
   stockLevel?: "all" | "healthy" | "low" | "critical";
   search?: string;
   includeSandbox?: boolean;
+  /** Catalog pickers (PO file, request wizards): sort by name, not lowest on-hand first. */
+  catalogBrowse?: boolean;
 };
 
 export interface IConsumableRepository {

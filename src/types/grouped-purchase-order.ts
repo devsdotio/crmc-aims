@@ -16,6 +16,32 @@ export interface GroupedPurchaseOrder {
   poNumber: string;
 }
 
+/** Canonical reference for lots created by inventory Adjust (not a filed PO). */
+export const STOCK_ADJUSTMENT_LOT_REFERENCE = "Stock adjustment";
+
+/**
+ * Lots from warehouse Adjust that increase on-hand without a formal PO.
+ * Legacy rows may still carry the human reason in `reference`.
+ */
+export function isStockAdjustmentLot(lot: PurchaseLot): boolean {
+  const ref = (lot.reference || "").trim().toLowerCase();
+  const po = (lot.poNumber || "").trim().toLowerCase();
+  const notes = (lot.notes || "").trim().toLowerCase();
+
+  return (
+    ref === STOCK_ADJUSTMENT_LOT_REFERENCE.toLowerCase() ||
+    ref.startsWith(`${STOCK_ADJUSTMENT_LOT_REFERENCE.toLowerCase()} `) ||
+    po === STOCK_ADJUSTMENT_LOT_REFERENCE.toLowerCase() ||
+    po.startsWith(STOCK_ADJUSTMENT_LOT_REFERENCE.toLowerCase()) ||
+    notes.includes("stock correction lot")
+  );
+}
+
+/** Opening balance, stock corrections, and similar lots excluded from PO indexes. */
+export function isNonPurchaseOrderLot(lot: PurchaseLot): boolean {
+  return isInitialStockLot(lot) || isStockAdjustmentLot(lot);
+}
+
 /**
  * Detects whether a purchase lot represents an opening inventory / initial stock
  * adjustment on item creation rather than a formal Purchase Order.
@@ -53,7 +79,7 @@ export function groupLotsByPO(
 ): GroupedPurchaseOrder[] {
   const { excludeInitialStock = true } = options ?? {};
   const validLots = excludeInitialStock
-    ? lots.filter((lot) => !isInitialStockLot(lot))
+    ? lots.filter((lot) => !isNonPurchaseOrderLot(lot))
     : lots;
 
   const map = new Map<string, PurchaseLot[]>();

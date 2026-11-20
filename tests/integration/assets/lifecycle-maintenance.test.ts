@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
+
+import { groupLotsByPO } from "@/types/grouped-purchase-order";
 import { eq } from "drizzle-orm";
 
 import { getDb } from "@/server/db";
 import { purchaseLots, stockMovements } from "@/server/db/schema";
 import { AssetService } from "@/server/modules/assets/asset.service";
 import { ConsumableService } from "@/server/modules/consumables/consumable.service";
+import { PurchaseLotService } from "@/server/modules/purchase-lots/purchase-lot.service";
 import { StockMovementService } from "@/server/modules/stock-movements/stock-movement.service";
 import { MaintenanceLogService } from "@/server/modules/maintenance/maintenance.service";
 import { hasTestDatabase } from "../../setup/env";
@@ -274,6 +277,61 @@ describeIntegration("inventory expand (adjust / ledger / issue)", () => {
     expect(
       lots.reduce((sum, l) => sum + Number(l.quantityRemaining), 0)
     ).toBe(6);
+
+    const correctionLot = lots.find((l) =>
+      (l.notes ?? "").toLowerCase().includes("stock correction lot")
+    );
+    expect(correctionLot?.reference).toBe("Stock adjustment");
+
+    const purchaseLotsApi = new PurchaseLotService();
+    const allLots = await purchaseLotsApi.list({}, fx.actor.tenantId, fx.actor);
+    const poGroups = groupLotsByPO(allLots);
+    expect(
+      poGroups.some(
+        (g) =>
+          g.poNumber.toLowerCase().includes("physical count") ||
+          g.poNumber === "Stock adjustment"
+      )
+    ).toBe(false);
+  });
+
+  it("lists catalog consumables by name when catalog=1 (not lowest on-hand first)", async () => {
+    await consumables.create(
+      {
+        name: "Zulu High Stock",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "pcs",
+        currentQty: 500,
+        unitCost: 1,
+        supplierId: fx.supplierId,
+        location: "Store",
+      },
+      fx.actor
+    );
+    await consumables.create(
+      {
+        name: "Alpha Zero Stock",
+        category: fx.consumableCategory,
+        classification: "supply",
+        unit: "pcs",
+        currentQty: 0,
+        location: "Store",
+      },
+      fx.actor
+    );
+
+    const page = await consumables.list(
+      { catalog: true, limit: 50, page: 1 },
+      fx.actor.tenantId,
+      fx.actor
+    );
+    const names = page.data.map((c) => c.name);
+    const alphaIdx = names.indexOf("Alpha Zero Stock");
+    const zuluIdx = names.indexOf("Zulu High Stock");
+    expect(alphaIdx).toBeGreaterThanOrEqual(0);
+    expect(zuluIdx).toBeGreaterThanOrEqual(0);
+    expect(alphaIdx).toBeLessThan(zuluIdx);
   });
 
   it("issues to a department and records an out movement", async () => {

@@ -172,7 +172,12 @@ export class ConsumableRepository implements IConsumableRepository {
       .select(consumableListColumns)
       .from(consumables)
       .where(whereClause)
-      .orderBy(asc(availableSql), asc(consumables.name))
+      .orderBy(
+        filters.catalogBrowse
+          ? asc(consumables.name)
+          : asc(availableSql),
+        asc(consumables.name)
+      )
       .limit(limit)
       .offset(offset);
 
